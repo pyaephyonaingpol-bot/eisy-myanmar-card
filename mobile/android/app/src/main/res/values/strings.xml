@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Eisy Myanmar</string>
+    <string name="title_activity_main">Eisy Myanmar</string>
+    <string name="package_name">com.eisyglobal.eisymyanmar</string>
+    <string name="custom_url_scheme">com.eisyglobal.eisymyanmar</string>
+</resources>

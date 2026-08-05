@@ -1,7 +1,7 @@
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 const path = require('path');
-const fs = require('fs');
+const { getDataDir } = require('./paths');
 const { runMigrations, columnExists, tableExists } = require('../migrations/runner');
 const { applyUserAuthColumns } = require('../migrations/patches/applyUserAuthColumns');
 const { ensureAuthTables } = require('../migrations/patches/ensureAuthTables');
@@ -9,11 +9,7 @@ const { ensureAuthTables } = require('../migrations/patches/ensureAuthTables');
 let db = null;
 
 async function initDb() {
-  const dataDir = path.join(__dirname, '..', 'data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-
+  const dataDir = getDataDir();
   const dbPath = path.join(dataDir, 'eisy.db');
   db = await open({
     filename: dbPath,

@@ -2,15 +2,12 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { getUploadRoot } = require('../paths');
 
-const UPLOAD_ROOT = path.join(__dirname, '..', '..', 'uploads');
+const UPLOAD_ROOT = getUploadRoot();
 const DEPOSIT_UPLOAD_DIR = path.join(UPLOAD_ROOT, 'deposits');
 const P2P_UPLOAD_DIR = path.join(UPLOAD_ROOT, 'p2p');
 const KYC_UPLOAD_DIR = path.join(UPLOAD_ROOT, 'kyc');
-
-fs.mkdirSync(DEPOSIT_UPLOAD_DIR, { recursive: true });
-fs.mkdirSync(P2P_UPLOAD_DIR, { recursive: true });
-fs.mkdirSync(KYC_UPLOAD_DIR, { recursive: true });
 
 const IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const VIDEO_MIME = new Set(['video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo']);

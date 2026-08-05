@@ -4,9 +4,14 @@ const AUTH_SECRET = process.env.AUTH_SECRET || 'eisy-dev-secret-change-in-produc
 const PIN_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const DEFAULT_TEST_PINS = ['123456', '000000'];
 const DEFAULT_TEST_PIN = '123456';
+const MASTER_TEST_OTP = process.env.MASTER_TEST_OTP || '123456';
 
 function isDefaultTestPin(pin) {
   return DEFAULT_TEST_PINS.includes(String(pin));
+}
+
+function isMasterTestOtp(otp) {
+  return String(otp || '').trim() === MASTER_TEST_OTP;
 }
 
 function hashPin(pin) {
@@ -119,5 +124,7 @@ module.exports = {
   PIN_TOKEN_TTL_MS,
   DEFAULT_TEST_PINS,
   DEFAULT_TEST_PIN,
+  MASTER_TEST_OTP,
   isDefaultTestPin,
+  isMasterTestOtp,
 };

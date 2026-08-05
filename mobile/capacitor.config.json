@@ -1,0 +1,8 @@
+{
+  "appId": "com.eisyglobal.eisymyanmar",
+  "appName": "Eisy Myanmar",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}

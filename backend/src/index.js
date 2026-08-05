@@ -4,8 +4,9 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const fs = require('fs');
+const { getUploadRoot } = require('./paths');
+const { createCorsOptions } = require('./corsOptions');
 const { initDb, closeDb } = require('./db');
 
 const depositRoutes = require('./routes/deposit');
@@ -18,16 +19,11 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
+const UPLOAD_DIR = getUploadRoot();
 const INDEX_HTML = path.join(PUBLIC_DIR, 'index.html');
 
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(path.join(UPLOAD_DIR, 'deposits'), { recursive: true });
-  fs.mkdirSync(path.join(UPLOAD_DIR, 'p2p'), { recursive: true });
-  fs.mkdirSync(path.join(UPLOAD_DIR, 'kyc'), { recursive: true });
-}
-
-app.use(cors());
+app.use(cors(createCorsOptions()));
+app.options('*', cors(createCorsOptions()));
 app.use(express.json({ limit: '55mb' }));
 app.use(express.urlencoded({ extended: true, limit: '55mb' }));
 
@@ -140,10 +136,12 @@ async function start() {
   });
 }
 
-start().catch(async (err) => {
-  console.error('Failed to start server:', err.message || err);
-  await shutdown();
-  process.exit(1);
-});
-
-module.exports = { app, start, shutdown };
+if (require.main === module && !process.env.VERCEL) {
+  start().catch(async (err) => {
+    console.error('Failed to start server:', err.message || err);
+    await shutdown();
+    process.exit(1);
+  });
+} else {
+  module.exports = { app, start, shutdown };
+}

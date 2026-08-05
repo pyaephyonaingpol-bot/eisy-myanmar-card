@@ -85,6 +85,15 @@ async function runMigrations(db) {
   } else {
     console.log(`[migrate] Applied ${count} new migration(s)`);
   }
+
+  const usersOk = await tableExists(db, 'users');
+  if (!usersOk) {
+    console.warn('[migrate] users table missing after migrations — resetting migration state');
+    await db.exec('DELETE FROM schema_migrations');
+    for (const file of files) {
+      await applyMigration(db, file);
+    }
+  }
 }
 
 module.exports = {

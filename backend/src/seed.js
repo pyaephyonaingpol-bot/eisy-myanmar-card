@@ -44,7 +44,15 @@ async function seed() {
   console.log('Eisy Myanmar — Seed complete.');
 }
 
-seed().catch((err) => {
-  console.error('Seed failed:', err);
-  process.exit(1);
-});
+async function runSeed() {
+  await seed();
+}
+
+if (require.main === module) {
+  runSeed().catch((err) => {
+    console.error('Seed failed:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { seed, runSeed };
