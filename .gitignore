@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+backend/data/*.db
+backend/data/*.db-*
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/uploads/deposits/.gitkeep
+
+# Environment
+.env
+*.env.local
+
+# Flutter
+user_app/.dart_tool/
+user_app/build/
+user_app/.flutter-plugins
+user_app/.flutter-plugins-dependencies
+
+# Android
+deposit_listener/.gradle/
+deposit_listener/app/build/
+deposit_listener/local.properties
+deposit_listener/.idea/
+*.apk
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db

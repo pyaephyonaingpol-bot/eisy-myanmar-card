@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eisy Myanmar — Admin</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* Critical fallback — keeps dashboard visible even if styles.css fails */
+    body { margin: 0; background: #0F172A; color: #F1F5F9; font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
+    #adminApp { display: block !important; min-height: 100vh; visibility: visible; }
+    #adminLogin { display: none !important; }
+    #adminBootError {
+      display: none;
+      margin: 1rem;
+      padding: 1rem;
+      border-radius: 12px;
+      background: rgba(239, 68, 68, 0.14);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+    }
+    #adminBootError.visible { display: block; }
+    .revenue-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .revenue-metric-card {
+      padding: 1rem 1.1rem;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      background: rgba(15, 23, 42, 0.55);
+    }
+    .revenue-metric-card.highlight {
+      border-color: rgba(34, 197, 94, 0.4);
+      background: rgba(34, 197, 94, 0.08);
+    }
+    .revenue-metric-label {
+      font-size: 0.78rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.35rem;
+    }
+    .revenue-metric-value {
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      line-height: 1.2;
+    }
+    .revenue-metric-sub {
+      font-size: 0.82rem;
+      color: #64748b;
+      margin-top: 0.25rem;
+    }
+    .revenue-period-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .revenue-period-chip {
+      padding: 0.5rem 0.85rem;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(30, 41, 59, 0.6);
+      font-size: 0.85rem;
+    }
+    .revenue-period-chip strong { color: #4ade80; }
+    .deposit-receipt-meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.65rem 1rem;
+      width: 100%;
+      margin-bottom: 1rem;
+      padding: 0.85rem 1rem;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      background: rgba(15, 23, 42, 0.45);
+      font-size: 0.85rem;
+    }
+    .deposit-receipt-meta dt { color: #94a3b8; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.15rem; }
+    .deposit-receipt-meta dd { margin: 0; color: #f1f5f9; font-weight: 600; }
+    .deposit-receipt-actions {
+      display: flex;
+      gap: 0.65rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+      width: 100%;
+    }
+    .actions-cell { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+  </style>
+</head>
+<body>
+
+  <noscript>
+    <div style="padding:2rem;color:#e8edf4;background:#0f1419;min-height:100vh">
+      <h1>Eisy Myanmar Admin</h1>
+      <p>JavaScript is required for the admin dashboard. Please enable JavaScript and reload.</p>
+    </div>
+  </noscript>
+
+  <div id="adminBootError" role="alert"></div>
+
+  <!-- Login bypassed in dev — dashboard loads immediately -->
+  <div id="adminLogin" class="hidden" aria-hidden="true"></div>
+
+  <div id="adminApp">
+    <div class="app-shell" id="adminAppShell">
+      <div id="adminToast" class="auth-toast hidden" role="status" aria-live="polite"></div>
+      <div class="sidebar-backdrop" data-sidebar-backdrop aria-hidden="true"></div>
+      <aside class="app-sidebar" id="adminSidebar" aria-label="Admin navigation">
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-title">Eisy Admin</div>
+          <div class="sidebar-brand-sub">Deposit review · Cards · Support</div>
+        </div>
+
+        <nav class="sidebar-nav admin-sidebar-nav" aria-label="Admin sections">
+          <button type="button" class="nav-item active" data-page="deposits" aria-current="page">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span data-i18n="nav_admin_deposits">Deposits</span>
+          </button>
+          <button type="button" class="nav-item" data-page="cards">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+            <span data-i18n="nav_admin_cards">Cards</span>
+          </button>
+          <button type="button" class="nav-item" data-page="users">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span data-i18n="nav_admin_users">Users</span>
+          </button>
+          <button type="button" class="nav-item" data-page="transactions">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+            <span data-i18n="nav_admin_transactions">Transactions</span>
+          </button>
+          <button type="button" class="nav-item" data-page="revenue">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-6 6"/><path d="M14 9h4v4"/></svg>
+            <span data-i18n="nav_admin_revenue">Revenue &amp; Profit</span>
+          </button>
+          <button type="button" class="nav-item" data-page="support">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span data-i18n="nav_admin_support">Support</span>
+          </button>
+          <button type="button" class="nav-item" data-page="kyc-requests">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span data-i18n="nav_admin_kyc">KYC Requests</span>
+          </button>
+          <button type="button" class="nav-item" data-page="settings">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 5 5-9"/></svg>
+            <span data-i18n="nav_admin_settings">Rates &amp; Fees</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <a href="/" class="nav-item" style="text-decoration:none">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"/></svg>
+            <span data-i18n="nav_user_app">User App</span>
+          </a>
+        </div>
+      </aside>
+
+      <div class="app-main">
+        <header class="header">
+          <div class="header-inner">
+            <div style="display:flex;align-items:center;gap:0.75rem">
+              <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Open menu" aria-expanded="false" aria-controls="adminSidebar">☰</button>
+              <div>
+                <h1 class="page-heading" data-i18n="nav_admin_deposits">Deposits</h1>
+                <p class="subtitle" data-i18n="header_admin_panel">Admin control panel</p>
+              </div>
+            </div>
+            <div class="header-actions">
+              <div id="langSwitcherAdmin"></div>
+              <span id="adminCurrentRateBadge" class="badge badge-rate" data-i18n="current_rate_loading">Current Rate: loading…</span>
+              <span id="adminStatusBadge" class="badge badge-ok" data-i18n="dev_mode">Dev mode</span>
+              <button type="button" id="adminRefreshBtn" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
+            </div>
+          </div>
+        </header>
+
+        <main class="app-content">
+          <span class="hidden" data-page-title="deposits" data-i18n="nav_admin_deposits">Deposits</span>
+          <span class="hidden" data-page-title="cards" data-i18n="nav_admin_cards">Cards</span>
+          <span class="hidden" data-page-title="users" data-i18n="nav_admin_users">Users</span>
+          <span class="hidden" data-page-title="transactions" data-i18n="nav_admin_transactions">Transactions</span>
+          <span class="hidden" data-page-title="revenue" data-i18n="nav_admin_revenue">Revenue &amp; Profit</span>
+          <span class="hidden" data-page-title="support" data-i18n="nav_admin_support">Support</span>
+          <span class="hidden" data-page-title="kyc-requests" data-i18n="nav_admin_kyc">KYC Requests</span>
+          <span class="hidden" data-page-title="settings" data-i18n="nav_admin_settings">Rates &amp; Fees</span>
+
+      <section id="tabDeposits" class="panel app-page is-active" data-page="deposits">
+        <h2 data-i18n="wallet_deposit_requests">Wallet Deposit Requests</h2>
+        <div class="admin-toolbar">
+          <select id="depositFilter">
+            <option value="all" selected data-i18n="all_statuses">All statuses</option>
+            <option value="pending" data-i18n="pending_review">Pending review</option>
+            <option value="VERIFIED" data-i18n="verified">Verified</option>
+            <option value="REJECTED" data-i18n="rejected">Rejected</option>
+          </select>
+        </div>
+        <div id="depositsTable" class="data-table-wrap"><p class="hint" data-i18n="loading_deposits">Loading deposits…</p></div>
+
+        <h2 style="margin-top:2rem" data-i18n="p2p_disputes">P2P Disputes — Needs Review</h2>
+        <p class="hint" style="margin-bottom:0.75rem" data-i18n="p2p_disputes_hint">Users flagged orders with payment proof. Force-release USDT or refund escrow after review.</p>
+        <div id="p2pDisputesTable" class="data-table-wrap"><p class="hint" data-i18n="loading_disputes">Loading disputes…</p></div>
+
+        <h2 style="margin-top:2rem">P2P Buy Orders — Pending Seller Release</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Buyers paid MMK to sellers externally. Admin can force-release USDT to the buyer or reject the order.</p>
+        <div id="p2pBuyOrdersTable" class="data-table-wrap"><p class="hint">Loading P2P buy orders…</p></div>
+
+        <h2 style="margin-top:2rem">P2P Sell Orders — USDT Escrowed</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Sellers escrowed USDT. Buyer sends MMK externally. Seller confirms MMK receipt and releases escrow — admin can reject and refund escrow.</p>
+        <div id="p2pSellOrdersTable" class="data-table-wrap"><p class="hint">Loading P2P sell orders…</p></div>
+      </section>
+
+      <section id="tabCards" class="panel app-page" data-page="cards">
+        <h2 data-i18n="virtual_card_management">Virtual Card Management</h2>
+        <p class="hint" style="margin-bottom:1rem" data-i18n="virtual_card_mgmt_hint">Approve card applications and reload requests — no per-transaction spending management.</p>
+
+        <h3 style="margin-top:0.5rem;font-size:1rem" data-i18n="card_requests">Card Requests</h3>
+        <p class="hint" style="margin-bottom:0.65rem" data-i18n="card_requests_hint">Pending applications awaiting manual card details from admin.</p>
+        <div id="pendingCardsTable" class="data-table-wrap"><p class="hint" data-i18n="loading_card_requests">Loading card requests…</p></div>
+
+        <h3 style="margin-top:1.5rem;font-size:1rem" id="issueCardFormTitle" data-i18n="issue_update_card">Issue / Update Card</h3>
+        <p class="hint" style="margin-bottom:0.65rem">Issue a new card manually or edit an existing issued card — click <strong>Edit</strong> in the table below to pre-fill this form.</p>
+        <form id="issueCardAdminForm" class="form grid-admin-form">
+          <div class="field"><label for="acUserId" data-i18n="user_id">User ID</label><input id="acUserId" type="number" required /></div>
+          <div class="field"><label for="acCardId" data-i18n="card_id">Card ID</label><input id="acCardId" type="number" data-i18n-placeholder="card_id_placeholder" placeholder="Leave empty to issue new" /></div>
+          <div class="field"><label for="acCardNumber" data-i18n="card_number">Card Number</label><input id="acCardNumber" placeholder="4532 8765 4321 0987" required /></div>
+          <div class="field"><label for="acExp" data-i18n="expiry">Expiry (MM/YY)</label><input id="acExp" placeholder="12/28" required /></div>
+          <div class="field"><label for="acCvv">CVV</label><input id="acCvv" placeholder="456" required /></div>
+          <div class="field"><label for="acHolder" data-i18n="th_holder">Holder Name</label><input id="acHolder" /></div>
+          <div class="field"><label for="acNotes" data-i18n="admin_notes">Admin Notes</label><input id="acNotes" data-i18n-placeholder="admin_notes_placeholder" placeholder="Optional internal note" /></div>
+          <div class="field" style="grid-column:1/-1;display:flex;gap:0.5rem;flex-wrap:wrap">
+            <button type="submit" class="btn btn-primary" id="issueCardAdminSubmit" data-i18n="btn_issue_card">Issue Card</button>
+            <button type="button" class="btn btn-secondary" id="issueCardAdminReset" data-i18n="clear_form">Clear Form</button>
+          </div>
+        </form>
+        <pre class="output hidden" id="issueCardAdminOut" aria-hidden="true"></pre>
+
+        <h3 style="margin-top:1.5rem;font-size:1rem" data-i18n="issued_cards_status">Issued Cards — Status Control</h3>
+        <p class="hint" style="margin-bottom:0.65rem" data-i18n="issued_cards_hint">Update lifecycle status for issued virtual cards. Optional reason is shown to the user when suspended or frozen.</p>
+        <div id="issuedCardsTable" class="data-table-wrap"><p class="hint" data-i18n="loading_issued_cards">Loading issued cards…</p></div>
+
+        <h3 style="margin-top:1.5rem;font-size:1rem" data-i18n="card_reload_requests">Card Reload Requests</h3>
+        <p class="hint" style="margin-bottom:0.65rem" data-i18n="card_reload_requests_hint">Wallet funds were deducted when the user submitted — approve to credit the card or reject to refund.</p>
+        <div id="pendingReloadsTable" class="data-table-wrap"><p class="hint" data-i18n="loading_reload_requests">Loading reload requests…</p></div>
+      </section>
+
+      <section id="tabUsers" class="panel app-page" data-page="users">
+        <h2>Users &amp; Wallet Adjustments</h2>
+        <div id="usersTable" class="data-table-wrap"><p class="hint">Loading users…</p></div>
+        <form id="balanceAdjustForm" class="form" style="margin-top:1rem">
+          <h3 style="margin:0 0 0.75rem">Manual MMK Wallet Adjustment</h3>
+          <div class="field-row">
+            <div class="field"><label for="adjUserId">User ID</label><input id="adjUserId" type="number" required /></div>
+            <div class="field"><label for="adjAmountMmk">Amount MMK (+/-)</label><input id="adjAmountMmk" type="number" step="1" required placeholder="50000" /></div>
+          </div>
+          <div class="field"><label for="adjReason">Reason / Note</label><input id="adjReason" placeholder="Manual top-up correction" required /></div>
+          <button type="submit" class="btn btn-primary">Adjust MMK Wallet</button>
+        </form>
+        <form id="balanceAdjustUsdtForm" class="form" style="margin-top:1rem">
+          <h3 style="margin:0 0 0.75rem">Manual USDT Wallet Adjustment</h3>
+          <div class="field-row">
+            <div class="field"><label for="adjUsdtUserId">User ID</label><input id="adjUsdtUserId" type="number" required /></div>
+            <div class="field"><label for="adjAmountUsdt">Amount USDT (+/-)</label><input id="adjAmountUsdt" type="number" step="0.01" required placeholder="10.00" /></div>
+          </div>
+          <div class="field"><label for="adjUsdtReason">Reason / Note</label><input id="adjUsdtReason" placeholder="Manual USDT top-up correction" required /></div>
+          <button type="submit" class="btn btn-primary">Adjust USDT Wallet</button>
+        </form>
+        <details style="margin-top:1rem">
+          <summary class="hint">Legacy USD wallet adjustment (deprecated)</summary>
+          <form id="balanceAdjustUsdForm" class="form" style="margin-top:0.75rem">
+            <div class="field-row">
+              <div class="field"><label for="adjUsdUserId">User ID</label><input id="adjUsdUserId" type="number" /></div>
+              <div class="field"><label for="adjAmount">Amount USD (+/-)</label><input id="adjAmount" type="number" step="0.01" /></div>
+            </div>
+            <button type="submit" class="btn btn-secondary">Adjust USD Wallet</button>
+          </form>
+        </details>
+        <pre class="output" id="balanceAdjustOut"></pre>
+      </section>
+
+      <section id="tabTransactions" class="panel app-page" data-page="transactions">
+        <h2>Transaction History</h2>
+        <p class="hint" style="margin-bottom:0.75rem">P2P trading and card reload ledgers are kept separate for accurate financial reporting.</p>
+        <div class="admin-tabs" id="txCategoryTabs" role="tablist">
+          <button type="button" class="tab active" data-tx-category="p2p">P2P Transactions</button>
+          <button type="button" class="tab" data-tx-category="card_reload">Card Reload Transactions</button>
+        </div>
+        <div class="admin-toolbar">
+          <input id="txUserFilter" type="number" placeholder="Filter by user ID" />
+          <button type="button" id="txFilterBtn" class="btn btn-secondary btn-sm">Filter</button>
+        </div>
+        <div id="transactionsTable" class="data-table-wrap"><p class="hint">Loading…</p></div>
+      </section>
+
+      <section id="tabRevenue" class="panel app-page" data-page="revenue">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem">
+          <div>
+            <h2 style="margin:0">Revenue &amp; Profit Analytics</h2>
+            <p class="hint" style="margin:0.35rem 0 0">Separate profit tracking for P2P trading fees, card reload markup, and withdrawal fees.</p>
+          </div>
+          <button type="button" id="btnRefreshRevenue" class="btn btn-secondary btn-sm">Refresh</button>
+        </div>
+
+        <div id="revenueMetricsGrid" class="revenue-metrics-grid">
+          <p class="hint">Loading revenue metrics…</p>
+        </div>
+
+        <div id="revenuePeriodRow" class="revenue-period-row hidden"></div>
+
+        <h3 style="margin-top:0.5rem;font-size:1rem">Daily Profit Breakdown</h3>
+        <div id="revenueDailyTable" class="data-table-wrap" style="margin-bottom:1.5rem">
+          <p class="hint">Loading daily breakdown…</p>
+        </div>
+
+        <h3 style="font-size:1rem">Fee Audit Log</h3>
+        <p class="hint" style="margin-bottom:0.75rem">Individual fee collection records across all revenue sources.</p>
+        <div id="revenueAuditTable" class="data-table-wrap">
+          <p class="hint">Loading fee audit log…</p>
+        </div>
+      </section>
+
+      <section id="tabSupport" class="panel app-page" data-page="support">
+        <div class="grid-2">
+          <div>
+            <h2>Support Threads</h2>
+            <div id="supportThreadsList" class="thread-list"><p class="hint">Loading…</p></div>
+          </div>
+          <div>
+            <h2 id="supportThreadTitle">Select a thread</h2>
+            <div id="supportMessages" class="support-messages"></div>
+            <form id="supportReplyForm" class="form hidden">
+              <div class="field"><label for="supportReplyText">Reply</label><textarea id="supportReplyText" rows="3"></textarea></div>
+              <button type="submit" class="btn btn-primary">Send Reply</button>
+              <button type="button" id="supportCloseBtn" class="btn btn-secondary">Close Thread</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      </section>
+
+      <section id="tabKycRequests" class="panel app-page" data-page="kyc-requests">
+        <h2>KYC Verification Requests</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Review user identity documents. Approved users can trade on the P2P marketplace.</p>
+        <div class="p2p-market-toolbar" style="margin-bottom:1rem">
+          <label for="kycStatusFilter">Status</label>
+          <select id="kycStatusFilter" class="p2p-network-select">
+            <option value="PENDING_REVIEW">Pending Review</option>
+            <option value="VERIFIED">Verified</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="all">All</option>
+          </select>
+          <button type="button" id="btnRefreshKycRequests" class="btn btn-secondary btn-sm">Refresh</button>
+        </div>
+        <div id="kycRequestsTable" class="data-table-wrap"><p class="hint">Loading KYC requests…</p></div>
+      </section>
+
+      <section id="tabSettings" class="panel app-page" data-page="settings">
+        <h2>System Ledger Summary</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Aggregate balances across all user wallets and P2P escrow.</p>
+        <div id="adminLedgerSummary" class="ledger-summary-grid">
+          <div class="ledger-summary-card usdt">
+            <div class="ledger-summary-label">Total USDT Ledger</div>
+            <div class="ledger-summary-value" id="ledgerTotalUsdt">—</div>
+            <p class="ledger-summary-sub" id="ledgerUsdtBreakdown">Available + escrow</p>
+          </div>
+          <div class="ledger-summary-card mmk">
+            <div class="ledger-summary-label">Total System MMK</div>
+            <div class="ledger-summary-value" id="ledgerTotalMmk">—</div>
+            <p class="ledger-summary-sub">Sum of all user MMK wallets</p>
+          </div>
+          <div class="ledger-summary-card revenue">
+            <div class="ledger-summary-label">Platform USDT Revenue</div>
+            <div class="ledger-summary-value" id="ledgerPlatformRevenue">—</div>
+            <p class="ledger-summary-sub" id="ledgerPendingWithdrawals">Pending withdrawals: —</p>
+          </div>
+        </div>
+
+        <h2 style="margin-top:2rem">Daily Rate &amp; Pricing Management</h2>
+        <p class="hint" style="margin-bottom:1rem">Update today's exchange rate and card fees. Each save is logged to Exchange Rate History so past deposits keep their original rate.</p>
+        <form id="adminSettingsForm" class="form grid-admin-form" style="max-width:640px">
+          <div class="field">
+            <label for="settingExchangeRate">Today's USD/MMK Exchange Rate</label>
+            <input id="settingExchangeRate" type="number" step="1" min="1" required placeholder="4200" />
+            <small class="hint">MMK per 1 USD</small>
+          </div>
+          <div class="field">
+            <label for="settingEffectiveDate">Effective Date</label>
+            <input id="settingEffectiveDate" type="date" required />
+          </div>
+          <div class="field">
+            <label for="settingCardFee">New Card Issuance Fee (USD)</label>
+            <input id="settingCardFee" type="number" step="0.01" min="0" required />
+          </div>
+          <div class="field">
+            <label for="settingMinDeposit">Minimum Initial Deposit (USD)</label>
+            <input id="settingMinDeposit" type="number" step="0.01" min="0" required />
+          </div>
+          <div class="field">
+            <label for="settingReloadFee">Card Reload Service Fee (USD)</label>
+            <input id="settingReloadFee" type="number" step="0.01" min="0" required />
+            <small class="hint">Fixed $3.50 user fee per reload — $1.50 provider cost, $2.00 net profit</small>
+          </div>
+          <div class="field">
+            <label for="settingMinReloadMmk">Minimum Card Reload (MMK)</label>
+            <input id="settingMinReloadMmk" type="number" step="1" min="0" required />
+          </div>
+          <div class="field">
+            <label for="settingMinUsdtDeposit">Minimum USDT Wallet Deposit</label>
+            <input id="settingMinUsdtDeposit" type="number" step="0.01" min="0" required />
+          </div>
+          <div class="field">
+            <label for="settingMinUsdtReload">Minimum USDT Card Reload</label>
+            <input id="settingMinUsdtReload" type="number" step="0.01" min="0" required />
+          </div>
+          <div class="field">
+            <label for="settingP2pSellerFee">P2P Seller Platform Fee (%)</label>
+            <input id="settingP2pSellerFee" type="number" step="0.1" min="0" max="10" required />
+            <small class="hint">Charged to seller on release — buyer receives full order amount (e.g. 0.5 or 1.0).</small>
+          </div>
+          <div class="field">
+            <label>Platform USDT Revenue Balance</label>
+            <div id="settingPlatformRevenueBalance" class="p2p-revenue-balance">—</div>
+            <small class="hint">Accumulated P2P seller fees + withdrawal fees (read-only)</small>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <h3 style="margin:0.5rem 0 0.25rem;font-size:1rem">Withdrawal Fee Configuration</h3>
+            <p class="hint" style="margin:0 0 0.75rem">Network fees deducted from user withdrawal requests; fees are credited to Platform USDT Revenue.</p>
+          </div>
+          <div class="field">
+            <label for="settingWithdrawFeeTrc20">TRC20 (TRON) Withdrawal Fee</label>
+            <input id="settingWithdrawFeeTrc20" type="number" step="0.01" min="0" required />
+          </div>
+          <div class="field">
+            <label for="settingWithdrawFeeTrc20Type">TRC20 Fee Type</label>
+            <select id="settingWithdrawFeeTrc20Type">
+              <option value="fixed">Fixed USDT</option>
+              <option value="percent">Percentage (%)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="settingWithdrawFeeBep20">BEP20 (BSC) Withdrawal Fee</label>
+            <input id="settingWithdrawFeeBep20" type="number" step="0.01" min="0" required />
+          </div>
+          <div class="field">
+            <label for="settingWithdrawFeeBep20Type">BEP20 Fee Type</label>
+            <select id="settingWithdrawFeeBep20Type">
+              <option value="fixed">Fixed USDT</option>
+              <option value="percent">Percentage (%)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="settingMinUsdtWithdrawal">Minimum USDT Withdrawal</label>
+            <input id="settingMinUsdtWithdrawal" type="number" step="0.01" min="0.01" required />
+            <small class="hint">Minimum gross amount user can request (before fee deduction)</small>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label for="settingUsdtTrc20">USDT Deposit Address (TRC20)</label>
+            <input id="settingUsdtTrc20" type="text" placeholder="T..." />
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label for="settingUsdtBep20">USDT Deposit Address (BEP20)</label>
+            <input id="settingUsdtBep20" type="text" placeholder="0x..." />
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label for="settingNotes">Notes (optional)</label>
+            <input id="settingNotes" type="text" placeholder="Updated due to market trend" />
+          </div>
+          <div class="field">
+            <label for="settingUpdatedBy">Updated By</label>
+            <input id="settingUpdatedBy" type="text" value="admin" placeholder="admin" />
+          </div>
+          <button type="submit" class="btn btn-primary">Save Rate &amp; Pricing</button>
+        </form>
+        <pre class="output" id="adminSettingsOut"></pre>
+
+        <h2 style="margin-top:2rem">Exchange Rate History</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Historical log of all rate and fee updates. Deposits store the rate active at request time.</p>
+        <div id="exchangeRateHistoryTable" class="data-table-wrap"><p class="hint">Loading history…</p></div>
+      </section>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <div id="p2pDisputeReviewModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="p2pDisputeReviewTitle" aria-modal="true">
+    <div class="proof-lightbox-backdrop p2p-dispute-review-backdrop"></div>
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:720px">
+      <button type="button" id="p2pDisputeReviewClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+      <h3 id="p2pDisputeReviewTitle" class="kyc-doc-viewer-title">P2P Dispute Review</h3>
+      <div id="p2pDisputeReviewMeta" class="hint" style="margin-bottom:0.75rem"></div>
+      <div id="p2pDisputeReviewProofSections"></div>
+    </div>
+  </div>
+
+  <div id="kycDocumentViewerModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="kycDocumentViewerTitle" aria-modal="true">
+    <div class="proof-lightbox-backdrop kyc-doc-viewer-backdrop"></div>
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner">
+      <button type="button" id="kycDocumentViewerClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+      <h3 id="kycDocumentViewerTitle" class="kyc-doc-viewer-title">KYC Document</h3>
+      <img id="kycDocumentViewerImg" class="proof-lightbox-media kyc-doc-viewer-img hidden" alt="KYC identity document" />
+      <div id="kycDocumentViewerPlaceholder" class="kyc-doc-viewer-placeholder hidden" aria-live="polite">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="14" rx="2"/>
+          <circle cx="8.5" cy="11" r="2"/>
+          <path d="M14 10h4M14 14h4"/>
+        </svg>
+        <p id="kycDocumentViewerPlaceholderText">No document image attached</p>
+      </div>
+      <p id="kycDocumentViewerCaption" class="proof-lightbox-caption"></p>
+    </div>
+  </div>
+
+  <div id="issueCardModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="issueCardModalTitle" aria-modal="true">
+    <div class="proof-lightbox-backdrop issue-card-modal-backdrop"></div>
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:520px;width:96vw">
+      <button type="button" id="issueCardModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+      <h3 id="issueCardModalTitle" class="kyc-doc-viewer-title">Issue Virtual Card</h3>
+      <p id="issueCardModalMeta" class="hint" style="margin-bottom:1rem;text-align:left"></p>
+      <form id="issueCardModalForm" class="form grid-admin-form">
+        <input type="hidden" id="issueModalCardId" />
+        <input type="hidden" id="issueModalUserId" />
+        <div class="field"><label for="issueModalCardNumber">Card Number (16 digits)</label><input id="issueModalCardNumber" placeholder="4532 8765 4321 0987" required maxlength="19" /></div>
+        <div class="field"><label for="issueModalExp">Expiry Date (MM/YY)</label><input id="issueModalExp" placeholder="12/28" required maxlength="5" /></div>
+        <div class="field"><label for="issueModalCvv">CVV Code</label><input id="issueModalCvv" placeholder="123" required maxlength="4" /></div>
+        <div class="field"><label for="issueModalBalance">Initial Card Balance (USD)</label><input id="issueModalBalance" type="number" step="0.01" min="0" required /></div>
+        <div class="field"><label for="issueModalHolder">Cardholder Name</label><input id="issueModalHolder" /></div>
+        <div class="field"><label for="issueModalNotes">Admin Notes</label><input id="issueModalNotes" placeholder="Optional internal note" /></div>
+        <div class="deposit-receipt-actions" style="margin-top:0.5rem">
+          <button type="submit" class="btn btn-primary">Issue Card &amp; Activate</button>
+          <button type="button" id="issueCardModalCancel" class="btn btn-secondary">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="depositReceiptReviewModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="depositReceiptReviewTitle" aria-modal="true">
+    <div class="proof-lightbox-backdrop deposit-receipt-review-backdrop"></div>
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:760px">
+      <button type="button" id="depositReceiptReviewClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+      <h3 id="depositReceiptReviewTitle" class="kyc-doc-viewer-title">Deposit Receipt Review</h3>
+      <div id="depositReceiptMeta" class="deposit-receipt-meta"></div>
+      <img id="depositReceiptImg" class="proof-lightbox-media kyc-doc-viewer-img hidden" alt="Transfer receipt" />
+      <video id="depositReceiptVideo" class="proof-lightbox-media hidden" controls playsinline preload="metadata"></video>
+      <div id="depositReceiptPlaceholder" class="kyc-doc-viewer-placeholder hidden" aria-live="polite">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="14" rx="2"/>
+          <circle cx="8.5" cy="11" r="2"/>
+          <path d="M14 10h4M14 14h4"/>
+        </svg>
+        <p>No Receipt Attached</p>
+      </div>
+      <p id="depositReceiptCaption" class="proof-lightbox-caption"></p>
+      <div id="depositReceiptActions" class="deposit-receipt-actions hidden">
+        <button type="button" id="depositReceiptApprove" class="btn btn-sm btn-approve">Approve</button>
+        <button type="button" id="depositReceiptReject" class="btn btn-sm btn-reject">Reject</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="adminProofLightbox" class="proof-lightbox hidden" role="dialog" aria-label="Payment proof inspection" aria-modal="true">
+    <div class="proof-lightbox-backdrop admin-proof-backdrop"></div>
+    <div class="proof-lightbox-inner">
+      <button type="button" id="adminProofLightboxClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+      <img id="adminProofLightboxImg" class="proof-lightbox-media hidden" alt="Payment proof" />
+      <video id="adminProofLightboxVideo" class="proof-lightbox-media hidden" controls playsinline preload="metadata"></video>
+      <p id="adminProofLightboxCaption" class="proof-lightbox-caption"></p>
+    </div>
+  </div>
+
+  <script>
+    /* Ensure dashboard shell is visible before admin.js runs */
+    (function () {
+      var app = document.getElementById('adminApp');
+      var login = document.getElementById('adminLogin');
+      if (app) {
+        app.classList.remove('hidden');
+        app.style.display = 'block';
+      }
+      if (login) login.classList.add('hidden');
+    })();
+  </script>
+  <script type="module" src="/supabaseBridge.js"></script>
+  <script src="/i18n.js"></script>
+  <script src="/nav.js"></script>
+  <script src="/admin.js" defer></script>
+</body>
+</html>

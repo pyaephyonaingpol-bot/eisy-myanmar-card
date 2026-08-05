@@ -1,0 +1,23 @@
+{
+  "name": "eisy-myanmar-backend",
+  "version": "1.0.0",
+  "description": "Eisy Myanmar Virtual Card Issuance - Backend API",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "predev": "node scripts/free-port.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node src/seed.js",
+    "migrate": "node src/migrate.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "multer": "^2.2.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
+  }
+}

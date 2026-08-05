@@ -1,0 +1,23 @@
+/** Canonical platform fee categories for ledger / analytics */
+const PLATFORM_FEE_TYPES = {
+  P2P: 'TYPE_P2P_FEE',
+  CARD_RELOAD: 'TYPE_CARD_RELOAD_FEE',
+  CARD_ISSUE: 'TYPE_CARD_ISSUE_FEE',
+  WITHDRAWAL: 'TYPE_WITHDRAWAL_FEE',
+};
+
+const USDT_FEE_TYPES = new Set([
+  PLATFORM_FEE_TYPES.P2P,
+  PLATFORM_FEE_TYPES.WITHDRAWAL,
+]);
+
+const USD_FEE_TYPES = new Set([
+  PLATFORM_FEE_TYPES.CARD_RELOAD,
+  PLATFORM_FEE_TYPES.CARD_ISSUE,
+]);
+
+module.exports = {
+  PLATFORM_FEE_TYPES,
+  USDT_FEE_TYPES,
+  USD_FEE_TYPES,
+};
