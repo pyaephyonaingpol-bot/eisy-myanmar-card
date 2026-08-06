@@ -6,6 +6,7 @@ const DEFAULT_ORIGINS = [
   'https://web-chi-sand-18.vercel.app',
   'https://eisy-myanmar-app.vercel.app',
   'https://eisy-global-card.vercel.app',
+  'https://eisymyanmar-app.vercel.app',
 ];
 
 function parseOrigins(value) {
