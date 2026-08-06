@@ -515,16 +515,23 @@
       </div>
 
       <div id="panelLogin">
-        <form id="loginSendOtpForm">
+        <form id="loginPinForm">
           <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" placeholder="demo@eisy.myanmar" autocomplete="username" required /></div>
-          <button type="submit" id="loginSendOtp" class="btn btn-primary">Send Login OTP</button>
-        </form>
-        <form id="loginVerifyForm" class="hidden" style="margin-top:1rem">
-          <div class="field"><label for="loginOtp">6-digit OTP</label><input id="loginOtp" name="otp" maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" required /></div>
-          <button type="submit" id="loginVerify" class="btn btn-primary">Verify &amp; Login</button>
+          <div class="field"><label for="loginPin">6-digit Security PIN</label><input id="loginPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="current-password" required /></div>
+          <button type="submit" id="loginPinBtn" class="btn btn-primary">Login with PIN</button>
         </form>
         <button type="button" id="bioLoginBtn" class="btn btn-secondary" style="margin-top:0.75rem">Login with Biometrics</button>
-        <p class="hint">Demo: <code>demo@eisy.myanmar</code> PIN: <code>123456</code> — OTP appears below after Send OTP</p>
+        <button type="button" id="showOtpLoginBtn" class="btn btn-secondary btn-sm" style="margin-top:0.75rem">Use email OTP instead</button>
+        <div id="loginOtpSection" class="hidden" style="margin-top:1rem">
+          <form id="loginSendOtpForm">
+            <button type="submit" id="loginSendOtp" class="btn btn-secondary">Send Login OTP</button>
+          </form>
+          <form id="loginVerifyForm" class="hidden" style="margin-top:1rem">
+            <div class="field"><label for="loginOtp">6-digit OTP</label><input id="loginOtp" name="otp" maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" required /></div>
+            <button type="submit" id="loginVerify" class="btn btn-primary">Verify &amp; Login with OTP</button>
+          </form>
+        </div>
+        <p class="hint">Returning users: enter your PIN. First time on this device? Use email OTP once, then PIN or biometrics next time.</p>
       </div>
 
       <div id="panelRegister" class="hidden">
@@ -595,6 +602,10 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             <span data-i18n="nav_deposits">Deposit &amp; History</span>
           </button>
+          <button type="button" class="nav-item" data-page="usdt-wallet">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>
+            <span data-i18n="nav_usdt_wallet">USDT Wallet</span>
+          </button>
           <button type="button" class="nav-item" data-page="p2p">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1-.2-1.4-.6L7 8.2A2 2 0 0 0 5.2 7H4"/><path d="M13 9h-2a2 2 0 1 0 0 4h3c.6 0 1.1.2 1.4.6L17 15.8A2 2 0 0 0 18.8 17H20"/><circle cx="12" cy="12" r="10"/></svg>
             <span data-i18n="nav_p2p">P2P Express</span>
@@ -652,6 +663,7 @@
           <span class="hidden" data-page-title="home" data-i18n="nav_dashboard">Dashboard</span>
           <span class="hidden" data-page-title="cards" data-i18n="nav_my_cards">My Cards</span>
           <span class="hidden" data-page-title="deposits" data-i18n="deposits_page_title">Deposit &amp; Reload History</span>
+          <span class="hidden" data-page-title="usdt-wallet" data-i18n="usdt_wallet_page_title">USDT Wallet</span>
           <span class="hidden" data-page-title="p2p" data-i18n="nav_p2p">P2P Express</span>
           <span class="hidden" data-page-title="rates" data-i18n="nav_rates">Exchange Rates &amp; Fees</span>
           <span class="hidden" data-page-title="settings" data-i18n="nav_settings">Settings &amp; Security</span>
@@ -675,6 +687,7 @@
                   <div class="wallet-hero-value" id="sumBalanceUsdt">—</div>
                   <p class="wallet-hero-hint" data-i18n="usdt_wallet_hint">TRC20 / BEP20 deposit · 1 USDT ≈ 1 USD to card (after fee)</p>
                   <div class="wallet-hero-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" data-goto="usdt-wallet" data-i18n="btn_manage_usdt_wallet">Manage Wallet</button>
                     <button type="button" class="btn btn-secondary btn-sm" data-goto="deposits" data-deposit-tab="usdt" data-i18n="btn_top_up_usdt">Top Up USDT</button>
                     <button type="button" class="btn btn-primary btn-sm" id="btnOpenWithdrawUsdt" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
                   </div>
@@ -845,6 +858,112 @@
               </div>
               <p class="hint" style="margin-bottom:0.75rem" data-i18n="card_reload_history_hint">Top-up requests to your virtual card — wallet funds are held until admin approves.</p>
               <div id="cardsReloadHistoryTable" class="data-table-wrap"><p class="hint" data-i18n="loading_reload_history">Loading reload history…</p></div>
+            </section>
+          </section>
+
+          <!-- ══ PAGE: USDT Wallet ══ -->
+          <section id="pageUsdtWallet" class="app-page" data-page="usdt-wallet">
+            <div class="page-header">
+              <div>
+                <h2 class="page-heading" data-i18n="usdt_wallet_page_title">USDT Wallet</h2>
+                <p class="page-desc" data-i18n="usdt_wallet_page_desc">View your platform balance, copy deposit addresses (TRC20 / BEP20 / ERC20), link external wallets, and track USDT activity.</p>
+              </div>
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+                <button type="button" class="btn btn-secondary btn-sm" data-goto="deposits" data-deposit-tab="usdt" data-i18n="btn_top_up_usdt">Top Up USDT</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnOpenWithdrawUsdtPage" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
+              </div>
+            </div>
+
+            <section class="panel summary-panel">
+              <h2 data-i18n="usdt_wallet_balance_heading">Your USDT Balance</h2>
+              <div class="usdt-balance-split">
+                <div class="wallet-hero-card usdt">
+                  <div class="wallet-hero-label" data-i18n="usdt_available_balance">Available</div>
+                  <div class="wallet-hero-value" id="usdtWalletAvailableBalance">—</div>
+                </div>
+                <div class="wallet-hero-card usdt locked">
+                  <div class="wallet-hero-label" data-i18n="usdt_locked_balance">Locked (Escrow)</div>
+                  <div class="wallet-hero-value" id="usdtWalletLockedBalance">—</div>
+                </div>
+                <div class="wallet-hero-card usdt total">
+                  <div class="wallet-hero-label" data-i18n="usdt_total_balance">Total</div>
+                  <div class="wallet-hero-value" id="usdtWalletTotalBalance">—</div>
+                </div>
+              </div>
+              <p class="wallet-hero-hint" id="usdtWalletMinDepositHint" data-i18n="usdt_wallet_hint">TRC20 / BEP20 deposit · 1 USDT ≈ 1 USD to card (after fee)</p>
+            </section>
+
+            <section class="panel" id="usdtEscrowPanel">
+              <h2 data-i18n="usdt_escrow_holds">Active Escrow Holds</h2>
+              <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_escrow_holds_hint">USDT locked during active P2P trades. Released to the buyer when the trade completes, or returned to you if cancelled.</p>
+              <div id="usdtEscrowHoldsList" class="usdt-escrow-list"><p class="hint" data-i18n="loading">Loading…</p></div>
+            </section>
+
+            <section class="panel">
+              <h2 data-i18n="usdt_internal_transfer">Send USDT to Another User</h2>
+              <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_internal_transfer_hint">Instant internal transfer from your available USDT balance. The recipient must have an Eisy Myanmar account.</p>
+              <form id="usdtTransferForm" class="form">
+                <div class="field-row">
+                  <div class="field">
+                    <label for="usdtTransferEmail" data-i18n="recipient_email">Recipient email</label>
+                    <input id="usdtTransferEmail" type="email" autocomplete="off" placeholder="user@example.com" required />
+                  </div>
+                  <div class="field">
+                    <label for="usdtTransferAmount" data-i18n="amount_usdt">Amount (USDT)</label>
+                    <input id="usdtTransferAmount" type="number" step="0.01" min="0.01" placeholder="10.00" required />
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="usdtTransferNote" data-i18n="note_optional">Note (optional)</label>
+                  <input id="usdtTransferNote" type="text" maxlength="120" placeholder="Payment for …" />
+                </div>
+                <button type="submit" class="btn btn-primary" id="btnSubmitUsdtTransfer" data-i18n="send_usdt">Send USDT</button>
+              </form>
+              <p id="usdtTransferStatus" class="hint" style="margin-top:0.75rem"></p>
+            </section>
+
+            <div class="grid-2">
+              <section class="panel">
+                <div class="panel-header-row">
+                  <h2 style="margin:0" data-i18n="usdt_deposit_addresses">Deposit Addresses</h2>
+                  <button type="button" id="btnRefreshUsdtWallet" class="btn btn-secondary btn-sm" data-i18n="refresh">Refresh</button>
+                </div>
+                <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_deposit_addresses_hint">Send USDT to the platform address on your chosen network. Include your deposit reference in the memo if your wallet supports it.</p>
+                <div id="usdtWalletDepositAddresses" class="usdt-wallet-address-list"><p class="hint" data-i18n="loading">Loading…</p></div>
+              </section>
+
+              <section class="panel">
+                <h2 data-i18n="usdt_link_external_wallet">Link External Wallet</h2>
+                <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_link_external_hint">Save a personal TRC20, BEP20, or ERC20 address for withdrawals and optional on-chain balance checks.</p>
+                <form id="usdtLinkWalletForm" class="form">
+                  <div class="field">
+                    <label for="usdtLinkNetwork" data-i18n="network">Network</label>
+                    <select id="usdtLinkNetwork">
+                      <option value="TRC20">TRC20 (Tron)</option>
+                      <option value="BEP20">BEP20 (BSC)</option>
+                      <option value="ERC20">ERC20 (Ethereum)</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="usdtLinkAddress" data-i18n="wallet_address">Wallet Address</label>
+                    <input id="usdtLinkAddress" type="text" autocomplete="off" spellcheck="false" placeholder="T… or 0x…" required />
+                  </div>
+                  <div class="field">
+                    <label for="usdtLinkLabel" data-i18n="label_optional">Label (optional)</label>
+                    <input id="usdtLinkLabel" type="text" maxlength="64" placeholder="My Binance USDT" />
+                  </div>
+                  <button type="submit" class="btn btn-primary" data-i18n="link_wallet">Link Wallet</button>
+                </form>
+                <div id="usdtLinkedWalletsList" class="usdt-linked-list" style="margin-top:1rem"><p class="hint" data-i18n="no_linked_wallets">No linked wallets yet.</p></div>
+              </section>
+            </div>
+
+            <section class="panel">
+              <div class="panel-header-row">
+                <h2 style="margin:0" data-i18n="usdt_transaction_history">USDT Transaction History</h2>
+                <button type="button" id="btnLoadUsdtWalletTx" class="btn btn-secondary btn-sm" data-i18n="refresh">Refresh</button>
+              </div>
+              <div id="usdtWalletTxHistory" class="data-table-wrap"><p class="hint" data-i18n="loading">Loading…</p></div>
             </section>
           </section>
 

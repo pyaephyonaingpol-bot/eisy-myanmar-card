@@ -28,9 +28,13 @@ const Dashboard = {
       this.bindProofLightbox();
       this.bindReloadCard();
       this.bindWithdrawUsdt();
+      this.bindUsdtWalletPage();
       Auth.restoreSession()
         .catch((err) => console.warn('[Dashboard] session restore:', err.message))
-        .finally(() => this.refreshAuthUI());
+        .finally(() => {
+          Auth.initLoginPanel();
+          this.refreshAuthUI();
+        });
     } catch (err) {
       console.error('[Dashboard] init failed:', err);
     }
@@ -123,6 +127,7 @@ const Dashboard = {
       this.populateReloadCardSelect();
       if (opts.depositTab) this.switchDepositTab(opts.depositTab);
     }
+    if (page === 'usdt-wallet') this.loadUsdtWalletPage();
     if (page === 'rates') this.renderRatesPage();
     if (page === 'p2p') this.loadP2pPage();
     if (page === 'settings') {
@@ -306,11 +311,16 @@ const Dashboard = {
   renderWalletBalances(data) {
     const mmk = data?.balance_mmk ?? data?.balance ?? 0;
     const usdt = data?.balance_usdt ?? 0;
+    const usdtLocked = data?.balance_usdt_locked ?? 0;
     this.walletMmk = mmk;
     this.walletUsdt = usdt;
+    this.walletUsdtLocked = usdtLocked;
 
     const mmkText = data?.mmk_formatted || this.formatMmk(mmk);
-    const usdtText = data?.usdt_formatted || this.formatUsdt(usdt);
+    let usdtText = data?.usdt_formatted || this.formatUsdt(usdt);
+    if (usdtLocked > 0.001) {
+      usdtText += ` (${data?.usdt_locked_formatted || this.formatUsdt(usdtLocked)} locked)`;
+    }
 
     const headerBar = $('headerWalletsBar');
     if ($('headerWalletMmk')) $('headerWalletMmk').textContent = mmkText;
@@ -520,6 +530,310 @@ const Dashboard = {
       this.usdtAddresses = data;
     } catch (err) {
       console.warn('[usdt addresses]', err.message);
+    }
+  },
+
+  bindUsdtWalletPage() {
+    $('btnRefreshUsdtWallet')?.addEventListener('click', () => this.loadUsdtWalletPage(true));
+    $('btnLoadUsdtWalletTx')?.addEventListener('click', () => this.loadUsdtWalletTransactions());
+    $('usdtTransferForm')?.addEventListener('submit', (e) => this.submitUsdtTransfer(e));
+    $('btnOpenWithdrawUsdtPage')?.addEventListener('click', () => {
+      if (!Auth.isLoggedIn()) {
+        this.toast('Sign in to withdraw USDT', 'error');
+        return;
+      }
+      this.openWithdrawModal();
+    });
+
+    $('usdtLinkWalletForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const network = $('usdtLinkNetwork')?.value;
+      const address = $('usdtLinkAddress')?.value?.trim();
+      const label = $('usdtLinkLabel')?.value?.trim();
+      if (!address) return;
+
+      try {
+        await Auth.api('POST', '/api/user/usdt-wallet/link', { network, address, label });
+        $('usdtLinkWalletForm')?.reset();
+        this.toast('Wallet linked successfully', 'ok');
+        await this.loadUsdtWalletPage(true);
+      } catch (err) {
+        this.toast(err.message || 'Failed to link wallet', 'error');
+      }
+    });
+
+    $('usdtWalletDepositAddresses')?.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-copy-usdt-address]');
+      if (!btn) return;
+      const addr = btn.dataset.copyUsdtAddress || '';
+      if (!addr) return;
+      await this.copyToClipboard(addr);
+      this.toast('Address copied', 'ok');
+    });
+
+    $('usdtWalletDepositAddresses')?.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-copy-deposit-ref]');
+      if (!btn) return;
+      const ref = btn.dataset.copyDepositRef || '';
+      if (!ref) return;
+      await this.copyToClipboard(ref);
+      this.toast('Deposit reference copied', 'ok');
+    });
+
+    $('usdtLinkedWalletsList')?.addEventListener('click', async (e) => {
+      const copyBtn = e.target.closest('[data-copy-linked-address]');
+      if (copyBtn) {
+        const addr = copyBtn.dataset.copyLinkedAddress || '';
+        if (addr) {
+          await this.copyToClipboard(addr);
+          this.toast('Address copied', 'ok');
+        }
+        return;
+      }
+
+      const unlinkBtn = e.target.closest('[data-unlink-wallet]');
+      if (unlinkBtn) {
+        const id = unlinkBtn.dataset.unlinkWallet;
+        if (!id) return;
+        if (!window.confirm('Remove this linked wallet from your account?')) return;
+        try {
+          await Auth.api('DELETE', `/api/user/usdt-wallet/link/${id}`);
+          this.toast('Wallet unlinked', 'ok');
+          await this.loadUsdtWalletPage(true);
+        } catch (err) {
+          this.toast(err.message || 'Failed to unlink wallet', 'error');
+        }
+        return;
+      }
+
+      const balanceBtn = e.target.closest('[data-check-onchain-balance]');
+      if (balanceBtn) {
+        const id = balanceBtn.dataset.checkOnchainBalance;
+        const slot = $('usdtLinkedBalance-' + id);
+        if (!id || !slot) return;
+        slot.textContent = 'Checking…';
+        try {
+          const data = await Auth.api('GET', `/api/user/usdt-wallet/linked/${id}/balance`);
+          if (data.ok) {
+            slot.textContent = `$${Number(data.balance_usdt || 0).toFixed(2)} USDT on-chain`;
+          } else {
+            slot.textContent = data.error || 'Balance unavailable';
+          }
+        } catch (err) {
+          slot.textContent = err.message || 'Balance check failed';
+        }
+      }
+    });
+  },
+
+  async loadUsdtWalletPage(forceRefresh = false) {
+    if (!Auth.isLoggedIn()) return;
+    const balanceEl = $('usdtWalletPageBalance');
+    const depositEl = $('usdtWalletDepositAddresses');
+    const linkedEl = $('usdtLinkedWalletsList');
+    if (!depositEl) return;
+
+    if (!forceRefresh && this._usdtWalletCache) {
+      this.renderUsdtWalletPage(this._usdtWalletCache);
+      return;
+    }
+
+    try {
+      const data = await Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true });
+      this._usdtWalletCache = data;
+      this.walletUsdt = data.balance_usdt;
+      this.renderUsdtWalletPage(data);
+      await this.loadUsdtWalletTransactions();
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+        if (balanceEl) balanceEl.textContent = '🔒 Locked';
+        depositEl.innerHTML = '<p class="hint">Unlock with PIN to view your USDT wallet.</p>';
+        if (linkedEl) linkedEl.innerHTML = '<p class="hint">PIN required.</p>';
+        $('pinUnlockModal')?.classList.remove('hidden');
+        return;
+      }
+      depositEl.innerHTML = `<p class="hint">${err.message || 'Failed to load USDT wallet'}</p>`;
+    }
+  },
+
+  async submitUsdtTransfer(e) {
+    e.preventDefault();
+    const email = $('usdtTransferEmail')?.value?.trim();
+    const amount = parseFloat($('usdtTransferAmount')?.value);
+    const note = $('usdtTransferNote')?.value?.trim();
+    const statusEl = $('usdtTransferStatus');
+    const btn = $('btnSubmitUsdtTransfer');
+
+    if (!email || !Number.isFinite(amount) || amount <= 0) {
+      this.toast('Enter a valid recipient email and amount', 'error');
+      return;
+    }
+
+    const prevLabel = btn?.textContent;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+    }
+    if (statusEl) statusEl.textContent = '';
+
+    try {
+      const idempotencyKey = `xfer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const data = await Auth.api('POST', '/api/user/usdt-wallet/transfer', {
+        to_email: email,
+        amount_usdt: amount,
+        note: note || undefined,
+        idempotency_key: idempotencyKey,
+      }, { sensitive: true });
+
+      const msg = data.duplicate
+        ? 'Transfer already processed'
+        : `Sent ${this.formatUsdt(amount)} to ${email}`;
+      this.toast(msg, 'ok');
+      if (statusEl) statusEl.textContent = msg;
+      $('usdtTransferForm')?.reset();
+      this._usdtWalletCache = null;
+      await this.loadUsdtWalletPage(true);
+      this.loadWallet();
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+      this.toast(err.message || 'Transfer failed', 'error');
+      if (statusEl) statusEl.textContent = err.message || 'Transfer failed';
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = prevLabel || 'Send USDT';
+      }
+    }
+  },
+
+  renderUsdtEscrowHolds(holds) {
+    const el = $('usdtEscrowHoldsList');
+    const panel = $('usdtEscrowPanel');
+    if (!el) return;
+
+    const rows = holds || [];
+    if (panel) panel.classList.toggle('hidden', !rows.length);
+
+    if (!rows.length) {
+      el.innerHTML = '<p class="hint">No active escrow — your full USDT balance is available.</p>';
+      return;
+    }
+
+    el.innerHTML = rows.map((h) => `
+      <div class="usdt-escrow-card">
+        <div>
+          <strong>${h.label || h.hold_type}</strong>
+          <p class="hint" style="margin:0.25rem 0 0">${h.reference_type} #${h.reference_id}</p>
+        </div>
+        <div style="text-align:right">
+          <div><strong>${Number(h.remaining_usdt).toFixed(2)} USDT</strong> locked</div>
+          <small class="hint">of ${Number(h.amount_usdt).toFixed(2)} USDT</small>
+        </div>
+      </div>
+    `).join('');
+  },
+
+  renderUsdtWalletPage(data) {
+    if ($('usdtWalletAvailableBalance')) {
+      $('usdtWalletAvailableBalance').textContent = data.balance_formatted || this.formatUsdt(data.balance_usdt);
+    }
+    if ($('usdtWalletLockedBalance')) {
+      $('usdtWalletLockedBalance').textContent = data.locked_formatted || this.formatUsdt(data.balance_usdt_locked || 0);
+    }
+    if ($('usdtWalletTotalBalance')) {
+      $('usdtWalletTotalBalance').textContent = data.total_formatted || this.formatUsdt(data.balance_usdt_total || data.balance_usdt);
+    }
+    if ($('sumBalanceUsdt')) {
+      const locked = Number(data.balance_usdt_locked || 0);
+      const available = data.balance_formatted || this.formatUsdt(data.balance_usdt);
+      $('sumBalanceUsdt').textContent = locked > 0
+        ? `${available} (${data.locked_formatted || this.formatUsdt(locked)} locked)`
+        : available;
+    }
+
+    this.renderUsdtEscrowHolds(data.escrow_holds);
+    if ($('usdtWalletMinDepositHint') && data.minimum_usdt_deposit) {
+      $('usdtWalletMinDepositHint').textContent = `Minimum deposit: $${Number(data.minimum_usdt_deposit).toFixed(2)} USDT · TRC20 / BEP20 / ERC20`;
+    }
+
+    const depositEl = $('usdtWalletDepositAddresses');
+    const addresses = data.deposit_addresses || [];
+    if (depositEl) {
+      if (!addresses.length) {
+        depositEl.innerHTML = '<p class="hint">Deposit addresses are not configured yet. Contact support.</p>';
+      } else {
+        depositEl.innerHTML = addresses.map((row) => `
+          <div class="usdt-wallet-address-card">
+            <div class="usdt-wallet-address-head">
+              <strong>${row.network_label || row.network}</strong>
+              <span class="badge-secure">Platform deposit</span>
+            </div>
+            <code class="usdt-address-code">${row.address}</code>
+            ${row.deposit_reference ? `
+              <div class="usdt-deposit-ref">
+                <span class="usdt-address-label">Your deposit reference</span>
+                <code>${row.deposit_reference}</code>
+                <button type="button" class="btn btn-secondary btn-sm" data-copy-deposit-ref="${this.escapeAttr(row.deposit_reference)}">Copy Ref</button>
+              </div>` : ''}
+            <button type="button" class="btn btn-primary btn-sm usdt-copy-btn" data-copy-usdt-address="${this.escapeAttr(row.address)}">Copy Address</button>
+          </div>
+        `).join('');
+      }
+    }
+
+    const linkedEl = $('usdtLinkedWalletsList');
+    const linked = data.linked_addresses || [];
+    if (linkedEl) {
+      linkedEl.innerHTML = linked.length ? linked.map((row) => `
+        <div class="usdt-linked-card">
+          <div class="usdt-wallet-address-head">
+            <strong>${row.label || row.network_label || row.network}</strong>
+            <span class="hint">${row.network}</span>
+          </div>
+          <code class="usdt-address-code">${row.address}</code>
+          <div class="usdt-linked-actions">
+            <button type="button" class="btn btn-secondary btn-sm" data-copy-linked-address="${this.escapeAttr(row.address)}">Copy</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-check-onchain-balance="${row.id}">Check On-Chain</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-unlink-wallet="${row.id}">Remove</button>
+          </div>
+          <p class="hint" id="usdtLinkedBalance-${row.id}" style="margin:0.5rem 0 0"></p>
+        </div>
+      `).join('') : '<p class="hint">No linked wallets yet.</p>';
+    }
+  },
+
+  escapeAttr(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;');
+  },
+
+  async loadUsdtWalletTransactions() {
+    if (!Auth.isLoggedIn()) return;
+    const el = $('usdtWalletTxHistory');
+    if (!el) return;
+
+    try {
+      const { transactions } = await Auth.api('GET', '/api/user/usdt-wallet/transactions', null, { sensitive: true });
+      el.innerHTML = transactions?.length ? `
+        <table class="data-table">
+          <thead><tr><th>Time</th><th>Type</th><th>Network</th><th>Amount</th><th>Balance</th><th>Details</th></tr></thead>
+          <tbody>${transactions.map((t) => `
+            <tr>
+              <td><small>${t.created_at || ''}</small></td>
+              <td><code>${t.tx_type || ''}</code></td>
+              <td>${t.network || '—'}</td>
+              <td>${t.direction === 'credit' ? '+' : t.direction === 'debit' ? '−' : ''}${Number(t.amount_usdt || 0).toFixed(2)} USDT</td>
+              <td>${t.balance_after != null ? Number(t.balance_after).toFixed(2) : '—'}</td>
+              <td><small>${t.description || ''}${t.tx_hash ? `<br><code>${t.tx_hash}</code>` : ''}</small></td>
+            </tr>
+          `).join('')}</tbody>
+        </table>` : '<p class="hint">No USDT transactions yet.</p>';
+    } catch (err) {
+      if (err.code !== 'SENSITIVE_AUTH_REQUIRED') {
+        el.innerHTML = `<p class="hint">${err.message || 'Failed to load transactions'}</p>`;
+      }
     }
   },
 
@@ -2540,6 +2854,32 @@ const Dashboard = {
       };
     });
 
+    const loginPinForm = $('loginPinForm');
+    if (loginPinForm) {
+      loginPinForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = $('loginEmail')?.value.trim();
+        const pin = $('loginPin')?.value.trim();
+        if (!email || !pin) {
+          this.toast('Email and PIN are required', 'error');
+          return;
+        }
+        const btn = $('loginPinBtn');
+        if (btn) btn.disabled = true;
+        try {
+          await Auth.loginWithPin(email, pin);
+          this.log('Logged in with PIN', 'ok');
+          $('pinUnlockModal')?.classList.add('hidden');
+          this.refreshAuthUI();
+        } catch (err) {
+          this.toast(err.message || 'PIN login failed', 'error');
+          this.log(err.message, 'error');
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      });
+    }
+
     const loginSendOtpForm = $('loginSendOtpForm');
     if (loginSendOtpForm) {
       loginSendOtpForm.addEventListener('submit', async (e) => {
@@ -2575,7 +2915,9 @@ const Dashboard = {
         try {
           await Auth.verifyLoginOtp($('loginEmail').value.trim(), $('loginOtp').value.trim());
           this.log('Logged in successfully', 'ok');
-          $('pinUnlockModal')?.classList.remove('hidden');
+          if (Auth.needsPinUnlock()) {
+            $('pinUnlockModal')?.classList.remove('hidden');
+          }
           this.refreshAuthUI();
         } catch (err) {
           this.log(err.message, 'error');
@@ -2587,11 +2929,13 @@ const Dashboard = {
     if (bioLoginBtn) {
       bioLoginBtn.onclick = async () => {
         try {
-          await Auth.biometricLogin($('loginEmail').value.trim());
+          await Auth.biometricLogin($('loginEmail')?.value.trim());
           this.log('Biometric login successful', 'ok');
+          $('pinUnlockModal')?.classList.add('hidden');
           this.refreshAuthUI();
         } catch (err) {
           this.log(err.message, 'error');
+          this.toast(err.message || 'Biometric login failed', 'error');
         }
       };
     }
@@ -2737,6 +3081,10 @@ const Dashboard = {
       registerBioBtn.onclick = async () => {
         try {
           await Auth.registerBiometrics();
+          if (Auth.user?.email) {
+            Auth.saveDeviceProfile({ email: Auth.user.email, biometricsEnabled: true });
+          }
+          Auth.initLoginPanel();
           this.log('Biometrics registered for this device', 'ok');
         } catch (err) {
           this.log(err.message, 'error');
@@ -2748,6 +3096,7 @@ const Dashboard = {
     if (logoutBtn) {
       logoutBtn.onclick = async () => {
         await Auth.logout();
+        Auth.initLoginPanel();
         this.log('Logged out', 'ok');
         this._navInitialized = false;
         history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -2934,6 +3283,7 @@ const Dashboard = {
             }
             $('cardRequestForm')?.reset();
             this.loadWallet();
+            this.loadUsdtWalletPage(true);
             this.loadAllCards();
             this.loadDepositHistory();
             if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
@@ -3123,8 +3473,10 @@ const Dashboard = {
       if (acctInfo) {
         acctInfo.textContent = `Signed in as ${Auth.user.name || Auth.user.email} (${Auth.user.email})`;
       }
-      if (!Auth.pinToken) {
+      if (Auth.needsPinUnlock()) {
         $('pinUnlockModal')?.classList.remove('hidden');
+      } else {
+        $('pinUnlockModal')?.classList.add('hidden');
       }
       this.loadWallet();
       this.loadTransactions();
@@ -3629,6 +3981,8 @@ const Dashboard = {
         }
         this.toast('Withdrawal request submitted', 'ok');
         this.log(`Withdrawal ${data.ref_code}: $${preview.net_usdt.toFixed(2)} net (${network})`, 'ok');
+        this._usdtWalletCache = null;
+        this.loadUsdtWalletPage(true);
       } catch (err) {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
         this.toast(err.message || 'Withdrawal failed', 'error');

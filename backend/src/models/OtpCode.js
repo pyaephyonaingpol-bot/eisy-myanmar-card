@@ -26,7 +26,7 @@ const OtpCode = {
     return db.get(`
       SELECT * FROM otp_codes
       WHERE email = ? AND purpose = ? AND verified_at IS NULL
-        AND expires_at > datetime('now') AND attempts < max_attempts
+        AND datetime(expires_at) > datetime('now') AND attempts < max_attempts
       ORDER BY created_at DESC LIMIT 1
     `, email, purpose);
   },

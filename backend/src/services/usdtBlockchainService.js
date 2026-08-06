@@ -363,11 +363,84 @@ async function verifyUsdtTransaction({
   return { ok: false, status: 'invalid', message: `Unsupported network: ${network}` };
 }
 
+const USDT_ERC20_CONTRACT = (process.env.USDT_ERC20_CONTRACT || '0xdAC17F958D2ee523a2206206994597C13D831ec7').toLowerCase();
+const ETH_RPC_URL = process.env.ETH_RPC_URL || 'https://ethereum.publicnode.com';
+const ERC20_DECIMALS = 6;
+
+function decodeUint256(hex, decimals = 18) {
+  if (!hex || hex === '0x') return 0;
+  const cleaned = String(hex).replace(/^0x/, '');
+  if (!cleaned) return 0;
+  return Number(BigInt(`0x${cleaned}`)) / (10 ** decimals);
+}
+
+async function evmUsdtBalanceViaRpc(rpcUrl, contractAddress, walletAddress, decimals = 18) {
+  const addr = walletAddress.toLowerCase().replace(/^0x/, '');
+  const data = `0x70a08231${addr.padStart(64, '0')}`;
+  const response = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'eth_call',
+      params: [{ to: contractAddress, data }, 'latest'],
+    }),
+  });
+  const json = await response.json();
+  if (json.error) {
+    throw new Error(json.error.message || 'RPC balance call failed');
+  }
+  return decodeUint256(json.result, decimals);
+}
+
+async function fetchTrc20UsdtBalance(address) {
+  const url = `${TRONSCAN_API}/api/account?address=${encodeURIComponent(address)}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Tronscan request failed');
+  const json = await response.json();
+  const tokens = json?.trc20token_balances || json?.tokens || [];
+  const usdt = tokens.find((t) => {
+    const id = String(t.tokenId || t.token_id || t.contract_address || '').toUpperCase();
+    return id === USDT_TRC20_CONTRACT.toUpperCase() || String(t.tokenAbbr || t.symbol || '').toUpperCase() === 'USDT';
+  });
+  if (!usdt) return 0;
+  const raw = Number(usdt.balance ?? usdt.amount ?? 0);
+  const decimals = Number(usdt.tokenDecimal ?? usdt.decimals ?? TRC20_DECIMALS);
+  return raw / (10 ** decimals);
+}
+
+async function fetchUsdtOnChainBalance(network, address) {
+  const net = String(network || 'TRC20').toUpperCase();
+  const addr = String(address || '').trim();
+  if (!addr) return { ok: false, error: 'Address required' };
+
+  try {
+    if (net === 'TRC20') {
+      const balanceUsdt = await fetchTrc20UsdtBalance(addr);
+      return { ok: true, network: net, address: addr, balance_usdt: balanceUsdt };
+    }
+    if (net === 'BEP20') {
+      const balanceUsdt = await evmUsdtBalanceViaRpc(BSC_RPC_URL, USDT_BEP20_CONTRACT, addr, BEP20_DECIMALS);
+      return { ok: true, network: net, address: addr, balance_usdt: balanceUsdt };
+    }
+    if (net === 'ERC20') {
+      const balanceUsdt = await evmUsdtBalanceViaRpc(ETH_RPC_URL, USDT_ERC20_CONTRACT, addr, ERC20_DECIMALS);
+      return { ok: true, network: net, address: addr, balance_usdt: balanceUsdt };
+    }
+    return { ok: false, error: `Unsupported network: ${network}` };
+  } catch (err) {
+    return { ok: false, network: net, address: addr, error: err.message };
+  }
+}
+
 module.exports = {
   verifyUsdtTransaction,
+  fetchUsdtOnChainBalance,
   amountWithinTolerance,
   isDevelopmentMode,
   isMockTxHash,
   USDT_TRC20_CONTRACT,
   USDT_BEP20_CONTRACT,
+  USDT_ERC20_CONTRACT,
 };

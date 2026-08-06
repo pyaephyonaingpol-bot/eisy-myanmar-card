@@ -80,6 +80,22 @@ router.post('/login/verify', async (req, res) => {
   }
 });
 
+router.post('/login/pin', async (req, res) => {
+  try {
+    const { email, pin } = req.body;
+    if (!email || !pin) return res.status(400).json({ error: 'email and pin are required' });
+    const result = await authService.loginWithPin({
+      email,
+      pin,
+      ipAddress: clientIp(req),
+      ...deviceInfo(req),
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(401).json({ error: err.message, code: 'PIN_LOGIN_FAILED' });
+  }
+});
+
 // ─── PIN ────────────────────────────────────────────────────────
 
 router.post('/pin/set', requireAuth, async (req, res) => {

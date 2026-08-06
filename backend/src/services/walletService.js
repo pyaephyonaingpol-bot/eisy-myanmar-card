@@ -222,100 +222,14 @@ async function getUsdtBalance(userId) {
   return Number(user.balance_usdt ?? 0);
 }
 
-async function creditUsdt(userId, amountUsdt, {
-  description,
-  referenceType,
-  referenceId,
-  createdBy = 'system',
-  metadata,
-} = {}) {
-  const amount = parseFloat(amountUsdt);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('Credit amount must be a positive number');
-  }
-
-  const user = await User.findById(userId);
-  if (!user) throw new Error('User not found');
-
-  const balanceBefore = Number(user.balance_usdt ?? 0);
-  const balanceAfter = Math.round((balanceBefore + amount) * 100) / 100;
-
-  const db = getDb();
-  await db.run(
-    `UPDATE users SET balance_usdt = ?, updated_at = datetime('now') WHERE id = ?`,
-    balanceAfter,
-    userId
-  );
-
-  await TransactionLog.create({
-    userId,
-    type: 'balance_credit',
-    direction: 'credit',
-    amountUsd: amount,
-    balanceBefore,
-    balanceAfter,
-    referenceType,
-    referenceId,
-    description: description || `USDT wallet credited ${formatUsdt(amount)}`,
-    createdBy,
-    metadata: { wallet: 'usdt', ...(metadata || {}) },
-  });
-
-  syncWalletAfter(userId);
-  return User.findById(userId);
+async function creditUsdt(userId, amountUsdt, opts = {}) {
+  const { creditAvailable } = require('./usdtLedgerService');
+  return creditAvailable(userId, amountUsdt, opts);
 }
 
-async function debitUsdt(userId, amountUsdt, {
-  description,
-  referenceType,
-  referenceId,
-  createdBy = 'system',
-  metadata,
-  allowInsufficient = false,
-} = {}) {
-  const amount = parseFloat(amountUsdt);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('Debit amount must be a positive number');
-  }
-
-  const user = await User.findById(userId);
-  if (!user) throw new Error('User not found');
-
-  const balanceBefore = Number(user.balance_usdt ?? 0);
-  if (balanceBefore < amount - 0.001 && !allowInsufficient) {
-    const err = new Error(
-      `Insufficient USDT wallet balance. Required ${formatUsdt(amount)}, available ${formatUsdt(balanceBefore)}`
-    );
-    err.code = 'INSUFFICIENT_USDT_BALANCE';
-    err.required_usdt = amount;
-    err.available_usdt = balanceBefore;
-    throw err;
-  }
-
-  const balanceAfter = Math.round((balanceBefore - amount) * 100) / 100;
-  const db = getDb();
-  await db.run(
-    `UPDATE users SET balance_usdt = ?, updated_at = datetime('now') WHERE id = ?`,
-    balanceAfter,
-    userId
-  );
-
-  await TransactionLog.create({
-    userId,
-    type: 'balance_debit',
-    direction: 'debit',
-    amountUsd: amount,
-    balanceBefore,
-    balanceAfter,
-    referenceType,
-    referenceId,
-    description: description || `USDT wallet debited ${formatUsdt(amount)}`,
-    createdBy,
-    metadata: { wallet: 'usdt', ...(metadata || {}) },
-  });
-
-  syncWalletAfter(userId);
-  return User.findById(userId);
+async function debitUsdt(userId, amountUsdt, opts = {}) {
+  const { debitAvailable } = require('./usdtLedgerService');
+  return debitAvailable(userId, amountUsdt, opts);
 }
 
 async function adjustUsdt(userId, deltaUsdt, reason, createdBy = 'admin') {
@@ -362,13 +276,19 @@ async function adjustMmk(userId, deltaMmk, reason, createdBy = 'admin') {
 
 function walletPayload(user) {
   const mmk = Number(user.balance_mmk ?? 0);
-  const usdt = Number(user.balance_usdt ?? 0);
+  const usdtAvailable = Number(user.balance_usdt ?? 0);
+  const usdtLocked = Number(user.balance_usdt_locked ?? 0);
+  const usdtTotal = Math.round((usdtAvailable + usdtLocked) * 100) / 100;
   return {
     balance_mmk: mmk,
-    balance_usdt: usdt,
+    balance_usdt: usdtAvailable,
+    balance_usdt_locked: usdtLocked,
+    balance_usdt_total: usdtTotal,
     currency_primary: 'MMK',
     mmk_formatted: formatMmk(mmk),
-    usdt_formatted: formatUsdt(usdt),
+    usdt_formatted: formatUsdt(usdtAvailable),
+    usdt_locked_formatted: formatUsdt(usdtLocked),
+    usdt_total_formatted: formatUsdt(usdtTotal),
   };
 }
 

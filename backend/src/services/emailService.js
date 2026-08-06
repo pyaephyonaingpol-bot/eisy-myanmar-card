@@ -1,45 +1,34 @@
 /**
- * Email service — sends OTP via Amazon SES.
- * Source is ALWAYS a verified identity — never the user's email.
+ * Email service — sends OTP via Resend.
+ * From is always a verified sender; the user's email is only the recipient.
  */
-const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
+const { Resend } = require('resend');
 const { isDevOtpExposed } = require('./devOtp');
 const { MASTER_TEST_OTP } = require('./cryptoService');
 
-const AWS_REGION = process.env.AWS_REGION || 'eu-north-1';
 const OTP_EXPIRY = process.env.OTP_EXPIRY_MINUTES || '10';
+const DEFAULT_FROM = 'Eisy Myanmar <no-reply@eisymyanmar.com>';
 
-/** Hardcoded verified SES senders — user input can NEVER become Source. */
-const VERIFIED_SENDERS = Object.freeze([
-  'eisymyanmar@gmail.com',
-  'noreply@eisymyanmar.com',
-]);
-
-/** Primary verified sender used for every outbound OTP. */
-const VERIFIED_SENDER = 'eisymyanmar@gmail.com';
-
-let sesClient = null;
+let resendClient = null;
 
 function normalizeRecipientEmail(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   const bracketMatch = raw.match(/<([^>]+)>/);
-  const address = (bracketMatch ? bracketMatch[1] : raw).trim().toLowerCase();
-  return address;
+  return (bracketMatch ? bracketMatch[1] : raw).trim().toLowerCase();
 }
 
-function getSesClient() {
-  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
-  if (!accessKeyId || !secretAccessKey) return null;
+function getFromAddress() {
+  return process.env.RESEND_FROM_EMAIL || DEFAULT_FROM;
+}
 
-  if (!sesClient) {
-    sesClient = new SESClient({
-      region: AWS_REGION,
-      credentials: { accessKeyId, secretAccessKey },
-    });
+function getResend() {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return null;
+  if (!resendClient) {
+    resendClient = new Resend(apiKey);
   }
-  return sesClient;
+  return resendClient;
 }
 
 function purposeCopy(purpose) {
@@ -71,7 +60,7 @@ function purposeCopy(purpose) {
   };
 }
 
-function logOtpToConsole({ toAddress, otp, purpose }) {
+function logOtpToConsole({ fromAddress, toAddress, otp, purpose }) {
   const label = purposeCopy(purpose).heading;
 
   console.log('');
@@ -79,7 +68,7 @@ function logOtpToConsole({ toAddress, otp, purpose }) {
   console.log('║              EISY MYANMAR — OTP GENERATED                 ║');
   console.log('╠══════════════════════════════════════════════════════════╣');
   console.log(`║  Purpose:  ${label.slice(0, 47).padEnd(47)}║`);
-  console.log(`║  Source:   ${VERIFIED_SENDER.padEnd(47)}║`);
+  console.log(`║  From:     ${fromAddress.slice(0, 47).padEnd(47)}║`);
   console.log(`║  To:       ${toAddress.padEnd(47)}║`);
   console.log(`║  OTP Code: ${String(otp).padEnd(47)}║`);
   console.log(`║  Expires:  ${String(OTP_EXPIRY).padEnd(47)} minutes ║`);
@@ -119,60 +108,52 @@ function buildOtpText({ otp, purpose }) {
 
 async function sendOtpEmail({ email, otp, purpose }) {
   const toAddress = normalizeRecipientEmail(email);
+  const fromAddress = getFromAddress();
 
   if (!toAddress || !toAddress.includes('@')) {
     throw new Error('Invalid recipient email address');
   }
 
-  // Safety guard: recipient must never be used as SES Source.
-  if (VERIFIED_SENDERS.includes(toAddress)) {
-    console.warn('[Eisy Myanmar] Recipient matches a verified sender address; still sending as ToAddresses only');
-  }
+  logOtpToConsole({ fromAddress, toAddress, otp, purpose });
 
-  logOtpToConsole({ toAddress, otp, purpose });
-
-  const ses = getSesClient();
-  if (!ses) {
-    console.warn('[Eisy Myanmar] AWS SES credentials not set — OTP logged only, email not sent');
+  const resend = getResend();
+  if (!resend) {
+    console.warn('[Eisy Myanmar] RESEND_API_KEY not set — OTP logged only, email not sent');
     return { sent: false, provider: 'console' };
   }
 
   const copy = purposeCopy(purpose);
 
-  const sesParams = {
-    Source: VERIFIED_SENDER,
-    Destination: {
-      ToAddresses: [toAddress],
-    },
-    Message: {
-      Subject: { Data: copy.subject, Charset: 'UTF-8' },
-      Body: {
-        Html: { Data: buildOtpHtml({ otp, purpose }), Charset: 'UTF-8' },
-        Text: { Data: buildOtpText({ otp, purpose }), Charset: 'UTF-8' },
-      },
-    },
-  };
-
-  console.log('[Eisy Myanmar] SES SendEmailCommand params:', JSON.stringify({
-    Source: sesParams.Source,
-    Destination: sesParams.Destination,
-    region: AWS_REGION,
+  console.log('[Eisy Myanmar] Resend send params:', JSON.stringify({
+    from: fromAddress,
+    to: toAddress,
   }));
 
   try {
-    const result = await ses.send(new SendEmailCommand(sesParams));
+    const { data, error } = await resend.emails.send({
+      from: fromAddress,
+      to: toAddress,
+      subject: copy.subject,
+      html: buildOtpHtml({ otp, purpose }),
+      text: buildOtpText({ otp, purpose }),
+    });
+
+    if (error) {
+      console.error(`[Eisy Myanmar] Resend error from=${fromAddress} to=${toAddress}:`, error);
+      throw new Error(error.message || 'Failed to send OTP email');
+    }
 
     console.log(
-      `[Eisy Myanmar] OTP email sent via Amazon SES Source=${VERIFIED_SENDER} To=${toAddress} MessageId=${result.MessageId || 'n/a'}`
+      `[Eisy Myanmar] OTP email sent via Resend from=${fromAddress} to=${toAddress} id=${data?.id || 'n/a'}`
     );
-    return { sent: true, provider: 'ses', id: result.MessageId };
+    return { sent: true, provider: 'resend', id: data?.id };
   } catch (err) {
     console.error(
-      `[Eisy Myanmar] Amazon SES error Source=${VERIFIED_SENDER} To=${toAddress}:`,
+      `[Eisy Myanmar] Resend send failed from=${fromAddress} to=${toAddress}:`,
       err.message || err
     );
     throw new Error(err.message || 'Failed to send OTP email');
   }
 }
 
-module.exports = { sendOtpEmail, VERIFIED_SENDER, VERIFIED_SENDERS };
+module.exports = { sendOtpEmail, getFromAddress };

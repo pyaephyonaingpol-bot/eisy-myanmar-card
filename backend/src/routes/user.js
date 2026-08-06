@@ -614,4 +614,6 @@ router.get('/:user_id', requireAuth, async (req, res) => {
   }
 });
 
+router.use('/usdt-wallet', require('./usdtWallet'));
+
 module.exports = router;

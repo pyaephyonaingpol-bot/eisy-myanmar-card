@@ -2,9 +2,10 @@ const User = require('../models/User');
 const P2PAd = require('../models/P2PAd');
 const P2PSellOrder = require('../models/P2PSellOrder');
 const TransactionLog = require('../models/TransactionLog');
-const { debitUsdt, creditUsdt, formatUsdt, formatMmk } = require('./walletService');
+const { formatUsdt, formatMmk } = require('./walletService');
+const { lockUsdtForEscrow, refundEscrowHold, consumeEscrowToBuyer } = require('./usdtLedgerService');
 const { getCardPricingSettings, calculateP2pFeeBreakdown } = require('./settingsService');
-const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
+const { PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { parsePaymentMethods } = require('./p2pMarketService');
 const { notifyAdminP2pSellOrderReleased } = require('./telegram');
 const { expiresAtFromNow } = require('./p2pOrderExpiryService');
@@ -132,10 +133,11 @@ async function createP2pSellOrderFromAd(userId, {
     },
   });
 
-  await debitUsdt(userId, roundedUsdt, {
-    description: `P2P sell order escrow (C2C) — ${refCode}`,
+  await lockUsdtForEscrow(userId, roundedUsdt, {
+    holdType: 'p2p_sell_order',
     referenceType: 'p2p_sell_orders',
     referenceId: order.id,
+    description: `P2P sell order escrow (C2C) — ${refCode}`,
     createdBy: 'user',
     metadata: { ad_id: adId, escrow: true },
   });
@@ -193,30 +195,35 @@ async function releaseEscrowedUsdtFromSellOrder(orderId, {
   const platformFee = feeBreakdown.platform_fee_usdt;
   const buyerReceives = feeBreakdown.buyer_receives_usdt;
 
-  if (platformFee > 0) {
-    await creditPlatformUsdtRevenue(platformFee, {
-      feeType: PLATFORM_FEE_TYPES.P2P,
-      description: `P2P sell platform fee — ${order.ref_code} (${formatUsdt(platformFee)} @ ${feePercent}%)`,
+  await consumeEscrowToBuyer({
+    fromUserId: order.user_id,
+    toUserId: order.maker_user_id,
+    grossAmountUsdt: amountUsdt,
+    netToBuyerUsdt: buyerReceives,
+    platformFeeUsdt: platformFee,
+    holdReference: {
       referenceType: 'p2p_sell_orders',
       referenceId: orderId,
-      relatedUserId: order.user_id,
-      createdBy: reviewedBy,
-      metadata: {
-        p2p_sell_order_id: orderId,
-        ad_id: order.ad_id,
-        maker_user_id: order.maker_user_id,
-        fee_percent: feePercent,
-        fee_paid_by: 'user_seller',
-      },
-    });
-  }
-
-  await creditUsdt(order.maker_user_id, buyerReceives, {
-    description: `P2P C2C buy — ${order.ref_code} (${formatUsdt(buyerReceives)} from seller escrow)`,
+      holdType: 'p2p_sell_order',
+    },
+    description: `P2P sell order escrow released — ${order.ref_code}`,
+    buyerDescription: `P2P C2C buy — ${formatUsdt(buyerReceives)} from seller (${order.ref_code})`,
     referenceType: 'p2p_sell_orders',
     referenceId: orderId,
+    platformFeeType: PLATFORM_FEE_TYPES.P2P,
+    platformMetadata: {
+      description: `P2P sell platform fee — ${order.ref_code} (${formatUsdt(platformFee)} @ ${feePercent}%)`,
+      p2p_sell_order_id: orderId,
+      ad_id: order.ad_id,
+      fee_percent: feePercent,
+      fee_paid_by: 'user_seller',
+    },
+    metadata: {
+      ad_id: order.ad_id,
+      marketplace_type: 'c2c',
+      admin_note: adminNote || null,
+    },
     createdBy: reviewedBy,
-    metadata: { ad_id: order.ad_id, marketplace_type: 'c2c', admin_note: adminNote || null },
   });
 
   const updated = await P2PSellOrder.updateStatus(orderId, finalStatus, {
@@ -307,16 +314,18 @@ async function cancelP2pSellOrder(orderId, userId) {
   }
 
   const amountUsdt = Number(order.amount_usdt);
-  const user = await creditUsdt(userId, amountUsdt, {
-    description: `P2P sell order cancelled — ${order.ref_code} escrow refunded`,
+  await refundEscrowHold({
+    userId,
     referenceType: 'p2p_sell_orders',
     referenceId: orderId,
+    holdType: 'p2p_sell_order',
+    amountUsdt,
+    description: `P2P sell order cancelled — ${order.ref_code} escrow refunded`,
     createdBy: 'user',
-    metadata: {
-      p2p_sell_order_id: orderId,
-      escrow_refund: true,
-    },
+    metadata: { p2p_sell_order_id: orderId, escrow_refund: true },
   });
+
+  const user = await User.findById(userId);
 
   const updated = await P2PSellOrder.updateStatus(orderId, 'cancelled');
 
@@ -350,17 +359,18 @@ async function rejectP2pSellOrder(orderId, { adminNote, rejectionReason, reviewe
   }
 
   const amountUsdt = Number(order.amount_usdt);
-  const user = await creditUsdt(order.user_id, amountUsdt, {
-    description: `P2P sell order rejected — ${order.ref_code} escrow refunded`,
+  await refundEscrowHold({
+    userId: order.user_id,
     referenceType: 'p2p_sell_orders',
     referenceId: orderId,
+    holdType: 'p2p_sell_order',
+    amountUsdt,
+    description: `P2P sell order rejected — ${order.ref_code} escrow refunded`,
     createdBy: reviewedBy,
-    metadata: {
-      p2p_sell_order_id: orderId,
-      escrow_refund: true,
-      admin_rejection: true,
-    },
+    metadata: { p2p_sell_order_id: orderId, escrow_refund: true, admin_rejection: true },
   });
+
+  const user = await User.findById(order.user_id);
 
   const updated = await P2PSellOrder.updateStatus(orderId, finalStatus, {
     adminNote: adminNote || rejectionReason,

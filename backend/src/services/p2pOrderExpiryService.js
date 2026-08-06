@@ -2,7 +2,7 @@ const { getDb } = require('../db');
 const P2PBuyOrder = require('../models/P2PBuyOrder');
 const P2PSellOrder = require('../models/P2PSellOrder');
 const P2PAd = require('../models/P2PAd');
-const { creditUsdt } = require('./walletService');
+const { refundEscrowHold } = require('./usdtLedgerService');
 const TransactionLog = require('../models/TransactionLog');
 const P2POrderMessage = require('../models/P2POrderMessage');
 
@@ -70,10 +70,13 @@ async function autoCancelExpiredSellOrders() {
   let cancelled = 0;
   for (const order of rows) {
     const amountUsdt = Number(order.amount_usdt);
-    await creditUsdt(order.user_id, amountUsdt, {
-      description: `P2P sell order auto-cancelled — ${order.ref_code} escrow refunded (15 min timeout)`,
+    await refundEscrowHold({
+      userId: order.user_id,
       referenceType: 'p2p_sell_orders',
       referenceId: order.id,
+      holdType: 'p2p_sell_order',
+      amountUsdt,
+      description: `P2P sell order auto-cancelled — ${order.ref_code} escrow refunded (15 min timeout)`,
       createdBy: 'system',
       metadata: { auto_cancelled: true, escrow_refund: true },
     });

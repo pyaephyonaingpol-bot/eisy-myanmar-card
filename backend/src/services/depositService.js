@@ -474,8 +474,33 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       referenceId: deposit.id,
       description: `USDT wallet top-up +${formatUsdt(amountUsdt)}`,
       createdBy,
-      metadata: { wallet: 'usdt', deposit_ref: deposit.ref_code },
+      metadata: {
+        wallet: 'usdt',
+        deposit_ref: deposit.ref_code,
+        network: deposit.usdt_network || metadata.usdt_network || null,
+        txn_id: txnId,
+      },
     });
+
+    try {
+      const { recordWalletEntry } = require('./usdtWalletService');
+      await recordWalletEntry({
+        userId: deposit.user_id,
+        txType: 'deposit_verified',
+        direction: 'credit',
+        amountUsdt,
+        balanceAfter: balanceAfterUsdt,
+        network: deposit.usdt_network || metadata.usdt_network || null,
+        txHash: txnId || deposit.kpay_transaction_id || null,
+        counterpartyAddress: metadata.deposit_address || null,
+        referenceType: 'deposit_requests_v2',
+        referenceId: deposit.id,
+        description: `USDT deposit verified: ${deposit.ref_code} — ${formatUsdt(amountUsdt)} credited`,
+        metadata: { wallet: 'usdt', deposit_ref: deposit.ref_code, purpose: 'usdt_topup' },
+      });
+    } catch (ledgerErr) {
+      console.warn('[deposit] USDT ledger record failed:', ledgerErr.message);
+    }
 
     notifyAdminDepositVerified({
       user: updatedUser,

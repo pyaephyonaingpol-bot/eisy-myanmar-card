@@ -37,6 +37,52 @@ class ApiService {
     return body;
   }
 
+  Future<Map<String, dynamic>> getUsdtWallet({bool sensitive = true}) async {
+    final res = await http.get(
+      Uri.parse('$_base/api/user/usdt-wallet'),
+      headers: await _headers(sensitive: sensitive),
+    );
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode != 200) {
+      throw Exception(body['error'] ?? 'Failed to load USDT wallet');
+    }
+    return body;
+  }
+
+  Future<Map<String, dynamic>> getUsdtWalletTransactions({bool sensitive = true}) async {
+    final res = await http.get(
+      Uri.parse('$_base/api/user/usdt-wallet/transactions'),
+      headers: await _headers(sensitive: sensitive),
+    );
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode != 200) {
+      throw Exception(body['error'] ?? 'Failed to load transactions');
+    }
+    return body;
+  }
+
+  Future<Map<String, dynamic>> transferUsdt({
+    required String toEmail,
+    required double amountUsdt,
+    String? note,
+  }) async {
+    final res = await http.post(
+      Uri.parse('$_base/api/user/usdt-wallet/transfer'),
+      headers: await _headers(sensitive: true),
+      body: jsonEncode({
+        'to_email': toEmail,
+        'amount_usdt': amountUsdt,
+        if (note != null && note.isNotEmpty) 'note': note,
+        'idempotency_key': 'app-${DateTime.now().millisecondsSinceEpoch}',
+      }),
+    );
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(body['error'] ?? 'Transfer failed');
+    }
+    return body;
+  }
+
   Future<Map<String, dynamic>> getCards({bool sensitive = true}) async {
     final res = await http.get(
       Uri.parse('$_base/api/user/cards'),

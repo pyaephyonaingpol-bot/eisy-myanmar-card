@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:eisy_user_app/services/api_service.dart';
 import 'package:eisy_user_app/services/auth_service.dart';
 import 'package:eisy_user_app/screens/deposit_screen.dart';
+import 'package:eisy_user_app/screens/usdt_wallet_screen.dart';
 import 'package:eisy_user_app/screens/card_details_screen.dart';
 import 'package:eisy_user_app/screens/login_screen.dart';
 import 'package:eisy_user_app/widgets/card_preview.dart';
@@ -15,6 +16,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   double _balance = 0;
+  double _usdtAvailable = 0;
+  double _usdtLocked = 0;
   List<Map<String, dynamic>> _cards = [];
   int _activeIndex = 0;
   bool _loading = true;
@@ -58,7 +61,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       if (mounted) {
         setState(() {
-          _balance = (wallet['balance'] as num).toDouble();
+          _balance = (wallet['balance'] as num?)?.toDouble() ?? (wallet['balance_mmk'] as num?)?.toDouble() ?? 0;
+          _usdtAvailable = (wallet['balance_usdt'] as num?)?.toDouble() ?? 0;
+          _usdtLocked = (wallet['balance_usdt_locked'] as num?)?.toDouble() ?? 0;
           _cards = cards;
           _activeIndex = cards.isEmpty ? 0 : activeIndex.clamp(0, cards.length - 1);
           _loading = false;
@@ -133,6 +138,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: const EdgeInsets.all(20),
                     children: [
                       _BalanceCard(balance: _balance),
+                      const SizedBox(height: 12),
+                      _UsdtBalanceCard(available: _usdtAvailable, locked: _usdtLocked),
                       if (_cards.isNotEmpty) ...[
                         const SizedBox(height: 20),
                         _CardSelectorHeader(
@@ -229,6 +236,24 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           const SizedBox(width: 16),
+                          Expanded(
+                            child: _ActionButton(
+                              icon: Icons.account_balance_wallet,
+                              label: 'USDT Wallet',
+                              onTap: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const UsdtWalletScreen()),
+                                );
+                                _loadData();
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
                           Expanded(
                             child: _ActionButton(
                               icon: Icons.credit_card,
@@ -369,6 +394,49 @@ class _PendingCardTile extends StatelessWidget {
           Text('Holder: $holder', style: const TextStyle(color: Colors.white70)),
           const SizedBox(height: 4),
           const Text('Admin will assign your card number soon.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+class _UsdtBalanceCard extends StatelessWidget {
+  final double available;
+  final double locked;
+
+  const _UsdtBalanceCard({required this.available, required this.locked});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF064E3B).withOpacity(0.25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF10B981).withOpacity(0.35)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('USDT Available', style: TextStyle(color: Colors.green.shade200, fontSize: 12)),
+                Text('\$${available.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+          if (locked > 0)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('Locked', style: TextStyle(color: Colors.amber.shade200, fontSize: 12)),
+                  Text('\$${locked.toStringAsFixed(2)}', style: const TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
         ],
       ),
     );

@@ -22,7 +22,11 @@ const User = {
 
   async findByEmail(email) {
     const db = getDb();
-    return db.get('SELECT * FROM users WHERE email = ? COLLATE NOCASE', email);
+    const normalized = String(email || '').trim().toLowerCase();
+    return db.get(
+      'SELECT * FROM users WHERE LOWER(TRIM(email)) = ?',
+      normalized
+    );
   },
 
   async findByPhone(phone) {

@@ -47,7 +47,13 @@ app.use(express.static(PUBLIC_DIR));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'Eisy Myanmar Backend', timestamp: new Date().toISOString() });
+  const { getDatabaseInfo } = require('./db');
+  res.json({
+    status: 'ok',
+    service: 'Eisy Myanmar Backend',
+    timestamp: new Date().toISOString(),
+    database: getDatabaseInfo(),
+  });
 });
 
 app.use('/api/config', require('./routes/config'));

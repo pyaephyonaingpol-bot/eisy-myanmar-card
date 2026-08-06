@@ -1,7 +1,8 @@
 const User = require('../models/User');
 const P2PAd = require('../models/P2PAd');
 const TransactionLog = require('../models/TransactionLog');
-const { debitUsdt, creditUsdt, formatUsdt } = require('./walletService');
+const { formatUsdt } = require('./walletService');
+const { lockUsdtForEscrow, refundEscrowHold } = require('./usdtLedgerService');
 const { assertKycVerifiedForP2p } = require('./kycService');
 
 function getPaymentAccountForMethod(accountsRaw, paymentMethod) {
@@ -102,15 +103,6 @@ async function createP2pAd(userId, body) {
 
   const roundedVolume = Math.round(totalVolume * 100) / 100;
 
-  if (side === 'sell') {
-    await debitUsdt(userId, roundedVolume, {
-      description: `P2P sell ad escrow — ${formatUsdt(roundedVolume)} locked for marketplace listing`,
-      referenceType: 'p2p_ads',
-      createdBy: 'user',
-      metadata: { side: 'sell', escrow: true, total_volume_usdt: roundedVolume },
-    });
-  }
-
   const ad = await P2PAd.create({
     userId,
     side,
@@ -124,6 +116,17 @@ async function createP2pAd(userId, body) {
     paymentAccounts,
     escrowLockedUsdt: side === 'sell' ? roundedVolume : 0,
   });
+
+  if (side === 'sell') {
+    await lockUsdtForEscrow(userId, roundedVolume, {
+      holdType: 'p2p_ad',
+      referenceType: 'p2p_ads',
+      referenceId: ad.id,
+      description: `P2P sell ad escrow — ${formatUsdt(roundedVolume)} locked for marketplace listing`,
+      createdBy: 'user',
+      metadata: { side: 'sell', total_volume_usdt: roundedVolume },
+    });
+  }
 
   await TransactionLog.create({
     userId,
@@ -140,7 +143,11 @@ async function createP2pAd(userId, body) {
   const refreshedUser = await User.findById(userId);
   return {
     ad: P2PAd.mapForClient(ad, { user: refreshedUser }),
-    user: { id: refreshedUser.id, balance_usdt: refreshedUser.balance_usdt },
+    user: {
+      id: refreshedUser.id,
+      balance_usdt: refreshedUser.balance_usdt,
+      balance_usdt_locked: refreshedUser.balance_usdt_locked,
+    },
     message: side === 'sell'
       ? `Sell ad posted — ${formatUsdt(roundedVolume)} USDT escrowed from your wallet`
       : 'Buy ad posted — users can sell USDT to you at your rate',
@@ -165,13 +172,17 @@ async function cancelP2pAd(userId, adId) {
   const escrowRemaining = Number(ad.escrow_locked_usdt || 0);
 
   if (ad.side === 'sell' && escrowRemaining > 0) {
-    user = await creditUsdt(userId, escrowRemaining, {
-      description: `P2P sell ad cancelled — ${formatUsdt(escrowRemaining)} escrow refunded`,
+    await refundEscrowHold({
+      userId,
       referenceType: 'p2p_ads',
       referenceId: adId,
+      holdType: 'p2p_ad',
+      amountUsdt: escrowRemaining,
+      description: `P2P sell ad cancelled — ${formatUsdt(escrowRemaining)} escrow refunded`,
       createdBy: 'user',
       metadata: { ad_cancel: true, escrow_refund: true },
     });
+    user = await User.findById(userId);
     await P2PAd.clearEscrow(adId);
   }
 

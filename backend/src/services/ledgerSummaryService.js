@@ -15,22 +15,16 @@ async function getSystemLedgerSummary() {
   const userTotals = await db.get(`
     SELECT
       COALESCE(SUM(balance_usdt), 0) AS available_usdt,
+      COALESCE(SUM(balance_usdt_locked), 0) AS locked_usdt,
       COALESCE(SUM(balance_mmk), 0) AS total_mmk,
       COUNT(*) AS user_count
     FROM users
   `);
 
-  const adEscrow = await db.get(`
-    SELECT COALESCE(SUM(escrow_locked_usdt), 0) AS escrow_usdt
-    FROM p2p_ads
-    WHERE status IN ('active', 'paused')
-      AND escrow_locked_usdt > 0
-  `);
-
-  const sellOrderEscrow = await db.get(`
-    SELECT COALESCE(SUM(amount_usdt), 0) AS escrow_usdt
-    FROM p2p_sell_orders
-    WHERE status IN ('pending_merchant_mmk', 'disputed')
+  const escrowHolds = await db.get(`
+    SELECT COALESCE(SUM(remaining_usdt), 0) AS escrow_usdt
+    FROM usdt_escrow_holds
+    WHERE status = 'active' AND remaining_usdt > 0
   `);
 
   const pendingWithdrawals = await db.get(`
@@ -43,18 +37,18 @@ async function getSystemLedgerSummary() {
   `);
 
   const availableUsdt = roundUsdt(userTotals?.available_usdt);
-  const escrowFromAds = roundUsdt(adEscrow?.escrow_usdt);
-  const escrowFromSellOrders = roundUsdt(sellOrderEscrow?.escrow_usdt);
-  const escrowUsdt = roundUsdt(escrowFromAds + escrowFromSellOrders);
-  const totalUsdtLedger = roundUsdt(availableUsdt + escrowUsdt);
+  const lockedUsdt = roundUsdt(userTotals?.locked_usdt);
+  const escrowFromHolds = roundUsdt(escrowHolds?.escrow_usdt);
+  const totalUsdtLedger = roundUsdt(availableUsdt + lockedUsdt);
   const platformRevenueUsdt = await getPlatformUsdtRevenueBalance();
 
   return {
     available_usdt: availableUsdt,
-    escrow_usdt: escrowUsdt,
+    locked_usdt: lockedUsdt,
+    escrow_usdt: lockedUsdt,
     escrow_breakdown: {
-      p2p_ads: escrowFromAds,
-      p2p_sell_orders: escrowFromSellOrders,
+      user_locked_balance: lockedUsdt,
+      active_escrow_holds: escrowFromHolds,
     },
     total_usdt_ledger: totalUsdtLedger,
     total_mmk: roundMmk(userTotals?.total_mmk),

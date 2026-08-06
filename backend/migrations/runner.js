@@ -21,10 +21,18 @@ async function getAppliedMigrations(db) {
 async function applyMigration(db, filename) {
   const filePath = path.join(MIGRATIONS_DIR, filename);
   const sql = fs.readFileSync(filePath, 'utf8');
-  const needsFkOff = /PRAGMA\s+foreign_keys\s*=\s*OFF/i.test(sql);
+  const isLibsql = Boolean(db.isLibsql);
+  const needsFkOff = !isLibsql && /PRAGMA\s+foreign_keys\s*=\s*OFF/i.test(sql);
   const sqlBody = sql
     .replace(/PRAGMA\s+foreign_keys\s*=\s*OFF;?\s*/gi, '')
     .replace(/PRAGMA\s+foreign_keys\s*=\s*ON;?\s*/gi, '');
+
+  if (isLibsql) {
+    await db.exec(sqlBody);
+    await db.run('INSERT INTO schema_migrations (name) VALUES (?)', filename);
+    console.log(`[migrate] Applied ${filename}`);
+    return;
+  }
 
   if (needsFkOff) {
     await db.exec('PRAGMA foreign_keys=OFF');

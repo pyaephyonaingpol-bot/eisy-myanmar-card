@@ -20,6 +20,7 @@ const DEFAULTS = {
   rate_effective_date: new Date().toISOString().slice(0, 10),
   usdt_trc20_address: process.env.USDT_TRC20_ADDRESS || 'TExampleTrc20Address1234567890',
   usdt_bep20_address: process.env.USDT_BEP20_ADDRESS || '0xExampleBep20Address1234567890abcdef',
+  usdt_erc20_address: process.env.USDT_ERC20_ADDRESS || '',
   usdt_withdraw_fee_trc20: '1.5',
   usdt_withdraw_fee_bep20: '0.8',
   usdt_withdraw_fee_trc20_type: 'fixed',
@@ -47,6 +48,7 @@ const NUMERIC_KEYS = new Set([
 const STRING_KEYS = new Set([
   'usdt_trc20_address',
   'usdt_bep20_address',
+  'usdt_erc20_address',
   'usdt_withdraw_fee_trc20_type',
   'usdt_withdraw_fee_bep20_type',
 ]);
@@ -114,6 +116,7 @@ async function getCardPricingSettings() {
     rate_effective_date: raw.rate_effective_date || todayDateString(),
     usdt_trc20_address: raw.usdt_trc20_address || DEFAULTS.usdt_trc20_address,
     usdt_bep20_address: raw.usdt_bep20_address || DEFAULTS.usdt_bep20_address,
+    usdt_erc20_address: raw.usdt_erc20_address || DEFAULTS.usdt_erc20_address,
     p2p_seller_fee_percent: parseFloat(raw.p2p_seller_fee_percent) || 1,
     platform_usdt_revenue_balance: parseFloat(raw.platform_usdt_revenue_balance) || 0,
     usdt_withdraw_fee_trc20: parseFloat(raw.usdt_withdraw_fee_trc20) || 1.5,
@@ -214,6 +217,7 @@ async function getUsdtDepositSettings() {
   return {
     usdt_trc20_address: settings.usdt_trc20_address,
     usdt_bep20_address: settings.usdt_bep20_address,
+    usdt_erc20_address: settings.usdt_erc20_address,
     minimum_usdt_deposit: settings.minimum_usdt_deposit,
     minimum_usdt_reload: settings.minimum_usdt_reload,
   };

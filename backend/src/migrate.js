@@ -1,36 +1,24 @@
+/**
+ * Run migrations against local SQLite or remote Turso (when DATABASE_URL is set).
+ *
+ * Usage:
+ *   npm run migrate
+ *
+ * Turso:
+ *   set DATABASE_URL=libsql://your-db.turso.io
+ *   set DATABASE_AUTH_TOKEN=your-token
+ *   npm run migrate
+ */
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 require('dotenv').config();
-const sqlite3 = require('sqlite3');
-const { open } = require('sqlite');
-const path = require('path');
-const fs = require('fs');
-const { runMigrations, columnExists } = require('../migrations/runner');
-const { applyUserAuthColumns } = require('../migrations/patches/applyUserAuthColumns');
-const { ensureAuthTables } = require('../migrations/patches/ensureAuthTables');
+
+const { initDb, closeDb, getDatabaseInfo } = require('./db');
 
 async function migrate() {
-  const dataDir = path.join(__dirname, '..', 'data');
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-  const dbPath = path.join(dataDir, 'eisy.db');
-  const db = await open({ filename: dbPath, driver: sqlite3.Database });
-
-  await db.exec('PRAGMA foreign_keys = ON');
-
-  console.log('[migrate] Running SQL migrations...');
-  await runMigrations(db);
-
-  console.log('[migrate] Applying user auth column patches...');
-  await applyUserAuthColumns(db, columnExists);
-
-  console.log('[migrate] Ensuring auth tables exist...');
-  await ensureAuthTables(db);
-
-  const applied = await db.all('SELECT name, applied_at FROM schema_migrations ORDER BY name');
-  console.log('\n[migrate] Applied migrations:');
-  applied.forEach((r) => console.log(`  - ${r.name} (${r.applied_at})`));
-
-  await db.close();
-  console.log('\n[migrate] Done.');
+  console.log('[migrate] Database target:', getDatabaseInfo());
+  await initDb();
+  console.log('[migrate] Migrations complete.');
+  await closeDb();
 }
 
 migrate().catch((err) => {

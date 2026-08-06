@@ -28,7 +28,7 @@ const UserSession = {
       JOIN users u ON u.id = s.user_id
       WHERE s.session_token_hash = ?
         AND s.revoked_at IS NULL
-        AND s.expires_at > datetime('now')
+        AND datetime(s.expires_at) > datetime('now')
     `, hash);
   },
 
@@ -40,9 +40,17 @@ const UserSession = {
     `, hash);
   },
 
-  async touch(sessionToken) {
+  async touch(sessionToken, expiresAt) {
     const db = getDb();
     const hash = this.hashToken(sessionToken);
+    if (expiresAt) {
+      await db.run(`
+        UPDATE user_sessions
+        SET last_seen_at = datetime('now'), expires_at = ?
+        WHERE session_token_hash = ?
+      `, expiresAt, hash);
+      return;
+    }
     await db.run(`
       UPDATE user_sessions SET last_seen_at = datetime('now') WHERE session_token_hash = ?
     `, hash);

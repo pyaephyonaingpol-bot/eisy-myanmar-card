@@ -1,6 +1,9 @@
 const UserSession = require('../models/UserSession');
 const User = require('../models/User');
 const { verifyPinToken, hashToken } = require('../services/cryptoService');
+const { addDays } = require('../lib/sqliteDatetime');
+
+const SESSION_EXPIRY_DAYS = parseInt(process.env.SESSION_EXPIRY_DAYS || '30', 10);
 
 async function requireAuth(req, res, next) {
   try {
@@ -21,7 +24,7 @@ async function requireAuth(req, res, next) {
       return res.status(403).json({ error: 'Account unavailable', code: 'ACCOUNT_SUSPENDED' });
     }
 
-    await UserSession.touch(token);
+    await UserSession.touch(token, addDays(SESSION_EXPIRY_DAYS));
 
     req.sessionToken = token;
     req.session = session;

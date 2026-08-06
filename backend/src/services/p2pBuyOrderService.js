@@ -3,9 +3,10 @@ const User = require('../models/User');
 const P2PAd = require('../models/P2PAd');
 const P2PBuyOrder = require('../models/P2PBuyOrder');
 const TransactionLog = require('../models/TransactionLog');
-const { creditUsdt, formatUsdt, formatMmk } = require('./walletService');
+const { formatUsdt, formatMmk } = require('./walletService');
+const { consumeEscrowToBuyer } = require('./usdtLedgerService');
 const { getCardPricingSettings, calculateP2pFeeBreakdown } = require('./settingsService');
-const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
+const { PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { parsePaymentMethods } = require('./p2pMarketService');
 const { expiresAtFromNow } = require('./p2pOrderExpiryService');
 const { getAdForTrade, getPaymentAccountFromAd } = require('./p2pAdService');
@@ -289,48 +290,38 @@ async function releaseP2pBuyOrder(orderId, { adminNote, reviewedBy = 'admin', ma
   const buyerReceives = feeBreakdown.buyer_receives_usdt;
   const sellerTotalUsdt = feeBreakdown.seller_total_usdt;
 
-  const user = await creditUsdt(order.user_id, buyerReceives, {
-    description: `P2P buy order released — ${order.ref_code} (${formatUsdt(buyerReceives)} to buyer wallet)`,
+  await consumeEscrowToBuyer({
+    fromUserId: order.maker_user_id,
+    toUserId: order.user_id,
+    grossAmountUsdt: sellerTotalUsdt,
+    netToBuyerUsdt: buyerReceives,
+    platformFeeUsdt: platformFee,
+    holdReference: {
+      referenceType: 'p2p_ads',
+      referenceId: order.ad_id,
+      holdType: 'p2p_ad',
+    },
+    description: `P2P buy order released — ${order.ref_code} (${formatUsdt(sellerTotalUsdt)} from seller escrow)`,
+    buyerDescription: `P2P buy order — ${formatUsdt(buyerReceives)} received (${order.ref_code})`,
     referenceType: 'p2p_buy_orders',
     referenceId: orderId,
-    createdBy: reviewedBy,
+    platformFeeType: PLATFORM_FEE_TYPES.P2P,
+    platformMetadata: {
+      description: `P2P seller platform fee — ${order.ref_code} (${formatUsdt(platformFee)} @ ${feePercent}%)`,
+      p2p_buy_order_id: orderId,
+      ad_id: order.ad_id,
+      fee_percent: feePercent,
+      fee_paid_by: 'seller',
+    },
     metadata: {
       p2p_buy_order_id: orderId,
       ad_id: order.ad_id,
-      maker_user_id: order.maker_user_id,
-      seller_name: maker?.name,
       payment_method: order.payment_method,
       amount_mmk: order.amount_mmk,
-      payment_source: 'external_bank',
-      wallet_credited: 'usdt',
-      buyer_receives_usdt: buyerReceives,
-      seller_total_usdt: sellerTotalUsdt,
-      platform_fee_usdt: platformFee,
       fee_percent_applied: feePercent,
-      fee_paid_by: 'seller',
     },
+    createdBy: reviewedBy,
   });
-
-  if (platformFee > 0) {
-    await creditPlatformUsdtRevenue(platformFee, {
-      feeType: PLATFORM_FEE_TYPES.P2P,
-      description: `P2P seller platform fee — ${order.ref_code} (${formatUsdt(platformFee)} @ ${feePercent}%, charged to seller)`,
-      referenceType: 'p2p_buy_orders',
-      referenceId: orderId,
-      relatedUserId: order.user_id,
-      createdBy: reviewedBy,
-      metadata: {
-        p2p_buy_order_id: orderId,
-        ad_id: order.ad_id,
-        maker_user_id: order.maker_user_id,
-        seller_name: maker?.name,
-        fee_percent: feePercent,
-        buyer_receives_usdt: buyerReceives,
-        seller_total_usdt: sellerTotalUsdt,
-        fee_paid_by: 'seller',
-      },
-    });
-  }
 
   const updated = await P2PBuyOrder.updateStatus(orderId, finalStatus, {
     adminNote,
@@ -343,6 +334,8 @@ async function releaseP2pBuyOrder(orderId, { adminNote, reviewedBy = 'admin', ma
     await P2PAd.consumeEscrow(order.ad_id, sellerTotalUsdt);
   }
 
+  const user = await User.findById(order.user_id);
+
   await TransactionLog.create({
     userId: order.user_id,
     type: 'p2p_buy_order_release',
@@ -351,7 +344,7 @@ async function releaseP2pBuyOrder(orderId, { adminNote, reviewedBy = 'admin', ma
     amountMmk: order.amount_mmk,
     referenceType: 'p2p_buy_orders',
     referenceId: orderId,
-    description: `Admin released P2P buy order ${order.ref_code} — ${formatUsdt(buyerReceives)} to buyer, ${formatUsdt(platformFee)} platform fee from seller`,
+    description: `P2P buy order ${order.ref_code} released — ${formatUsdt(buyerReceives)} to buyer, ${formatUsdt(platformFee)} platform fee from seller escrow`,
     createdBy: reviewedBy,
     metadata: {
       admin_note: adminNote,
@@ -360,12 +353,17 @@ async function releaseP2pBuyOrder(orderId, { adminNote, reviewedBy = 'admin', ma
       platform_fee_usdt: platformFee,
       fee_percent_applied: feePercent,
       fee_paid_by: 'seller',
+      escrow_ledger: true,
     },
   });
 
   return {
     order: P2PBuyOrder.mapForClient(updated, { seller: maker ? { name: maker.name } : null, user }),
-    user: { id: user.id, balance_usdt: user.balance_usdt },
+    user: {
+      id: user.id,
+      balance_usdt: user.balance_usdt,
+      balance_usdt_locked: user.balance_usdt_locked,
+    },
     fee: feeBreakdown,
     message: finalStatus === 'completed_by_admin'
       ? 'USDT Force Released to Buyer'

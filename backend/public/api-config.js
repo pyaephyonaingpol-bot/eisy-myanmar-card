@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  var PRODUCTION_API = 'https://eisy-global-card.vercel.app';
+  var PRODUCTION_API = 'https://eisymyanmar.com';
   var LOCAL_ANDROID_EMULATOR = 'http://10.0.2.2:3000';
 
   function isCapacitorNative() {

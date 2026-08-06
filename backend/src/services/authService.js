@@ -4,27 +4,31 @@ const UserSession = require('../models/UserSession');
 const TransactionLog = require('../models/TransactionLog');
 const { sendOtpEmail } = require('./emailService');
 const { devOtpPayload } = require('./devOtp');
+const { addMinutes, addDays } = require('../lib/sqliteDatetime');
 const {
   hashPin, verifyPin, generateOtp, generateSessionToken,
   createPinToken, validatePinFormat, normalizeEmail, hashToken,
   isDefaultTestPin, DEFAULT_TEST_PIN,
   hashPassword, verifyPassword, validatePasswordFormat,
-  isMasterTestOtp,
+  isMasterTestOtp, PIN_TOKEN_TTL_MS,
 } = require('./cryptoService');
 
 const OTP_EXPIRY_MINUTES = parseInt(process.env.OTP_EXPIRY_MINUTES || '10', 10);
 const SESSION_EXPIRY_DAYS = parseInt(process.env.SESSION_EXPIRY_DAYS || '30', 10);
 
 function otpExpiresAt() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() + OTP_EXPIRY_MINUTES);
-  return d.toISOString();
+  return addMinutes(OTP_EXPIRY_MINUTES);
 }
 
 function sessionExpiresAt() {
-  const d = new Date();
-  d.setDate(d.getDate() + SESSION_EXPIRY_DAYS);
-  return d.toISOString();
+  return addDays(SESSION_EXPIRY_DAYS);
+}
+
+function pinTokenMeta() {
+  return {
+    pin_token_ttl_hours: PIN_TOKEN_TTL_MS / (60 * 60 * 1000),
+    expires_in_seconds: Math.floor(PIN_TOKEN_TTL_MS / 1000),
+  };
 }
 
 function syntheticPhone(email) {
@@ -98,13 +102,24 @@ async function completeRegistration({ email, otp, name, phone, pin, ipAddress, d
     createdBy: 'user',
   });
 
-  return { user: User.stripPrivate(user), sessionToken, session, pin_token: createPinToken(user.id) };
+  return {
+    user: User.stripPrivate(user),
+    sessionToken,
+    session,
+    session_expires_at: session?.expires_at || sessionExpiresAt(),
+    pin_token: createPinToken(user.id),
+    ...pinTokenMeta(),
+  };
 }
 
 async function sendLoginOtp(email, ipAddress) {
   const normalized = normalizeEmail(email);
   const user = await User.findByEmail(normalized);
-  if (!user) throw new Error('No account found for this email');
+  if (!user) {
+    const info = require('../db').getDatabaseInfo();
+    console.warn('[auth] login OTP — no user for email:', normalized, 'db:', info.mode, info.warning || info.filePath || info.url);
+    throw new Error('No account found for this email');
+  }
 
   const otp = generateOtp();
   await OtpCode.create({
@@ -121,6 +136,57 @@ async function sendLoginOtp(email, ipAddress) {
     email: normalized,
     expires_in_minutes: OTP_EXPIRY_MINUTES,
     ...devOtpPayload(otp),
+  };
+}
+
+async function loginWithPin({ email, pin, ipAddress, deviceName, devicePlatform }) {
+  const normalized = normalizeEmail(email);
+  if (!validatePinFormat(pin)) {
+    throw new Error('PIN must be exactly 6 digits');
+  }
+
+  const user = await User.findByEmail(normalized);
+  if (!user) {
+    const info = require('../db').getDatabaseInfo();
+    console.warn('[auth] PIN login — no user for email:', normalized, 'db:', info.mode, info.warning || info.filePath || info.url);
+    throw new Error('No account found for this email');
+  }
+
+  if (!user.pin_hash) {
+    if (!isDefaultTestPin(pin)) {
+      throw new Error('PIN not set for this account. Use email OTP login or the default test PIN 123456.');
+    }
+    await User.updatePin(user.id, hashPin(DEFAULT_TEST_PIN));
+  } else if (!verifyPin(pin, user.pin_hash)) {
+    throw new Error('Invalid PIN');
+  }
+
+  await User.recordLogin(user.id);
+
+  const { sessionToken, session } = await createSession({
+    userId: user.id,
+    ipAddress,
+    deviceName,
+    devicePlatform,
+  });
+
+  await TransactionLog.create({
+    userId: user.id,
+    type: 'login',
+    description: 'User logged in via PIN',
+    ipAddress,
+    createdBy: 'user',
+  });
+
+  const freshUser = await User.findById(user.id);
+  return {
+    user: User.stripPrivate(freshUser),
+    sessionToken,
+    session,
+    session_expires_at: session?.expires_at || sessionExpiresAt(),
+    has_pin: Boolean(freshUser.pin_hash),
+    pin_token: createPinToken(user.id),
+    ...pinTokenMeta(),
   };
 }
 
@@ -162,8 +228,10 @@ async function verifyLoginOtp({ email, otp, ipAddress, deviceName, devicePlatfor
     user: User.stripPrivate(freshUser),
     sessionToken,
     session,
+    session_expires_at: session?.expires_at || sessionExpiresAt(),
     has_pin: Boolean(freshUser.pin_hash),
-    pin_token: freshUser.pin_hash ? null : null,
+    pin_token: createPinToken(user.id),
+    ...pinTokenMeta(),
   };
 }
 
@@ -192,7 +260,7 @@ async function setPin(userId, pin, confirmPin) {
     createdBy: 'user',
   });
 
-  return { pin_token: createPinToken(userId), message: 'PIN set successfully' };
+  return { pin_token: createPinToken(userId), message: 'PIN set successfully', ...pinTokenMeta() };
 }
 
 async function verifyPinCode(userId, pin) {
@@ -228,8 +296,8 @@ async function verifyPinCode(userId, pin) {
 
   return {
     pin_token: createPinToken(userId),
-    expires_in_seconds: 15 * 60,
     has_pin: true,
+    ...pinTokenMeta(),
   };
 }
 
@@ -245,9 +313,9 @@ async function resetPinToDefault(userId) {
 
   return {
     pin_token: createPinToken(userId),
-    expires_in_seconds: 15 * 60,
     message: 'PIN reset to 123456 — sensitive access unlocked',
     has_pin: true,
+    ...pinTokenMeta(),
   };
 }
 
@@ -301,7 +369,9 @@ async function verifyBiometrics(email, deviceToken, ipAddress, deviceName, devic
     user: User.stripPrivate(user),
     sessionToken,
     session,
+    session_expires_at: session?.expires_at || sessionExpiresAt(),
     pin_token: createPinToken(user.id),
+    ...pinTokenMeta(),
   };
 }
 
@@ -356,6 +426,7 @@ module.exports = {
   completeRegistration,
   sendLoginOtp,
   verifyLoginOtp,
+  loginWithPin,
   setPin,
   verifyPinCode,
   resetPinToDefault,

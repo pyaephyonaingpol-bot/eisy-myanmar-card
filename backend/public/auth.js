@@ -2,6 +2,7 @@
 const Auth = {
   STORAGE_KEY: 'eisy_auth',
   BIO_KEY: 'eisy_bio_token',
+  DEVICE_KEY: 'eisy_device',
 
   load() {
     try {
@@ -12,11 +13,44 @@ const Auth = {
   },
 
   save(data) {
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+    try {
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+    } catch (err) {
+      console.error('[Auth] Failed to persist session to localStorage:', err);
+    }
   },
 
   clear() {
     localStorage.removeItem(this.STORAGE_KEY);
+  },
+
+  getDeviceProfile() {
+    try {
+      return JSON.parse(localStorage.getItem(this.DEVICE_KEY) || 'null');
+    } catch {
+      return null;
+    }
+  },
+
+  saveDeviceProfile({ email, biometricsEnabled }) {
+    if (!email) return;
+    const prev = this.getDeviceProfile() || {};
+    localStorage.setItem(this.DEVICE_KEY, JSON.stringify({
+      ...prev,
+      email: String(email).trim().toLowerCase(),
+      biometricsEnabled: biometricsEnabled ?? prev.biometricsEnabled ?? Boolean(this.biometricToken),
+      savedAt: Date.now(),
+    }));
+  },
+
+  rememberAuthSuccess(data, email) {
+    const resolvedEmail = email || data?.user?.email;
+    if (resolvedEmail) {
+      this.saveDeviceProfile({
+        email: resolvedEmail,
+        biometricsEnabled: Boolean(data?.user?.biometrics_enabled) || Boolean(this.biometricToken),
+      });
+    }
   },
 
   get sessionToken() { return this.load()?.sessionToken || null; },
@@ -24,20 +58,60 @@ const Auth = {
   get user() { return this.load()?.user || null; },
   get biometricToken() { return localStorage.getItem(this.BIO_KEY); },
 
-  setSession({ sessionToken, user, pinToken }) {
+  pinTokenExpiresAt() {
+    const saved = this.load();
+    if (!saved?.pinTokenExpiresAt) return null;
+    return Number(saved.pinTokenExpiresAt) || null;
+  },
+
+  isPinTokenExpired() {
+    const exp = this.pinTokenExpiresAt();
+    if (!exp) return false;
+    return Date.now() >= exp;
+  },
+
+  applyPinToken(pinToken, expiresInSeconds) {
     const prev = this.load() || {};
-    const next = { sessionToken, user };
-    if (pinToken !== undefined) {
-      if (pinToken) next.pinToken = pinToken;
-    } else if (sessionToken === prev.sessionToken && prev.pinToken) {
-      next.pinToken = prev.pinToken;
+    const ttlMs = Math.max(60, Number(expiresInSeconds) || 168 * 60 * 60) * 1000;
+    const next = {
+      ...prev,
+      pinToken,
+      pinTokenExpiresAt: Date.now() + ttlMs,
+    };
+    this.save(next);
+    return next;
+  },
+
+  setSession({ sessionToken, user, pinToken, pinTokenExpiresInSeconds, sessionExpiresAt }) {
+    const prev = this.load() || {};
+    const next = {
+      sessionToken,
+      user,
+      savedAt: Date.now(),
+    };
+
+    if (sessionExpiresAt) {
+      next.sessionExpiresAt = sessionExpiresAt;
+    } else if (sessionToken === prev.sessionToken && prev.sessionExpiresAt) {
+      next.sessionExpiresAt = prev.sessionExpiresAt;
     }
+
+    if (pinToken !== undefined) {
+      if (pinToken) {
+        next.pinToken = pinToken;
+        const ttlSec = pinTokenExpiresInSeconds || 168 * 60 * 60;
+        next.pinTokenExpiresAt = Date.now() + ttlSec * 1000;
+      }
+    } else if (sessionToken === prev.sessionToken && prev.pinToken && !this.isPinTokenExpired()) {
+      next.pinToken = prev.pinToken;
+      next.pinTokenExpiresAt = prev.pinTokenExpiresAt;
+    }
+
     this.save(next);
   },
 
-  setPinToken(pinToken) {
-    const prev = this.load() || {};
-    this.save({ ...prev, pinToken });
+  setPinToken(pinToken, expiresInSeconds) {
+    this.applyPinToken(pinToken, expiresInSeconds);
   },
 
   setBiometricToken(token) {
@@ -47,7 +121,9 @@ const Auth = {
   headers({ sensitive = false } = {}) {
     const h = { 'Content-Type': 'application/json' };
     if (this.sessionToken) h['Authorization'] = `Bearer ${this.sessionToken}`;
-    if (sensitive && this.pinToken) h['X-Pin-Token'] = this.pinToken;
+    if (sensitive && this.pinToken && !this.isPinTokenExpired()) {
+      h['X-Pin-Token'] = this.pinToken;
+    }
     if (sensitive && this.biometricToken) h['X-Biometric-Token'] = this.biometricToken;
     return h;
   },
@@ -91,7 +167,9 @@ const Auth = {
   async apiForm(path, formData, opts = {}) {
     const h = {};
     if (this.sessionToken) h['Authorization'] = `Bearer ${this.sessionToken}`;
-    if (opts.sensitive && this.pinToken) h['X-Pin-Token'] = this.pinToken;
+    if (opts.sensitive && this.pinToken && !this.isPinTokenExpired()) {
+      h['X-Pin-Token'] = this.pinToken;
+    }
     if (opts.sensitive && this.biometricToken) h['X-Biometric-Token'] = this.biometricToken;
 
     const res = await fetch(path, { method: 'POST', headers: h, body: formData });
@@ -104,8 +182,14 @@ const Auth = {
     return data;
   },
 
+  authPayload(data) {
+    return {
+      sessionExpiresAt: data.session_expires_at,
+      pinTokenExpiresInSeconds: data.expires_in_seconds,
+    };
+  },
+
   async sendRegisterOtp(email) {
-    // Primary endpoint (+ alias supported on server)
     return this.api('POST', '/api/auth/register/send-otp', { email });
   },
 
@@ -117,12 +201,34 @@ const Auth = {
       ...data.user,
       has_pin: Boolean(data.pin_token || pin),
     };
-    this.setSession({ sessionToken: data.sessionToken, user, pinToken: data.pin_token });
+    this.setSession({
+      sessionToken: data.sessionToken,
+      user,
+      pinToken: data.pin_token,
+      ...this.authPayload(data),
+    });
+    this.rememberAuthSuccess(data, email);
     return { ...data, user };
   },
 
   async sendLoginOtp(email) {
     return this.api('POST', '/api/auth/login/send-otp', { email });
+  },
+
+  async loginWithPin(email, pin) {
+    const data = await this.api('POST', '/api/auth/login/pin', { email, pin });
+    const user = {
+      ...data.user,
+      has_pin: data.has_pin ?? Boolean(data.user?.has_pin),
+    };
+    this.setSession({
+      sessionToken: data.sessionToken,
+      user,
+      pinToken: data.pin_token || null,
+      ...this.authPayload(data),
+    });
+    this.rememberAuthSuccess(data, email);
+    return { ...data, user };
   },
 
   async verifyLoginOtp(email, otp) {
@@ -131,18 +237,25 @@ const Auth = {
       ...data.user,
       has_pin: data.has_pin ?? Boolean(data.user?.has_pin),
     };
-    this.setSession({ sessionToken: data.sessionToken, user, pinToken: null });
+    this.setSession({
+      sessionToken: data.sessionToken,
+      user,
+      pinToken: data.pin_token || null,
+      ...this.authPayload(data),
+    });
+    this.rememberAuthSuccess(data, email);
     return { ...data, user };
   },
 
   async verifyPin(pin) {
     const data = await this.api('POST', '/api/auth/pin/verify', { pin });
-    this.setPinToken(data.pin_token);
+    this.setPinToken(data.pin_token, data.expires_in_seconds);
     if (data.has_pin && this.user) {
       this.setSession({
         sessionToken: this.sessionToken,
         user: { ...this.user, has_pin: true },
         pinToken: data.pin_token,
+        pinTokenExpiresInSeconds: data.expires_in_seconds,
       });
     }
     return data;
@@ -150,12 +263,13 @@ const Auth = {
 
   async resetPinToDefault() {
     const data = await this.api('POST', '/api/auth/pin/reset-default', {});
-    this.setPinToken(data.pin_token);
+    this.setPinToken(data.pin_token, data.expires_in_seconds);
     if (this.user) {
       this.setSession({
         sessionToken: this.sessionToken,
         user: { ...this.user, has_pin: true },
         pinToken: data.pin_token,
+        pinTokenExpiresInSeconds: data.expires_in_seconds,
       });
     }
     return data;
@@ -163,12 +277,13 @@ const Auth = {
 
   async setPin(pin) {
     const data = await this.api('POST', '/api/auth/pin/set', { pin, confirm_pin: pin });
-    this.setPinToken(data.pin_token);
+    this.setPinToken(data.pin_token, data.expires_in_seconds);
     if (this.user) {
       this.setSession({
         sessionToken: this.sessionToken,
         user: { ...this.user, has_pin: true },
         pinToken: data.pin_token,
+        pinTokenExpiresInSeconds: data.expires_in_seconds,
       });
     }
     return data;
@@ -185,6 +300,7 @@ const Auth = {
         sessionToken: this.sessionToken,
         user: { ...this.user, has_password: true },
         pinToken: this.pinToken,
+        pinTokenExpiresInSeconds: Math.max(0, Math.floor(((this.pinTokenExpiresAt() || 0) - Date.now()) / 1000)),
       });
     }
     return data;
@@ -206,8 +322,16 @@ const Auth = {
   async biometricLogin(email) {
     const token = this.biometricToken;
     if (!token) throw new Error('Biometrics not set up on this device');
-    const data = await this.api('POST', '/api/auth/biometrics/login', { email, device_token: token });
-    this.setSession({ sessionToken: data.sessionToken, user: data.user, pinToken: data.pin_token });
+    const resolvedEmail = (email || this.getDeviceProfile()?.email || this.user?.email || '').trim();
+    if (!resolvedEmail) throw new Error('Enter your email or log in once to enable biometric login');
+    const data = await this.api('POST', '/api/auth/biometrics/login', { email: resolvedEmail, device_token: token });
+    this.setSession({
+      sessionToken: data.sessionToken,
+      user: data.user,
+      pinToken: data.pin_token,
+      ...this.authPayload(data),
+    });
+    this.rememberAuthSuccess(data, resolvedEmail);
     return data;
   },
 
@@ -216,13 +340,61 @@ const Auth = {
     this.clear();
   },
 
+  hasSavedDevice() {
+    return Boolean(this.getDeviceProfile()?.email);
+  },
+
+  canUseBiometricLogin() {
+    return Boolean(this.biometricToken && this.getDeviceProfile()?.email);
+  },
+
+  initLoginPanel() {
+    const profile = this.getDeviceProfile();
+    const emailInput = document.getElementById('loginEmail');
+    const pinInput = document.getElementById('loginPin');
+    const otpSection = document.getElementById('loginOtpSection');
+    const showOtpBtn = document.getElementById('showOtpLoginBtn');
+    const bioBtn = document.getElementById('bioLoginBtn');
+
+    if (emailInput && profile?.email && !emailInput.value.trim()) {
+      emailInput.value = profile.email;
+    }
+
+    if (otpSection && profile?.email) {
+      otpSection.classList.add('hidden');
+    }
+
+    if (showOtpBtn && otpSection) {
+      showOtpBtn.onclick = () => {
+        otpSection.classList.toggle('hidden');
+        showOtpBtn.textContent = otpSection.classList.contains('hidden')
+          ? 'Use email OTP instead'
+          : 'Back to PIN login';
+      };
+    }
+
+    if (bioBtn) {
+      bioBtn.classList.toggle('hidden', !this.canUseBiometricLogin());
+    }
+
+    pinInput?.focus();
+  },
+
   isLoggedIn() { return Boolean(this.sessionToken); },
 
-  needsPinUnlock() { return this.isLoggedIn() && !this.pinToken; },
+  needsPinUnlock() {
+    return this.isLoggedIn() && (!this.pinToken || this.isPinTokenExpired());
+  },
 
   /** Revalidate stored session on page load; clears stale tokens on 401. */
   async restoreSession() {
     if (!this.sessionToken) return false;
+    if (this.isPinTokenExpired()) {
+      const prev = this.load() || {};
+      delete prev.pinToken;
+      delete prev.pinTokenExpiresAt;
+      this.save(prev);
+    }
     try {
       const data = await this.api('GET', '/api/auth/me');
       if (data?.user) {
@@ -230,13 +402,17 @@ const Auth = {
           sessionToken: this.sessionToken,
           user: data.user,
           pinToken: this.pinToken,
+          pinTokenExpiresInSeconds: Math.max(0, Math.floor(((this.pinTokenExpiresAt() || 0) - Date.now()) / 1000)),
         });
+        this.rememberAuthSuccess({ user: data.user });
         return true;
       }
     } catch (err) {
-      if (err.status === 401 || err.status === 403) {
+      if (err.status === 401 || err.code === 'SESSION_INVALID') {
         console.warn('[Auth] Session expired — clearing stored credentials');
         this.clear();
+      } else {
+        console.warn('[Auth] Session restore skipped (transient error):', err.message);
       }
     }
     return false;

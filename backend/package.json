@@ -8,16 +8,18 @@
     "predev": "node scripts/free-port.js",
     "dev": "node --watch src/index.js",
     "seed": "node src/seed.js",
-    "migrate": "node src/migrate.js"
+    "migrate": "node src/migrate.js",
+    "db:test": "node scripts/test-database.js"
   },
   "dependencies": {
-    "@aws-sdk/client-ses": "^3.1104.0",
+    "@libsql/client": "^0.17.4",
     "@supabase/supabase-js": "^2.112.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "multer": "^2.2.0",
     "node-telegram-bot-api": "^0.66.0",
+    "resend": "^6.18.1",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7"
   }

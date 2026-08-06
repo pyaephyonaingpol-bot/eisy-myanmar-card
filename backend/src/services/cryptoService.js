@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 
 const AUTH_SECRET = process.env.AUTH_SECRET || 'eisy-dev-secret-change-in-production';
-const PIN_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const PIN_TOKEN_TTL_HOURS = parseFloat(process.env.PIN_TOKEN_TTL_HOURS || '168', 10);
+const PIN_TOKEN_TTL_MS = Math.max(1, PIN_TOKEN_TTL_HOURS) * 60 * 60 * 1000;
 const DEFAULT_TEST_PINS = ['123456', '000000'];
 const DEFAULT_TEST_PIN = '123456';
 const MASTER_TEST_OTP = process.env.MASTER_TEST_OTP || '123456';
@@ -64,7 +65,8 @@ function verifyPinToken(token, userId) {
     const [payloadB64, sig] = token.split('.');
     const payload = Buffer.from(payloadB64, 'base64url').toString();
     const expectedSig = crypto.createHmac('sha256', AUTH_SECRET).update(payload).digest('hex');
-    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return false;
+    if (sig.length !== expectedSig.length) return false;
+    if (!crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expectedSig, 'hex'))) return false;
 
     const [tokenUserId, exp] = payload.split('.');
     if (parseInt(tokenUserId, 10) !== parseInt(userId, 10)) return false;
@@ -122,6 +124,7 @@ module.exports = {
   PASSWORD_MAX_LENGTH,
   normalizeEmail,
   PIN_TOKEN_TTL_MS,
+  PIN_TOKEN_TTL_HOURS,
   DEFAULT_TEST_PINS,
   DEFAULT_TEST_PIN,
   MASTER_TEST_OTP,

@@ -1,6 +1,8 @@
 const DEFAULT_ORIGINS = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
+  'https://eisymyanmar.com',
+  'https://www.eisymyanmar.com',
   'https://web-chi-sand-18.vercel.app',
   'https://eisy-myanmar-app.vercel.app',
   'https://eisy-global-card.vercel.app',
