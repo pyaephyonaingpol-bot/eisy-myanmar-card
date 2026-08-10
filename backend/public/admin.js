@@ -155,10 +155,14 @@
             this.openDepositReceiptModal(viewReceipt.dataset.id);
           } else if (approve) {
             e.preventDefault();
-            this.reviewDeposit(approve.dataset.id, 'approve');
+            e.stopPropagation();
+            if (approve.disabled) return;
+            this.reviewDeposit(approve.dataset.id, 'approve', { triggerBtn: approve });
           } else if (reject) {
             e.preventDefault();
-            this.reviewDeposit(reject.dataset.id, 'reject');
+            e.stopPropagation();
+            if (reject.disabled) return;
+            this.reviewDeposit(reject.dataset.id, 'reject', { triggerBtn: reject });
           } else if (proof) {
             e.preventDefault();
             this.openProofLightbox(proof.dataset.src, proof.dataset.caption, proof.dataset.type || 'image');
@@ -171,12 +175,20 @@
         ?.addEventListener('click', () => this.closeDepositReceiptModal());
       $('depositReceiptApprove')?.addEventListener('click', () => {
         if (this.activeDepositReceiptId) {
-          this.reviewDeposit(this.activeDepositReceiptId, 'approve', { closeReceiptModal: true });
+          const btn = $('depositReceiptApprove');
+          this.reviewDeposit(this.activeDepositReceiptId, 'approve', {
+            closeReceiptModal: true,
+            triggerBtn: btn,
+          });
         }
       });
       $('depositReceiptReject')?.addEventListener('click', () => {
         if (this.activeDepositReceiptId) {
-          this.reviewDeposit(this.activeDepositReceiptId, 'reject', { closeReceiptModal: true });
+          const btn = $('depositReceiptReject');
+          this.reviewDeposit(this.activeDepositReceiptId, 'reject', {
+            closeReceiptModal: true,
+            triggerBtn: btn,
+          });
         }
       });
       const depositReceiptImg = $('depositReceiptImg');
@@ -1892,7 +1904,8 @@
       }
     },
 
-    async loadDeposits() {
+    async loadDeposits(options) {
+      options = options || {};
       const table = $('depositsTable');
       if (!table) return;
       table.innerHTML = '<p class="hint">Loading deposits…</p>';
@@ -1902,7 +1915,8 @@
         const filter = (filterEl && filterEl.value) || 'all';
         let deposits = null;
 
-        if (window.SupabaseBridge?.isReady()) {
+        // After approve/reject, force the API so we don't show a stale Supabase row
+        if (!options.forceApi && window.SupabaseBridge?.isReady()) {
           deposits = await window.SupabaseBridge.fetchAdminDeposits({ status: filter });
         }
         if (!deposits) {
@@ -1912,7 +1926,10 @@
         }
 
         this.depositsById = {};
-        deposits.forEach((d) => { this.depositsById[d.id] = d; });
+        deposits.forEach((d) => {
+          this.depositsById[d.id] = d;
+          this.depositsById[String(d.id)] = d;
+        });
 
         if (!deposits.length) {
           table.innerHTML = '<p class="hint">No deposit requests found.</p>';
@@ -1927,7 +1944,7 @@
             '</tr></thead>' +
             '<tbody>' +
             deposits.map((d) => {
-              const pending = ['SUBMITTED', 'UNDER_REVIEW', 'PENDING'].indexOf(d.status) !== -1;
+              const pending = ['SUBMITTED', 'UNDER_REVIEW', 'PENDING'].indexOf(String(d.status || '').toUpperCase()) !== -1;
               return '<tr>' +
                 '<td>' + d.id + '</td>' +
                 '<td>' + this.esc(d.name || d.email || ('User #' + d.user_id)) + '<br><small>#' + d.user_id + '</small></td>' +
@@ -2001,18 +2018,41 @@
 
     async reviewDeposit(id, action, options) {
       options = options || {};
-      const deposit = this.depositsById[id] || this.depositsById[parseInt(id, 10)];
+      const depositId = id != null ? String(id) : '';
+      if (!depositId) {
+        alert('Missing deposit id');
+        return;
+      }
 
-      const note = action === 'reject'
-        ? (prompt('Rejection reason (optional):') || 'Rejected by admin')
-        : (prompt('Admin note (optional):') || 'Approved');
+      const deposit = this.depositsById[depositId]
+        || this.depositsById[parseInt(depositId, 10)]
+        || null;
 
-      if (note === null) return;
+      let note = action === 'reject' ? 'Rejected by admin' : 'Approved';
+      try {
+        const promptMsg = action === 'reject'
+          ? 'Rejection reason (optional):'
+          : 'Admin note (optional):';
+        const promptDefault = action === 'reject' ? 'Rejected by admin' : 'Approved';
+        const entered = window.prompt(promptMsg, promptDefault);
+        if (entered === null) return; // user cancelled
+        note = String(entered).trim() || promptDefault;
+      } catch (promptErr) {
+        // Some WebViews block window.prompt — continue with default note
+        console.warn('[Admin] prompt unavailable, using default note:', promptErr.message);
+      }
+
+      const btn = options.triggerBtn || null;
+      const prevLabel = btn ? btn.textContent : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = action === 'approve' ? 'Approving…' : 'Rejecting…';
+      }
 
       try {
-        console.log('[Admin] reviewDeposit', action, 'id=', id, deposit?.purpose);
+        console.log('[Admin] reviewDeposit', action, 'id=', depositId, deposit?.purpose);
 
-        const data = await this.api('POST', '/api/admin/deposits/' + id + '/review', {
+        const data = await this.api('POST', '/api/admin/deposits/' + encodeURIComponent(depositId) + '/review', {
           action: action,
           admin_note: note,
           rejection_reason: action === 'reject' ? note : undefined,
@@ -2020,8 +2060,9 @@
 
         console.log('[Admin] reviewDeposit result:', data.message, data.card ? 'card=' + data.card.id : '');
 
+        // Prefer API source of truth after mutation (avoids stale Supabase race)
         await Promise.all([
-          this.loadDeposits(),
+          this.loadDeposits({ forceApi: true }),
           this.loadTransactions(),
           this.loadUsers(),
           this.loadPendingCards(),
@@ -2032,15 +2073,26 @@
           this.closeDepositReceiptModal();
         }
 
-        if (action === 'approve' && data.card) {
-          alert('Deposit approved and card activated automatically.');
-        } else if (action === 'approve' && deposit && deposit.purpose === 'card_issuance' && !options.skipIssueForm) {
-          this.fillIssueCardFormFromDeposit(deposit);
-          this.switchTab('cards');
+        if (action === 'approve') {
+          if (data.card) {
+            alert(data.message || 'Deposit approved and card activated automatically.');
+          } else if (deposit && deposit.purpose === 'card_issuance' && !options.skipIssueForm) {
+            alert(data.message || 'Deposit verified. Activate the pending card to complete issuance.');
+            this.fillIssueCardFormFromDeposit(deposit);
+            this.switchTab('cards');
+          } else {
+            alert(data.message || 'Deposit approved and wallet credited.');
+          }
+        } else {
+          alert(data.message || 'Deposit rejected.');
         }
       } catch (err) {
         console.error('[Admin] reviewDeposit failed:', err);
-        alert(err.message);
+        alert(err.message || 'Failed to update deposit');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prevLabel || (action === 'approve' ? 'Approve' : 'Reject');
+        }
       }
     },
 

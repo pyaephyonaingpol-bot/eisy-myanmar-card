@@ -7,7 +7,21 @@ const { notifyAdminDepositVerified } = require('./telegram');
 const { getCardPricingSettings, buildRateSnapshot, parseRecordMetadata } = require('./settingsService');
 const { applyCardTransaction } = require('./cardBalanceService');
 const { formatMmk, formatUsdt } = require('./walletService');
+const { syncUserWalletById, syncDeposit } = require('./supabaseSyncService');
 const { verifyUsdtTransaction } = require('./usdtBlockchainService');
+
+async function syncWalletAndDeposit(userId, depositRow) {
+  try {
+    if (userId) await syncUserWalletById(userId);
+  } catch (err) {
+    console.warn('[deposit] wallet sync failed:', err.message);
+  }
+  try {
+    if (depositRow) await syncDeposit(depositRow);
+  } catch (err) {
+    console.warn('[deposit] deposit re-sync failed:', err.message);
+  }
+}
 
 /** TEMPORARY: skip on-chain verification and auto-approve any USDT TxHash (testing). Set false before production. */
 const BYPASS_USDT_TX_VERIFICATION = true;
@@ -294,6 +308,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
         status: 'VERIFIED',
         adminNote: adminNote || 'Card issuance deposit verified',
         reviewedByAdminId,
+        skipSync: true,
       });
       await dbTxn.run('COMMIT');
     } catch (err) {
@@ -343,6 +358,8 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       }
     }
 
+    await syncWalletAndDeposit(deposit.user_id, updatedDeposit);
+
     return {
       deposit: updatedDeposit,
       user,
@@ -364,6 +381,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
         status: 'VERIFIED',
         adminNote,
         reviewedByAdminId,
+        skipSync: true,
       });
       await db.run('COMMIT');
     } catch (err) {
@@ -409,6 +427,8 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       });
     }
 
+    await syncWalletAndDeposit(deposit.user_id, updatedDeposit);
+
     return {
       deposit: updatedDeposit,
       user: updatedUser,
@@ -428,6 +448,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
         status: 'VERIFIED',
         adminNote,
         reviewedByAdminId,
+        skipSync: true,
       });
 
       await db.run(`
@@ -509,6 +530,8 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       senderPhone: user.phone,
     });
 
+    await syncWalletAndDeposit(deposit.user_id, updatedDeposit);
+
     return { deposit: updatedDeposit, user: updatedUser, alreadyVerified: false, usdt_topup: true };
   }
 
@@ -520,6 +543,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       status: 'VERIFIED',
       adminNote,
       reviewedByAdminId,
+      skipSync: true,
     });
 
     await db.run(`
@@ -576,6 +600,8 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
     txnId: txnId || deposit.kpay_transaction_id,
     senderPhone: user.phone,
   });
+
+  await syncWalletAndDeposit(deposit.user_id, updatedDeposit);
 
   return { deposit: updatedDeposit, user: updatedUser, alreadyVerified: false };
 }

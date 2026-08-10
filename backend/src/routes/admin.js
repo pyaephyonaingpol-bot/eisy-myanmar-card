@@ -240,6 +240,9 @@ router.get('/deposits', async (req, res) => {
 router.post('/deposits/:id/review', async (req, res) => {
   try {
     const depositId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(depositId)) {
+      return res.status(400).json({ error: 'Invalid deposit id' });
+    }
     const { action, admin_note, rejection_reason } = req.body;
 
     const deposit = await DepositRequest.findById(depositId);
@@ -291,15 +294,23 @@ router.post('/deposits/:id/review', async (req, res) => {
         }
       }
 
+      const creditedUser = result.user || null;
       return res.json({
         success: true,
         message: activatedCard
           ? 'Deposit approved and card activated'
           : (result.card_issuance
             ? 'Deposit verified — activate the pending card to complete issuance'
-            : 'Deposit approved and balance credited'),
+            : (result.alreadyVerified
+              ? 'Deposit was already approved'
+              : 'Deposit approved and balance credited')),
         deposit: result.deposit,
-        user: { id: result.user.id, balance: result.user.balance },
+        user: creditedUser ? {
+          id: creditedUser.id,
+          balance_mmk: creditedUser.balance_mmk,
+          balance_usdt: creditedUser.balance_usdt,
+          balance: creditedUser.balance,
+        } : null,
         card: activatedCard,
       });
     }

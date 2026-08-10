@@ -45,7 +45,7 @@ const DepositRequest = {
       purpose, metadata ? JSON.stringify(metadata) : null);
 
     const row = await this.findById(result.lastID);
-    syncDeposit(row).catch((err) => console.warn('[supabase] deposit sync:', err.message));
+    await this._syncDepositSafe(row);
     return row;
   },
 
@@ -73,11 +73,11 @@ const DepositRequest = {
       screenshotMimeType || null, userNote || null, id);
 
     const row = await this.findById(id);
-    syncDeposit(row).catch((err) => console.warn('[supabase] deposit sync:', err.message));
+    await this._syncDepositSafe(row);
     return row;
   },
 
-  async review(id, { status, adminNote, rejectionReason, reviewedByAdminId }) {
+  async review(id, { status, adminNote, rejectionReason, reviewedByAdminId, skipSync = false }) {
     const db = getDb();
     const verifiedAt = status === 'VERIFIED' ? ", verified_at = datetime('now')" : '';
 
@@ -93,8 +93,18 @@ const DepositRequest = {
     `, status, adminNote || null, rejectionReason || null, reviewedByAdminId || null, id);
 
     const row = await this.findById(id);
-    syncDeposit(row).catch((err) => console.warn('[supabase] deposit sync:', err.message));
+    // Skip sync when called inside an open SQL transaction — caller syncs after COMMIT
+    if (!skipSync) await this._syncDepositSafe(row);
     return row;
+  },
+
+  async _syncDepositSafe(row) {
+    if (!row) return;
+    try {
+      await syncDeposit(row);
+    } catch (err) {
+      console.warn('[supabase] deposit sync:', err.message);
+    }
   },
 
   async listPendingReview() {
