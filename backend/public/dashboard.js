@@ -56,7 +56,11 @@ const Dashboard = {
     document.querySelectorAll('[data-goto]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const target = btn.dataset.goto;
-        if (target && typeof AppNav !== 'undefined') AppNav.navigate(target, { pushHash: true });
+        if (!target || typeof AppNav === 'undefined') return;
+        const opts = { pushHash: true };
+        if (btn.dataset.depositTab) opts.depositTab = btn.dataset.depositTab;
+        if (btn.dataset.p2pTab) opts.p2pTab = btn.dataset.p2pTab;
+        AppNav.navigate(target, opts);
       });
     });
 
@@ -129,7 +133,10 @@ const Dashboard = {
     }
     if (page === 'usdt-wallet') this.loadUsdtWalletPage();
     if (page === 'rates') this.renderRatesPage();
-    if (page === 'p2p') this.loadP2pPage();
+    if (page === 'p2p') {
+      if (opts.p2pTab) this.switchP2pTab(opts.p2pTab);
+      this.loadP2pPage();
+    }
     if (page === 'settings') {
       this.loadSupportThreads();
       this.loadKycStatusUI();
@@ -855,17 +862,20 @@ const Dashboard = {
 
   bindP2pMarket() {
     this._p2pTab = 'buy';
-    document.querySelectorAll('[data-p2p-tab]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this._p2pTab = btn.dataset.p2pTab === 'sell' ? 'sell' : 'buy';
-        document.querySelectorAll('[data-p2p-tab]').forEach((b) => {
-          const active = b.dataset.p2pTab === this._p2pTab;
-          b.classList.toggle('is-active', active);
-          b.setAttribute('aria-selected', active ? 'true' : 'false');
-        });
-        this.loadP2pMarket();
-      });
+
+    document.querySelectorAll('.p2p-tab[data-p2p-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => this.switchP2pTab(btn.dataset.p2pTab));
     });
+
+    // Wallet dashboard "Sell USDT / Convert to MMK" shortcuts → P2P Sell tab
+    const openSell = (e) => {
+      e.preventDefault();
+      this.openSellConvertUsdt();
+    };
+    $('btnSellConvertUsdt')?.addEventListener('click', openSell);
+    $('btnSellConvertUsdtPage')?.addEventListener('click', openSell);
+    $('btnSellConvertUsdtQuick')?.addEventListener('click', openSell);
+
     $('p2pNetworkFilter')?.addEventListener('change', () => this.loadP2pMarket());
     $('btnRefreshP2pMarket')?.addEventListener('click', () => this.loadP2pPage());
     $('btnRefreshMyP2pAds')?.addEventListener('click', () => this.loadMyP2pAds());
@@ -923,6 +933,28 @@ const Dashboard = {
       const listing = (this._p2pListings || []).find((l) => l.id === id);
       if (listing) this.startP2pTrade(listing, side);
     });
+  },
+
+  switchP2pTab(tab) {
+    this._p2pTab = tab === 'sell' ? 'sell' : 'buy';
+    document.querySelectorAll('.p2p-tab[data-p2p-tab]').forEach((b) => {
+      const active = b.dataset.p2pTab === this._p2pTab;
+      b.classList.toggle('is-active', active);
+      b.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+  },
+
+  openSellConvertUsdt() {
+    if (!Auth.isLoggedIn()) {
+      this.toast('Sign in to sell USDT / convert to MMK', 'error');
+      return;
+    }
+    if (typeof AppNav !== 'undefined') {
+      AppNav.navigate('p2p', { pushHash: true, p2pTab: 'sell' });
+    } else {
+      this.switchP2pTab('sell');
+      this.loadP2pPage();
+    }
   },
 
   startP2pTrade(listing, side) {
