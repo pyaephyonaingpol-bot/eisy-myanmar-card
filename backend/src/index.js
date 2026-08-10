@@ -31,19 +31,32 @@ app.get('/', (_req, res) => {
   if (!fs.existsSync(INDEX_HTML)) {
     return res.status(500).send(`Dashboard missing. Expected: ${INDEX_HTML}`);
   }
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.sendFile(INDEX_HTML);
 });
 
 app.get('/dashboard', (_req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.sendFile(INDEX_HTML);
 });
 
 app.get('/admin', (_req, res) => {
-  res.set('Cache-Control', 'no-cache');
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.sendFile(path.join(PUBLIC_DIR, 'admin.html'));
 });
 
-app.use(express.static(PUBLIC_DIR));
+app.use(express.static(PUBLIC_DIR, {
+  etag: true,
+  lastModified: true,
+  setHeaders(res, filePath) {
+    if (/\.(html)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    } else if (/\.(js|css)$/i.test(filePath)) {
+      // Versioned via ?v= query in HTML — always revalidate so deploys apply quickly
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  },
+}));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
 app.get('/health', (_req, res) => {

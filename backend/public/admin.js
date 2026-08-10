@@ -548,11 +548,19 @@
       await window.SupabaseBridge.init();
       if (!window.SupabaseBridge.isReady()) return;
       window.SupabaseBridge.subscribeAdmin({
-        onDeposits: () => this.loadDeposits(),
+        onDeposits: () => this.scheduleDepositsRefresh(),
         onCards: () => this.loadPendingCards(),
         onReloads: () => this.loadPendingReloads(),
         onWallets: () => {},
       });
+    },
+
+    scheduleDepositsRefresh() {
+      clearTimeout(this._depositsRefreshTimer);
+      this._depositsRefreshTimer = setTimeout(() => {
+        // Prefer API after realtime events so status changes stick
+        this.loadDeposits({ forceApi: true });
+      }, 350);
     },
 
     onLanguageChange() {
@@ -1908,7 +1916,13 @@
       options = options || {};
       const table = $('depositsTable');
       if (!table) return;
-      table.innerHTML = '<p class="hint">Loading deposits…</p>';
+
+      const hasExistingRows = Boolean(table.querySelector('table.data-table'));
+      if (!hasExistingRows) {
+        table.innerHTML = '<p class="hint">Loading deposits…</p>';
+      } else {
+        table.classList.add('is-refreshing');
+      }
 
       try {
         const filterEl = $('depositFilter');
@@ -1969,6 +1983,8 @@
       } catch (err) {
         console.error('[Admin] loadDeposits:', err);
         table.innerHTML = '<p class="hint" style="color:#ef4444">Failed to load deposits: ' + this.esc(err.message) + '</p>';
+      } finally {
+        table.classList.remove('is-refreshing');
       }
     },
 
