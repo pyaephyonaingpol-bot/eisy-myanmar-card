@@ -864,7 +864,10 @@ const Dashboard = {
     this._p2pTab = 'buy';
 
     document.querySelectorAll('.p2p-tab[data-p2p-tab]').forEach((btn) => {
-      btn.addEventListener('click', () => this.switchP2pTab(btn.dataset.p2pTab));
+      btn.addEventListener('click', () => {
+        this.switchP2pTab(btn.dataset.p2pTab);
+        this.loadP2pMarket();
+      });
     });
 
     // Wallet dashboard "Sell USDT / Convert to MMK" shortcuts → P2P Sell tab
