@@ -15,6 +15,11 @@ sends `net_usdt` from the platform master wallet via TronWeb.
 
 If a manual `tx_hash` is provided, the on-chain send is skipped.
 
+## Admin balance check
+
+`GET /api/admin/master-wallet-balance` returns TRX + USDT for the master address.
+The admin Deposits/Withdrawals tab has a **Check Master Wallet Balance** button that calls this endpoint.
+
 ## Env
 
 | Variable | Required | Notes |
