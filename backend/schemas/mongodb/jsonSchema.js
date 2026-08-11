@@ -9,13 +9,21 @@ const userJsonSchema = {
     required: ['balance'],
     properties: {
       _id: { bsonType: 'objectId' },
+      email: {
+        bsonType: ['string', 'null'],
+        description: 'User email (optional if username set)',
+      },
+      username: {
+        bsonType: ['string', 'null'],
+        description: 'Username (optional if email set)',
+      },
       balance: {
         bsonType: ['double', 'int', 'long', 'decimal'],
         minimum: 0,
-        description: 'Wallet balance — must be >= 0',
+        description: 'Wallet balance — must be >= 0 (default 0)',
       },
-      created_at: { bsonType: 'date' },
-      updated_at: { bsonType: 'date' },
+      createdAt: { bsonType: 'date' },
+      updatedAt: { bsonType: 'date' },
     },
   },
 };
@@ -23,7 +31,7 @@ const userJsonSchema = {
 const transactionJsonSchema = {
   $jsonSchema: {
     bsonType: 'object',
-    required: ['userId', 'type', 'amount', 'status'],
+    required: ['userId', 'type', 'amount', 'currency', 'status'],
     properties: {
       _id: { bsonType: 'objectId' },
       userId: {
@@ -39,16 +47,19 @@ const transactionJsonSchema = {
         exclusiveMinimum: 0,
         description: 'Positive amount',
       },
+      currency: {
+        enum: ['USDT'],
+        description: 'Currency (USDT)',
+      },
       status: {
-        enum: ['pending', 'processing', 'completed', 'failed', 'cancelled'],
+        enum: ['pending', 'completed', 'rejected'],
         description: 'Lifecycle status',
       },
       txId: {
         bsonType: ['string', 'null'],
-        description: 'External transaction / payment id',
+        description: 'Optional manual / blockchain / provider tracking id',
       },
-      created_at: { bsonType: 'date' },
-      updated_at: { bsonType: 'date' },
+      createdAt: { bsonType: 'date' },
     },
   },
 };

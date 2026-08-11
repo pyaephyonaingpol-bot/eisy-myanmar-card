@@ -6,6 +6,7 @@ const DepositRequest = require('./DepositRequest');
 const SupportThread = require('./SupportThread');
 const SupportMessage = require('./SupportMessage');
 const TransactionLog = require('./TransactionLog');
+const Transaction = require('./Transaction');
 
 module.exports = {
   User,
@@ -16,4 +17,5 @@ module.exports = {
   SupportThread,
   SupportMessage,
   TransactionLog,
+  Transaction,
 };

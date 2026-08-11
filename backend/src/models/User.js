@@ -1,7 +1,7 @@
 const { getDb } = require('../db');
 
 const PUBLIC_FIELDS = [
-  'id', 'name', 'phone', 'email', 'email_verified', 'kyc_status', 'balance', 'balance_mmk', 'balance_usdt',
+  'id', 'name', 'phone', 'email', 'username', 'email_verified', 'kyc_status', 'balance', 'balance_mmk', 'balance_usdt',
   'auth_status', 'biometrics_enabled', 'last_login_at', 'created_at', 'updated_at',
 ];
 
@@ -12,6 +12,19 @@ function stripPrivate(user) {
     if (user[key] !== undefined) out[key] = user[key];
   }
   return out;
+}
+
+/** Core wallet User shape: id, email/username, balance, createdAt, updatedAt */
+function toWalletPublic(user) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    username: user.username ?? null,
+    balance: Number(user.balance_usdt ?? user.balance ?? 0),
+    createdAt: user.created_at,
+    updatedAt: user.updated_at,
+  };
 }
 
 const User = {
@@ -25,6 +38,16 @@ const User = {
     const normalized = String(email || '').trim().toLowerCase();
     return db.get(
       'SELECT * FROM users WHERE LOWER(TRIM(email)) = ?',
+      normalized
+    );
+  },
+
+  async findByUsername(username) {
+    const db = getDb();
+    const normalized = String(username || '').trim().toLowerCase();
+    if (!normalized) return null;
+    return db.get(
+      'SELECT * FROM users WHERE LOWER(TRIM(username)) = ?',
       normalized
     );
   },
@@ -98,6 +121,15 @@ const User = {
     return this.findById(userId);
   },
 
+  async updateUsername(userId, username) {
+    const db = getDb();
+    const value = username != null ? String(username).trim() : null;
+    await db.run(`
+      UPDATE users SET username = ?, updated_at = datetime('now') WHERE id = ?
+    `, value || null, userId);
+    return this.findById(userId);
+  },
+
   async recordLogin(userId) {
     const db = getDb();
     await db.run(`
@@ -106,6 +138,7 @@ const User = {
   },
 
   stripPrivate,
+  toWalletPublic,
 };
 
 module.exports = User;
