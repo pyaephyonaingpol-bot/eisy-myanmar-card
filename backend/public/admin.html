@@ -532,8 +532,9 @@
             <input id="settingMmkWithdrawFeePercent" type="number" step="0.01" min="0" max="20" required />
           </div>
           <div class="field" style="grid-column:1/-1">
-            <label for="settingUsdtTrc20">USDT Deposit Address (TRC20)</label>
-            <input id="settingUsdtTrc20" type="text" placeholder="T..." />
+            <label for="settingUsdtTrc20">USDT Deposit Address (TRC20) — legacy fallback</label>
+            <input id="settingUsdtTrc20" type="text" placeholder="T... (overridden by MASTER_WALLET_ADDRESS when set)" />
+            <small class="hint">Live deposits use <code>MASTER_WALLET_ADDRESS</code> / master private key. This field is a fallback only.</small>
           </div>
           <div class="field" style="grid-column:1/-1">
             <label for="settingUsdtBep20">USDT Deposit Address (BEP20)</label>
@@ -550,6 +551,45 @@
           <button type="submit" class="btn btn-primary">Save Rate &amp; Pricing</button>
         </form>
         <pre class="output" id="adminSettingsOut"></pre>
+
+        <h2 style="margin-top:2rem">Deposit Bank Accounts (MMK)</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Manage bank / KPay / WavePay accounts shown on the user Deposit page. Changes appear immediately for users.</p>
+        <form id="adminPaymentMethodForm" class="form grid-admin-form" style="max-width:720px;margin-bottom:1rem">
+          <input type="hidden" id="pmEditId" value="" />
+          <div class="field">
+            <label for="pmBankName">Bank Name</label>
+            <input id="pmBankName" type="text" placeholder="KBZPay / WavePay / AYA Bank" required />
+          </div>
+          <div class="field">
+            <label for="pmAccountName">Account Name</label>
+            <input id="pmAccountName" type="text" placeholder="Eisy Myanmar" required />
+          </div>
+          <div class="field">
+            <label for="pmAccountNumber">Account Number</label>
+            <input id="pmAccountNumber" type="text" placeholder="09xxxxxxxx" required />
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label for="pmQrUrl">QR Code Image URL</label>
+            <input id="pmQrUrl" type="url" placeholder="https://…/qr.png or /assets/qr/kbz.png" />
+            <small class="hint">Optional. If empty, the deposit page generates a QR from the account number.</small>
+          </div>
+          <div class="field">
+            <label for="pmSortOrder">Sort Order</label>
+            <input id="pmSortOrder" type="number" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label for="pmActive">Active</label>
+            <select id="pmActive">
+              <option value="1" selected>Active</option>
+              <option value="0">Hidden</option>
+            </select>
+          </div>
+          <div class="field" style="display:flex;gap:0.5rem;align-items:end">
+            <button type="submit" class="btn btn-primary" id="pmSubmitBtn">Add Bank Account</button>
+            <button type="button" class="btn btn-secondary" id="pmResetBtn">Clear</button>
+          </div>
+        </form>
+        <div id="adminPaymentMethodsTable" class="data-table-wrap"><p class="hint">Loading bank accounts…</p></div>
 
         <h2 style="margin-top:2rem">Exchange Rate History</h2>
         <p class="hint" style="margin-bottom:0.75rem">Historical log of all rate and fee updates. Deposits store the rate active at request time.</p>

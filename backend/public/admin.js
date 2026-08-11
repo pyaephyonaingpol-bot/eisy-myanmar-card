@@ -111,6 +111,7 @@
       if (name === 'settings') {
         this.loadSettings();
         this.loadExchangeRateHistory();
+        this.loadPaymentMethods();
       }
       if (name === 'kyc-requests') {
         this.loadKycRequests();
@@ -147,6 +148,23 @@
       $('usdtWithdrawalFilter')?.addEventListener('change', () => this.loadUsdtWithdrawals());
       $('mmkWithdrawalFilter')?.addEventListener('change', () => this.loadMmkWithdrawals());
       $('btnCheckMasterWallet')?.addEventListener('click', () => this.checkMasterWalletBalance());
+
+      $('adminPaymentMethodForm')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.savePaymentMethod();
+      });
+      $('pmResetBtn')?.addEventListener('click', () => this.resetPaymentMethodForm());
+      $('adminPaymentMethodsTable')?.addEventListener('click', (e) => {
+        const editBtn = e.target.closest('[data-action="edit-payment-method"]');
+        const delBtn = e.target.closest('[data-action="delete-payment-method"]');
+        if (editBtn) {
+          this.editPaymentMethod(parseInt(editBtn.dataset.id, 10));
+          return;
+        }
+        if (delBtn) {
+          this.deletePaymentMethod(parseInt(delBtn.dataset.id, 10));
+        }
+      });
 
       const usdtWdTable = $('usdtWithdrawalsTable');
       if (usdtWdTable) {
@@ -2076,6 +2094,105 @@
         return '<span class="deposit-purpose-badge usdt">USDT Top-Up</span>';
       }
       return '<span class="deposit-purpose-badge wallet">MMK Top-up</span>';
+    },
+
+    async loadPaymentMethods() {
+      const table = $('adminPaymentMethodsTable');
+      if (!table) return;
+      try {
+        const data = await this.api('GET', '/api/admin/payment-methods');
+        this._paymentMethods = Array.isArray(data.payment_methods) ? data.payment_methods : [];
+        const rows = this._paymentMethods;
+        if (!rows.length) {
+          table.innerHTML = '<p class="hint">No bank accounts yet. Add one above.</p>';
+          return;
+        }
+        table.innerHTML =
+          '<table class="data-table"><thead><tr>' +
+            '<th>ID</th><th>Bank</th><th>Account Name</th><th>Account Number</th><th>QR</th><th>Status</th><th>Order</th><th>Actions</th>' +
+          '</tr></thead><tbody>' +
+          rows.map((m) => {
+            const qr = m.qr_code_image_url
+              ? '<a href="' + this.esc(m.qr_code_image_url) + '" target="_blank" rel="noopener">View</a>'
+              : '—';
+            return '<tr>' +
+              '<td>' + m.id + '</td>' +
+              '<td>' + this.esc(m.bank_name) + '</td>' +
+              '<td>' + this.esc(m.account_name) + '</td>' +
+              '<td><code>' + this.esc(m.account_number) + '</code></td>' +
+              '<td>' + qr + '</td>' +
+              '<td>' + (m.is_active ? this.statusBadge('active') : this.statusBadge('hidden')) + '</td>' +
+              '<td>' + (m.sort_order ?? 0) + '</td>' +
+              '<td class="actions-cell">' +
+                '<button type="button" class="btn btn-sm btn-secondary" data-action="edit-payment-method" data-id="' + m.id + '">Edit</button>' +
+                '<button type="button" class="btn btn-sm btn-reject" data-action="delete-payment-method" data-id="' + m.id + '">Delete</button>' +
+              '</td></tr>';
+          }).join('') +
+          '</tbody></table>';
+      } catch (err) {
+        table.innerHTML = '<p class="hint" style="color:#ef4444">Failed to load bank accounts: ' + this.esc(err.message) + '</p>';
+      }
+    },
+
+    resetPaymentMethodForm() {
+      if ($('pmEditId')) $('pmEditId').value = '';
+      if ($('pmBankName')) $('pmBankName').value = '';
+      if ($('pmAccountName')) $('pmAccountName').value = '';
+      if ($('pmAccountNumber')) $('pmAccountNumber').value = '';
+      if ($('pmQrUrl')) $('pmQrUrl').value = '';
+      if ($('pmSortOrder')) $('pmSortOrder').value = '0';
+      if ($('pmActive')) $('pmActive').value = '1';
+      if ($('pmSubmitBtn')) $('pmSubmitBtn').textContent = 'Add Bank Account';
+    },
+
+    editPaymentMethod(id) {
+      const row = (this._paymentMethods || []).find((m) => Number(m.id) === Number(id));
+      if (!row) return;
+      if ($('pmEditId')) $('pmEditId').value = String(row.id);
+      if ($('pmBankName')) $('pmBankName').value = row.bank_name || '';
+      if ($('pmAccountName')) $('pmAccountName').value = row.account_name || '';
+      if ($('pmAccountNumber')) $('pmAccountNumber').value = row.account_number || '';
+      if ($('pmQrUrl')) $('pmQrUrl').value = row.qr_code_image_url || '';
+      if ($('pmSortOrder')) $('pmSortOrder').value = String(row.sort_order ?? 0);
+      if ($('pmActive')) $('pmActive').value = row.is_active ? '1' : '0';
+      if ($('pmSubmitBtn')) $('pmSubmitBtn').textContent = 'Update Bank Account';
+      $('adminPaymentMethodForm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+
+    async savePaymentMethod() {
+      const id = ($('pmEditId')?.value || '').trim();
+      const body = {
+        bank_name: $('pmBankName')?.value?.trim(),
+        account_name: $('pmAccountName')?.value?.trim(),
+        account_number: $('pmAccountNumber')?.value?.trim(),
+        qr_code_image_url: $('pmQrUrl')?.value?.trim() || null,
+        sort_order: parseInt($('pmSortOrder')?.value || '0', 10) || 0,
+        is_active: ($('pmActive')?.value || '1') === '1',
+      };
+      try {
+        if (id) {
+          await this.api('PUT', '/api/admin/payment-methods/' + encodeURIComponent(id), body);
+        } else {
+          await this.api('POST', '/api/admin/payment-methods', body);
+        }
+        this.resetPaymentMethodForm();
+        await this.loadPaymentMethods();
+        alert(id ? 'Bank account updated' : 'Bank account added');
+      } catch (err) {
+        alert(err.message || 'Failed to save bank account');
+      }
+    },
+
+    async deletePaymentMethod(id) {
+      if (!id) return;
+      if (!confirm('Delete this bank account from the deposit page?')) return;
+      try {
+        await this.api('DELETE', '/api/admin/payment-methods/' + encodeURIComponent(id));
+        if (String($('pmEditId')?.value || '') === String(id)) this.resetPaymentMethodForm();
+        await this.loadPaymentMethods();
+      } catch (err) {
+        alert(err.message || 'Failed to delete bank account');
+      }
     },
 
     async loadSettings() {

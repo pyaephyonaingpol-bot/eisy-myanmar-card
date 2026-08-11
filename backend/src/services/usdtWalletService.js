@@ -44,7 +44,14 @@ function validateWalletAddress(network, address) {
 }
 
 function platformAddressForNetwork(settings, network) {
-  if (network === 'TRC20') return settings.usdt_trc20_address || null;
+  if (network === 'TRC20') {
+    try {
+      const { getMasterWalletAddress } = require('./tronMasterWalletService');
+      return getMasterWalletAddress() || settings.usdt_trc20_address || null;
+    } catch (_) {
+      return settings.usdt_trc20_address || null;
+    }
+  }
   if (network === 'BEP20') return settings.usdt_bep20_address || null;
   if (network === 'ERC20') return settings.usdt_erc20_address || null;
   return null;

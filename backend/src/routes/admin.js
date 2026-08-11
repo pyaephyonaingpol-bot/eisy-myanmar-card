@@ -217,6 +217,59 @@ router.put('/settings', async (req, res) => {
   }
 });
 
+// ─── Deposit payment methods (MMK / bank accounts) ───
+const {
+  listPaymentMethods,
+  createPaymentMethod,
+  updatePaymentMethod,
+  deletePaymentMethod,
+} = require('../services/depositPaymentMethodService');
+
+router.get('/payment-methods', async (req, res) => {
+  try {
+    const activeOnly = String(req.query.active || '') === '1';
+    const methods = await listPaymentMethods({ activeOnly });
+    res.json({ payment_methods: methods });
+  } catch (err) {
+    console.error('[admin/payment-methods GET]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/payment-methods', async (req, res) => {
+  try {
+    const method = await createPaymentMethod(req.body || {});
+    res.status(201).json({ success: true, payment_method: method });
+  } catch (err) {
+    console.error('[admin/payment-methods POST]', err);
+    res.status(400).json({ error: err.message || 'Failed to create payment method' });
+  }
+});
+
+router.put('/payment-methods/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const method = await updatePaymentMethod(id, req.body || {});
+    res.json({ success: true, payment_method: method });
+  } catch (err) {
+    console.error('[admin/payment-methods PUT]', err);
+    const status = err.code === 'NOT_FOUND' ? 404 : 400;
+    res.status(status).json({ error: err.message || 'Failed to update payment method' });
+  }
+});
+
+router.delete('/payment-methods/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const method = await deletePaymentMethod(id);
+    res.json({ success: true, payment_method: method });
+  } catch (err) {
+    console.error('[admin/payment-methods DELETE]', err);
+    const status = err.code === 'NOT_FOUND' ? 404 : 400;
+    res.status(status).json({ error: err.message || 'Failed to delete payment method' });
+  }
+});
+
 router.get('/exchange-rate-history', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit, 10) || 100;

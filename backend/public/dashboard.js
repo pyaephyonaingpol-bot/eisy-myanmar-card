@@ -894,6 +894,85 @@ const Dashboard = {
     $('usdtAddressBox')?.classList.remove('hidden');
   },
 
+  async loadDepositPaymentMethods() {
+    const select = $('paymentMethod');
+    if (!select) return;
+    try {
+      const data = await Auth.api('GET', '/api/deposit/payment-methods');
+      this._depositPaymentMethods = Array.isArray(data.payment_methods) ? data.payment_methods : [];
+      this._usdtMasterDeposit = data.usdt || null;
+
+      if (!this._depositPaymentMethods.length) {
+        select.innerHTML = '<option value="">No bank accounts configured — contact support</option>';
+        this.renderMmkPaymentDetails(null);
+      } else {
+        select.innerHTML = this._depositPaymentMethods.map((m) =>
+          `<option value="${m.id}">${this.esc(m.bank_name)} — ${this.esc(m.account_name)}</option>`
+        ).join('');
+        this.renderMmkPaymentDetails(this._depositPaymentMethods[0]);
+      }
+
+      // Prefill TRC20 master wallet address for USDT deposits
+      if (this._usdtMasterDeposit?.address && ($('usdtNetwork')?.value || 'TRC20') === 'TRC20') {
+        this.showUsdtDepositAddress('TRC20', this._usdtMasterDeposit.address);
+        if ($('usdtMerchantName')) {
+          $('usdtMerchantName').textContent = this._usdtMasterDeposit.label || 'Master wallet (TRC20)';
+          $('usdtMerchantName').classList.remove('hidden');
+        }
+      }
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED' || err.status === 401) {
+        select.innerHTML = '<option value="">Sign in to load payment methods</option>';
+        return;
+      }
+      select.innerHTML = '<option value="">Failed to load payment methods</option>';
+      console.warn('[deposit] payment-methods', err.message);
+    }
+  },
+
+  renderMmkPaymentDetails(method) {
+    const box = $('mmkPaymentMethodDetails');
+    if (!box) return;
+    if (!method) {
+      box.classList.add('hidden');
+      return;
+    }
+    box.classList.remove('hidden');
+    if ($('mmkPayBankName')) $('mmkPayBankName').textContent = method.bank_name || '—';
+    if ($('mmkPayAccountName')) $('mmkPayAccountName').textContent = method.account_name || '—';
+    if ($('mmkPayAccountNumber')) $('mmkPayAccountNumber').textContent = method.account_number || '—';
+    const qr = $('mmkPayQrImg');
+    if (qr) {
+      const qrUrl = method.qr_code_image_url
+        || method.qr_code_url
+        || (method.account_number
+          ? `/api/qr?size=180&data=${encodeURIComponent(method.account_number)}`
+          : '');
+      if (qrUrl) {
+        qr.src = qrUrl;
+        qr.classList.remove('hidden');
+        qr.onerror = () => {
+          if (method.account_number) {
+            qr.src = `/api/qr?size=180&data=${encodeURIComponent(method.account_number)}`;
+          } else {
+            qr.classList.add('hidden');
+          }
+        };
+      } else {
+        qr.classList.add('hidden');
+        qr.removeAttribute('src');
+      }
+    }
+  },
+
+  esc(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  },
+
   bindP2pMarket() {
     this._p2pTab = 'buy';
 
@@ -3595,20 +3674,27 @@ const Dashboard = {
     $('depositForm').onsubmit = async (e) => {
       e.preventDefault();
       try {
+        const methodId = $('paymentMethod')?.value;
+        if (!methodId) {
+          this.toast('Select a bank payment method', 'error');
+          return;
+        }
         const data = await Auth.api('POST', '/api/deposit/request', {
           deposit_type: 'mmk',
           amount_mmk: parseFloat($('amountMmk').value),
-          payment_method: $('paymentMethod').value,
+          payment_method_id: parseInt(methodId, 10),
         }, { sensitive: true });
         $('refCodeBox').classList.remove('hidden');
         $('refCodeDisplay').textContent = data.deposit.ref_code;
-        $('verifyRef').value = data.deposit.ref_code;
-        $('verifyAmount').value = data.deposit.amount_mmk;
+        if ($('verifyRef')) $('verifyRef').value = data.deposit.ref_code;
+        if ($('verifyAmount')) $('verifyAmount').value = data.deposit.amount_mmk;
         $('activeDepositId').value = data.deposit.id;
         $('depositSubmitForm').classList.remove('hidden');
         this.clearDepositScreenshotPreview();
         this.renderDepositReceiptSummary(data.deposit, data.pricing_breakdown);
-        $('depositStatus').textContent = 'Send payment via KBZPay/WavePay, then submit your transaction ID.';
+        this.renderMmkPaymentDetails(data.payment_method || data.payment_instructions);
+        const bank = data.payment_instructions?.bank_name || data.payment_method?.bank_name || 'bank';
+        $('depositStatus').textContent = `Send payment to ${bank}, include ref ${data.deposit.ref_code}, then submit your transaction ID.`;
         this.toast(`Ref code generated: ${data.deposit.ref_code}`, 'ok');
         this.startPolling(data.deposit.ref_code);
         this.log(`Deposit requested: ${data.deposit.ref_code}`, 'ok');
@@ -3684,6 +3770,18 @@ const Dashboard = {
     this.bindP2pSellModal();
     this.bindP2pPostAdModal();
     this.bindKycModal();
+    this.loadDepositPaymentMethods();
+
+    $('paymentMethod')?.addEventListener('change', () => {
+      const id = parseInt($('paymentMethod').value, 10);
+      const method = (this._depositPaymentMethods || []).find((m) => Number(m.id) === id);
+      this.renderMmkPaymentDetails(method);
+    });
+    $('btnCopyMmkAccount')?.addEventListener('click', () => {
+      const num = $('mmkPayAccountNumber')?.textContent?.trim();
+      if (!num || num === '—') return;
+      navigator.clipboard.writeText(num).then(() => this.toast('Account number copied', 'ok'));
+    });
 
     $('btnLoadTx')?.addEventListener('click', () => this.loadTransactions());
     $('btnLoadDeposits')?.addEventListener('click', () => this.loadDepositHistory());
@@ -3744,6 +3842,7 @@ const Dashboard = {
       this.loadDepositHistory();
       this.loadCardPricing();
       this.loadWithdrawalFees();
+      this.loadDepositPaymentMethods();
       this.updateHomeRateSummary();
       this.populateReloadCardSelect();
       this.loadKycStatus();

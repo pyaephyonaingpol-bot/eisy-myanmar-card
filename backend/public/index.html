@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eisy Myanmar</title>
-  <link rel="stylesheet" href="/styles.css?v=20260811d" />
+  <link rel="stylesheet" href="/styles.css?v=20260811e" />
   <link rel="icon" href="/assets/qr/placeholder-deposit.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -1076,15 +1076,24 @@
 
                 <div id="depositMmkPanel" class="deposit-tab-panel">
                 <p class="wallet-restriction-note" style="margin-bottom:0.5rem" data-i18n="mmk_wallet_restriction">MMK wallet funds are for virtual card issuance and card reloads only.</p>
-                <p class="hint" style="margin-bottom:0.75rem" data-i18n="deposit_mmk_hint">Top up via KBZPay or WavePay. Upload transaction proof &amp; TxID after payment.</p>
+                <p class="hint" style="margin-bottom:0.75rem" data-i18n="deposit_mmk_hint">Top up via an admin-managed bank / KPay / WavePay account. Upload transaction proof &amp; TxID after payment.</p>
                 <form id="depositForm" class="form">
                   <div class="field"><label data-i18n="amount_mmk">Amount (MMK)</label><input id="amountMmk" type="number" placeholder="50000" /></div>
-                  <div class="field"><label data-i18n="method">Method</label>
-                    <select id="paymentMethod">
-                      <option>KBZPay</option>
-                      <option>WavePay</option>
-                      <option>KPay</option>
+                  <div class="field"><label data-i18n="method">Bank / Payment Method</label>
+                    <select id="paymentMethod" required>
+                      <option value="">Loading payment methods…</option>
                     </select>
+                  </div>
+                  <div id="mmkPaymentMethodDetails" class="usdt-address-box hidden" style="margin-bottom:0.75rem">
+                    <p class="usdt-network-label">Pay to <strong id="mmkPayBankName">—</strong></p>
+                    <img id="mmkPayQrImg" class="usdt-qr hidden" alt="Bank payment QR code" width="180" height="180" />
+                    <div class="usdt-address-display">
+                      <span class="usdt-address-label">Account Name</span>
+                      <code id="mmkPayAccountName" class="usdt-address-code">—</code>
+                      <span class="usdt-address-label">Account Number</span>
+                      <code id="mmkPayAccountNumber" class="usdt-address-code">—</code>
+                      <button type="button" id="btnCopyMmkAccount" class="btn btn-secondary btn-sm usdt-copy-btn">Copy Account Number</button>
+                    </div>
                   </div>
                   <div id="mmkDepositFeePreview" class="reload-preview-box" style="margin-bottom:0.75rem">
                     <h4>Deposit Fee Preview</h4>
@@ -1373,12 +1382,12 @@
     </div>
   </div>
 
-  <script src="/api-config.js?v=20260811d"></script>
-  <script type="module" src="/supabaseBridge.js?v=20260811d"></script>
+  <script src="/api-config.js?v=20260811e"></script>
+  <script type="module" src="/supabaseBridge.js?v=20260811e"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260811d"></script>
-  <script src="/auth.js?v=20260811d"></script>
-  <script src="/nav.js?v=20260811d"></script>
-  <script src="/dashboard.js?v=20260811d"></script>
+  <script src="/i18n.js?v=20260811e"></script>
+  <script src="/auth.js?v=20260811e"></script>
+  <script src="/nav.js?v=20260811e"></script>
+  <script src="/dashboard.js?v=20260811e"></script>
 </body>
 </html>

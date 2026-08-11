@@ -18,6 +18,8 @@ const { enrichDeposit } = require('../services/depositEnrichment');
 const { walletPayload } = require('../services/walletService');
 const { getUsdtDepositSettings } = require('../services/settingsService');
 const { createBinancePayDeposit } = require('../services/binanceDepositService');
+const { listPaymentMethods, getPaymentMethod } = require('../services/depositPaymentMethodService');
+const { getMasterWalletAddress } = require('../services/tronMasterWalletService');
 
 const router = express.Router();
 
@@ -100,22 +102,42 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
       });
     }
 
-    const { amount_mmk, payment_method, purpose } = req.body;
+    const { amount_mmk, payment_method, purpose, payment_method_id } = req.body;
 
     if (!amount_mmk || amount_mmk <= 0) {
       return res.status(400).json({ error: 'Positive amount_mmk is required' });
     }
 
-    const method = payment_method || 'KBZPay';
-    if (!['KBZPay', 'WavePay', 'KPay', 'Other'].includes(method)) {
-      return res.status(400).json({ error: 'Invalid payment_method' });
+    let methodRow = null;
+    if (payment_method_id) {
+      methodRow = await getPaymentMethod(parseInt(payment_method_id, 10));
+      if (!methodRow || !methodRow.is_active) {
+        return res.status(400).json({ error: 'Selected bank payment method is not available' });
+      }
+    } else {
+      const active = await listPaymentMethods({ activeOnly: true });
+      methodRow = active.find((m) => m.bank_name === payment_method) || active[0] || null;
     }
 
+    if (!methodRow) {
+      return res.status(400).json({
+        error: 'No active bank payment methods configured. Please contact support.',
+      });
+    }
+
+    const method = methodRow.bank_name;
     const deposit = await createDepositRequest(userId, {
       amount_mmk,
       payment_method: method,
       purpose: purpose || 'topup',
-      metadata: req.body.metadata,
+      metadata: {
+        ...(req.body.metadata || {}),
+        payment_method_id: methodRow.id,
+        bank_name: methodRow.bank_name,
+        account_name: methodRow.account_name,
+        account_number: methodRow.account_number,
+        qr_code_image_url: methodRow.qr_code_image_url,
+      },
     });
 
     const rate = await getExchangeRate();
@@ -126,14 +148,17 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
       success: true,
       deposit: enriched,
       fee_breakdown: feeInfo || null,
+      payment_method: methodRow,
       payment_instructions: {
-        message: `Send exactly ${Number(amount_mmk).toLocaleString()} MMK via ${deposit.payment_method}`,
+        message: `Send exactly ${Number(amount_mmk).toLocaleString()} MMK to the ${methodRow.bank_name} account below`,
         ref_code: deposit.ref_code,
-        note: purpose === 'topup' || !purpose
-          ? `Include reference code ${deposit.ref_code}. Service fee is max(2%, min $1 MMK-equivalent); net credit after approval.`
-          : `Include reference code ${deposit.ref_code} in the payment note/description`,
-        kbzpay: 'Transfer to Eisy Myanmar KBZPay account, then submit your transaction ID below.',
-        wavepay: 'Transfer to Eisy Myanmar WavePay account, then submit your transaction ID below.',
+        note: `Include reference code ${deposit.ref_code} in the payment note/description`,
+        bank_name: methodRow.bank_name,
+        account_name: methodRow.account_name,
+        account_number: methodRow.account_number,
+        qr_code_image_url: methodRow.qr_code_image_url,
+        qr_code_url: methodRow.qr_code_image_url
+          || `/api/qr?size=200&data=${encodeURIComponent(methodRow.account_number)}`,
       },
       rate,
     });
@@ -145,6 +170,8 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
       || msg.includes('Positive')
       || msg.includes('network must be')
       || msg.includes('Invalid')
+      || msg.includes('not available')
+      || msg.includes('No active bank')
       || err.code === 'SQLITE_CONSTRAINT'
     ) {
       return res.status(400).json({
@@ -302,14 +329,54 @@ router.post('/submit', requireAuth, requireSensitive, (req, res, next) => {
   }
 });
 
+router.get('/payment-methods', requireAuth, async (_req, res) => {
+  try {
+    const methods = await listPaymentMethods({ activeOnly: true });
+    let masterWalletAddress = null;
+    try {
+      masterWalletAddress = getMasterWalletAddress();
+    } catch (_) {
+      masterWalletAddress = null;
+    }
+    res.json({
+      payment_methods: methods,
+      usdt: {
+        network: 'TRC20',
+        address: masterWalletAddress,
+        qr_code_url: masterWalletAddress
+          ? `/api/qr?size=180&data=${encodeURIComponent(masterWalletAddress)}`
+          : null,
+        label: 'Master wallet (TRC20 USDT)',
+      },
+    });
+  } catch (err) {
+    console.error('[deposit/payment-methods]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.get('/usdt-addresses', requireAuth, async (_req, res) => {
   try {
     const settings = await getUsdtDepositSettings();
+    let masterWalletAddress = null;
+    try {
+      masterWalletAddress = getMasterWalletAddress();
+    } catch (_) {
+      masterWalletAddress = settings.usdt_trc20_address || null;
+    }
     res.json({
       networks: [
-        { id: 'TRC20', label: 'TRC20 (Tron)', address: settings.usdt_trc20_address },
+        {
+          id: 'TRC20',
+          label: 'TRC20 (Tron) — Master Wallet',
+          address: masterWalletAddress,
+          qr_code_url: masterWalletAddress
+            ? `/api/qr?size=180&data=${encodeURIComponent(masterWalletAddress)}`
+            : null,
+        },
         { id: 'BEP20', label: 'BEP20 (BSC)', address: settings.usdt_bep20_address },
       ],
+      master_wallet_address: masterWalletAddress,
       minimum_usdt_deposit: settings.minimum_usdt_deposit,
     });
   } catch (err) {

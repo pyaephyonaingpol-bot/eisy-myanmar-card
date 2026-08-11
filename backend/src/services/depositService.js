@@ -157,7 +157,18 @@ async function createUsdtDepositRequest(userId, {
 
   const depositAddress = net === 'BEP20'
     ? settings.usdt_bep20_address
-    : settings.usdt_trc20_address;
+    : (() => {
+      try {
+        const { getMasterWalletAddress } = require('./tronMasterWalletService');
+        return getMasterWalletAddress();
+      } catch (_) {
+        return settings.usdt_trc20_address;
+      }
+    })();
+
+  if (!depositAddress) {
+    throw new Error('USDT deposit address is not configured');
+  }
 
   const refCode = await uniqueRefCode();
   const grossAmount = feeBreakdown.amount_usdt;

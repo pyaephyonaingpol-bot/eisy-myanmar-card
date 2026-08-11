@@ -216,11 +216,30 @@ async function transferUsdtTrc20({ toAddress, amountUsdt }) {
   };
 }
 
-/** Read-only helper for health / diagnostics (never returns the private key). */
-async function getMasterWalletInfo() {
+/** Prefer explicit MASTER_WALLET_ADDRESS; otherwise derive from MASTER_PRIVATE_KEY. */
+function getMasterWalletAddress() {
+  const configured = String(process.env.MASTER_WALLET_ADDRESS || '').trim();
+  if (configured) {
+    return configured;
+  }
   const privateKey = getMasterPrivateKey();
   const tronWeb = createTronWeb(privateKey);
-  const address = getMasterAddress(tronWeb, privateKey);
+  return getMasterAddress(tronWeb, privateKey);
+}
+
+/** Read-only helper for health / diagnostics (never returns the private key). */
+async function getMasterWalletInfo() {
+  const address = getMasterWalletAddress();
+  let tronWeb;
+  try {
+    tronWeb = createTronWeb(getMasterPrivateKey());
+  } catch (_) {
+    const headers = {};
+    const apiKey = process.env.TRONGRID_API_KEY || process.env.TRON_PRO_API_KEY;
+    if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
+    tronWeb = new TronWeb({ fullHost: TRON_FULL_HOST, headers });
+    tronWeb.setAddress(address);
+  }
   const usdt = await getUsdtBalance(tronWeb, address);
   const trxSun = await getTrxBalanceSun(tronWeb, address);
   return {
@@ -234,6 +253,7 @@ async function getMasterWalletInfo() {
 module.exports = {
   USDT_TRC20_CONTRACT,
   getMasterPrivateKey,
+  getMasterWalletAddress,
   usdtToSun,
   sunToUsdt,
   transferUsdtTrc20,
