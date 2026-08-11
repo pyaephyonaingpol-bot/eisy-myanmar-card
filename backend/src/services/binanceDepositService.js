@@ -12,10 +12,12 @@ const {
   parseWebhookEvent,
   verifyWebhookSignature,
   queryBinancePayOrder,
+  getCredentials,
 } = require('./binancePayService');
 const { creditDepositAndVerify, uniqueRefCode } = require('./depositService');
 const { formatUsdt } = require('./walletService');
 const { enrichDeposit } = require('./depositEnrichment');
+const { joinPublicUrl } = require('../lib/publicUrl');
 
 function generateMerchantTradeNo(userId) {
   const suffix = crypto.randomBytes(4).toString('hex').toUpperCase();
@@ -71,15 +73,15 @@ async function createBinancePayDeposit(userId, {
 
   const merchantTradeNo = generateMerchantTradeNo(userId);
   const refCode = await uniqueRefCode();
+  const { merchantId } = getCredentials();
   const webhookUrl = process.env.BINANCE_PAY_WEBHOOK_URL
-    || (process.env.PUBLIC_BASE_URL
-      ? `${String(process.env.PUBLIC_BASE_URL).replace(/\/$/, '')}/api/webhook/binance`
-      : undefined);
+    || joinPublicUrl('/api/webhook/binance');
 
   const metadata = {
     deposit_currency: 'USDT',
     deposit_channel: 'binance_pay',
     payment_provider: 'binance_pay',
+    binance_merchant_id: merchantId || null,
     binance_merchant_trade_no: merchantTradeNo,
     merchantTradeNo,
     amount_usdt: feeBreakdown.amount_usdt,
@@ -150,8 +152,8 @@ async function createBinancePayDeposit(userId, {
       description: description || `Eisy Myanmar deposit ${refCode}`,
       goodsName: 'USDT Wallet Deposit',
       terminalType,
-      returnUrl: returnUrl || process.env.BINANCE_PAY_RETURN_URL,
-      cancelUrl: cancelUrl || process.env.BINANCE_PAY_CANCEL_URL,
+      returnUrl: returnUrl || process.env.BINANCE_PAY_RETURN_URL || joinPublicUrl('/#deposits'),
+      cancelUrl: cancelUrl || process.env.BINANCE_PAY_CANCEL_URL || joinPublicUrl('/#deposits'),
       webhookUrl,
     });
   } catch (err) {

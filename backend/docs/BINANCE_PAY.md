@@ -31,7 +31,19 @@ Response includes `checkout_url`, `qrcode_link`, and `fee_breakdown`.
 
 ## Environment
 
-See `backend/.env.example` for `BINANCE_PAY_*` variables.
+Set on **Vercel → Settings → Environment Variables**:
+
+| Key | Required |
+|-----|----------|
+| `BINANCE_API_KEY` | yes |
+| `BINANCE_SECRET_KEY` | yes |
+| `BINANCE_MERCHANT_ID` | recommended |
+| `PUBLIC_BASE_URL` | recommended |
+| `DATABASE_URL` | yes (production) |
+
+Aliases: `BINANCE_PAY_API_KEY`, `BINANCE_PAY_API_SECRET`, `BINANCE_PAY_MERCHANT_ID`.
+
+See `backend/.env.example` and `backend/docs/VERCEL.md`.
 
 ## PM2
 
@@ -40,4 +52,4 @@ cd backend
 pm2 start server.js --name eisy-backend
 ```
 
-Deploy to production is automated via `.github/workflows/deploy.yml` on push to `main`.
+Primary production path is **Vercel auto-deploy on `main`**. Optional PM2 SSH deploy is in `.github/workflows/deploy.yml` (runs only when SSH secrets exist).

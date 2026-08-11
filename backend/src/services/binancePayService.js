@@ -6,21 +6,37 @@ const CERT_PATH = '/binancepay/openapi/certificates';
 const QUERY_PATH = '/binancepay/openapi/v2/order/query';
 
 function getCredentials() {
-  const apiKey = process.env.BINANCE_PAY_API_KEY || process.env.BINANCE_API_KEY || '';
-  const apiSecret = process.env.BINANCE_PAY_API_SECRET || process.env.BINANCE_SECRET_KEY || '';
-  return { apiKey, apiSecret };
+  // Prefer BINANCE_PAY_*; also accept Vercel-style BINANCE_API_KEY / BINANCE_SECRET_KEY
+  const apiKey = (
+    process.env.BINANCE_PAY_API_KEY
+    || process.env.BINANCE_API_KEY
+    || ''
+  ).trim();
+  const apiSecret = (
+    process.env.BINANCE_PAY_API_SECRET
+    || process.env.BINANCE_SECRET_KEY
+    || process.env.BINANCE_API_SECRET
+    || ''
+  ).trim();
+  const merchantId = (
+    process.env.BINANCE_MERCHANT_ID
+    || process.env.BINANCE_PAY_MERCHANT_ID
+    || ''
+  ).trim();
+  return { apiKey, apiSecret, merchantId };
 }
 
 function assertConfigured() {
-  const { apiKey, apiSecret } = getCredentials();
+  const { apiKey, apiSecret, merchantId } = getCredentials();
   if (!apiKey || !apiSecret) {
     const err = new Error(
-      'Binance Pay is not configured. Set BINANCE_PAY_API_KEY and BINANCE_PAY_API_SECRET.'
+      'Binance Pay is not configured. Set BINANCE_API_KEY + BINANCE_SECRET_KEY '
+      + '(or BINANCE_PAY_API_KEY + BINANCE_PAY_API_SECRET) in Vercel Environment Variables.'
     );
     err.code = 'BINANCE_PAY_NOT_CONFIGURED';
     throw err;
   }
-  return { apiKey, apiSecret };
+  return { apiKey, apiSecret, merchantId };
 }
 
 function generateNonce(length = 32) {

@@ -20,6 +20,19 @@ npm run seed    # Creates demo user (id=1) with sample card
 npm start       # http://localhost:3000
 ```
 
+### Vercel (production)
+
+The repo root `vercel.json` serves the Express app as a serverless function.
+Pushing to `main` auto-deploys when the GitHub repo is connected to Vercel.
+
+Set at least:
+
+- `BINANCE_API_KEY`, `BINANCE_SECRET_KEY`, `BINANCE_MERCHANT_ID`
+- `DATABASE_URL` (+ `DATABASE_AUTH_TOKEN` for Turso)
+- `PUBLIC_BASE_URL`, `AUTH_SECRET`
+
+See [`backend/docs/VERCEL.md`](backend/docs/VERCEL.md) and [`backend/docs/BINANCE_PAY.md`](backend/docs/BINANCE_PAY.md).
+
 **Optional Telegram alerts:** Edit `.env` with your bot token and admin chat ID.
 
 **API endpoints:**
