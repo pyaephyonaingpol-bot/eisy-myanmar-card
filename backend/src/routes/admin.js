@@ -17,7 +17,7 @@ const {
   setAdminPassword,
   adminPublic,
 } = require('../services/adminAuthService');
-const { permissionsForRole, pagesForRole, ALL_ADMIN_ROLES, ROLE_LABELS } = require('../lib/adminRoles');
+const { permissionsForRole, pagesForRole, ALL_ADMIN_ROLES, ROLE_LABELS, roleHasPermission } = require('../lib/adminRoles');
 const UserSession = require('../models/UserSession');
 const Card = require('../models/Card');
 const CardReloadRequest = require('../models/CardReloadRequest');
@@ -34,6 +34,9 @@ const {
   getCurrentRateSummary,
   listExchangeRateHistory,
   updateSettings,
+  getWithdrawalRateSettings,
+  updateWithdrawalRates,
+  buildWithdrawalRatePreview,
   parseRecordMetadata,
 } = require('../services/settingsService');
 const { getSystemLedgerSummary } = require('../services/ledgerSummaryService');
@@ -389,6 +392,64 @@ router.put('/settings', requirePermission('settings_write'), async (req, res) =>
   } catch (err) {
     console.error('[admin/settings PUT]', err);
     res.status(400).json({ error: err.message || 'Invalid settings' });
+  }
+});
+
+// ─── Withdrawal Rate Management (Super Admin + Finance Admin) ───
+router.get('/withdrawal-rates', requirePermission('withdrawal_rates_read'), async (req, res) => {
+  try {
+    const rates = await getWithdrawalRateSettings();
+    const role = req.adminRole || req.user?.admin_role;
+    res.json({
+      rates,
+      preview: buildWithdrawalRatePreview(rates),
+      can_write: roleHasPermission(role, 'withdrawal_rates_write'),
+    });
+  } catch (err) {
+    console.error('[admin/withdrawal-rates GET]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/withdrawal-rates', requirePermission('withdrawal_rates_write'), async (req, res) => {
+  try {
+    const actor = req.user?.email || req.user?.name || (req.adminAuthMethod === 'api_key' ? 'api-key' : 'admin');
+    const result = await updateWithdrawalRates({
+      ...(req.body || {}),
+      updated_by: req.body?.updated_by || actor,
+    });
+    res.json({
+      success: true,
+      message: 'Withdrawal rates updated — new user withdrawals will use these values',
+      rates: result.rates,
+      preview: result.preview,
+      history_entry: result.history_entry,
+      current_rate: result.current_rate,
+    });
+  } catch (err) {
+    console.error('[admin/withdrawal-rates PUT]', err);
+    res.status(400).json({ error: err.message || 'Invalid withdrawal rates' });
+  }
+});
+
+router.get('/withdrawal-rates/preview', requirePermission('withdrawal_rates_read'), async (req, res) => {
+  try {
+    const rates = await getWithdrawalRateSettings();
+    const amount = parseFloat(req.query.amount);
+    const network = String(req.query.network || 'TRC20').toUpperCase();
+    const currency = String(req.query.currency || 'USDT').toUpperCase();
+    let preview;
+    if (currency === 'MMK') {
+      const { calculateMmkWithdrawalBreakdown } = require('../services/settingsService');
+      preview = calculateMmkWithdrawalBreakdown(amount || 100000, rates);
+    } else {
+      const { calculateWithdrawalBreakdown } = require('../services/settingsService');
+      preview = calculateWithdrawalBreakdown(amount || 100, network, rates);
+    }
+    res.json({ rates, preview });
+  } catch (err) {
+    console.error('[admin/withdrawal-rates/preview]', err);
+    res.status(400).json({ error: err.message || 'Preview failed' });
   }
 });
 

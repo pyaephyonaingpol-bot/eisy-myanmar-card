@@ -193,6 +193,10 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 5 5-9"/></svg>
             <span data-i18n="nav_admin_settings">Rates &amp; Fees</span>
           </button>
+          <button type="button" class="nav-item" data-page="withdrawal-rates" data-admin-perm="withdrawal_rates_read">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span>Withdrawal Rates</span>
+          </button>
           <button type="button" class="nav-item" data-page="admins" data-admin-perm="manage_admins">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
             <span>Admins</span>
@@ -240,6 +244,7 @@
           <span class="hidden" data-page-title="support" data-i18n="nav_admin_support">Support</span>
           <span class="hidden" data-page-title="kyc-requests" data-i18n="nav_admin_kyc">KYC Requests</span>
           <span class="hidden" data-page-title="settings" data-i18n="nav_admin_settings">Rates &amp; Fees</span>
+          <span class="hidden" data-page-title="withdrawal-rates">Withdrawal Rates</span>
           <span class="hidden" data-page-title="admins">Admins</span>
 
       <section id="tabDeposits" class="panel app-page is-active" data-page="deposits">
@@ -646,6 +651,78 @@
         <div id="exchangeRateHistoryTable" class="data-table-wrap"><p class="hint">Loading history…</p></div>
       </section>
 
+      <section id="tabWithdrawalRates" class="panel app-page" data-page="withdrawal-rates">
+        <h2>Withdrawal Rate Management</h2>
+        <p class="hint" style="margin-bottom:1rem">
+          Set the USDT→MMK exchange rate and withdrawal service fees used when users request payouts.
+          Values are stored in the database; every new withdrawal uses the latest saved rates.
+          Only <strong>Super Admin</strong> and <strong>Finance Admin</strong> can change these.
+        </p>
+
+        <form id="withdrawalRatesForm" class="form grid-admin-form" style="max-width:720px">
+          <div class="field" style="grid-column:1/-1">
+            <h3 style="margin:0;font-size:1rem">Exchange rate (USDT → MMK)</h3>
+            <p class="hint" style="margin:0.35rem 0 0">Used for USDT→bank (local currency) withdrawals after the service fee is deducted.</p>
+          </div>
+          <div class="field">
+            <label for="wrExchangeRate">USDT / MMK Rate</label>
+            <input id="wrExchangeRate" type="number" step="1" min="1" required placeholder="4500" />
+            <small class="hint">MMK per 1 USDT</small>
+          </div>
+          <div class="field">
+            <label for="wrEffectiveDate">Effective Date</label>
+            <input id="wrEffectiveDate" type="date" required />
+          </div>
+
+          <div class="field" style="grid-column:1/-1">
+            <h3 style="margin:0.75rem 0 0;font-size:1rem">Withdrawal service fee</h3>
+            <p class="hint" style="margin:0.35rem 0 0">
+              Fee = <code>Math.max(amount × %, minimum USDT)</code>. Example: 2% with a $1 minimum,
+              or set % to 0 and minimum to 2 for a flat <strong>2 USDT</strong> fee.
+            </p>
+          </div>
+          <div class="field">
+            <label for="wrFeePercent">Service Fee Percent (%)</label>
+            <input id="wrFeePercent" type="number" step="0.01" min="0" max="20" required />
+          </div>
+          <div class="field">
+            <label for="wrFeeMinUsdt">Minimum Fee (USDT)</label>
+            <input id="wrFeeMinUsdt" type="number" step="0.01" min="0" required />
+            <small class="hint">MMK withdrawals: minimum fee = this × exchange rate</small>
+          </div>
+
+          <div class="field" style="grid-column:1/-1">
+            <h3 style="margin:0.75rem 0 0;font-size:1rem">Minimum withdrawal amounts</h3>
+          </div>
+          <div class="field">
+            <label for="wrMinUsdt">Minimum USDT Withdrawal</label>
+            <input id="wrMinUsdt" type="number" step="0.01" min="0.01" required />
+          </div>
+          <div class="field">
+            <label for="wrMinMmk">Minimum MMK Withdrawal</label>
+            <input id="wrMinMmk" type="number" step="1" min="1" required />
+          </div>
+
+          <div class="field" style="grid-column:1/-1">
+            <label for="wrNotes">Change notes (optional)</label>
+            <input id="wrNotes" type="text" placeholder="e.g. Raised min fee to 2 USDT" />
+          </div>
+          <div class="field" style="grid-column:1/-1;display:flex;gap:0.65rem;flex-wrap:wrap;align-items:center">
+            <button type="submit" class="btn btn-primary" id="wrSaveBtn">Save Withdrawal Rates</button>
+            <button type="button" class="btn btn-secondary" id="wrRefreshBtn">Reload</button>
+            <span id="wrSaveHint" class="hint"></span>
+          </div>
+        </form>
+
+        <pre class="output" id="withdrawalRatesOut" style="max-width:720px"></pre>
+
+        <h3 style="margin-top:1.75rem;font-size:1rem">Live fee preview</h3>
+        <p class="hint" style="margin-bottom:0.75rem">Sample calculations using the rates currently loaded (or last saved).</p>
+        <div id="withdrawalRatesPreview" class="data-table-wrap" style="max-width:720px">
+          <p class="hint">Loading preview…</p>
+        </div>
+      </section>
+
       <section id="tabAdmins" class="panel app-page" data-page="admins">
         <h2>Admin Accounts</h2>
         <p class="hint" style="margin-bottom:1rem">Super Admins can add, edit, or remove admin accounts and assign roles.</p>
@@ -781,6 +858,6 @@
   <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
   <script src="/i18n.js?v=20260811b"></script>
   <script src="/nav.js?v=20260811b"></script>
-  <script src="/admin.js?v=20260811f" defer></script>
+  <script src="/admin.js?v=20260811i" defer></script>
 </body>
 </html>

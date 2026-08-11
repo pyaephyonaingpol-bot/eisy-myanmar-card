@@ -1,9 +1,17 @@
 # Admin Multi-Role RBAC
 
 ## Roles
-- `super_admin` — full access: rates/fees, MMK payment methods, master wallet, balance adjust, admin management
-- `finance_admin` — deposits, withdrawals, ledger/revenue, rates (read), users/transactions/cards
+- `super_admin` — full access: rates/fees, MMK payment methods, master wallet, balance adjust, admin management, withdrawal rates
+- `finance_admin` — deposits, withdrawals, ledger/revenue, rates (read), **withdrawal rate management** (read/write), users/transactions/cards
 - `support_admin` — support chat, KYC, users/transactions/cards
+
+## Withdrawal Rate Management
+Super Admin and Finance Admin can open **Withdrawal Rates** to update:
+- USDT→MMK exchange rate (`mmk_to_usd_rate`)
+- Service fee % + minimum USDT fee (`payment_service_fee_*`)
+- Minimum USDT / MMK withdrawal amounts
+
+Stored in `app_settings`. User withdrawals always load the latest values via `getWithdrawalFeeSettings()`.
 
 ## First Super Admin
 When no admins exist, open `/admin.html` and use **Create Super Admin** with `ADMIN_API_KEY` (or default `eisy-admin-dev-key` in local/dev).

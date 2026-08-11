@@ -164,6 +164,147 @@ async function getWithdrawalFeeSettings() {
   };
 }
 
+/** Public shape for the Withdrawal Rate Management admin UI. */
+async function getWithdrawalRateSettings() {
+  const fees = await getWithdrawalFeeSettings();
+  const rateSummary = await getCurrentRateSummary();
+  return {
+    mmk_to_usd_rate: fees.mmk_to_usd_rate,
+    rate_effective_date: rateSummary.effective_date,
+    payment_service_fee_percent: fees.payment_service_fee_percent,
+    payment_service_fee_minimum_usdt: fees.payment_service_fee_minimum_usdt,
+    minimum_usdt_withdrawal: fees.minimum_usdt_withdrawal,
+    minimum_mmk_withdrawal: fees.minimum_mmk_withdrawal,
+    // Kept in sync for routing labels / legacy UI; live fee math uses payment_service_fee_*
+    usdt_withdraw_fee_trc20: fees.usdt_withdraw_fee_trc20,
+    usdt_withdraw_fee_trc20_type: fees.usdt_withdraw_fee_trc20_type,
+    usdt_withdraw_fee_bep20: fees.usdt_withdraw_fee_bep20,
+    usdt_withdraw_fee_bep20_type: fees.usdt_withdraw_fee_bep20_type,
+    usdt_withdraw_fee_bank: fees.usdt_withdraw_fee_bank,
+    usdt_withdraw_fee_bank_type: fees.usdt_withdraw_fee_bank_type,
+    mmk_withdraw_fee_percent: fees.mmk_withdraw_fee_percent,
+    fee_rule: 'Math.max(amount × percent, minimum_usdt)',
+    current_rate: rateSummary,
+  };
+}
+
+function buildWithdrawalRatePreview(settings) {
+  const sampleUsdt = 100;
+  const sampleMmk = 100000;
+  const usdtCrypto = calculateWithdrawalBreakdown(sampleUsdt, 'TRC20', settings);
+  const usdtBank = calculateWithdrawalBreakdown(sampleUsdt, 'BANK', settings);
+  const mmkBank = calculateMmkWithdrawalBreakdown(sampleMmk, settings);
+  return {
+    sample_usdt_amount: sampleUsdt,
+    sample_mmk_amount: sampleMmk,
+    usdt_crypto: {
+      fee_usdt: usdtCrypto.fee_usdt,
+      net_usdt: usdtCrypto.net_usdt,
+      fee_label: usdtCrypto.fee_label,
+      summary: usdtCrypto.summary,
+    },
+    usdt_to_mmk: {
+      fee_usdt: usdtBank.fee_usdt,
+      net_usdt: usdtBank.net_usdt,
+      amount_mmk: usdtBank.amount_mmk,
+      exchange_rate: usdtBank.exchange_rate,
+      summary: usdtBank.summary,
+    },
+    mmk_bank: {
+      fee_mmk: mmkBank.fee_mmk,
+      net_mmk: mmkBank.net_mmk,
+      fee_label: mmkBank.fee_label,
+      summary: mmkBank.summary,
+    },
+  };
+}
+
+/**
+ * Update withdrawal exchange rate + service fees only (app_settings).
+ * User withdrawals always read the latest values via getWithdrawalFeeSettings().
+ */
+async function updateWithdrawalRates(updates = {}) {
+  const {
+    effective_date: effectiveDate,
+    notes,
+    updated_by: updatedBy,
+    ...fields
+  } = updates;
+
+  const allowedKeys = [
+    'mmk_to_usd_rate',
+    'payment_service_fee_percent',
+    'payment_service_fee_minimum_usdt',
+    'minimum_usdt_withdrawal',
+    'minimum_mmk_withdrawal',
+    'usdt_withdraw_fee_trc20',
+    'usdt_withdraw_fee_trc20_type',
+    'usdt_withdraw_fee_bep20',
+    'usdt_withdraw_fee_bep20_type',
+    'usdt_withdraw_fee_bank',
+    'usdt_withdraw_fee_bank_type',
+    'mmk_withdraw_fee_percent',
+  ];
+
+  const payload = {};
+  for (const key of allowedKeys) {
+    if (fields[key] !== undefined && fields[key] !== null && fields[key] !== '') {
+      payload[key] = fields[key];
+    }
+  }
+
+  // Keep legacy network fee knobs aligned with the live unified payment fee
+  // so older UI / docs stay consistent with what users are charged.
+  if (payload.payment_service_fee_percent !== undefined) {
+    const pct = payload.payment_service_fee_percent;
+    if (payload.usdt_withdraw_fee_trc20 === undefined) payload.usdt_withdraw_fee_trc20 = pct;
+    if (payload.usdt_withdraw_fee_bep20 === undefined) payload.usdt_withdraw_fee_bep20 = pct;
+    if (payload.usdt_withdraw_fee_bank === undefined) payload.usdt_withdraw_fee_bank = pct;
+    if (payload.mmk_withdraw_fee_percent === undefined) payload.mmk_withdraw_fee_percent = pct;
+    if (payload.usdt_withdraw_fee_trc20_type === undefined) payload.usdt_withdraw_fee_trc20_type = 'percent';
+    if (payload.usdt_withdraw_fee_bep20_type === undefined) payload.usdt_withdraw_fee_bep20_type = 'percent';
+    if (payload.usdt_withdraw_fee_bank_type === undefined) payload.usdt_withdraw_fee_bank_type = 'percent';
+  }
+
+  if (!Object.keys(payload).length && !effectiveDate) {
+    throw new Error('No withdrawal rate fields provided');
+  }
+
+  const before = await getWithdrawalRateSettings();
+  const result = await updateSettings({
+    ...payload,
+    effective_date: effectiveDate || todayDateString(),
+    updated_by: updatedBy || 'admin',
+    notes: notes || buildWithdrawalRateChangeNotes(before, payload),
+  });
+
+  const rates = await getWithdrawalRateSettings();
+  return {
+    rates,
+    preview: buildWithdrawalRatePreview(rates),
+    history_entry: result.history_entry,
+    pricing: result.pricing,
+    current_rate: result.current_rate,
+  };
+}
+
+function buildWithdrawalRateChangeNotes(before, payload) {
+  const parts = ['Withdrawal rates updated'];
+  const track = [
+    'mmk_to_usd_rate',
+    'payment_service_fee_percent',
+    'payment_service_fee_minimum_usdt',
+    'minimum_usdt_withdrawal',
+    'minimum_mmk_withdrawal',
+  ];
+  for (const key of track) {
+    if (payload[key] === undefined) continue;
+    const prev = before?.[key];
+    parts.push(`${key}: ${prev} → ${payload[key]}`);
+  }
+  return parts.join('; ');
+}
+
 function calculateNetworkWithdrawalFee(amountUsdt, network, settings) {
   const {
     calculateUsdtPaymentFeeBreakdown,
@@ -551,6 +692,9 @@ module.exports = {
   getUsdtDepositSettings,
   calculateP2pFeeBreakdown,
   getWithdrawalFeeSettings,
+  getWithdrawalRateSettings,
+  updateWithdrawalRates,
+  buildWithdrawalRatePreview,
   calculateNetworkWithdrawalFee,
   calculateWithdrawalBreakdown,
   calculateMmkWithdrawalBreakdown,

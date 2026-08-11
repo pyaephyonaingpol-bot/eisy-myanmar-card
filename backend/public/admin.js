@@ -178,6 +178,18 @@
         });
       }
 
+      const wrForm = $('withdrawalRatesForm');
+      if (wrForm) {
+        const canWriteRates = this.hasPermission('withdrawal_rates_write');
+        wrForm.querySelectorAll('input, select, textarea, button[type="submit"]').forEach((input) => {
+          input.disabled = !canWriteRates;
+        });
+        const hint = $('wrSaveHint');
+        if (hint && !canWriteRates) {
+          hint.textContent = 'View only — Super/Finance Admin required to edit';
+        }
+      }
+
       const allowedPages = this.pages && this.pages.length
         ? this.pages
         : ['deposits'];
@@ -344,6 +356,9 @@
       if (name === 'admins') {
         this.loadAdmins();
       }
+      if (name === 'withdrawal-rates') {
+        this.loadWithdrawalRates();
+      }
     },
 
     bindNavigation() {
@@ -380,6 +395,12 @@
           this.showAdminToast(err.message || 'Failed to save admin', 'error');
         }
       });
+
+      $('withdrawalRatesForm')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.saveWithdrawalRates();
+      });
+      $('wrRefreshBtn')?.addEventListener('click', () => this.loadWithdrawalRates());
 
       const depositFilter = $('depositFilter');
       if (depositFilter) depositFilter.addEventListener('change', () => this.loadDeposits());
@@ -897,7 +918,110 @@
       if (this.hasPermission('users')) tasks.push(this.loadUsers());
       if (this.hasPermission('transactions')) tasks.push(this.loadTransactions());
       if (this.hasPermission('manage_admins')) tasks.push(this.loadAdmins());
+      if (this.hasPermission('withdrawal_rates_read')) tasks.push(this.loadWithdrawalRates());
       return Promise.allSettled(tasks);
+    },
+
+    renderWithdrawalRatesPreview(preview) {
+      const el = $('withdrawalRatesPreview');
+      if (!el) return;
+      const p = preview || {};
+      const crypto = p.usdt_crypto || {};
+      const bank = p.usdt_to_mmk || {};
+      const mmk = p.mmk_bank || {};
+      el.innerHTML =
+        '<table class="data-table"><thead><tr>' +
+        '<th>Scenario</th><th>Gross</th><th>Fee</th><th>Net / Payout</th><th>Summary</th>' +
+        '</tr></thead><tbody>' +
+        '<tr><td>USDT crypto (TRC20)</td><td>' + (p.sample_usdt_amount || 100) + ' USDT</td>' +
+          '<td>' + this.esc(String(crypto.fee_usdt ?? '—')) + '</td>' +
+          '<td>' + this.esc(String(crypto.net_usdt ?? '—')) + ' USDT</td>' +
+          '<td>' + this.esc(crypto.summary || '—') + '</td></tr>' +
+        '<tr><td>USDT → MMK bank</td><td>' + (p.sample_usdt_amount || 100) + ' USDT</td>' +
+          '<td>' + this.esc(String(bank.fee_usdt ?? '—')) + '</td>' +
+          '<td>' + this.esc(String(bank.amount_mmk ?? '—')) + ' MMK @ ' + this.esc(String(bank.exchange_rate ?? '—')) + '</td>' +
+          '<td>' + this.esc(bank.summary || '—') + '</td></tr>' +
+        '<tr><td>MMK bank</td><td>' + (p.sample_mmk_amount || 100000) + ' MMK</td>' +
+          '<td>' + this.esc(String(mmk.fee_mmk ?? '—')) + '</td>' +
+          '<td>' + this.esc(String(mmk.net_mmk ?? '—')) + ' MMK</td>' +
+          '<td>' + this.esc(mmk.summary || '—') + '</td></tr>' +
+        '</tbody></table>';
+    },
+
+    async loadWithdrawalRates() {
+      if (!this.hasPermission('withdrawal_rates_read')) return;
+      const out = $('withdrawalRatesOut');
+      try {
+        const data = await this.api('GET', '/api/admin/withdrawal-rates');
+        const r = data.rates || {};
+        if ($('wrExchangeRate')) $('wrExchangeRate').value = r.mmk_to_usd_rate ?? '';
+        if ($('wrEffectiveDate')) {
+          $('wrEffectiveDate').value = r.rate_effective_date || new Date().toISOString().slice(0, 10);
+        }
+        if ($('wrFeePercent')) $('wrFeePercent').value = r.payment_service_fee_percent ?? '';
+        if ($('wrFeeMinUsdt')) $('wrFeeMinUsdt').value = r.payment_service_fee_minimum_usdt ?? '';
+        if ($('wrMinUsdt')) $('wrMinUsdt').value = r.minimum_usdt_withdrawal ?? '';
+        if ($('wrMinMmk')) $('wrMinMmk').value = r.minimum_mmk_withdrawal ?? '';
+        this.renderWithdrawalRatesPreview(data.preview);
+        if (out) {
+          out.textContent = JSON.stringify({
+            mmk_to_usd_rate: r.mmk_to_usd_rate,
+            payment_service_fee_percent: r.payment_service_fee_percent,
+            payment_service_fee_minimum_usdt: r.payment_service_fee_minimum_usdt,
+            minimum_usdt_withdrawal: r.minimum_usdt_withdrawal,
+            minimum_mmk_withdrawal: r.minimum_mmk_withdrawal,
+            fee_rule: r.fee_rule,
+            can_write: data.can_write,
+          }, null, 2);
+        }
+        const form = $('withdrawalRatesForm');
+        if (form) {
+          const canWrite = data.can_write !== false && this.hasPermission('withdrawal_rates_write');
+          form.querySelectorAll('input, select, textarea, button[type="submit"]').forEach((input) => {
+            input.disabled = !canWrite;
+          });
+        }
+      } catch (err) {
+        if (out) out.textContent = err.message || 'Failed to load withdrawal rates';
+        const preview = $('withdrawalRatesPreview');
+        if (preview) {
+          preview.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+        }
+      }
+    },
+
+    async saveWithdrawalRates() {
+      if (!this.hasPermission('withdrawal_rates_write')) {
+        this.showAdminToast('Only Super Admin or Finance Admin can change withdrawal rates', 'error');
+        return;
+      }
+      const btn = $('wrSaveBtn');
+      const out = $('withdrawalRatesOut');
+      if (btn) btn.disabled = true;
+      try {
+        const data = await this.api('PUT', '/api/admin/withdrawal-rates', {
+          mmk_to_usd_rate: Number($('wrExchangeRate')?.value),
+          effective_date: $('wrEffectiveDate')?.value,
+          payment_service_fee_percent: Number($('wrFeePercent')?.value),
+          payment_service_fee_minimum_usdt: Number($('wrFeeMinUsdt')?.value),
+          minimum_usdt_withdrawal: Number($('wrMinUsdt')?.value),
+          minimum_mmk_withdrawal: Number($('wrMinMmk')?.value),
+          notes: ($('wrNotes')?.value || '').trim() || undefined,
+        });
+        this.renderWithdrawalRatesPreview(data.preview);
+        if (out) out.textContent = JSON.stringify(data.rates || data, null, 2);
+        if ($('wrNotes')) $('wrNotes').value = '';
+        this.showAdminToast(data.message || 'Withdrawal rates saved', 'ok');
+        const hint = $('wrSaveHint');
+        if (hint) hint.textContent = 'Saved — new withdrawals use these rates';
+        // Keep general settings badge in sync when exchange rate changes
+        if (data.current_rate) this.updateRateBadge(data.current_rate);
+      } catch (err) {
+        this.showAdminToast(err.message || 'Failed to save withdrawal rates', 'error');
+        if (out) out.textContent = err.message || 'Save failed';
+      } finally {
+        if (btn && this.hasPermission('withdrawal_rates_write')) btn.disabled = false;
+      }
     },
 
     async loadAdmins() {
