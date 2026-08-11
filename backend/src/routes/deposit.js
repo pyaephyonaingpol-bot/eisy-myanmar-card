@@ -17,8 +17,42 @@ const {
 const { enrichDeposit } = require('../services/depositEnrichment');
 const { walletPayload } = require('../services/walletService');
 const { getUsdtDepositSettings } = require('../services/settingsService');
+const { createBinancePayDeposit } = require('../services/binanceDepositService');
 
 const router = express.Router();
+
+/**
+ * POST /api/deposit/create
+ * Create a Binance Pay checkout order with 2% fee (min $1).
+ * Body: { amount_usdt | amount, currency?, terminalType?, returnUrl?, cancelUrl? }
+ */
+router.post('/create', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    const result = await createBinancePayDeposit(req.user.id, req.body || {});
+    return res.status(201).json({
+      success: true,
+      provider: 'binance_pay',
+      message: result.message,
+      deposit: result.deposit,
+      fee_breakdown: result.fee_breakdown,
+      fee_rule: 'Math.max(amount * 0.02, 1)',
+      binance: result.binance,
+      checkout_url: result.binance?.checkout_url || null,
+      qrcode_link: result.binance?.qrcode_link || null,
+    });
+  } catch (err) {
+    console.error('[deposit/create]', err.message, err.code || '');
+    const status = err.code === 'BINANCE_PAY_NOT_CONFIGURED'
+      ? 503
+      : (err.code === 'PAYMENT_FEE_EXCEEDS_AMOUNT' ? 400 : 400);
+    return res.status(status).json({
+      success: false,
+      error: err.message || 'Failed to create Binance Pay deposit',
+      code: err.code,
+      binance: err.binance || undefined,
+    });
+  }
+});
 
 router.post('/request', requireAuth, requireSensitive, async (req, res) => {
   try {

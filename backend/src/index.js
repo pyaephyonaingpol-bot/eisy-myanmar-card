@@ -24,7 +24,15 @@ const INDEX_HTML = path.join(PUBLIC_DIR, 'index.html');
 
 app.use(cors(createCorsOptions()));
 app.options('*', cors(createCorsOptions()));
-app.use(express.json({ limit: '55mb' }));
+app.use(express.json({
+  limit: '55mb',
+  verify: (req, res, buf) => {
+    // Preserve raw body for Binance Pay webhook signature verification
+    if (req.originalUrl && req.originalUrl.startsWith('/api/webhook/')) {
+      req.rawBody = buf.toString('utf8');
+    }
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: '55mb' }));
 
 app.get('/', (_req, res) => {
@@ -72,6 +80,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/config', require('./routes/config'));
 app.use('/api/auth', authRoutes);
 app.use('/api/deposit', depositRoutes);
+app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/support', supportRoutes);

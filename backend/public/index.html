@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eisy Myanmar</title>
-  <link rel="stylesheet" href="/styles.css?v=20260811b" />
+  <link rel="stylesheet" href="/styles.css?v=20260811c" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -1120,7 +1120,11 @@
                 </div>
 
                 <div id="depositUsdtPanel" class="deposit-tab-panel hidden">
-                <p class="hint" style="margin-bottom:0.75rem">Top up your USDT wallet via platform direct deposit.</p>
+                <p class="hint" style="margin-bottom:0.75rem">Top up your USDT wallet via platform direct deposit or Binance Pay.</p>
+                <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem">
+                  <button type="button" class="btn btn-secondary btn-sm is-active" id="btnUsdtDepositDirect">Direct (TRC20/BEP20)</button>
+                  <button type="button" class="btn btn-primary btn-sm" id="btnUsdtDepositBinance">Binance Pay</button>
+                </div>
                 <form id="usdtDepositForm" class="form">
                   <div class="field">
                     <label for="usdtNetwork">Network</label>
@@ -1141,8 +1145,16 @@
                     <div class="reload-preview-row"><span>Service Fee</span><strong id="usdtDepositPreviewFee">—</strong></div>
                     <div class="reload-preview-row reload-preview-highlight"><span>Net Credited</span><strong id="usdtDepositPreviewNet">—</strong></div>
                   </div>
-                  <button type="submit" class="btn btn-primary">Generate Deposit Request</button>
+                  <button type="submit" class="btn btn-primary" id="btnSubmitUsdtDeposit">Generate Deposit Request</button>
+                  <button type="button" class="btn btn-primary hidden" id="btnCreateBinancePay">Pay with Binance Pay</button>
                 </form>
+                <div id="binancePayBox" class="usdt-address-box hidden">
+                  <p class="usdt-network-label">Binance Pay checkout</p>
+                  <p class="hint" id="binancePayStatus">Complete payment in Binance. Your wallet is credited automatically on PAY_SUCCESS.</p>
+                  <div class="ref-code" id="binancePayRef">—</div>
+                  <a id="binancePayCheckoutLink" class="btn btn-primary btn-sm" href="#" target="_blank" rel="noopener">Open Binance Pay</a>
+                  <a id="binancePayQrLink" class="btn btn-secondary btn-sm hidden" href="#" target="_blank" rel="noopener">Open QR / Deeplink</a>
+                </div>
                 <div id="usdtAddressBox" class="usdt-address-box hidden">
                   <p class="usdt-network-label">Deposit via <strong id="usdtNetworkLabel">TRC20</strong></p>
                   <p id="usdtMerchantName" class="usdt-merchant-name hidden"></p>
@@ -1359,12 +1371,12 @@
     </div>
   </div>
 
-  <script src="/api-config.js?v=20260811b"></script>
-  <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
+  <script src="/api-config.js?v=20260811c"></script>
+  <script type="module" src="/supabaseBridge.js?v=20260811c"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260811b"></script>
-  <script src="/auth.js?v=20260811b"></script>
-  <script src="/nav.js?v=20260811b"></script>
-  <script src="/dashboard.js?v=20260811b"></script>
+  <script src="/i18n.js?v=20260811c"></script>
+  <script src="/auth.js?v=20260811c"></script>
+  <script src="/nav.js?v=20260811c"></script>
+  <script src="/dashboard.js?v=20260811c"></script>
 </body>
 </html>

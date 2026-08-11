@@ -2548,8 +2548,87 @@ const Dashboard = {
     this.updateUsdtDepositFeePreview();
     this.updateMmkDepositFeePreview();
 
+    const setUsdtDepositMode = (mode) => {
+      this._usdtDepositMode = mode === 'binance' ? 'binance' : 'direct';
+      const binance = this._usdtDepositMode === 'binance';
+      $('btnUsdtDepositDirect')?.classList.toggle('is-active', !binance);
+      $('btnUsdtDepositBinance')?.classList.toggle('is-active', binance);
+      $('usdtNetwork')?.closest('.field')?.classList.toggle('hidden', binance);
+      $('btnSubmitUsdtDeposit')?.classList.toggle('hidden', binance);
+      $('btnCreateBinancePay')?.classList.toggle('hidden', !binance);
+      if (!binance) $('binancePayBox')?.classList.add('hidden');
+    };
+    $('btnUsdtDepositDirect')?.addEventListener('click', () => setUsdtDepositMode('direct'));
+    $('btnUsdtDepositBinance')?.addEventListener('click', () => setUsdtDepositMode('binance'));
+    setUsdtDepositMode('direct');
+
+    $('btnCreateBinancePay')?.addEventListener('click', async () => {
+      try {
+        const amountUsdt = parseFloat($('usdtAmount')?.value);
+        if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) {
+          this.toast('Enter a valid USDT amount', 'error');
+          return;
+        }
+        const btn = $('btnCreateBinancePay');
+        const prev = btn?.textContent;
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Creating…';
+        }
+        const data = await Auth.api('POST', '/api/deposit/create', {
+          amount_usdt: amountUsdt,
+          terminalType: 'WEB',
+        }, { sensitive: true });
+
+        $('binancePayBox')?.classList.remove('hidden');
+        if ($('binancePayRef')) {
+          $('binancePayRef').textContent = data.deposit?.ref_code || data.binance?.merchant_trade_no || '—';
+        }
+        if ($('binancePayStatus')) {
+          $('binancePayStatus').textContent = data.message
+            || `Pay $${amountUsdt.toFixed(2)} — net $${Number(data.fee_breakdown?.net_usdt || 0).toFixed(2)} credited after success.`;
+        }
+        const checkout = data.checkout_url || data.binance?.checkout_url;
+        const qr = data.qrcode_link || data.binance?.qrcode_link;
+        if ($('binancePayCheckoutLink')) {
+          if (checkout) {
+            $('binancePayCheckoutLink').href = checkout;
+            $('binancePayCheckoutLink').classList.remove('hidden');
+          } else {
+            $('binancePayCheckoutLink').classList.add('hidden');
+          }
+        }
+        if ($('binancePayQrLink')) {
+          if (qr) {
+            $('binancePayQrLink').href = qr;
+            $('binancePayQrLink').classList.remove('hidden');
+          } else {
+            $('binancePayQrLink').classList.add('hidden');
+          }
+        }
+        this.toast('Binance Pay order created', 'ok');
+        this.loadDepositHistory();
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prev || 'Pay with Binance Pay';
+        }
+      } catch (err) {
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+        this.toast(err.message || 'Binance Pay create failed', 'error');
+        const btn = $('btnCreateBinancePay');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Pay with Binance Pay';
+        }
+      }
+    });
+
     $('usdtDepositForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (this._usdtDepositMode === 'binance') {
+        $('btnCreateBinancePay')?.click();
+        return;
+      }
       try {
         const network = $('usdtNetwork').value;
         const amountUsdt = parseFloat($('usdtAmount').value);

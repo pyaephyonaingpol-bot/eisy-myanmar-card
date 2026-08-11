@@ -2,9 +2,9 @@
   "name": "eisy-myanmar-backend",
   "version": "1.0.0",
   "description": "Eisy Myanmar Virtual Card Issuance - Backend API",
-  "main": "src/index.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node server.js",
     "predev": "node scripts/free-port.js",
     "dev": "node --watch src/index.js",
     "seed": "node src/seed.js",

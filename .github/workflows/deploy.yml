@@ -1,0 +1,82 @@
+name: Deploy Backend (PM2)
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: SSH Deploy + PM2 Restart
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            APP_DIR="${{ secrets.DEPLOY_PATH }}"
+            if [ -z "${APP_DIR}" ]; then
+              APP_DIR="$HOME/eisy-myanmar-card"
+            fi
+
+            PM2_APP_NAME="${{ secrets.PM2_APP_NAME }}"
+            if [ -z "${PM2_APP_NAME}" ]; then
+              PM2_APP_NAME="eisy-backend"
+            fi
+
+            echo "==> Deploying into ${APP_DIR}"
+            mkdir -p "${APP_DIR}"
+            cd "${APP_DIR}"
+
+            if [ ! -d .git ]; then
+              echo "ERROR: ${APP_DIR} is not a git repo. Clone the repository first."
+              exit 1
+            fi
+
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
+
+            if [ -f backend/package.json ]; then
+              cd backend
+            fi
+
+            echo "==> Installing dependencies"
+            npm ci --omit=dev || npm install --omit=dev
+
+            echo "==> Running migrations (if available)"
+            if npm run | grep -q " migrate"; then
+              npm run migrate || true
+            fi
+
+            echo "==> Restarting PM2 process: ${PM2_APP_NAME}"
+            if pm2 describe "${PM2_APP_NAME}" >/dev/null 2>&1; then
+              pm2 reload "${PM2_APP_NAME}" --update-env
+            else
+              # Prefer server.js entry; fall back to src/index.js
+              if [ -f server.js ]; then
+                pm2 start server.js --name "${PM2_APP_NAME}"
+              else
+                pm2 start src/index.js --name "${PM2_APP_NAME}"
+              fi
+            fi
+
+            pm2 save
+            pm2 status "${PM2_APP_NAME}"
+            echo "==> Deploy complete"
