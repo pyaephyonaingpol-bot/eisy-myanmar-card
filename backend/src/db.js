@@ -1,5 +1,3 @@
-const sqlite3 = require('sqlite3');
-const { open } = require('sqlite');
 const { runMigrations, columnExists, tableExists } = require('../migrations/runner');
 const { applyUserAuthColumns } = require('../migrations/patches/applyUserAuthColumns');
 const { ensureAuthTables } = require('../migrations/patches/ensureAuthTables');
@@ -7,6 +5,28 @@ const { createLibsqlDb } = require('./lib/libsqlDb');
 const { getDatabaseConfig, getDatabaseInfo } = require('./lib/databaseConfig');
 
 let db = null;
+
+async function openSqliteFile(filePath) {
+  // Lazy-load native sqlite3 — not available / not needed on Vercel LibSQL path.
+  let sqlite3;
+  try {
+    sqlite3 = require('sqlite3');
+  } catch (err) {
+    const wrapped = new Error(
+      "Cannot find module 'sqlite3'. Install backend dependencies (`npm install --prefix backend`) "
+      + 'or set DATABASE_URL to a LibSQL/Turso URL for serverless. '
+      + `Original: ${err.message}`
+    );
+    wrapped.code = 'SQLITE3_MISSING';
+    wrapped.cause = err;
+    throw wrapped;
+  }
+  const { open } = require('sqlite');
+  return open({
+    filename: filePath,
+    driver: sqlite3.Database,
+  });
+}
 
 async function initDb() {
   const config = getDatabaseConfig();
@@ -18,18 +38,20 @@ async function initDb() {
       authToken: config.authToken,
     });
     db = createLibsqlDb(client);
-    console.log('[db] Connected to persistent LibSQL database');
-  } else {
-    db = await open({
-      filename: config.filePath,
-      driver: sqlite3.Database,
-    });
-    console.log('[db] Using SQLite file:', config.filePath);
-    if (config.warning) {
-      console.warn('[db]', config.warning);
+    if (String(config.url).startsWith('file:')) {
+      console.log('[db] Connected to LibSQL file database:', config.filePath || config.url);
+    } else {
+      console.log('[db] Connected to persistent LibSQL database');
     }
+  } else {
+    db = await openSqliteFile(config.filePath);
+    console.log('[db] Using SQLite file:', config.filePath);
     await db.exec('PRAGMA journal_mode = WAL');
     await db.exec('PRAGMA foreign_keys = ON');
+  }
+
+  if (config.warning) {
+    console.warn('[db]', config.warning);
   }
 
   console.log('[db] Running migrations...');

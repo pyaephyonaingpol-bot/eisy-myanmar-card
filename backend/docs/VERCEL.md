@@ -18,12 +18,28 @@ Pushing to `main` triggers Vercel automatic deployment when the GitHub repo is l
 | `BINANCE_API_KEY` | Binance Pay Certificate SN / API key |
 | `BINANCE_SECRET_KEY` | HMAC-SHA512 secret |
 | `BINANCE_MERCHANT_ID` | Merchant id (stored on deposit metadata) |
-| `DATABASE_URL` | Persistent LibSQL/Turso URL (**required** — avoid `/tmp` SQLite) |
+| `DATABASE_URL` | Persistent LibSQL/Turso URL (**required in production** — avoid ephemeral `/tmp`) |
 | `DATABASE_AUTH_TOKEN` | Turso auth token |
 | `PUBLIC_BASE_URL` | Canonical site URL (e.g. `https://eisymyanmar.com`) |
 | `AUTH_SECRET` | Session signing secret |
+| `MASTER_PRIVATE_KEY` | TRON hex key for USDT TRC20 withdrawal payouts |
 
 Aliases accepted: `BINANCE_PAY_API_KEY`, `BINANCE_PAY_API_SECRET`, `BINANCE_PAY_MERCHANT_ID`.
+
+## Database on Vercel
+
+Native `sqlite3` is **not** used on Vercel. The app:
+
+1. Uses **Turso / LibSQL** when `DATABASE_URL` is `libsql://…` or `https://…`
+2. Otherwise falls back to an **ephemeral** `@libsql/client` `file:/tmp/…` DB (no native addon)
+
+Root `package.json` lists all serverless runtime dependencies (including `sqlite3` for local use and `@libsql/client` for Vercel). `vercel.json` runs:
+
+```bash
+npm install && npm install --prefix backend
+```
+
+so modules resolve from both the repo root and `backend/`.
 
 ## Fee logic (deposit create + webhook credit)
 

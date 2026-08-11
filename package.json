@@ -2,9 +2,16 @@
   "name": "eisy-myanmar-card",
   "version": "1.0.0",
   "private": true,
-  "description": "Eisy Myanmar card platform — utilities and Vercel entry",
+  "description": "Eisy Myanmar card platform — Vercel entry + utilities",
+  "main": "api/index.js",
   "scripts": {
-    "create-wallet": "node create-wallet.js"
+    "create-wallet": "node create-wallet.js",
+    "start": "npm start --prefix backend",
+    "dev": "npm run dev --prefix backend",
+    "migrate": "npm run migrate --prefix backend"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "repository": {
     "type": "git",
@@ -12,6 +19,16 @@
   },
   "license": "ISC",
   "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "@supabase/supabase-js": "^2.112.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "multer": "^2.2.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "resend": "^6.18.1",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7",
     "tronweb": "^6.4.0"
   }
 }
