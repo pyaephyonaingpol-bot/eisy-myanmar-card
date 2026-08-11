@@ -1,0 +1,17 @@
+{
+  "name": "eisy-myanmar-card",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Eisy Myanmar card platform — utilities and Vercel entry",
+  "scripts": {
+    "create-wallet": "node create-wallet.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyaephyonaingpol-bot/eisy-myanmar-card.git"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "tronweb": "^6.4.0"
+  }
+}
