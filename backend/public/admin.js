@@ -146,6 +146,7 @@
 
       $('usdtWithdrawalFilter')?.addEventListener('change', () => this.loadUsdtWithdrawals());
       $('mmkWithdrawalFilter')?.addEventListener('change', () => this.loadMmkWithdrawals());
+      $('btnCheckMasterWallet')?.addEventListener('click', () => this.checkMasterWalletBalance());
 
       const usdtWdTable = $('usdtWithdrawalsTable');
       if (usdtWdTable) {
@@ -1840,6 +1841,55 @@
         await this.loadUsers();
       } catch (err) {
         alert(err.message || 'Failed to reject sell order');
+      }
+    },
+
+    async checkMasterWalletBalance() {
+      const box = $('masterWalletBalance');
+      const btn = $('btnCheckMasterWallet');
+      if (!box) return;
+
+      const prevLabel = btn ? btn.textContent : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Checking…';
+      }
+      box.innerHTML = '<p class="hint" style="margin:0">Querying TRON master wallet…</p>';
+
+      try {
+        const data = await this.api('GET', '/api/admin/master-wallet-balance');
+        const w = data.wallet || {};
+        const usdt = Number(w.usdt_balance || 0);
+        const trx = Number(w.trx_balance || 0);
+        const checked = w.checked_at
+          ? new Date(w.checked_at).toLocaleString()
+          : new Date().toLocaleString();
+
+        box.innerHTML =
+          '<div class="master-wallet-balance-grid">' +
+            '<div class="master-wallet-stat">' +
+              '<span class="label">USDT (TRC20)</span>' +
+              '<span class="value usdt">$' + usdt.toFixed(2) + '</span>' +
+            '</div>' +
+            '<div class="master-wallet-stat">' +
+              '<span class="label">TRX</span>' +
+              '<span class="value trx">' + trx.toFixed(4) + '</span>' +
+            '</div>' +
+            '<div class="master-wallet-stat">' +
+              '<span class="label">Network</span>' +
+              '<span class="value">' + this.esc(w.network || 'TRC20') + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="master-wallet-address">Address: <code>' + this.esc(w.address || '—') + '</code>' +
+            '<br><span class="hint">Checked ' + this.esc(checked) + '</span></div>';
+      } catch (err) {
+        box.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' +
+          this.esc(err.message || 'Failed to load master wallet balance') + '</p>';
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prevLabel || 'Check Master Wallet Balance';
+        }
       }
     },
 

@@ -1173,6 +1173,34 @@ const {
   rejectMmkWithdrawal,
 } = require('../services/withdrawalService');
 const { walletPayload: adminWalletPayload } = require('../services/walletService');
+const { getMasterWalletInfo } = require('../services/tronMasterWalletService');
+
+/** TRON master wallet TRX + USDT balances (for withdrawal funding checks). */
+router.get('/master-wallet-balance', async (_req, res) => {
+  try {
+    const info = await getMasterWalletInfo();
+    res.json({
+      success: true,
+      wallet: {
+        address: info.address,
+        network: 'TRC20',
+        usdt_balance: Number(info.usdtBalance) || 0,
+        trx_balance: Number(info.trxBalance) || 0,
+        usdt_contract: info.contract,
+        checked_at: new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    console.error('[admin/master-wallet-balance]', err.code || '', err.message);
+    const status = err.code === 'MASTER_KEY_MISSING' || err.code === 'MASTER_KEY_INVALID'
+      ? 503
+      : 502;
+    res.status(status).json({
+      error: err.message || 'Failed to query master wallet balance',
+      code: err.code || undefined,
+    });
+  }
+});
 
 router.get('/withdrawals/usdt', async (req, res) => {
   try {

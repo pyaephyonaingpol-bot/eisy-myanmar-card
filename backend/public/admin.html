@@ -217,7 +217,21 @@
         <div id="p2pSellOrdersTable" class="data-table-wrap"><p class="hint">Loading P2P sell orders…</p></div>
 
         <h2 style="margin-top:2rem">USDT Withdrawals — Crypto &amp; Bank</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Complete on-chain payouts or USDT→MMK bank transfers. Reject to refund the user's USDT balance.</p>
+        <p class="hint" style="margin-bottom:0.75rem">Complete on-chain payouts or USDT→MMK bank transfers. Reject to refund the user's USDT balance. TRC20 completes send from the master wallet automatically.</p>
+
+        <div class="master-wallet-panel" id="masterWalletPanel">
+          <div class="master-wallet-panel-header">
+            <div>
+              <strong>Master wallet (TRC20)</strong>
+              <p class="hint" style="margin:0.25rem 0 0">Check TRX and USDT before completing crypto withdrawals.</p>
+            </div>
+            <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm">Check Master Wallet Balance</button>
+          </div>
+          <div id="masterWalletBalance" class="master-wallet-balance" aria-live="polite">
+            <p class="hint" style="margin:0">Click the button to load balances.</p>
+          </div>
+        </div>
+
         <div class="admin-toolbar">
           <select id="usdtWithdrawalFilter">
             <option value="pending" selected>Pending</option>

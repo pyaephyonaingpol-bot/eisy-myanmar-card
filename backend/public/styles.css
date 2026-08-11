@@ -315,6 +315,59 @@ a.btn { text-decoration: none; }
 .admin-tabs .tab.active { background: var(--bg-elevated); border-color: var(--border); color: var(--text-primary); box-shadow: var(--shadow-sm); }
 .admin-toolbar { display: flex; gap: 0.65rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap; }
 .admin-toolbar input, .admin-toolbar select { padding: 0.55rem 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: rgba(15,23,42,0.55); color: var(--text-primary); font-size: 0.875rem; min-width: 140px; }
+
+.master-wallet-panel {
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.45);
+}
+.master-wallet-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.master-wallet-balance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.65rem;
+}
+.master-wallet-stat {
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.55);
+}
+.master-wallet-stat .label {
+  display: block;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 0.2rem;
+}
+.master-wallet-stat .value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.master-wallet-stat .value.usdt { color: #34d399; }
+.master-wallet-stat .value.trx { color: #60a5fa; }
+.master-wallet-address {
+  margin-top: 0.65rem;
+  font-size: 0.78rem;
+  word-break: break-all;
+  color: var(--text-muted);
+}
+.master-wallet-address code {
+  font-family: var(--font-mono);
+  color: #93c5fd;
+}
 .grid-admin-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; align-items: end; }
 .admin-tab-panel { display: none; }
 .admin-tab-panel.is-active { display: block; }
