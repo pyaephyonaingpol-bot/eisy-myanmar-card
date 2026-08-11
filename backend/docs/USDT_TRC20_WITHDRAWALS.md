@@ -17,7 +17,12 @@ If a manual `tx_hash` is provided, the on-chain send is skipped.
 
 ## Admin balance check
 
-`GET /api/admin/master-wallet-balance` returns TRX + USDT for the master address.
+`GET /api/admin/master-wallet-balance` returns TRX + USDT for the master address, plus:
+
+- `trx_low_threshold` — default **30 TRX** (override with `MASTER_TRX_LOW_THRESHOLD`)
+- `trx_low` — `true` when TRX balance is below that threshold (admin UI shows a warning)
+
+The Super Admin **Master Wallet** page auto-loads balances and has a one-click **Refresh**.
 The admin Deposits/Withdrawals tab has a **Check Master Wallet Balance** button that calls this endpoint.
 
 ## Env

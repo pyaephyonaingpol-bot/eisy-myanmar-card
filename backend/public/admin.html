@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eisy Myanmar — Admin</title>
-  <link rel="stylesheet" href="/styles.css?v=20260811b" />
+  <link rel="stylesheet" href="/styles.css?v=20260811h" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -153,6 +153,10 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 5 5-9"/></svg>
             <span data-i18n="nav_admin_settings">Rates &amp; Fees</span>
           </button>
+          <button type="button" class="nav-item" data-page="master-wallet">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
+            <span>Master Wallet</span>
+          </button>
         </nav>
 
         <div class="sidebar-footer">
@@ -191,6 +195,7 @@
           <span class="hidden" data-page-title="support" data-i18n="nav_admin_support">Support</span>
           <span class="hidden" data-page-title="kyc-requests" data-i18n="nav_admin_kyc">KYC Requests</span>
           <span class="hidden" data-page-title="settings" data-i18n="nav_admin_settings">Rates &amp; Fees</span>
+          <span class="hidden" data-page-title="master-wallet">Master Wallet Status</span>
 
       <section id="tabDeposits" class="panel app-page is-active" data-page="deposits">
         <h2 data-i18n="wallet_deposit_requests">Wallet Deposit Requests</h2>
@@ -223,12 +228,12 @@
           <div class="master-wallet-panel-header">
             <div>
               <strong>Master wallet (TRC20)</strong>
-              <p class="hint" style="margin:0.25rem 0 0">Check TRX and USDT before completing crypto withdrawals.</p>
+              <p class="hint" style="margin:0.25rem 0 0">USDT + TRX balances for crypto withdrawals. Open <strong>Master Wallet</strong> for full status.</p>
             </div>
-            <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm">Check Master Wallet Balance</button>
+            <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm" data-master-wallet-refresh>Refresh</button>
           </div>
           <div id="masterWalletBalance" class="master-wallet-balance" aria-live="polite">
-            <p class="hint" style="margin:0">Click the button to load balances.</p>
+            <p class="hint" style="margin:0">Loading master wallet balances…</p>
           </div>
         </div>
 
@@ -595,6 +600,32 @@
         <p class="hint" style="margin-bottom:0.75rem">Historical log of all rate and fee updates. Deposits store the rate active at request time.</p>
         <div id="exchangeRateHistoryTable" class="data-table-wrap"><p class="hint">Loading history…</p></div>
       </section>
+
+      <section id="tabMasterWallet" class="panel app-page" data-page="master-wallet">
+        <h2>Master Wallet Status</h2>
+        <p class="hint" style="margin-bottom:1rem">
+          Live TRON balances for the payout master wallet (from <code>MASTER_PRIVATE_KEY</code> / <code>MASTER_WALLET_ADDRESS</code>).
+          Refill TRX when gas is low so TRC20 USDT withdrawals can complete.
+        </p>
+
+        <div class="master-wallet-status-card" id="masterWalletStatusCard">
+          <div class="master-wallet-panel-header">
+            <div>
+              <strong>TRC20 Master Wallet</strong>
+              <p class="hint" style="margin:0.25rem 0 0">USDT for payouts · TRX for network energy / gas</p>
+            </div>
+            <button type="button" id="btnRefreshMasterWalletStatus" class="btn btn-primary btn-sm" data-master-wallet-refresh>
+              Refresh balances
+            </button>
+          </div>
+
+          <div id="masterWalletTrxAlert" class="master-wallet-alert hidden" role="alert" aria-live="assertive"></div>
+
+          <div id="masterWalletStatusBalance" class="master-wallet-balance" aria-live="polite">
+            <p class="hint" style="margin:0">Loading master wallet balances…</p>
+          </div>
+        </div>
+      </section>
         </main>
       </div>
     </div>
@@ -701,6 +732,6 @@
   <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
   <script src="/i18n.js?v=20260811b"></script>
   <script src="/nav.js?v=20260811b"></script>
-  <script src="/admin.js?v=20260811e" defer></script>
+  <script src="/admin.js?v=20260811g" defer></script>
 </body>
 </html>

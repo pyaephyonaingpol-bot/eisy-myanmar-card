@@ -358,6 +358,36 @@ a.btn { text-decoration: none; }
 }
 .master-wallet-stat .value.usdt { color: #34d399; }
 .master-wallet-stat .value.trx { color: #60a5fa; }
+.master-wallet-stat .value.trx.is-low { color: #fbbf24; }
+.master-wallet-stat.is-warning {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.08);
+}
+.master-wallet-status-card {
+  margin: 0 0 1rem;
+  padding: 1.1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.75), rgba(30, 41, 59, 0.55));
+  max-width: 720px;
+}
+.master-wallet-alert {
+  margin: 0 0 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fde68a;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.master-wallet-alert.hidden { display: none; }
+.master-wallet-alert strong { color: #fbbf24; }
+.master-wallet-panel.has-trx-warning {
+  border-color: rgba(245, 158, 11, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.15);
+}
 .master-wallet-address {
   margin-top: 0.65rem;
   font-size: 0.78rem;

@@ -101,6 +101,7 @@
         this.loadP2pSellOrders();
         this.loadUsdtWithdrawals();
         this.loadMmkWithdrawals();
+        this.checkMasterWalletBalance();
       }
       if (name === 'support') this.loadSupportThreads();
       if (name === 'cards') {
@@ -121,6 +122,9 @@
       }
       if (name === 'transactions') {
         this.loadTransactions();
+      }
+      if (name === 'master-wallet') {
+        this.checkMasterWalletBalance();
       }
     },
 
@@ -147,7 +151,9 @@
 
       $('usdtWithdrawalFilter')?.addEventListener('change', () => this.loadUsdtWithdrawals());
       $('mmkWithdrawalFilter')?.addEventListener('change', () => this.loadMmkWithdrawals());
-      $('btnCheckMasterWallet')?.addEventListener('click', () => this.checkMasterWalletBalance());
+      document.querySelectorAll('[data-master-wallet-refresh]').forEach((btn) => {
+        btn.addEventListener('click', () => this.checkMasterWalletBalance({ force: true }));
+      });
 
       $('adminPaymentMethodForm')?.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -655,6 +661,7 @@
         this.loadPendingReloads(),
         this.loadUsers(),
         this.loadTransactions(),
+        this.checkMasterWalletBalance(),
       ]);
     },
 
@@ -1862,52 +1869,118 @@
       }
     },
 
-    async checkMasterWalletBalance() {
-      const box = $('masterWalletBalance');
-      const btn = $('btnCheckMasterWallet');
-      if (!box) return;
+    renderMasterWalletStatus(wallet, targets) {
+      const w = wallet || {};
+      const usdt = Number(w.usdt_balance || 0);
+      const trx = Number(w.trx_balance || 0);
+      const threshold = Number(w.trx_low_threshold != null ? w.trx_low_threshold : 30);
+      const trxLow = w.trx_low != null ? Boolean(w.trx_low) : trx < threshold;
+      const checked = w.checked_at
+        ? new Date(w.checked_at).toLocaleString()
+        : new Date().toLocaleString();
 
-      const prevLabel = btn ? btn.textContent : '';
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Checking…';
+      const alertHtml = trxLow
+        ? '<div class="master-wallet-alert" role="alert">' +
+            '<strong>Low TRX balance</strong> — ' +
+            trx.toFixed(4) + ' TRX is below the ' + threshold +
+            ' TRX gas reserve. Refill TRX on the master wallet before more TRC20 withdrawals.' +
+          '</div>'
+        : '';
+
+      const bodyHtml =
+        alertHtml +
+        '<div class="master-wallet-balance-grid">' +
+          '<div class="master-wallet-stat">' +
+            '<span class="label">USDT (TRC20)</span>' +
+            '<span class="value usdt">' + usdt.toFixed(2) + ' USDT</span>' +
+          '</div>' +
+          '<div class="master-wallet-stat' + (trxLow ? ' is-warning' : '') + '">' +
+            '<span class="label">TRX (gas)</span>' +
+            '<span class="value trx' + (trxLow ? ' is-low' : '') + '">' + trx.toFixed(4) + ' TRX</span>' +
+          '</div>' +
+          '<div class="master-wallet-stat">' +
+            '<span class="label">Network</span>' +
+            '<span class="value">' + this.esc(w.network || 'TRC20') + '</span>' +
+          '</div>' +
+          '<div class="master-wallet-stat">' +
+            '<span class="label">TRX reserve</span>' +
+            '<span class="value">' + threshold + ' TRX min</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="master-wallet-address">Address: <code>' + this.esc(w.address || '—') + '</code>' +
+          (w.usdt_contract ? '<br>USDT contract: <code>' + this.esc(w.usdt_contract) + '</code>' : '') +
+          '<br><span class="hint">Checked ' + this.esc(checked) + '</span></div>';
+
+      (targets || []).forEach((el) => {
+        if (el) el.innerHTML = bodyHtml;
+      });
+
+      const alertEl = $('masterWalletTrxAlert');
+      if (alertEl) {
+        if (trxLow) {
+          alertEl.classList.remove('hidden');
+          alertEl.innerHTML =
+            '<strong>Action needed:</strong> Master wallet TRX is low (' +
+            trx.toFixed(4) + ' / ' + threshold + ' min). Send TRX to the address below for gas fees.';
+        } else {
+          alertEl.classList.add('hidden');
+          alertEl.textContent = '';
+        }
       }
-      box.innerHTML = '<p class="hint" style="margin:0">Querying TRON master wallet…</p>';
+
+      const panel = $('masterWalletPanel');
+      if (panel) panel.classList.toggle('has-trx-warning', trxLow);
+      const statusCard = $('masterWalletStatusCard');
+      if (statusCard) statusCard.classList.toggle('has-trx-warning', trxLow);
+
+      // Header badge nudge when TRX is low
+      const badge = $('adminStatusBadge');
+      if (badge && trxLow) {
+        badge.textContent = 'Low TRX — refill';
+        badge.className = 'badge badge-warn';
+      }
+
+      return { usdt, trx, trxLow, threshold };
+    },
+
+    async checkMasterWalletBalance(opts = {}) {
+      const targets = [
+        $('masterWalletBalance'),
+        $('masterWalletStatusBalance'),
+      ].filter(Boolean);
+      if (!targets.length) return;
+
+      const buttons = Array.from(document.querySelectorAll('[data-master-wallet-refresh]'));
+      const prevLabels = buttons.map((btn) => btn.textContent);
+      buttons.forEach((btn) => {
+        btn.disabled = true;
+        btn.textContent = 'Refreshing…';
+      });
+      targets.forEach((el) => {
+        el.innerHTML = '<p class="hint" style="margin:0">Querying TRON master wallet…</p>';
+      });
 
       try {
         const data = await this.api('GET', '/api/admin/master-wallet-balance');
-        const w = data.wallet || {};
-        const usdt = Number(w.usdt_balance || 0);
-        const trx = Number(w.trx_balance || 0);
-        const checked = w.checked_at
-          ? new Date(w.checked_at).toLocaleString()
-          : new Date().toLocaleString();
-
-        box.innerHTML =
-          '<div class="master-wallet-balance-grid">' +
-            '<div class="master-wallet-stat">' +
-              '<span class="label">USDT (TRC20)</span>' +
-              '<span class="value usdt">$' + usdt.toFixed(2) + '</span>' +
-            '</div>' +
-            '<div class="master-wallet-stat">' +
-              '<span class="label">TRX</span>' +
-              '<span class="value trx">' + trx.toFixed(4) + '</span>' +
-            '</div>' +
-            '<div class="master-wallet-stat">' +
-              '<span class="label">Network</span>' +
-              '<span class="value">' + this.esc(w.network || 'TRC20') + '</span>' +
-            '</div>' +
-          '</div>' +
-          '<div class="master-wallet-address">Address: <code>' + this.esc(w.address || '—') + '</code>' +
-            '<br><span class="hint">Checked ' + this.esc(checked) + '</span></div>';
-      } catch (err) {
-        box.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' +
-          this.esc(err.message || 'Failed to load master wallet balance') + '</p>';
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = prevLabel || 'Check Master Wallet Balance';
+        this.renderMasterWalletStatus(data.wallet || {}, targets);
+        if (opts.force) {
+          this.showAdminToast?.('Master wallet balances updated', 'ok');
         }
+      } catch (err) {
+        const msg = this.esc(err.message || 'Failed to load master wallet balance');
+        targets.forEach((el) => {
+          el.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' + msg + '</p>';
+        });
+        const alertEl = $('masterWalletTrxAlert');
+        if (alertEl) {
+          alertEl.classList.remove('hidden');
+          alertEl.innerHTML = '<strong>Could not load wallet:</strong> ' + msg;
+        }
+      } finally {
+        buttons.forEach((btn, i) => {
+          btn.disabled = false;
+          btn.textContent = prevLabels[i] || 'Refresh';
+        });
       }
     },
 
