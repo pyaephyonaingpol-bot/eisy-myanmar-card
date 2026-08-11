@@ -1,12 +1,18 @@
-/* Eisy Myanmar — Admin dashboard (dev: no login gate) */
+/* Eisy Myanmar — Admin dashboard (RBAC session login) */
 (function () {
   'use strict';
 
   const $ = (id) => document.getElementById(id);
-  const DEFAULT_DEV_KEY = 'eisy-admin-dev-key';
+  const TOKEN_KEY = 'eisy_admin_token';
+  const LEGACY_KEY = 'eisy_admin_key';
 
   const Admin = {
-    key: DEFAULT_DEV_KEY,
+    token: null,
+    key: null,
+    user: null,
+    permissions: [],
+    pages: [],
+    roleLabels: {},
     activeThreadId: null,
     depositsById: {},
     pendingCardsById: {},
@@ -18,53 +24,75 @@
 
     init() {
       try {
-        this.ensureVisible();
-        this.key = localStorage.getItem('eisy_admin_key') || DEFAULT_DEV_KEY;
-        try {
-          localStorage.setItem('eisy_admin_key', this.key);
-        } catch (_) {
-          /* localStorage blocked — continue with in-memory key */
-        }
+        this.token = localStorage.getItem(TOKEN_KEY) || null;
+        this.key = localStorage.getItem(LEGACY_KEY) || null;
+        this.bindLoginEvents();
         this.bindEvents();
         this.bindNavigation();
         this.bindI18n();
         this.initSupabase().catch((err) => console.warn('[Admin] Supabase init:', err.message));
-        this.loadAll();
+
+        if (this.token) {
+          this.restoreSession();
+        } else {
+          this.showLogin();
+          this.maybeShowBootstrap();
+        }
       } catch (err) {
         console.error('[Admin] init failed:', err);
         this.showBootError(err);
       }
     },
 
-    ensureVisible() {
+    hasPermission(perm) {
+      return Array.isArray(this.permissions) && this.permissions.includes(perm);
+    },
+
+    showLogin() {
       const app = $('adminApp');
       const login = $('adminLogin');
+      if (app) {
+        app.classList.add('hidden');
+        app.style.display = '';
+      }
+      if (login) {
+        login.classList.remove('hidden');
+        login.setAttribute('aria-hidden', 'false');
+      }
+    },
+
+    showApp() {
+      const app = $('adminApp');
+      const login = $('adminLogin');
+      if (login) {
+        login.classList.add('hidden');
+        login.setAttribute('aria-hidden', 'true');
+      }
       if (app) {
         app.classList.remove('hidden');
         app.style.display = 'block';
       }
-      if (login) login.classList.add('hidden');
+    },
+
+    ensureVisible() {
+      this.showApp();
     },
 
     showBootError(err) {
-      this.ensureVisible();
+      this.showApp();
       const box = $('adminBootError');
       const message = err && err.message ? err.message : String(err);
       if (box) {
         box.textContent = 'Admin dashboard failed to start: ' + message;
         box.classList.add('visible');
       }
-      const table = $('depositsTable');
-      if (table) {
-        table.innerHTML = '<p class="hint" style="color:#ef4444">Dashboard error: ' + this.esc(message) + '</p>';
-      }
     },
 
     headers() {
-      return {
-        'Content-Type': 'application/json',
-        'X-Admin-Key': this.key || DEFAULT_DEV_KEY,
-      };
+      const h = { 'Content-Type': 'application/json' };
+      if (this.token) h.Authorization = 'Bearer ' + this.token;
+      if (this.key) h['X-Admin-Key'] = this.key;
+      return h;
     },
 
     async api(method, path, body) {
@@ -79,13 +107,204 @@
       } catch (_) {
         data = {};
       }
+      if (res.status === 401) {
+        this.clearSession();
+        this.showLogin();
+        throw new Error(data.error || 'Admin session expired — please sign in again');
+      }
       if (!res.ok) {
         throw new Error(data.error || res.statusText || ('HTTP ' + res.status));
       }
       return data;
     },
 
+    clearSession() {
+      this.token = null;
+      this.user = null;
+      this.permissions = [];
+      this.pages = [];
+      try { localStorage.removeItem(TOKEN_KEY); } catch (_) { /* ignore */ }
+    },
+
+    applySession(data) {
+      this.user = data.user || null;
+      this.permissions = data.permissions || [];
+      this.pages = data.pages || [];
+      if (data.role_labels) this.roleLabels = data.role_labels;
+      if (data.sessionToken) {
+        this.token = data.sessionToken;
+        try { localStorage.setItem(TOKEN_KEY, this.token); } catch (_) { /* ignore */ }
+      }
+      this.updateSessionUi();
+      this.applyRoleVisibility();
+    },
+
+    updateSessionUi() {
+      const badge = $('adminStatusBadge');
+      const meta = $('adminSessionMeta');
+      const role = this.user?.admin_role || '';
+      const label = this.user?.role_label || this.roleLabels[role] || role || 'Admin';
+      if (badge) {
+        badge.textContent = label;
+        badge.className = 'badge badge-ok';
+      }
+      if (meta) {
+        const email = this.user?.email || '';
+        meta.innerHTML = email
+          ? '<span class="admin-role-badge">' + this.esc(label) + '</span><div style="margin-top:0.35rem;font-size:0.78rem">' + this.esc(email) + '</div>'
+          : '<span class="admin-role-badge">' + this.esc(label) + '</span>';
+      }
+    },
+
+    applyRoleVisibility() {
+      document.querySelectorAll('[data-admin-perm]').forEach((el) => {
+        const perm = el.getAttribute('data-admin-perm');
+        const allowed = this.hasPermission(perm);
+        if (el.classList.contains('nav-item')) {
+          el.style.display = allowed ? '' : 'none';
+          if (!allowed) el.classList.remove('active');
+        } else {
+          el.classList.toggle('hidden', !allowed);
+          el.style.display = allowed ? '' : 'none';
+        }
+      });
+
+      const settingsForm = $('adminSettingsForm');
+      if (settingsForm) {
+        const canWrite = this.hasPermission('settings_write');
+        settingsForm.querySelectorAll('input, select, textarea, button').forEach((input) => {
+          if (input.id === 'settingPlatformRevenueBalance') return;
+          input.disabled = !canWrite;
+        });
+      }
+
+      const allowedPages = this.pages && this.pages.length
+        ? this.pages
+        : ['deposits'];
+      const current = (location.hash || '').replace(/^#admin-/, '') || null;
+      if (current && allowedPages.includes(current)) {
+        this.switchTab(current);
+      } else if (allowedPages[0]) {
+        this.switchTab(allowedPages[0]);
+      }
+    },
+
+    async restoreSession() {
+      try {
+        const data = await this.api('GET', '/api/admin/auth/me');
+        this.applySession(data);
+        this.showApp();
+        this.loadAll();
+      } catch (err) {
+        console.warn('[Admin] session restore failed:', err.message);
+        this.clearSession();
+        this.showLogin();
+        this.maybeShowBootstrap();
+      }
+    },
+
+    async maybeShowBootstrap() {
+      const box = $('adminBootstrapBox');
+      if (!box) return;
+      try {
+        const res = await fetch('/api/admin/auth/status');
+        const data = await res.json().catch(() => ({}));
+        if (data.bootstrap_available) box.classList.remove('hidden');
+        else box.classList.add('hidden');
+      } catch (_) {
+        box.classList.add('hidden');
+      }
+    },
+
+    bindLoginEvents() {
+      $('adminLoginForm')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errEl = $('adminLoginError');
+        const btn = $('adminLoginBtn');
+        if (errEl) {
+          errEl.classList.add('hidden');
+          errEl.textContent = '';
+        }
+        if (btn) btn.disabled = true;
+        try {
+          const email = ($('adminLoginEmail')?.value || '').trim();
+          const password = $('adminLoginPassword')?.value || '';
+          const res = await fetch('/api/admin/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Login failed');
+          this.applySession(data);
+          this.showApp();
+          this.loadAll();
+          this.showAdminToast('Signed in as ' + (data.user?.role_label || data.user?.admin_role), 'ok');
+        } catch (err) {
+          if (errEl) {
+            errEl.textContent = err.message || 'Login failed';
+            errEl.classList.remove('hidden');
+          }
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      });
+
+      $('adminBootstrapForm')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errEl = $('adminBootstrapError');
+        const btn = $('adminBootstrapBtn');
+        if (errEl) {
+          errEl.classList.add('hidden');
+          errEl.textContent = '';
+        }
+        if (btn) btn.disabled = true;
+        try {
+          const adminKey = $('adminBootstrapKey')?.value || '';
+          const res = await fetch('/api/admin/auth/bootstrap', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Admin-Key': adminKey,
+            },
+            body: JSON.stringify({
+              name: ($('adminBootstrapName')?.value || '').trim(),
+              email: ($('adminBootstrapEmail')?.value || '').trim(),
+              password: $('adminBootstrapPassword')?.value || '',
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Bootstrap failed');
+          this.applySession(data);
+          this.showApp();
+          this.loadAll();
+          this.showAdminToast('Super Admin created', 'ok');
+        } catch (err) {
+          if (errEl) {
+            errEl.textContent = err.message || 'Bootstrap failed';
+            errEl.classList.remove('hidden');
+          }
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      });
+
+      $('adminLogoutBtn')?.addEventListener('click', () => this.logout());
+    },
+
+    async logout() {
+      try {
+        if (this.token) await this.api('POST', '/api/admin/auth/logout');
+      } catch (_) { /* ignore */ }
+      this.clearSession();
+      this.showLogin();
+      this.maybeShowBootstrap();
+    },
+
     switchTab(name) {
+      if (this.pages && this.pages.length && !this.pages.includes(name)) {
+        return;
+      }
       if (typeof AppNav !== 'undefined' && AppNav.navigate) {
         AppNav.navigate(name, { pushHash: true });
         return;
@@ -111,7 +330,7 @@
       if (name === 'settings') {
         this.loadSettings();
         this.loadExchangeRateHistory();
-        this.loadPaymentMethods();
+        if (this.hasPermission('payment_methods')) this.loadPaymentMethods();
       }
       if (name === 'kyc-requests') {
         this.loadKycRequests();
@@ -121,6 +340,9 @@
       }
       if (name === 'transactions') {
         this.loadTransactions();
+      }
+      if (name === 'admins') {
+        this.loadAdmins();
       }
     },
 
@@ -141,6 +363,23 @@
       if (refreshBtn) refreshBtn.addEventListener('click', () => this.loadAll());
 
       $('btnRefreshRevenue')?.addEventListener('click', () => this.loadRevenueDashboard());
+
+      $('adminCreateForm')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          await this.api('POST', '/api/admin/admins', {
+            name: ($('newAdminName')?.value || '').trim() || undefined,
+            email: ($('newAdminEmail')?.value || '').trim(),
+            password: $('newAdminPassword')?.value || '',
+            role: $('newAdminRole')?.value || 'finance_admin',
+          });
+          $('adminCreateForm').reset();
+          this.showAdminToast('Admin saved', 'ok');
+          this.loadAdmins();
+        } catch (err) {
+          this.showAdminToast(err.message || 'Failed to save admin', 'error');
+        }
+      });
 
       const depositFilter = $('depositFilter');
       if (depositFilter) depositFilter.addEventListener('change', () => this.loadDeposits());
@@ -642,20 +881,96 @@
     },
 
     loadAll() {
-      return Promise.allSettled([
-        this.loadPricingSettings(),
-        this.loadDeposits(),
-        this.loadP2pDisputes(),
-        this.loadP2pBuyOrders(),
-        this.loadP2pSellOrders(),
-        this.loadUsdtWithdrawals(),
-        this.loadMmkWithdrawals(),
-        this.loadPendingCards(),
-        this.loadIssuedCards(),
-        this.loadPendingReloads(),
-        this.loadUsers(),
-        this.loadTransactions(),
-      ]);
+      const tasks = [];
+      if (this.hasPermission('settings_read') || this.hasPermission('rates')) {
+        tasks.push(this.loadPricingSettings());
+      }
+      if (this.hasPermission('deposits')) {
+        tasks.push(this.loadDeposits(), this.loadP2pDisputes(), this.loadP2pBuyOrders(), this.loadP2pSellOrders());
+      }
+      if (this.hasPermission('withdrawals')) {
+        tasks.push(this.loadUsdtWithdrawals(), this.loadMmkWithdrawals());
+      }
+      if (this.hasPermission('cards')) {
+        tasks.push(this.loadPendingCards(), this.loadIssuedCards(), this.loadPendingReloads());
+      }
+      if (this.hasPermission('users')) tasks.push(this.loadUsers());
+      if (this.hasPermission('transactions')) tasks.push(this.loadTransactions());
+      if (this.hasPermission('manage_admins')) tasks.push(this.loadAdmins());
+      return Promise.allSettled(tasks);
+    },
+
+    async loadAdmins() {
+      const el = $('adminsTable');
+      if (!el || !this.hasPermission('manage_admins')) return;
+      el.innerHTML = '<p class="hint">Loading admins…</p>';
+      try {
+        const data = await this.api('GET', '/api/admin/admins');
+        const admins = data.admins || [];
+        const labels = data.role_labels || this.roleLabels || {};
+        if (data.role_labels) this.roleLabels = data.role_labels;
+        if (!admins.length) {
+          el.innerHTML = '<p class="hint">No admin accounts yet.</p>';
+          return;
+        }
+        el.innerHTML =
+          '<table class="data-table"><thead><tr>' +
+          '<th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Password</th><th>Actions</th>' +
+          '</tr></thead><tbody>' +
+          admins.map((a) => {
+            const roleOpts = (data.roles || ['super_admin', 'finance_admin', 'support_admin']).map((r) =>
+              '<option value="' + this.esc(r) + '"' + (r === a.admin_role ? ' selected' : '') + '>' +
+              this.esc(labels[r] || r) + '</option>'
+            ).join('');
+            return (
+              '<tr data-admin-id="' + a.id + '">' +
+              '<td>' + a.id + '</td>' +
+              '<td>' + this.esc(a.name || '—') + '</td>' +
+              '<td>' + this.esc(a.email || '—') + '</td>' +
+              '<td><select class="admin-role-select" data-id="' + a.id + '">' + roleOpts + '</select></td>' +
+              '<td><input type="password" class="admin-pass-input" data-id="' + a.id + '" placeholder="New password" minlength="6" style="max-width:140px" /></td>' +
+              '<td class="actions-cell">' +
+              '<button type="button" class="btn btn-sm btn-secondary" data-action="save-admin" data-id="' + a.id + '">Save</button>' +
+              '<button type="button" class="btn btn-sm btn-reject" data-action="remove-admin" data-id="' + a.id + '">Remove</button>' +
+              '</td></tr>'
+            );
+          }).join('') +
+          '</tbody></table>';
+
+        el.querySelectorAll('[data-action="save-admin"]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const id = btn.getAttribute('data-id');
+            const row = el.querySelector('tr[data-admin-id="' + id + '"]');
+            const role = row?.querySelector('.admin-role-select')?.value;
+            const password = row?.querySelector('.admin-pass-input')?.value || '';
+            const body = { role };
+            if (password) body.password = password;
+            try {
+              await this.api('PUT', '/api/admin/admins/' + id, body);
+              this.showAdminToast('Admin updated', 'ok');
+              this.loadAdmins();
+            } catch (err) {
+              this.showAdminToast(err.message || 'Update failed', 'error');
+            }
+          });
+        });
+
+        el.querySelectorAll('[data-action="remove-admin"]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const id = btn.getAttribute('data-id');
+            if (!confirm('Remove admin access for user #' + id + '?')) return;
+            try {
+              await this.api('DELETE', '/api/admin/admins/' + id);
+              this.showAdminToast('Admin removed', 'ok');
+              this.loadAdmins();
+            } catch (err) {
+              this.showAdminToast(err.message || 'Remove failed', 'error');
+            }
+          });
+        });
+      } catch (err) {
+        el.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+      }
     },
 
     async loadPricingSettings() {

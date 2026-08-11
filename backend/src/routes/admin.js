@@ -1,6 +1,24 @@
 const express = require('express');
 const { getDb } = require('../db');
-const { requireAuth, requireSensitive, requireAdmin, requireAdminOnly } = require('../middleware/auth');
+const {
+  requireAuth,
+  requireSensitive,
+  requireAdmin,
+  requireAdminAuth,
+  requirePermission,
+} = require('../middleware/auth');
+const {
+  loginAdmin,
+  bootstrapSuperAdmin,
+  listAdmins,
+  createOrPromoteAdmin,
+  updateAdminRole,
+  removeAdmin,
+  setAdminPassword,
+  adminPublic,
+} = require('../services/adminAuthService');
+const { permissionsForRole, pagesForRole, ALL_ADMIN_ROLES, ROLE_LABELS } = require('../lib/adminRoles');
+const UserSession = require('../models/UserSession');
 const Card = require('../models/Card');
 const CardReloadRequest = require('../models/CardReloadRequest');
 const DepositRequest = require('../models/DepositRequest');
@@ -150,10 +168,167 @@ router.post('/issue-card', requireAuth, requireSensitive, async (req, res) => {
   }
 });
 
-// ─── Admin-only routes ───
-router.use(requireAdminOnly);
+// ─── Admin authentication (public login / bootstrap) ───
+router.get('/auth/status', async (_req, res) => {
+  try {
+    const adminCount = await User.countAdmins();
+    res.json({
+      has_admins: adminCount > 0,
+      bootstrap_available: adminCount === 0,
+    });
+  } catch (err) {
+    console.error('[admin/auth/status]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
-router.get('/ledger-summary', async (_req, res) => {
+router.post('/auth/login', async (req, res) => {
+  try {
+    const result = await loginAdmin({
+      email: req.body.email,
+      password: req.body.password,
+      ipAddress: req.ip,
+      deviceName: req.body.device_name || 'Admin Dashboard',
+      devicePlatform: req.body.device_platform || 'web-admin',
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[admin/auth/login]', err.message);
+    res.status(401).json({ error: err.message || 'Login failed' });
+  }
+});
+
+router.post('/auth/bootstrap', async (req, res) => {
+  try {
+    const result = await bootstrapSuperAdmin({
+      email: req.body.email,
+      password: req.body.password,
+      name: req.body.name,
+      adminApiKey: req.headers['x-admin-key'] || req.body.admin_api_key,
+      ipAddress: req.ip,
+    });
+    res.status(201).json({ success: true, ...result });
+  } catch (err) {
+    console.error('[admin/auth/bootstrap]', err.message);
+    const status = /already exist/i.test(err.message) ? 409 : 400;
+    res.status(status).json({ error: err.message || 'Bootstrap failed' });
+  }
+});
+
+// ─── Admin-only routes (session or API key) ───
+router.use(requireAdminAuth);
+
+router.get('/auth/me', async (req, res) => {
+  try {
+    if (req.adminAuthMethod === 'api_key') {
+      return res.json({
+        user: {
+          id: null,
+          email: 'api-key@system',
+          name: 'API Key Super Admin',
+          admin_role: 'super_admin',
+          role_label: ROLE_LABELS.super_admin,
+          auth_method: 'api_key',
+        },
+        permissions: permissionsForRole('super_admin'),
+        pages: pagesForRole('super_admin'),
+        roles: ALL_ADMIN_ROLES,
+        role_labels: ROLE_LABELS,
+      });
+    }
+    const user = await User.findById(req.user.id);
+    if (!user?.admin_role) {
+      return res.status(403).json({ error: 'Admin role required' });
+    }
+    res.json({
+      user: { ...adminPublic(user), auth_method: 'session' },
+      permissions: permissionsForRole(user.admin_role),
+      pages: pagesForRole(user.admin_role),
+      roles: ALL_ADMIN_ROLES,
+      role_labels: ROLE_LABELS,
+    });
+  } catch (err) {
+    console.error('[admin/auth/me]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/auth/logout', async (req, res) => {
+  try {
+    if (req.sessionToken) {
+      await UserSession.revoke(req.sessionToken);
+    }
+    res.json({ success: true, message: 'Logged out' });
+  } catch (err) {
+    console.error('[admin/auth/logout]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Super Admin: manage admin accounts ───
+router.get('/admins', requirePermission('manage_admins'), async (_req, res) => {
+  try {
+    const admins = await listAdmins();
+    res.json({ admins, roles: ALL_ADMIN_ROLES, role_labels: ROLE_LABELS });
+  } catch (err) {
+    console.error('[admin/admins GET]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/admins', requirePermission('manage_admins'), async (req, res) => {
+  try {
+    const admin = await createOrPromoteAdmin({
+      email: req.body.email,
+      password: req.body.password,
+      name: req.body.name,
+      role: req.body.role,
+      actorId: req.user?.id,
+    });
+    res.status(201).json({ success: true, admin });
+  } catch (err) {
+    console.error('[admin/admins POST]', err.message);
+    res.status(400).json({ error: err.message || 'Failed to create admin' });
+  }
+});
+
+router.put('/admins/:id', requirePermission('manage_admins'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    let admin = null;
+    if (req.body.role) {
+      admin = await updateAdminRole(id, req.body.role, req.user?.id);
+    }
+    if (req.body.password) {
+      admin = await setAdminPassword(id, req.body.password, req.user?.id);
+    }
+    if (req.body.name) {
+      await User.updateProfile(id, { name: req.body.name });
+      admin = adminPublic(await User.findById(id));
+    }
+    if (!admin) {
+      return res.status(400).json({ error: 'Provide role, password, and/or name to update' });
+    }
+    res.json({ success: true, admin });
+  } catch (err) {
+    console.error('[admin/admins PUT]', err.message);
+    res.status(400).json({ error: err.message || 'Failed to update admin' });
+  }
+});
+
+router.delete('/admins/:id', requirePermission('manage_admins'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const result = await removeAdmin(id, req.user?.id);
+    res.json(result);
+  } catch (err) {
+    console.error('[admin/admins DELETE]', err.message);
+    res.status(400).json({ error: err.message || 'Failed to remove admin' });
+  }
+});
+
+
+router.get('/ledger-summary', requirePermission('ledger'), async (_req, res) => {
   try {
     const summary = await getSystemLedgerSummary();
     res.json({ summary });
@@ -163,7 +338,7 @@ router.get('/ledger-summary', async (_req, res) => {
   }
 });
 
-router.get('/settings', async (_req, res) => {
+router.get('/settings', requirePermission('settings_read'), async (_req, res) => {
   try {
     const settings = await getAllSettings();
     const pricing = await getCardPricingSettings();
@@ -201,7 +376,7 @@ router.get('/settings', async (_req, res) => {
   }
 });
 
-router.put('/settings', async (req, res) => {
+router.put('/settings', requirePermission('settings_write'), async (req, res) => {
   try {
     const result = await updateSettings(req.body || {});
     res.json({
@@ -225,7 +400,7 @@ const {
   deletePaymentMethod,
 } = require('../services/depositPaymentMethodService');
 
-router.get('/payment-methods', async (req, res) => {
+router.get('/payment-methods', requirePermission('payment_methods'), async (req, res) => {
   try {
     const activeOnly = String(req.query.active || '') === '1';
     const methods = await listPaymentMethods({ activeOnly });
@@ -236,7 +411,7 @@ router.get('/payment-methods', async (req, res) => {
   }
 });
 
-router.post('/payment-methods', async (req, res) => {
+router.post('/payment-methods', requirePermission('payment_methods'), async (req, res) => {
   try {
     const method = await createPaymentMethod(req.body || {});
     res.status(201).json({ success: true, payment_method: method });
@@ -246,7 +421,7 @@ router.post('/payment-methods', async (req, res) => {
   }
 });
 
-router.put('/payment-methods/:id', async (req, res) => {
+router.put('/payment-methods/:id', requirePermission('payment_methods'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const method = await updatePaymentMethod(id, req.body || {});
@@ -258,7 +433,7 @@ router.put('/payment-methods/:id', async (req, res) => {
   }
 });
 
-router.delete('/payment-methods/:id', async (req, res) => {
+router.delete('/payment-methods/:id', requirePermission('payment_methods'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const method = await deletePaymentMethod(id);
@@ -270,7 +445,7 @@ router.delete('/payment-methods/:id', async (req, res) => {
   }
 });
 
-router.get('/exchange-rate-history', async (req, res) => {
+router.get('/exchange-rate-history', requirePermission('rates'), async (req, res) => {
   try {
     const limit = parseInt(req.query.limit, 10) || 100;
     const history = await listExchangeRateHistory({ limit });
@@ -282,7 +457,7 @@ router.get('/exchange-rate-history', async (req, res) => {
   }
 });
 
-router.get('/deposits', async (req, res) => {
+router.get('/deposits', requirePermission('deposits'), async (req, res) => {
   try {
     const status = req.query.status;
     const settings = await getCardPricingSettings();
@@ -296,7 +471,7 @@ router.get('/deposits', async (req, res) => {
   }
 });
 
-router.post('/deposits/:id/review', async (req, res) => {
+router.post('/deposits/:id/review', requirePermission('deposits'), async (req, res) => {
   try {
     const depositId = parseInt(req.params.id, 10);
     if (!Number.isFinite(depositId)) {
@@ -422,7 +597,7 @@ router.post('/deposits/:id/review', async (req, res) => {
   }
 });
 
-router.get('/cards/pending', async (_req, res) => {
+router.get('/cards/pending', requirePermission('cards'), async (_req, res) => {
   try {
     const settings = await getCardPricingSettings();
     const cards = await Card.listPendingRequests();
@@ -468,7 +643,7 @@ router.get('/cards/pending', async (_req, res) => {
   }
 });
 
-router.get('/cards/issued', async (_req, res) => {
+router.get('/cards/issued', requirePermission('cards'), async (_req, res) => {
   try {
     const cards = await listIssuedCardsForAdmin();
     res.json({ cards });
@@ -478,7 +653,7 @@ router.get('/cards/issued', async (_req, res) => {
   }
 });
 
-router.post('/cards/:id/status', async (req, res) => {
+router.post('/cards/:id/status', requirePermission('cards'), async (req, res) => {
   try {
     const cardId = parseInt(req.params.id, 10);
     if (!cardId) return res.status(400).json({ error: 'Invalid card id' });
@@ -512,7 +687,7 @@ router.post('/cards/:id/status', async (req, res) => {
   }
 });
 
-router.get('/reloads/pending', async (_req, res) => {
+router.get('/reloads/pending', requirePermission('cards'), async (_req, res) => {
   try {
     const reloads = await listPendingReloadRequests();
     res.json({ reloads });
@@ -522,7 +697,7 @@ router.get('/reloads/pending', async (_req, res) => {
   }
 });
 
-router.post('/reloads/:id/approve', async (req, res) => {
+router.post('/reloads/:id/approve', requirePermission('cards'), async (req, res) => {
   try {
     const reloadId = parseInt(req.params.id, 10);
     if (!reloadId) return res.status(400).json({ error: 'Invalid reload id' });
@@ -545,7 +720,7 @@ router.post('/reloads/:id/approve', async (req, res) => {
   }
 });
 
-router.post('/reloads/:id/reject', async (req, res) => {
+router.post('/reloads/:id/reject', requirePermission('cards'), async (req, res) => {
   try {
     const reloadId = parseInt(req.params.id, 10);
     if (!reloadId) return res.status(400).json({ error: 'Invalid reload id' });
@@ -569,7 +744,7 @@ router.post('/reloads/:id/reject', async (req, res) => {
   }
 });
 
-router.get('/users/:userId/cards', async (req, res) => {
+router.get('/users/:userId/cards', requirePermission('cards'), async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
     const user = await User.findById(userId);
@@ -597,7 +772,7 @@ router.get('/users/:userId/cards', async (req, res) => {
   }
 });
 
-router.post('/cards/:id/transaction', async (req, res) => {
+router.post('/cards/:id/transaction', requirePermission('cards'), async (req, res) => {
   try {
     const cardId = parseInt(req.params.id, 10);
     const { action, amount_usd, merchant, note } = req.body;
@@ -624,7 +799,7 @@ router.post('/cards/:id/transaction', async (req, res) => {
   }
 });
 
-router.post('/cards/:id/approve', async (req, res) => {
+router.post('/cards/:id/approve', requirePermission('cards'), async (req, res) => {
   try {
     const cardId = parseInt(req.params.id, 10);
     if (!cardId) return res.status(400).json({ error: 'Invalid card id' });
@@ -673,7 +848,7 @@ router.post('/cards/:id/approve', async (req, res) => {
   }
 });
 
-router.post('/cards/issue', async (req, res) => {
+router.post('/cards/issue', requirePermission('cards'), async (req, res) => {
   try {
     const userId = parseInt(req.body.user_id, 10);
     const {
@@ -777,7 +952,7 @@ router.post('/cards/issue', async (req, res) => {
   }
 });
 
-router.post('/cards/:id/balance', async (req, res) => {
+router.post('/cards/:id/balance', requirePermission('cards'), async (req, res) => {
   try {
     const cardId = parseInt(req.params.id, 10);
     const { balance_usd, note } = req.body;
@@ -821,7 +996,7 @@ router.post('/cards/:id/balance', async (req, res) => {
   }
 });
 
-router.post('/balance/adjust', async (req, res) => {
+router.post('/balance/adjust', requirePermission('balance_adjust'), async (req, res) => {
   try {
     const userId = parseInt(req.body.user_id, 10);
     const walletType = (req.body.wallet_type || req.body.currency || 'mmk').toLowerCase();
@@ -939,7 +1114,7 @@ router.post('/balance/adjust', async (req, res) => {
   }
 });
 
-router.get('/users', async (_req, res) => {
+router.get('/users', requirePermission('users'), async (_req, res) => {
   try {
     const db = getDb();
     const users = await db.all(`
@@ -953,7 +1128,7 @@ router.get('/users', async (_req, res) => {
   }
 });
 
-router.get('/transactions', async (req, res) => {
+router.get('/transactions', requirePermission('transactions'), async (req, res) => {
   try {
     const userId = req.query.user_id ? parseInt(req.query.user_id, 10) : null;
     const category = (req.query.category || '').toLowerCase();
@@ -976,7 +1151,7 @@ router.get('/transactions', async (req, res) => {
   }
 });
 
-router.get('/support/threads', async (req, res) => {
+router.get('/support/threads', requirePermission('support'), async (req, res) => {
   try {
     const status = req.query.status || null;
     const threads = await SupportThread.listAll({ status });
@@ -987,7 +1162,7 @@ router.get('/support/threads', async (req, res) => {
   }
 });
 
-router.get('/support/threads/:id/messages', async (req, res) => {
+router.get('/support/threads/:id/messages', requirePermission('support'), async (req, res) => {
   try {
     const threadId = parseInt(req.params.id, 10);
     const thread = await SupportThread.findById(threadId);
@@ -1003,7 +1178,7 @@ router.get('/support/threads/:id/messages', async (req, res) => {
   }
 });
 
-router.post('/support/threads/:id/reply', async (req, res) => {
+router.post('/support/threads/:id/reply', requirePermission('support'), async (req, res) => {
   try {
     const threadId = parseInt(req.params.id, 10);
     const { message } = req.body;
@@ -1029,7 +1204,7 @@ router.post('/support/threads/:id/reply', async (req, res) => {
   }
 });
 
-router.post('/support/threads/:id/close', async (req, res) => {
+router.post('/support/threads/:id/close', requirePermission('support'), async (req, res) => {
   try {
     const thread = await SupportThread.close(parseInt(req.params.id, 10));
     res.json({ success: true, thread });
@@ -1039,7 +1214,7 @@ router.post('/support/threads/:id/close', async (req, res) => {
   }
 });
 
-router.get('/p2p-buy-orders', async (req, res) => {
+router.get('/p2p-buy-orders', requirePermission('p2p'), async (req, res) => {
   try {
     const status = req.query.status || 'pending_seller_release';
     const orders = await listP2pBuyOrdersForAdmin({ status: status === 'all' ? null : status });
@@ -1050,7 +1225,7 @@ router.get('/p2p-buy-orders', async (req, res) => {
   }
 });
 
-router.post('/p2p-buy-orders/:id/release', async (req, res) => {
+router.post('/p2p-buy-orders/:id/release', requirePermission('p2p'), async (req, res) => {
   try {
     const orderId = parseInt(req.params.id, 10);
     const { admin_note } = req.body;
@@ -1065,7 +1240,7 @@ router.post('/p2p-buy-orders/:id/release', async (req, res) => {
   }
 });
 
-router.post('/p2p-buy-orders/:id/reject', async (req, res) => {
+router.post('/p2p-buy-orders/:id/reject', requirePermission('p2p'), async (req, res) => {
   try {
     const orderId = parseInt(req.params.id, 10);
     const { admin_note, rejection_reason } = req.body;
@@ -1081,7 +1256,7 @@ router.post('/p2p-buy-orders/:id/reject', async (req, res) => {
   }
 });
 
-router.get('/p2p-sell-orders', async (req, res) => {
+router.get('/p2p-sell-orders', requirePermission('p2p'), async (req, res) => {
   try {
     const status = req.query.status || 'pending_merchant_mmk';
     const orders = await listP2pSellOrdersForAdmin({ status: status === 'all' ? null : status });
@@ -1092,7 +1267,7 @@ router.get('/p2p-sell-orders', async (req, res) => {
   }
 });
 
-router.post('/p2p-sell-orders/:id/reject', async (req, res) => {
+router.post('/p2p-sell-orders/:id/reject', requirePermission('p2p'), async (req, res) => {
   try {
     const orderId = parseInt(req.params.id, 10);
     const { admin_note, rejection_reason } = req.body;
@@ -1108,7 +1283,7 @@ router.post('/p2p-sell-orders/:id/reject', async (req, res) => {
   }
 });
 
-router.get('/p2p-disputes', async (_req, res) => {
+router.get('/p2p-disputes', requirePermission('p2p'), async (_req, res) => {
   try {
     const disputes = await listDisputedOrdersForAdmin();
     res.json({ success: true, disputes });
@@ -1118,7 +1293,7 @@ router.get('/p2p-disputes', async (_req, res) => {
   }
 });
 
-router.post('/p2p-disputes/:orderType/:id/resolve', async (req, res) => {
+router.post('/p2p-disputes/:orderType/:id/resolve', requirePermission('p2p'), async (req, res) => {
   try {
     const { orderType, id } = req.params;
     const { resolution, admin_note } = req.body;
@@ -1142,7 +1317,7 @@ router.post('/p2p-disputes/:orderType/:id/resolve', async (req, res) => {
   }
 });
 
-router.get('/p2p-orders/:orderType/:id/messages', async (req, res) => {
+router.get('/p2p-orders/:orderType/:id/messages', requirePermission('p2p'), async (req, res) => {
   try {
     const { orderType, id } = req.params;
     const messages = await listOrderMessagesForAdmin(orderType, parseInt(id, 10));
@@ -1153,7 +1328,7 @@ router.get('/p2p-orders/:orderType/:id/messages', async (req, res) => {
   }
 });
 
-router.post('/p2p-orders/:orderType/:id/messages', uploadP2pAttachment.single('attachment'), async (req, res) => {
+router.post('/p2p-orders/:orderType/:id/messages', requirePermission('p2p'), uploadP2pAttachment.single('attachment'), async (req, res) => {
   try {
     const { orderType, id } = req.params;
     const attachmentPath = req.file ? publicP2pUploadPath(req.file.filename) : null;
@@ -1168,7 +1343,7 @@ router.post('/p2p-orders/:orderType/:id/messages', uploadP2pAttachment.single('a
   }
 });
 
-router.get('/revenue/dashboard', async (_req, res) => {
+router.get('/revenue/dashboard', requirePermission('revenue'), async (_req, res) => {
   try {
     const dashboard = await getRevenueDashboard();
     res.json({ success: true, ...dashboard });
@@ -1178,7 +1353,7 @@ router.get('/revenue/dashboard', async (_req, res) => {
   }
 });
 
-router.get('/kyc-requests', async (req, res) => {
+router.get('/kyc-requests', requirePermission('kyc'), async (req, res) => {
   try {
     const status = req.query.status || 'PENDING_REVIEW';
     const submissions = await listKycSubmissionsForAdmin({
@@ -1191,7 +1366,7 @@ router.get('/kyc-requests', async (req, res) => {
   }
 });
 
-router.post('/kyc-requests/:id/approve', async (req, res) => {
+router.post('/kyc-requests/:id/approve', requirePermission('kyc'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const result = await approveKyc(id, { adminNote: req.body.admin_note, reviewedBy: 'admin' });
@@ -1202,7 +1377,7 @@ router.post('/kyc-requests/:id/approve', async (req, res) => {
   }
 });
 
-router.post('/kyc-requests/:id/reject', async (req, res) => {
+router.post('/kyc-requests/:id/reject', requirePermission('kyc'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const result = await rejectKyc(id, {
@@ -1229,7 +1404,7 @@ const { walletPayload: adminWalletPayload } = require('../services/walletService
 const { getMasterWalletInfo } = require('../services/tronMasterWalletService');
 
 /** TRON master wallet TRX + USDT balances (for withdrawal funding checks). */
-router.get('/master-wallet-balance', async (_req, res) => {
+router.get('/master-wallet-balance', requirePermission('master_wallet'), async (_req, res) => {
   try {
     const info = await getMasterWalletInfo();
     res.json({
@@ -1255,7 +1430,7 @@ router.get('/master-wallet-balance', async (_req, res) => {
   }
 });
 
-router.get('/withdrawals/usdt', async (req, res) => {
+router.get('/withdrawals/usdt', requirePermission('withdrawals'), async (req, res) => {
   try {
     const status = req.query.status;
     const rows = await UsdtWithdrawal.listAll({
@@ -1269,7 +1444,7 @@ router.get('/withdrawals/usdt', async (req, res) => {
   }
 });
 
-router.post('/withdrawals/usdt/:id/complete', async (req, res) => {
+router.post('/withdrawals/usdt/:id/complete', requirePermission('withdrawals'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const withdrawal = await completeUsdtWithdrawal(id, {
@@ -1296,7 +1471,7 @@ router.post('/withdrawals/usdt/:id/complete', async (req, res) => {
   }
 });
 
-router.post('/withdrawals/usdt/:id/reject', async (req, res) => {
+router.post('/withdrawals/usdt/:id/reject', requirePermission('withdrawals'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const withdrawal = await rejectUsdtWithdrawal(id, {
@@ -1316,7 +1491,7 @@ router.post('/withdrawals/usdt/:id/reject', async (req, res) => {
   }
 });
 
-router.get('/withdrawals/mmk', async (req, res) => {
+router.get('/withdrawals/mmk', requirePermission('withdrawals'), async (req, res) => {
   try {
     const status = req.query.status;
     const rows = await MmkWithdrawal.listAll({
@@ -1330,7 +1505,7 @@ router.get('/withdrawals/mmk', async (req, res) => {
   }
 });
 
-router.post('/withdrawals/mmk/:id/complete', async (req, res) => {
+router.post('/withdrawals/mmk/:id/complete', requirePermission('withdrawals'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const withdrawal = await completeMmkWithdrawal(id, {
@@ -1348,7 +1523,7 @@ router.post('/withdrawals/mmk/:id/complete', async (req, res) => {
   }
 });
 
-router.post('/withdrawals/mmk/:id/reject', async (req, res) => {
+router.post('/withdrawals/mmk/:id/reject', requirePermission('withdrawals'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const withdrawal = await rejectMmkWithdrawal(id, {

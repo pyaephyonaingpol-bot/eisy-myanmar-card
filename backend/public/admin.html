@@ -11,8 +11,20 @@
   <style>
     /* Critical fallback — keeps dashboard visible even if styles.css fails */
     body { margin: 0; background: #0F172A; color: #F1F5F9; font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
-    #adminApp { display: block !important; min-height: 100vh; visibility: visible; }
-    #adminLogin { display: none !important; }
+    #adminApp { min-height: 100vh; }
+    #adminApp.hidden, #adminLogin.hidden { display: none !important; }
+    #adminLogin .auth-card { max-width: 420px; width: 100%; }
+    #adminLogin .auth-hint { color: #94a3b8; font-size: 0.85rem; margin-top: 0.75rem; line-height: 1.45; }
+    #adminLogin .bootstrap-box {
+      margin-top: 1.25rem; padding-top: 1.25rem;
+      border-top: 1px solid rgba(148, 163, 184, 0.25);
+    }
+    .admin-role-badge {
+      display: inline-block; padding: 0.2rem 0.55rem; border-radius: 6px;
+      font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em;
+      background: rgba(56, 189, 248, 0.15); color: #7dd3fc;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+    }
     #adminBootError {
       display: none;
       margin: 1rem;
@@ -107,10 +119,38 @@
 
   <div id="adminBootError" role="alert"></div>
 
-  <!-- Login bypassed in dev — dashboard loads immediately -->
-  <div id="adminLogin" class="hidden" aria-hidden="true"></div>
+  <div id="adminLogin" class="auth-screen" aria-hidden="false">
+    <div class="auth-card">
+      <h1>Eisy Admin</h1>
+      <p class="subtitle" style="margin-bottom:1.25rem">Sign in with your admin account</p>
+      <form id="adminLoginForm" class="form" autocomplete="on">
+        <label for="adminLoginEmail">Email</label>
+        <input type="email" id="adminLoginEmail" name="email" required autocomplete="username" placeholder="admin@example.com" />
+        <label for="adminLoginPassword">Password</label>
+        <input type="password" id="adminLoginPassword" name="password" required autocomplete="current-password" placeholder="••••••••" />
+        <p id="adminLoginError" class="auth-inline-error hidden" role="alert"></p>
+        <button type="submit" class="btn btn-primary" id="adminLoginBtn">Sign in</button>
+      </form>
+      <div class="bootstrap-box hidden" id="adminBootstrapBox">
+        <p class="auth-hint" style="margin-top:0">No admins yet. Create the first Super Admin (requires the server admin API key).</p>
+        <form id="adminBootstrapForm" class="form">
+          <label for="adminBootstrapName">Name</label>
+          <input type="text" id="adminBootstrapName" placeholder="Super Admin" />
+          <label for="adminBootstrapEmail">Email</label>
+          <input type="email" id="adminBootstrapEmail" required placeholder="admin@example.com" />
+          <label for="adminBootstrapPassword">Password</label>
+          <input type="password" id="adminBootstrapPassword" required minlength="6" placeholder="Min 6 characters" />
+          <label for="adminBootstrapKey">Admin API Key</label>
+          <input type="password" id="adminBootstrapKey" required placeholder="ADMIN_API_KEY" />
+          <p id="adminBootstrapError" class="auth-inline-error hidden" role="alert"></p>
+          <button type="submit" class="btn btn-secondary" id="adminBootstrapBtn">Create Super Admin</button>
+        </form>
+      </div>
+      <p class="auth-hint">Session-based access with role permissions (Super / Finance / Support).</p>
+    </div>
+  </div>
 
-  <div id="adminApp">
+  <div id="adminApp" class="hidden">
     <div class="app-shell" id="adminAppShell">
       <div id="adminToast" class="auth-toast hidden" role="status" aria-live="polite"></div>
       <div class="sidebar-backdrop" data-sidebar-backdrop aria-hidden="true"></div>
@@ -121,41 +161,50 @@
         </div>
 
         <nav class="sidebar-nav admin-sidebar-nav" aria-label="Admin sections">
-          <button type="button" class="nav-item active" data-page="deposits" aria-current="page">
+          <button type="button" class="nav-item active" data-page="deposits" data-admin-perm="deposits" aria-current="page">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             <span data-i18n="nav_admin_deposits">Deposits</span>
           </button>
-          <button type="button" class="nav-item" data-page="cards">
+          <button type="button" class="nav-item" data-page="cards" data-admin-perm="cards">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
             <span data-i18n="nav_admin_cards">Cards</span>
           </button>
-          <button type="button" class="nav-item" data-page="users">
+          <button type="button" class="nav-item" data-page="users" data-admin-perm="users">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             <span data-i18n="nav_admin_users">Users</span>
           </button>
-          <button type="button" class="nav-item" data-page="transactions">
+          <button type="button" class="nav-item" data-page="transactions" data-admin-perm="transactions">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
             <span data-i18n="nav_admin_transactions">Transactions</span>
           </button>
-          <button type="button" class="nav-item" data-page="revenue">
+          <button type="button" class="nav-item" data-page="revenue" data-admin-perm="revenue">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-6 6"/><path d="M14 9h4v4"/></svg>
             <span data-i18n="nav_admin_revenue">Revenue &amp; Profit</span>
           </button>
-          <button type="button" class="nav-item" data-page="support">
+          <button type="button" class="nav-item" data-page="support" data-admin-perm="support">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             <span data-i18n="nav_admin_support">Support</span>
           </button>
-          <button type="button" class="nav-item" data-page="kyc-requests">
+          <button type="button" class="nav-item" data-page="kyc-requests" data-admin-perm="kyc">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             <span data-i18n="nav_admin_kyc">KYC Requests</span>
           </button>
-          <button type="button" class="nav-item" data-page="settings">
+          <button type="button" class="nav-item" data-page="settings" data-admin-perm="settings_read">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 5 5-9"/></svg>
             <span data-i18n="nav_admin_settings">Rates &amp; Fees</span>
+          </button>
+          <button type="button" class="nav-item" data-page="admins" data-admin-perm="manage_admins">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+            <span>Admins</span>
           </button>
         </nav>
 
         <div class="sidebar-footer">
+          <div id="adminSessionMeta" class="auth-hint" style="padding:0.5rem 0.85rem;margin-bottom:0.35rem"></div>
+          <button type="button" class="nav-item" id="adminLogoutBtn">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+            <span>Log out</span>
+          </button>
           <a href="/" class="nav-item" style="text-decoration:none">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"/></svg>
             <span data-i18n="nav_user_app">User App</span>
@@ -176,7 +225,7 @@
             <div class="header-actions">
               <div id="langSwitcherAdmin"></div>
               <span id="adminCurrentRateBadge" class="badge badge-rate" data-i18n="current_rate_loading">Current Rate: loading…</span>
-              <span id="adminStatusBadge" class="badge badge-ok" data-i18n="dev_mode">Dev mode</span>
+              <span id="adminStatusBadge" class="badge badge-ok">Signed out</span>
               <button type="button" id="adminRefreshBtn" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
             </div>
           </div>
@@ -191,6 +240,7 @@
           <span class="hidden" data-page-title="support" data-i18n="nav_admin_support">Support</span>
           <span class="hidden" data-page-title="kyc-requests" data-i18n="nav_admin_kyc">KYC Requests</span>
           <span class="hidden" data-page-title="settings" data-i18n="nav_admin_settings">Rates &amp; Fees</span>
+          <span class="hidden" data-page-title="admins">Admins</span>
 
       <section id="tabDeposits" class="panel app-page is-active" data-page="deposits">
         <h2 data-i18n="wallet_deposit_requests">Wallet Deposit Requests</h2>
@@ -219,7 +269,7 @@
         <h2 style="margin-top:2rem">USDT Withdrawals — Crypto &amp; Bank</h2>
         <p class="hint" style="margin-bottom:0.75rem">Complete on-chain payouts or USDT→MMK bank transfers. Reject to refund the user's USDT balance. TRC20 completes send from the master wallet automatically.</p>
 
-        <div class="master-wallet-panel" id="masterWalletPanel">
+        <div class="master-wallet-panel" id="masterWalletPanel" data-admin-perm="master_wallet">
           <div class="master-wallet-panel-header">
             <div>
               <strong>Master wallet (TRC20)</strong>
@@ -552,8 +602,9 @@
         </form>
         <pre class="output" id="adminSettingsOut"></pre>
 
+        <div id="adminPaymentMethodsSection" data-admin-perm="payment_methods">
         <h2 style="margin-top:2rem">Deposit Bank Accounts (MMK)</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Manage bank / KPay / WavePay accounts shown on the user Deposit page. Changes appear immediately for users.</p>
+        <p class="hint" style="margin-bottom:0.75rem">Manage bank / KPay / WavePay accounts shown on the user Deposit page. Changes appear immediately for users. Super Admin only.</p>
         <form id="adminPaymentMethodForm" class="form grid-admin-form" style="max-width:720px;margin-bottom:1rem">
           <input type="hidden" id="pmEditId" value="" />
           <div class="field">
@@ -590,10 +641,44 @@
           </div>
         </form>
         <div id="adminPaymentMethodsTable" class="data-table-wrap"><p class="hint">Loading bank accounts…</p></div>
+        </div>
 
         <h2 style="margin-top:2rem">Exchange Rate History</h2>
         <p class="hint" style="margin-bottom:0.75rem">Historical log of all rate and fee updates. Deposits store the rate active at request time.</p>
         <div id="exchangeRateHistoryTable" class="data-table-wrap"><p class="hint">Loading history…</p></div>
+      </section>
+
+      <section id="tabAdmins" class="panel app-page" data-page="admins">
+        <h2>Admin Accounts</h2>
+        <p class="hint" style="margin-bottom:1rem">Super Admins can add, edit, or remove admin accounts and assign roles.</p>
+
+        <form id="adminCreateForm" class="form grid-admin-form" style="max-width:720px;margin-bottom:1.25rem">
+          <div class="field">
+            <label for="newAdminName">Name</label>
+            <input id="newAdminName" type="text" placeholder="Optional display name" />
+          </div>
+          <div class="field">
+            <label for="newAdminEmail">Email</label>
+            <input id="newAdminEmail" type="email" required placeholder="admin@example.com" />
+          </div>
+          <div class="field">
+            <label for="newAdminPassword">Password</label>
+            <input id="newAdminPassword" type="password" required minlength="6" placeholder="Min 6 characters" />
+          </div>
+          <div class="field">
+            <label for="newAdminRole">Role</label>
+            <select id="newAdminRole" required>
+              <option value="finance_admin">Finance Admin</option>
+              <option value="support_admin">Support Admin</option>
+              <option value="super_admin">Super Admin</option>
+            </select>
+          </div>
+          <div class="field" style="display:flex;align-items:end">
+            <button type="submit" class="btn btn-primary">Add / Promote Admin</button>
+          </div>
+        </form>
+        <p class="hint" style="margin-bottom:0.75rem">If the email already exists as a user, they are promoted and the password is updated when provided.</p>
+        <div id="adminsTable" class="data-table-wrap"><p class="hint">Loading admins…</p></div>
       </section>
         </main>
       </div>
@@ -686,21 +771,18 @@
   </div>
 
   <script>
-    /* Ensure dashboard shell is visible before admin.js runs */
+    /* Keep both shells hidden until admin.js decides login vs dashboard */
     (function () {
       var app = document.getElementById('adminApp');
       var login = document.getElementById('adminLogin');
-      if (app) {
-        app.classList.remove('hidden');
-        app.style.display = 'block';
-      }
-      if (login) login.classList.add('hidden');
+      if (app) app.classList.add('hidden');
+      if (login) login.classList.remove('hidden');
     })();
   </script>
   <script src="/api-config.js?v=20260811b"></script>
   <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
   <script src="/i18n.js?v=20260811b"></script>
   <script src="/nav.js?v=20260811b"></script>
-  <script src="/admin.js?v=20260811e" defer></script>
+  <script src="/admin.js?v=20260811f" defer></script>
 </body>
 </html>

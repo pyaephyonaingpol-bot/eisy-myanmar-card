@@ -2,8 +2,38 @@ const UserSession = require('../models/UserSession');
 const User = require('../models/User');
 const { verifyPinToken, hashToken } = require('../services/cryptoService');
 const { addDays } = require('../lib/sqliteDatetime');
+const {
+  isValidRole,
+  roleHasPermission,
+  ROLES,
+} = require('../lib/adminRoles');
 
 const SESSION_EXPIRY_DAYS = parseInt(process.env.SESSION_EXPIRY_DAYS || '30', 10);
+
+function configuredAdminApiKey() {
+  return process.env.ADMIN_API_KEY || 'eisy-admin-dev-key';
+}
+
+function adminDevBypassEnabled() {
+  return process.env.ADMIN_DEV_BYPASS !== 'false' && !process.env.ADMIN_API_KEY;
+}
+
+function attachApiKeyAdmin(req) {
+  req.isAdmin = true;
+  req.adminAuthMethod = 'api_key';
+  req.adminRole = ROLES.SUPER_ADMIN;
+  req.user = {
+    id: null,
+    email: 'api-key@system',
+    name: 'API Key Super Admin',
+    phone: null,
+    email_verified: 1,
+    has_pin: false,
+    biometrics_enabled: false,
+    auth_status: 'active',
+    admin_role: ROLES.SUPER_ADMIN,
+  };
+}
 
 async function requireAuth(req, res, next) {
   try {
@@ -37,6 +67,7 @@ async function requireAuth(req, res, next) {
       has_pin: Boolean(user.pin_hash),
       biometrics_enabled: Boolean(user.biometrics_enabled),
       auth_status: user.auth_status,
+      admin_role: user.admin_role || null,
     };
 
     next();
@@ -100,22 +131,126 @@ function requireOwnerOrAdmin(paramName = 'user_id') {
   };
 }
 
+/**
+ * Legacy admin gate (API key / dev bypass). Prefer requireAdminAuth for RBAC.
+ */
 function requireAdminOnly(req, res, next) {
-  const adminKey = process.env.ADMIN_API_KEY || 'eisy-admin-dev-key';
+  const adminKey = configuredAdminApiKey();
   const provided = req.headers['x-admin-key'];
 
   if (provided && provided === adminKey) {
-    req.isAdmin = true;
+    attachApiKeyAdmin(req);
     return next();
   }
 
-  // Dev bypass: when ADMIN_API_KEY is not customized, allow local admin dashboard without a key
-  if (process.env.ADMIN_DEV_BYPASS !== 'false' && !process.env.ADMIN_API_KEY) {
-    req.isAdmin = true;
+  if (adminDevBypassEnabled()) {
+    attachApiKeyAdmin(req);
     return next();
   }
 
   return res.status(403).json({ error: 'Valid admin key required', code: 'ADMIN_REQUIRED' });
+}
+
+/**
+ * Admin auth: Bearer session for a user with admin_role, or X-Admin-Key (super_admin),
+ * or local ADMIN_DEV_BYPASS when ADMIN_API_KEY is unset.
+ */
+async function requireAdminAuth(req, res, next) {
+  try {
+    const adminKey = configuredAdminApiKey();
+    const providedKey = req.headers['x-admin-key'];
+
+    if (providedKey && providedKey === adminKey) {
+      attachApiKeyAdmin(req);
+      return next();
+    }
+
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
+
+    if (token) {
+      const session = await UserSession.findByToken(token);
+      if (!session) {
+        return res.status(401).json({ error: 'Invalid or expired admin session', code: 'SESSION_INVALID' });
+      }
+
+      const user = await User.findById(session.user_id);
+      if (!user || (user.auth_status && user.auth_status === 'suspended')) {
+        return res.status(403).json({ error: 'Account unavailable', code: 'ACCOUNT_SUSPENDED' });
+      }
+
+      if (!user.admin_role || !isValidRole(user.admin_role)) {
+        return res.status(403).json({
+          error: 'Admin role required',
+          code: 'ADMIN_ROLE_REQUIRED',
+        });
+      }
+
+      await UserSession.touch(token, addDays(SESSION_EXPIRY_DAYS));
+
+      req.sessionToken = token;
+      req.session = session;
+      req.isAdmin = true;
+      req.adminAuthMethod = 'session';
+      req.adminRole = user.admin_role;
+      req.user = {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        phone: user.phone,
+        email_verified: user.email_verified,
+        has_pin: Boolean(user.pin_hash),
+        biometrics_enabled: Boolean(user.biometrics_enabled),
+        auth_status: user.auth_status,
+        admin_role: user.admin_role,
+      };
+      return next();
+    }
+
+    if (adminDevBypassEnabled()) {
+      attachApiKeyAdmin(req);
+      return next();
+    }
+
+    return res.status(401).json({
+      error: 'Admin authentication required',
+      code: 'ADMIN_AUTH_REQUIRED',
+    });
+  } catch (err) {
+    console.error('[admin auth middleware]', err);
+    return res.status(500).json({ error: 'Admin authentication error' });
+  }
+}
+
+function requirePermission(permission) {
+  return (req, res, next) => {
+    const role = req.adminRole || req.user?.admin_role;
+    if (roleHasPermission(role, permission)) {
+      return next();
+    }
+    return res.status(403).json({
+      error: 'Insufficient admin permissions',
+      code: 'ADMIN_FORBIDDEN',
+      required_permission: permission,
+      role: role || null,
+    });
+  };
+}
+
+function requireRoles(...roles) {
+  const allowed = roles.flat();
+  return (req, res, next) => {
+    const role = req.adminRole || req.user?.admin_role;
+    if (role && allowed.includes(role)) {
+      return next();
+    }
+    return res.status(403).json({
+      error: 'Insufficient admin role',
+      code: 'ADMIN_FORBIDDEN',
+      required_roles: allowed,
+      role: role || null,
+    });
+  };
 }
 
 module.exports = {
@@ -123,5 +258,9 @@ module.exports = {
   requireSensitive,
   requireAdmin,
   requireAdminOnly,
+  requireAdminAuth,
+  requirePermission,
+  requireRoles,
   requireOwnerOrAdmin,
+  ROLES,
 };
