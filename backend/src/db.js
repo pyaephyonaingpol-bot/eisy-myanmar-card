@@ -6,26 +6,13 @@ const { getDatabaseConfig, getDatabaseInfo } = require('./lib/databaseConfig');
 
 let db = null;
 
-async function openSqliteFile(filePath) {
-  // Lazy-load native sqlite3 — not available / not needed on Vercel LibSQL path.
-  let sqlite3;
-  try {
-    sqlite3 = require('sqlite3');
-  } catch (err) {
-    const wrapped = new Error(
-      "Cannot find module 'sqlite3'. Install backend dependencies (`npm install --prefix backend`) "
-      + 'or set DATABASE_URL to a LibSQL/Turso URL for serverless. '
-      + `Original: ${err.message}`
-    );
-    wrapped.code = 'SQLITE3_MISSING';
-    wrapped.cause = err;
-    throw wrapped;
-  }
-  const { open } = require('sqlite');
-  return open({
-    filename: filePath,
-    driver: sqlite3.Database,
-  });
+async function openLegacySqlite3(filePath) {
+  // Loaded only when SQLITE_DRIVER=sqlite3 (never on Vercel).
+  // Dynamic path string keeps native sqlite3 out of serverless traces.
+  const driverPath = ['./lib/', 'sqlite3', 'Driver'].join('');
+  // eslint-disable-next-line import/no-dynamic-require, global-require
+  const { openSqliteFile } = require(driverPath);
+  return openSqliteFile(filePath);
 }
 
 async function initDb() {
@@ -41,13 +28,15 @@ async function initDb() {
     if (String(config.url).startsWith('file:')) {
       console.log('[db] Connected to LibSQL file database:', config.filePath || config.url);
     } else {
-      console.log('[db] Connected to persistent LibSQL database');
+      console.log('[db] Connected to persistent LibSQL / Turso database');
     }
-  } else {
-    db = await openSqliteFile(config.filePath);
-    console.log('[db] Using SQLite file:', config.filePath);
+  } else if (config.mode === 'sqlite-file') {
+    db = await openLegacySqlite3(config.filePath);
+    console.log('[db] Using legacy native SQLite file:', config.filePath);
     await db.exec('PRAGMA journal_mode = WAL');
     await db.exec('PRAGMA foreign_keys = ON');
+  } else {
+    throw new Error(`Unsupported database mode: ${config.mode}`);
   }
 
   if (config.warning) {

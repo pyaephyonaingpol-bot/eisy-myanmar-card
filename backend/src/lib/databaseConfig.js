@@ -1,5 +1,4 @@
 const path = require('path');
-const fs = require('fs');
 const { isVercel, ensureDir } = require('../paths');
 
 function readDatabaseUrl() {
@@ -26,12 +25,21 @@ function isFileDatabaseUrl(url) {
   return /^file:/i.test(url);
 }
 
-function preferLibsqlFileDriver() {
+/**
+ * Driver selection:
+ * - Default (local + Vercel): @libsql/client — Vercel-compatible, no native sqlite3
+ * - Legacy override: SQLITE_DRIVER=sqlite3 (optional; not supported on Vercel)
+ */
+function resolveDriver() {
   const forced = String(process.env.SQLITE_DRIVER || '').trim().toLowerCase();
-  if (forced === 'libsql' || forced === 'libsql-file') return true;
-  if (forced === 'sqlite3' || forced === 'sqlite') return false;
-  // Native sqlite3 is unreliable on Vercel serverless — use embedded LibSQL instead.
-  return isVercel;
+  if (forced === 'sqlite3' || forced === 'sqlite') {
+    if (isVercel) {
+      console.warn('[db] SQLITE_DRIVER=sqlite3 is ignored on Vercel — using LibSQL');
+      return 'libsql';
+    }
+    return 'sqlite3';
+  }
+  return 'libsql';
 }
 
 function resolveLocalDatabasePath() {
@@ -51,10 +59,13 @@ function resolveLocalDatabasePath() {
 function getDatabaseConfig() {
   const url = readDatabaseUrl();
   const authToken = readDatabaseAuthToken();
+  const driver = resolveDriver();
 
+  // Remote Turso / LibSQL (preferred for Vercel production)
   if (url && isRemoteDatabaseUrl(url)) {
     return {
       mode: 'libsql',
+      driver: 'libsql',
       url,
       authToken: authToken || undefined,
       persistent: true,
@@ -65,32 +76,35 @@ function getDatabaseConfig() {
   const filePath = resolveLocalDatabasePath();
   const persistent = !isVercel || isFileDatabaseUrl(url);
 
-  if (preferLibsqlFileDriver()) {
-    let warning = null;
-    if (isVercel && !(url && isRemoteDatabaseUrl(url))) {
-      warning = 'DATABASE_URL is not set — using ephemeral /tmp LibSQL file DB. '
-        + 'Set DATABASE_URL (libsql://…) + DATABASE_AUTH_TOKEN for persistent Turso storage.';
-    }
+  // Legacy local-only native sqlite3
+  if (driver === 'sqlite3') {
     return {
-      mode: 'libsql',
-      url: `file:${filePath}`,
-      authToken: undefined,
-      persistent,
-      warning,
+      mode: 'sqlite-file',
+      driver: 'sqlite3',
       filePath,
+      persistent: true,
+      warning: null,
     };
   }
 
+  // Default: LibSQL embedded file (local) or ephemeral /tmp on Vercel without DATABASE_URL
   let warning = null;
-  if (isVercel && !url) {
-    warning = 'DATABASE_URL is not set — using ephemeral /tmp SQLite. Users and sessions are lost when Vercel spins up a new instance.';
+  if (isVercel && !(url && isRemoteDatabaseUrl(url))) {
+    const isProd = process.env.VERCEL_ENV === 'production';
+    warning = isProd
+      ? 'DATABASE_URL is not set on Vercel production — using ephemeral /tmp LibSQL. '
+        + 'Set DATABASE_URL (libsql://…) + DATABASE_AUTH_TOKEN (Turso) for persistent fintech data.'
+      : 'DATABASE_URL is not set — using ephemeral /tmp LibSQL file DB for this preview.';
   }
 
   return {
-    mode: 'sqlite-file',
-    filePath,
+    mode: 'libsql',
+    driver: 'libsql',
+    url: `file:${filePath}`,
+    authToken: undefined,
     persistent,
     warning,
+    filePath,
   };
 }
 
@@ -99,6 +113,7 @@ function getDatabaseInfo() {
   if (config.mode === 'libsql') {
     return {
       mode: config.mode,
+      driver: config.driver,
       url: String(config.url || '').replace(/\/\/[^@]+@/, '//***@'),
       filePath: config.filePath || null,
       persistent: config.persistent,
@@ -107,6 +122,7 @@ function getDatabaseInfo() {
   }
   return {
     mode: config.mode,
+    driver: config.driver,
     filePath: config.filePath,
     persistent: config.persistent,
     warning: config.warning,
@@ -120,5 +136,5 @@ module.exports = {
   getDatabaseConfig,
   getDatabaseInfo,
   isRemoteDatabaseUrl,
-  preferLibsqlFileDriver,
+  resolveDriver,
 };

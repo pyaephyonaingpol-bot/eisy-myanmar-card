@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "installCommand": "npm install",
+  "installCommand": "npm install --omit=optional",
   "buildCommand": "echo 'Express serverless — no build step'",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
@@ -18,7 +18,8 @@
     "api/index.js": {
       "memory": 1024,
       "maxDuration": 60,
-      "includeFiles": "{migrations/**,public/**,src/**,api/**}"
+      "includeFiles": "{migrations/**,public/**,src/**,api/**}",
+      "excludeFiles": "{**/node_modules/sqlite3/**,**/node_modules/sqlite/**}"
     }
   }
 }

@@ -18,7 +18,7 @@ Pushing to `main` triggers Vercel automatic deployment when the GitHub repo is l
 | `BINANCE_API_KEY` | Binance Pay Certificate SN / API key |
 | `BINANCE_SECRET_KEY` | HMAC-SHA512 secret |
 | `BINANCE_MERCHANT_ID` | Merchant id (stored on deposit metadata) |
-| `DATABASE_URL` | Persistent LibSQL/Turso URL (**required in production** — avoid ephemeral `/tmp`) |
+| `DATABASE_URL` | **Turso / LibSQL URL** (`libsql://…`) — required for persistent production data |
 | `DATABASE_AUTH_TOKEN` | Turso auth token |
 | `PUBLIC_BASE_URL` | Canonical site URL (e.g. `https://eisymyanmar.com`) |
 | `AUTH_SECRET` | Session signing secret |
@@ -26,20 +26,32 @@ Pushing to `main` triggers Vercel automatic deployment when the GitHub repo is l
 
 Aliases accepted: `BINANCE_PAY_API_KEY`, `BINANCE_PAY_API_SECRET`, `BINANCE_PAY_MERCHANT_ID`.
 
-## Database on Vercel
+## Database (Vercel-compatible)
 
-Native `sqlite3` is **not** used on Vercel. The app:
+The app uses **`@libsql/client` only** on Vercel — **not** native `sqlite3`.
 
-1. Uses **Turso / LibSQL** when `DATABASE_URL` is `libsql://…` or `https://…`
-2. Otherwise falls back to an **ephemeral** `@libsql/client` `file:/tmp/…` DB (no native addon)
+| Environment | Driver | Connection |
+|-------------|--------|------------|
+| Vercel + `DATABASE_URL` | LibSQL / Turso | Persistent remote DB (**recommended**) |
+| Vercel without `DATABASE_URL` | LibSQL `file:/tmp/…` | Ephemeral (preview only) |
+| Local default | LibSQL `file:backend/data/eisy.db` | Persistent on disk |
+| Local override | Native `sqlite3` | `SQLITE_DRIVER=sqlite3` + optional deps |
 
-Root `package.json` lists all serverless runtime dependencies (including `sqlite3` for local use and `@libsql/client` for Vercel). `vercel.json` runs:
+Root `package.json` lists serverless runtime deps (**no `sqlite3`**). Install:
 
 ```bash
-npm install && npm install --prefix backend
+npm install
 ```
 
-so modules resolve from both the repo root and `backend/`.
+Native `sqlite3` is an **optional** backend dependency for local legacy mode only and is excluded from the Vercel function bundle. `@libsql/linux-x64-gnu` is listed explicitly so Vercel’s Linux runtime can open LibSQL file/remote clients.
+
+### Turso setup (production)
+
+1. Create a DB at [turso.tech](https://turso.tech)
+2. Set in Vercel → Project → Environment Variables:
+   - `DATABASE_URL=libsql://your-db-name-org.turso.io`
+   - `DATABASE_AUTH_TOKEN=…`
+3. Redeploy
 
 ## Fee logic (deposit create + webhook credit)
 
@@ -60,4 +72,5 @@ https://YOUR_DOMAIN/api/webhook/binance
 ## Local vs Vercel
 
 - **Vercel:** `VERCEL=1` → Express is exported; `api/index.js` handles requests
-- **Local/PM2:** `node server.js` (or `npm start`) listens on `PORT`
+- **Local/PM2:** `cd backend && npm start` (or `npm run dev`) listens on `PORT`
+- **Local DB:** LibSQL file under `backend/data/eisy.db` by default (same SQL schema/migrations)
