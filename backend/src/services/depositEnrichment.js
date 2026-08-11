@@ -54,6 +54,12 @@ function inferPricingBreakdown(deposit, metadata, settings) {
   if (purpose === 'usdt_topup') {
     return {
       amount_usdt: metadata.amount_usdt ?? amountUsd,
+      gross_usdt: metadata.payment_fee?.gross_usdt ?? metadata.pricing?.gross_usdt ?? metadata.amount_usdt ?? amountUsd,
+      fee_usdt: metadata.payment_fee?.fee_usdt ?? metadata.pricing?.fee_usdt ?? null,
+      net_usdt: metadata.payment_fee?.net_usdt ?? metadata.pricing?.net_usdt ?? null,
+      fee_percent: metadata.payment_fee?.fee_percent ?? metadata.pricing?.fee_percent ?? null,
+      fee_label: metadata.payment_fee?.fee_label ?? metadata.pricing?.fee_label ?? null,
+      fee_rule: metadata.payment_fee?.fee_rule || 'Math.max(amount * 0.02, 1)',
       deposit_currency: 'USDT',
       usdt_network: metadata.usdt_network || deposit.usdt_network || null,
       deposit_address: metadata.deposit_address || null,
@@ -64,6 +70,24 @@ function inferPricingBreakdown(deposit, metadata, settings) {
       is_usdt_topup: true,
       is_p2p: metadata.deposit_channel === 'p2p',
       inferred: true,
+    };
+  }
+
+  if (purpose === 'topup' && metadata.payment_fee) {
+    return {
+      initial_load_usd: amountUsd,
+      issuance_fee_usd: 0,
+      total_usd_required: amountUsd,
+      total_mmk: amountMmk,
+      gross_mmk: metadata.payment_fee.gross_mmk ?? amountMmk,
+      fee_mmk: metadata.payment_fee.fee_mmk,
+      net_mmk: metadata.payment_fee.net_mmk,
+      fee_percent: metadata.payment_fee.fee_percent,
+      fee_label: metadata.payment_fee.fee_label,
+      fee_rule: metadata.payment_fee.fee_rule || 'Math.max(amount * 0.02, 1)',
+      mmk_to_usd_rate: rate,
+      inferred: true,
+      is_wallet_topup: true,
     };
   }
 

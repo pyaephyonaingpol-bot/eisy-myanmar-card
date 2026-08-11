@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eisy Myanmar — Admin</title>
-  <link rel="stylesheet" href="/styles.css?v=20260811a" />
+  <link rel="stylesheet" href="/styles.css?v=20260811b" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -455,8 +455,21 @@
             <small class="hint">Accumulated P2P seller fees + withdrawal fees (read-only)</small>
           </div>
           <div class="field" style="grid-column:1/-1">
-            <h3 style="margin:0.5rem 0 0.25rem;font-size:1rem">Withdrawal Fee Configuration</h3>
-            <p class="hint" style="margin:0 0 0.75rem">Network fees deducted from user withdrawal requests; fees are credited to Platform USDT Revenue.</p>
+            <h3 style="margin:0.5rem 0 0.25rem;font-size:1rem">Payment Service Fee (Deposit &amp; Withdrawal)</h3>
+            <p class="hint" style="margin:0 0 0.75rem">Fee = Math.max(amount × %, minimum $). Applies to wallet deposits and withdrawals (USDT and MMK).</p>
+          </div>
+          <div class="field">
+            <label for="settingPaymentFeePercent">Service Fee Percent (%)</label>
+            <input id="settingPaymentFeePercent" type="number" step="0.01" min="0" max="20" required />
+          </div>
+          <div class="field">
+            <label for="settingPaymentFeeMinUsdt">Minimum Fee (USDT / $1 peg)</label>
+            <input id="settingPaymentFeeMinUsdt" type="number" step="0.01" min="0" required />
+            <small class="hint">MMK minimum fee = this value × exchange rate</small>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <h3 style="margin:0.5rem 0 0.25rem;font-size:1rem">Withdrawal Limits (legacy network labels use same 2% / min $1 rule)</h3>
+            <p class="hint" style="margin:0 0 0.75rem">Network destination still matters for payout routing; fee calculation is unified.</p>
           </div>
           <div class="field">
             <label for="settingWithdrawFeeTrc20">TRC20 (TRON) Withdrawal Fee</label>
@@ -630,10 +643,10 @@
       if (login) login.classList.add('hidden');
     })();
   </script>
-  <script src="/api-config.js?v=20260811a"></script>
-  <script type="module" src="/supabaseBridge.js?v=20260811a"></script>
-  <script src="/i18n.js?v=20260811a"></script>
-  <script src="/nav.js?v=20260811a"></script>
-  <script src="/admin.js?v=20260811a" defer></script>
+  <script src="/api-config.js?v=20260811b"></script>
+  <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
+  <script src="/i18n.js?v=20260811b"></script>
+  <script src="/nav.js?v=20260811b"></script>
+  <script src="/admin.js?v=20260811b" defer></script>
 </body>
 </html>

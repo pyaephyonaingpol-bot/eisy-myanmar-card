@@ -8,6 +8,7 @@ const { formatUsdt } = require('./walletService');
 const SUB_BALANCE_KEYS = {
   [PLATFORM_FEE_TYPES.P2P]: 'platform_revenue_p2p_usdt',
   [PLATFORM_FEE_TYPES.WITHDRAWAL]: 'platform_revenue_withdrawal_usdt',
+  [PLATFORM_FEE_TYPES.DEPOSIT]: 'platform_revenue_deposit_usdt',
   [PLATFORM_FEE_TYPES.CARD_RELOAD]: 'platform_revenue_card_reload_usd',
   [PLATFORM_FEE_TYPES.CARD_ISSUE]: 'platform_revenue_card_issue_usd',
 };

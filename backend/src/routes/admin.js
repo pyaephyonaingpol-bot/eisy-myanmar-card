@@ -189,6 +189,8 @@ router.get('/settings', async (_req, res) => {
         minimum_usdt_withdrawal: pricing.minimum_usdt_withdrawal,
         minimum_mmk_withdrawal: pricing.minimum_mmk_withdrawal,
         mmk_withdraw_fee_percent: pricing.mmk_withdraw_fee_percent,
+        payment_service_fee_percent: pricing.payment_service_fee_percent,
+        payment_service_fee_minimum_usdt: pricing.payment_service_fee_minimum_usdt,
       },
       ledger_summary: ledgerSummary,
       current_rate: currentRate,

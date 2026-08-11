@@ -2459,6 +2459,79 @@ const Dashboard = {
     }
   },
 
+  calculateUsdtDepositFeePreviewClient(amountUsdt) {
+    const fees = this.withdrawalFees || this.pricingSettings || {};
+    const amount = Math.round((Number(amountUsdt) || 0) * 100) / 100;
+    if (!(amount > 0)) return null;
+    const feePercent = Number(fees.payment_service_fee_percent ?? 2);
+    const minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? 1);
+    const percentFee = Math.round(amount * feePercent) / 100;
+    const fee = Math.round(Math.max(percentFee, minimumFee) * 100) / 100;
+    const net = Math.round((amount - fee) * 100) / 100;
+    return {
+      amount_usdt: amount,
+      fee_usdt: fee,
+      net_usdt: net,
+      fee_label: percentFee < minimumFee
+        ? `min $${minimumFee.toFixed(2)} (2% = $${percentFee.toFixed(2)})`
+        : `${feePercent}% ($${fee.toFixed(2)})`,
+      invalid_net: net <= 0,
+    };
+  },
+
+  calculateMmkDepositFeePreviewClient(amountMmk) {
+    const fees = this.withdrawalFees || this.pricingSettings || {};
+    const amount = Math.round(Number(amountMmk) || 0);
+    if (!(amount > 0)) return null;
+    const feePercent = Number(fees.payment_service_fee_percent ?? 2);
+    const rate = Number(fees.mmk_to_usd_rate || this.pricingSettings?.mmk_to_usd_rate || 4500);
+    const minimumFee = Math.round(Number(fees.payment_service_fee_minimum_usdt ?? 1) * rate);
+    const percentFee = Math.round(amount * feePercent / 100);
+    const fee = Math.max(percentFee, minimumFee);
+    const net = amount - fee;
+    return {
+      amount_mmk: amount,
+      fee_mmk: fee,
+      net_mmk: net,
+      fee_label: percentFee < minimumFee
+        ? `min ${minimumFee.toLocaleString()} MMK (${feePercent}% = ${percentFee.toLocaleString()} MMK)`
+        : `${feePercent}% (${fee.toLocaleString()} MMK)`,
+      invalid_net: net <= 0,
+    };
+  },
+
+  updateUsdtDepositFeePreview() {
+    const amount = parseFloat($('usdtAmount')?.value);
+    const preview = this.calculateUsdtDepositFeePreviewClient(amount);
+    if ($('usdtDepositPreviewGross')) {
+      $('usdtDepositPreviewGross').textContent = preview ? `$${preview.amount_usdt.toFixed(2)}` : '—';
+    }
+    if ($('usdtDepositPreviewFee')) {
+      $('usdtDepositPreviewFee').textContent = preview ? preview.fee_label : '—';
+    }
+    if ($('usdtDepositPreviewNet')) {
+      $('usdtDepositPreviewNet').textContent = preview
+        ? (preview.invalid_net ? 'Invalid' : `$${preview.net_usdt.toFixed(2)}`)
+        : '—';
+    }
+  },
+
+  updateMmkDepositFeePreview() {
+    const amount = parseFloat($('amountMmk')?.value);
+    const preview = this.calculateMmkDepositFeePreviewClient(amount);
+    if ($('mmkDepositPreviewGross')) {
+      $('mmkDepositPreviewGross').textContent = preview ? `${preview.amount_mmk.toLocaleString()} MMK` : '—';
+    }
+    if ($('mmkDepositPreviewFee')) {
+      $('mmkDepositPreviewFee').textContent = preview ? preview.fee_label : '—';
+    }
+    if ($('mmkDepositPreviewNet')) {
+      $('mmkDepositPreviewNet').textContent = preview
+        ? (preview.invalid_net ? 'Invalid' : `${preview.net_mmk.toLocaleString()} MMK`)
+        : '—';
+    }
+  },
+
   bindUsdtDepositForms() {
     $('usdtNetwork')?.addEventListener('change', () => {
       const net = $('usdtNetwork').value;
@@ -2469,6 +2542,11 @@ const Dashboard = {
         this.showUsdtDepositAddress(net, addr);
       }
     });
+
+    $('usdtAmount')?.addEventListener('input', () => this.updateUsdtDepositFeePreview());
+    $('amountMmk')?.addEventListener('input', () => this.updateMmkDepositFeePreview());
+    this.updateUsdtDepositFeePreview();
+    this.updateMmkDepositFeePreview();
 
     $('usdtDepositForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -2489,7 +2567,10 @@ const Dashboard = {
         if ($('usdtRefCodeDisplay')) $('usdtRefCodeDisplay').textContent = data.deposit.ref_code;
         if ($('usdtActiveDepositId')) $('usdtActiveDepositId').value = data.deposit.id;
         if ($('usdtDepositStatus')) {
-          $('usdtDepositStatus').textContent = data.payment_instructions?.message || 'Send USDT, then submit TxHash below.';
+          const feeNote = data.fee_breakdown
+            ? ` Fee $${Number(data.fee_breakdown.fee_usdt).toFixed(2)} → net $${Number(data.fee_breakdown.net_usdt).toFixed(2)} credited after approval.`
+            : '';
+          $('usdtDepositStatus').textContent = (data.payment_instructions?.message || 'Send USDT, then submit TxHash below.') + feeNote;
         }
         $('usdtDepositSubmitForm')?.classList.remove('hidden');
         this.toast(data.message || `USDT deposit request: ${data.deposit.ref_code}`, 'ok');
@@ -3956,33 +4037,21 @@ const Dashboard = {
     const method = this.getWithdrawPayoutMethod();
     const network = method === 'bank' ? 'BANK' : ($('withdrawNetwork')?.value || 'TRC20');
     const isBank = network === 'BANK';
-    const isBep20 = network === 'BEP20';
 
-    let feeValue;
-    let feeType;
-    if (isBank) {
-      feeValue = Number(fees.usdt_withdraw_fee_bank || 0);
-      feeType = fees.usdt_withdraw_fee_bank_type === 'percent' ? 'percent' : 'fixed';
-    } else if (isBep20) {
-      feeValue = Number(fees.usdt_withdraw_fee_bep20 || 0);
-      feeType = fees.usdt_withdraw_fee_bep20_type === 'percent' ? 'percent' : 'fixed';
-    } else {
-      feeValue = Number(fees.usdt_withdraw_fee_trc20 || 0);
-      feeType = fees.usdt_withdraw_fee_trc20_type === 'percent' ? 'percent' : 'fixed';
-    }
-
-    let feeUsdt = feeType === 'percent'
-      ? Math.round(amountUsdt * feeValue) / 100
-      : Math.round(feeValue * 100) / 100;
+    const feePercent = Number(fees.payment_service_fee_percent ?? 2);
+    const minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? 1);
+    const percentFee = Math.round(amountUsdt * feePercent) / 100;
+    let feeUsdt = Math.max(percentFee, minimumFee);
     feeUsdt = Math.round(feeUsdt * 100) / 100;
     const netUsdt = Math.round((amountUsdt - feeUsdt) * 100) / 100;
     const min = Number(fees.minimum_usdt_withdrawal || 10);
     const rate = Number(fees.mmk_to_usd_rate || 4500);
     const amountMmk = isBank ? Math.round(netUsdt * rate) : null;
+    const usedMinimum = percentFee < minimumFee;
 
-    const feeLabel = feeType === 'percent'
-      ? `${feeValue}% (${feeUsdt.toFixed(2)} USDT)`
-      : `$${feeUsdt.toFixed(2)} USDT`;
+    const feeLabel = usedMinimum
+      ? `min $${minimumFee.toFixed(2)} (2% = $${percentFee.toFixed(2)})`
+      : `${feePercent}% ($${feeUsdt.toFixed(2)})`;
 
     return {
       payout_method: method,
@@ -3991,6 +4060,9 @@ const Dashboard = {
       fee_usdt: feeUsdt,
       net_usdt: netUsdt,
       fee_label: feeLabel,
+      fee_percent: feePercent,
+      minimum_fee_usdt: minimumFee,
+      used_minimum_fee: usedMinimum,
       exchange_rate: isBank ? rate : null,
       amount_mmk: amountMmk,
       minimum_usdt_withdrawal: min,
@@ -4066,16 +4138,22 @@ const Dashboard = {
     const fees = this.withdrawalFees || {};
     const amount = Math.round(Number(amountMmk) || 0);
     if (!Number.isFinite(amount) || amount <= 0) return null;
-    const feePercent = Math.max(0, Number(fees.mmk_withdraw_fee_percent || 0));
-    const feeMmk = Math.round(amount * feePercent / 100);
+    const feePercent = Number(fees.payment_service_fee_percent ?? fees.mmk_withdraw_fee_percent ?? 2);
+    const rate = Number(fees.mmk_to_usd_rate || 4500);
+    const minimumFee = Math.round(Number(fees.payment_service_fee_minimum_usdt ?? 1) * rate);
+    const percentFee = Math.round(amount * feePercent / 100);
+    const feeMmk = Math.max(percentFee, minimumFee);
     const netMmk = amount - feeMmk;
     const min = Number(fees.minimum_mmk_withdrawal || 10000);
+    const usedMinimum = percentFee < minimumFee;
     return {
       amount_mmk: amount,
       fee_mmk: feeMmk,
       net_mmk: netMmk,
       fee_percent: feePercent,
-      fee_label: feePercent > 0 ? `${feePercent}% (${feeMmk.toLocaleString()} MMK)` : '0 MMK',
+      fee_label: usedMinimum
+        ? `min ${minimumFee.toLocaleString()} MMK (${feePercent}% = ${percentFee.toLocaleString()} MMK)`
+        : `${feePercent}% (${feeMmk.toLocaleString()} MMK)`,
       minimum_mmk_withdrawal: min,
       below_minimum: amount < min,
       invalid_net: netMmk <= 0,
@@ -4568,12 +4646,14 @@ const Dashboard = {
     if (reloadFeeEl) reloadFeeEl.textContent = '$3.50 fixed (+ $2.00 platform profit per reload)';
 
     const wf = p.withdrawal_fees || this.withdrawalFees || {};
-    const fmtFee = (val, type) => (type === 'percent' ? `${Number(val || 0)}%` : `$${Number(val || 0).toFixed(2)} USDT`);
+    const pct = Number(wf.payment_service_fee_percent ?? 2);
+    const minFee = Number(wf.payment_service_fee_minimum_usdt ?? 1);
+    const unifiedLabel = `${pct}% (min $${minFee.toFixed(2)})`;
     if ($('ratesWithdrawFeeTrc20')) {
-      $('ratesWithdrawFeeTrc20').textContent = fmtFee(wf.usdt_withdraw_fee_trc20, wf.usdt_withdraw_fee_trc20_type);
+      $('ratesWithdrawFeeTrc20').textContent = unifiedLabel;
     }
     if ($('ratesWithdrawFeeBep20')) {
-      $('ratesWithdrawFeeBep20').textContent = fmtFee(wf.usdt_withdraw_fee_bep20, wf.usdt_withdraw_fee_bep20_type);
+      $('ratesWithdrawFeeBep20').textContent = unifiedLabel;
     }
     if ($('ratesMinWithdrawal')) {
       $('ratesMinWithdrawal').textContent = `$${Number(wf.minimum_usdt_withdrawal || 10).toFixed(2)}`;

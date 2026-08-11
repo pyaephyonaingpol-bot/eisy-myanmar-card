@@ -157,7 +157,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     amountUsdt: breakdown.amount_usdt,
     feeUsdt: breakdown.fee_usdt,
     netUsdt: breakdown.net_usdt,
-    feeType: breakdown.fee_type,
+    feeType: breakdown.fee_type === 'percent_with_minimum' ? 'percent' : breakdown.fee_type,
   });
 
   await debitUsdt(userId, breakdown.amount_usdt, {
@@ -228,7 +228,7 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
     amountUsdt: breakdown.amount_usdt,
     feeUsdt: breakdown.fee_usdt,
     netUsdt: breakdown.net_usdt,
-    feeType: breakdown.fee_type,
+    feeType: breakdown.fee_type === 'percent_with_minimum' ? 'percent' : breakdown.fee_type,
     exchangeRate: breakdown.exchange_rate,
     amountMmk: breakdown.amount_mmk,
     bankName: bank.bankName,

@@ -40,7 +40,7 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
         });
       }
 
-      const { deposit, depositAddress, network: net } = await createUsdtDepositRequest(userId, {
+      const { deposit, depositAddress, network: net, fee_breakdown } = await createUsdtDepositRequest(userId, {
         amount_usdt: amountUsdt,
         network,
         metadata: { deposit_channel: 'platform_direct', ...(req.body.metadata || {}) },
@@ -52,12 +52,16 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
         deposit: enrichDeposit(deposit),
         deposit_type: 'usdt',
         deposit_channel: 'platform_direct',
+        fee_breakdown,
         payment_instructions: {
           message: `Send exactly ${amountUsdt.toFixed(2)} USDT via ${net} to the platform address below`,
           ref_code: deposit.ref_code,
           network: net,
           deposit_address: depositAddress,
-          note: `Include reference code ${deposit.ref_code} in the memo if possible, then submit TxHash below`,
+          fee_usdt: fee_breakdown?.fee_usdt,
+          net_usdt: fee_breakdown?.net_usdt,
+          fee_label: fee_breakdown?.fee_label,
+          note: `Service fee is max(2%, $1). Net credit ≈ $${Number(fee_breakdown?.net_usdt || 0).toFixed(2)} USDT after approval.`,
         },
       });
     }
@@ -81,14 +85,19 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
     });
 
     const rate = await getExchangeRate();
+    const enriched = enrichDeposit(deposit);
+    const feeInfo = enriched?.pricing_breakdown || enriched?.metadata?.payment_fee;
 
     res.json({
       success: true,
-      deposit: enrichDeposit(deposit),
+      deposit: enriched,
+      fee_breakdown: feeInfo || null,
       payment_instructions: {
-        message: `Send exactly ${amount_mmk.toLocaleString()} MMK via ${deposit.payment_method}`,
+        message: `Send exactly ${Number(amount_mmk).toLocaleString()} MMK via ${deposit.payment_method}`,
         ref_code: deposit.ref_code,
-        note: `Include reference code ${deposit.ref_code} in the payment note/description`,
+        note: purpose === 'topup' || !purpose
+          ? `Include reference code ${deposit.ref_code}. Service fee is max(2%, min $1 MMK-equivalent); net credit after approval.`
+          : `Include reference code ${deposit.ref_code} in the payment note/description`,
         kbzpay: 'Transfer to Eisy Myanmar KBZPay account, then submit your transaction ID below.',
         wavepay: 'Transfer to Eisy Myanmar WavePay account, then submit your transaction ID below.',
       },

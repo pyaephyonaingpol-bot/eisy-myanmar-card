@@ -4,11 +4,13 @@ const DepositRequest = require('../models/DepositRequest');
 const CardReloadRequest = require('../models/CardReloadRequest');
 const TransactionLog = require('../models/TransactionLog');
 const { notifyAdminDepositVerified } = require('./telegram');
-const { getCardPricingSettings, buildRateSnapshot, parseRecordMetadata } = require('./settingsService');
+const { getCardPricingSettings, buildRateSnapshot, parseRecordMetadata, calculateDepositFeeBreakdown } = require('./settingsService');
 const { applyCardTransaction } = require('./cardBalanceService');
 const { formatMmk, formatUsdt } = require('./walletService');
 const { syncUserWalletById, syncDeposit } = require('./supabaseSyncService');
 const { verifyUsdtTransaction } = require('./usdtBlockchainService');
+const { assertValidPaymentAmount } = require('./paymentFeeService');
+const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 
 async function syncWalletAndDeposit(userId, depositRow) {
   try {
@@ -60,7 +62,12 @@ async function createDepositRequest(userId, {
   const refCode = await uniqueRefCode();
   const settings = await getCardPricingSettings();
   const rate = settings.mmk_to_usd_rate;
-  const computedUsd = amount_usd != null ? amount_usd : amount_mmk / rate;
+  const amountMmk = Math.round(parseFloat(amount_mmk) || 0);
+  if (!(amountMmk > 0)) {
+    throw new Error('Positive amount_mmk is required');
+  }
+
+  const computedUsd = amount_usd != null ? amount_usd : amountMmk / rate;
   const rateSnapshot = await buildRateSnapshot();
 
   const mergedMetadata = {
@@ -68,9 +75,33 @@ async function createDepositRequest(userId, {
     rate_snapshot: rateSnapshot,
   };
 
+  // Wallet top-ups apply unified payment service fee: max(2%, min $1 MMK-equivalent)
+  if (purpose === 'topup') {
+    const feeBreakdown = calculateDepositFeeBreakdown(amountMmk, { currency: 'MMK', settings });
+    assertValidPaymentAmount(feeBreakdown, { kind: 'MMK deposit' });
+    mergedMetadata.payment_fee = {
+      operation: 'deposit',
+      currency: 'MMK',
+      gross_mmk: feeBreakdown.amount_mmk,
+      fee_mmk: feeBreakdown.fee_mmk,
+      net_mmk: feeBreakdown.net_mmk,
+      fee_percent: feeBreakdown.fee_percent,
+      minimum_fee_mmk: feeBreakdown.minimum_fee_mmk,
+      used_minimum_fee: feeBreakdown.used_minimum_fee,
+      fee_rule: feeBreakdown.fee_rule,
+      fee_label: feeBreakdown.fee_label,
+    };
+    mergedMetadata.pricing = {
+      ...(mergedMetadata.pricing || {}),
+      ...mergedMetadata.payment_fee,
+      is_wallet_topup: true,
+      mmk_to_usd_rate: rate,
+    };
+  }
+
   const deposit = await DepositRequest.create({
     userId,
-    amountMmk: amount_mmk,
+    amountMmk,
     amountUsd: computedUsd,
     refCode,
     paymentMethod: payment_method || 'KBZPay',
@@ -82,13 +113,19 @@ async function createDepositRequest(userId, {
     userId,
     type: 'deposit_request',
     direction: 'neutral',
-    amountMmk: amount_mmk,
+    amountMmk,
     amountUsd: computedUsd,
     referenceType: 'deposit_requests_v2',
     referenceId: deposit.id,
     description: `[${purpose}] Deposit requested: ${refCode} via ${deposit.payment_method}`,
     createdBy: 'user',
-    metadata: { purpose, payment_method: deposit.payment_method, rate_snapshot: rateSnapshot, ...(metadata || {}) },
+    metadata: {
+      purpose,
+      payment_method: deposit.payment_method,
+      rate_snapshot: rateSnapshot,
+      payment_fee: mergedMetadata.payment_fee || null,
+      ...(metadata || {}),
+    },
   });
 
   return deposit;
@@ -110,6 +147,9 @@ async function createUsdtDepositRequest(userId, {
     throw new Error(`Minimum USDT deposit is $${minUsdt.toFixed(2)} USDT`);
   }
 
+  const feeBreakdown = calculateDepositFeeBreakdown(amount, { currency: 'USDT', settings });
+  assertValidPaymentAmount(feeBreakdown, { kind: 'USDT deposit' });
+
   const net = String(network || 'TRC20').toUpperCase();
   if (!['TRC20', 'BEP20'].includes(net)) {
     throw new Error('network must be TRC20 or BEP20');
@@ -120,19 +160,45 @@ async function createUsdtDepositRequest(userId, {
     : settings.usdt_trc20_address;
 
   const refCode = await uniqueRefCode();
+  const grossAmount = feeBreakdown.amount_usdt;
   const mergedMetadata = {
     ...(metadata || {}),
     deposit_currency: 'USDT',
     usdt_network: net,
     deposit_address: depositAddress,
-    amount_usdt: Math.round(amount * 100) / 100,
+    amount_usdt: grossAmount,
+    gross_usdt: grossAmount,
+    fee_usdt: feeBreakdown.fee_usdt,
+    net_usdt: feeBreakdown.net_usdt,
     deposit_channel: metadata?.deposit_channel || 'platform_direct',
+    payment_fee: {
+      operation: 'deposit',
+      currency: 'USDT',
+      gross_usdt: feeBreakdown.amount_usdt,
+      fee_usdt: feeBreakdown.fee_usdt,
+      net_usdt: feeBreakdown.net_usdt,
+      fee_percent: feeBreakdown.fee_percent,
+      minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
+      used_minimum_fee: feeBreakdown.used_minimum_fee,
+      fee_rule: feeBreakdown.fee_rule,
+      fee_label: feeBreakdown.fee_label,
+    },
+    pricing: {
+      amount_usdt: grossAmount,
+      fee_usdt: feeBreakdown.fee_usdt,
+      net_usdt: feeBreakdown.net_usdt,
+      fee_percent: feeBreakdown.fee_percent,
+      minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
+      used_minimum_fee: feeBreakdown.used_minimum_fee,
+      fee_label: feeBreakdown.fee_label,
+      is_usdt_topup: true,
+    },
   };
 
   const deposit = await DepositRequest.create({
     userId,
     amountMmk: 0,
-    amountUsd: Math.round(amount * 100) / 100,
+    amountUsd: grossAmount,
     refCode,
     paymentMethod: `USDT-${net}`,
     purpose: 'usdt_topup',
@@ -145,15 +211,20 @@ async function createUsdtDepositRequest(userId, {
     userId,
     type: 'deposit_request',
     direction: 'neutral',
-    amountUsd: amount,
+    amountUsd: grossAmount,
     referenceType: 'deposit_requests_v2',
     referenceId: deposit.id,
-    description: `[usdt_topup] USDT deposit requested: ${refCode} via ${net}`,
+    description: `[usdt_topup] USDT deposit requested: ${refCode} via ${net} (fee ${formatUsdt(feeBreakdown.fee_usdt)}, net ${formatUsdt(feeBreakdown.net_usdt)})`,
     createdBy: 'user',
-    metadata: { purpose: 'usdt_topup', network: net, deposit_address: depositAddress },
+    metadata: {
+      purpose: 'usdt_topup',
+      network: net,
+      deposit_address: depositAddress,
+      payment_fee: mergedMetadata.payment_fee,
+    },
   });
 
-  return { deposit, depositAddress, network: net };
+  return { deposit, depositAddress, network: net, fee_breakdown: feeBreakdown };
 }
 
 async function findVerifiedDepositByTxHash(txHash) {
@@ -283,7 +354,7 @@ async function submitAndAutoVerifyUsdtDeposit(depositId, {
     deposit: creditResult.deposit,
     user: creditResult.user,
     verification,
-    message: `USDT deposit verified — ${formatUsdt(expectedAmount)} credited to your wallet instantly!`,
+    message: `USDT deposit verified — ${formatUsdt(creditResult.net_usdt || expectedAmount)} credited to your wallet (after service fee)!`,
     balance_usdt: Number(creditResult.user?.balance_usdt ?? 0),
   };
 }
@@ -439,7 +510,24 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
   }
 
   if (purpose === 'usdt_topup') {
-    const amountUsdt = Number(deposit.amount_usd ?? metadata.amount_usdt ?? 0);
+    const grossUsdt = Number(deposit.amount_usd ?? metadata.amount_usdt ?? 0);
+    const feeMeta = metadata.payment_fee || metadata.pricing || {};
+    let feeUsdt = Number(feeMeta.fee_usdt);
+    let netUsdt = Number(feeMeta.net_usdt);
+
+    if (!Number.isFinite(feeUsdt) || !Number.isFinite(netUsdt) || feeUsdt < 0 || netUsdt <= 0) {
+      const settings = await getCardPricingSettings();
+      const feeBreakdown = calculateDepositFeeBreakdown(grossUsdt, { currency: 'USDT', settings });
+      feeUsdt = feeBreakdown.fee_usdt;
+      netUsdt = feeBreakdown.net_usdt;
+    }
+
+    netUsdt = Math.round(netUsdt * 100) / 100;
+    feeUsdt = Math.round(feeUsdt * 100) / 100;
+    if (!(netUsdt > 0)) {
+      throw new Error('USDT deposit net credit must be positive after service fee');
+    }
+
     const balanceBeforeUsdt = Number(user.balance_usdt ?? 0);
 
     await db.run('BEGIN');
@@ -453,7 +541,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
 
       await db.run(`
         UPDATE users SET balance_usdt = COALESCE(balance_usdt, 0) + ?, updated_at = datetime('now') WHERE id = ?
-      `, amountUsdt, deposit.user_id);
+      `, netUsdt, deposit.user_id);
 
       await db.run(`
         UPDATE deposit_requests SET status = 'VERIFIED', txn_id = COALESCE(?, txn_id)
@@ -474,34 +562,65 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       userId: deposit.user_id,
       type: 'deposit_verified',
       direction: 'credit',
-      amountUsd: amountUsdt,
+      amountUsd: netUsdt,
       balanceBefore: balanceBeforeUsdt,
       balanceAfter: balanceAfterUsdt,
       referenceType: 'deposit_requests_v2',
       referenceId: deposit.id,
-      description: `USDT deposit verified: ${deposit.ref_code} — ${formatUsdt(amountUsdt)} credited`,
+      description: `USDT deposit verified: ${deposit.ref_code} — gross ${formatUsdt(grossUsdt)}, fee ${formatUsdt(feeUsdt)}, credited ${formatUsdt(netUsdt)}`,
       createdBy,
-      metadata: { txn_id: txnId, admin_note: adminNote, purpose: 'usdt_topup', wallet: 'usdt' },
+      metadata: {
+        txn_id: txnId,
+        admin_note: adminNote,
+        purpose: 'usdt_topup',
+        wallet: 'usdt',
+        gross_usdt: grossUsdt,
+        fee_usdt: feeUsdt,
+        net_usdt: netUsdt,
+      },
     });
 
     await TransactionLog.create({
       userId: deposit.user_id,
       type: 'balance_credit',
       direction: 'credit',
-      amountUsd: amountUsdt,
+      amountUsd: netUsdt,
       balanceBefore: balanceBeforeUsdt,
       balanceAfter: balanceAfterUsdt,
       referenceType: 'deposit_requests_v2',
       referenceId: deposit.id,
-      description: `USDT wallet top-up +${formatUsdt(amountUsdt)}`,
+      description: `USDT wallet top-up +${formatUsdt(netUsdt)} (after ${formatUsdt(feeUsdt)} service fee)`,
       createdBy,
       metadata: {
         wallet: 'usdt',
         deposit_ref: deposit.ref_code,
         network: deposit.usdt_network || metadata.usdt_network || null,
         txn_id: txnId,
+        gross_usdt: grossUsdt,
+        fee_usdt: feeUsdt,
+        net_usdt: netUsdt,
       },
     });
+
+    if (feeUsdt > 0) {
+      try {
+        await creditPlatformUsdtRevenue(feeUsdt, {
+          feeType: PLATFORM_FEE_TYPES.DEPOSIT,
+          description: `USDT deposit fee — ${deposit.ref_code} (${formatUsdt(feeUsdt)})`,
+          referenceType: 'deposit_requests_v2',
+          referenceId: deposit.id,
+          relatedUserId: deposit.user_id,
+          metadata: {
+            purpose: 'usdt_topup',
+            gross_usdt: grossUsdt,
+            net_usdt: netUsdt,
+            fee_rule: feeMeta.fee_rule || 'Math.max(amount * 0.02, 1)',
+          },
+        });
+      } catch (feeErr) {
+        console.warn('[deposit] platform deposit fee credit failed:', feeErr.message);
+      }
+    }
 
     try {
       const { recordWalletEntry } = require('./usdtWalletService');
@@ -509,15 +628,22 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
         userId: deposit.user_id,
         txType: 'deposit_verified',
         direction: 'credit',
-        amountUsdt,
+        amountUsdt: netUsdt,
         balanceAfter: balanceAfterUsdt,
         network: deposit.usdt_network || metadata.usdt_network || null,
         txHash: txnId || deposit.kpay_transaction_id || null,
         counterpartyAddress: metadata.deposit_address || null,
         referenceType: 'deposit_requests_v2',
         referenceId: deposit.id,
-        description: `USDT deposit verified: ${deposit.ref_code} — ${formatUsdt(amountUsdt)} credited`,
-        metadata: { wallet: 'usdt', deposit_ref: deposit.ref_code, purpose: 'usdt_topup' },
+        description: `USDT deposit verified: ${deposit.ref_code} — ${formatUsdt(netUsdt)} credited after fee`,
+        metadata: {
+          wallet: 'usdt',
+          deposit_ref: deposit.ref_code,
+          purpose: 'usdt_topup',
+          gross_usdt: grossUsdt,
+          fee_usdt: feeUsdt,
+          net_usdt: netUsdt,
+        },
       });
     } catch (ledgerErr) {
       console.warn('[deposit] USDT ledger record failed:', ledgerErr.message);
@@ -532,7 +658,38 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
 
     await syncWalletAndDeposit(deposit.user_id, updatedDeposit);
 
-    return { deposit: updatedDeposit, user: updatedUser, alreadyVerified: false, usdt_topup: true };
+    return {
+      deposit: updatedDeposit,
+      user: updatedUser,
+      alreadyVerified: false,
+      usdt_topup: true,
+      fee_usdt: feeUsdt,
+      net_usdt: netUsdt,
+      gross_usdt: grossUsdt,
+    };
+  }
+
+  const grossMmk = Number(deposit.amount_mmk) || 0;
+  const feeMetaMmk = metadata.payment_fee || metadata.pricing || {};
+  let feeMmk = Number(feeMetaMmk.fee_mmk);
+  let netMmk = Number(feeMetaMmk.net_mmk);
+  const isWalletTopup = purpose === 'topup';
+
+  if (isWalletTopup) {
+    if (!Number.isFinite(feeMmk) || !Number.isFinite(netMmk) || feeMmk < 0 || netMmk <= 0) {
+      const settings = await getCardPricingSettings();
+      const feeBreakdown = calculateDepositFeeBreakdown(grossMmk, { currency: 'MMK', settings });
+      feeMmk = feeBreakdown.fee_mmk;
+      netMmk = feeBreakdown.net_mmk;
+    }
+    feeMmk = Math.round(feeMmk);
+    netMmk = Math.round(netMmk);
+    if (!(netMmk > 0)) {
+      throw new Error('MMK deposit net credit must be positive after service fee');
+    }
+  } else {
+    feeMmk = 0;
+    netMmk = grossMmk;
   }
 
   const balanceBeforeMmk = Number(user.balance_mmk ?? 0);
@@ -548,7 +705,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
 
     await db.run(`
       UPDATE users SET balance_mmk = COALESCE(balance_mmk, 0) + ?, updated_at = datetime('now') WHERE id = ?
-    `, deposit.amount_mmk, deposit.user_id);
+    `, netMmk, deposit.user_id);
 
     await db.run(`
       UPDATE deposit_requests SET status = 'VERIFIED', txn_id = COALESCE(?, txn_id)
@@ -569,29 +726,48 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
     userId: deposit.user_id,
     type: 'deposit_verified',
     direction: 'credit',
-    amountMmk: deposit.amount_mmk,
+    amountMmk: netMmk,
     amountUsd: deposit.amount_usd,
     balanceBefore: balanceBeforeMmk,
     balanceAfter: balanceAfterMmk,
     referenceType: 'deposit_requests_v2',
     referenceId: deposit.id,
-    description: `Deposit verified: ${deposit.ref_code} — MMK wallet credited ${formatMmk(deposit.amount_mmk)}`,
+    description: isWalletTopup
+      ? `Deposit verified: ${deposit.ref_code} — gross ${formatMmk(grossMmk)}, fee ${formatMmk(feeMmk)}, credited ${formatMmk(netMmk)}`
+      : `Deposit verified: ${deposit.ref_code} — MMK wallet credited ${formatMmk(netMmk)}`,
     createdBy,
-    metadata: { txn_id: txnId, admin_note: adminNote, purpose: deposit.purpose, wallet: 'mmk' },
+    metadata: {
+      txn_id: txnId,
+      admin_note: adminNote,
+      purpose: deposit.purpose,
+      wallet: 'mmk',
+      gross_mmk: grossMmk,
+      fee_mmk: feeMmk,
+      net_mmk: netMmk,
+    },
   });
 
   await TransactionLog.create({
     userId: deposit.user_id,
     type: 'balance_credit',
     direction: 'credit',
-    amountMmk: deposit.amount_mmk,
+    amountMmk: netMmk,
     balanceBefore: balanceBeforeMmk,
     balanceAfter: balanceAfterMmk,
     referenceType: 'deposit_requests_v2',
     referenceId: deposit.id,
-    description: `MMK wallet top-up +${formatMmk(deposit.amount_mmk)}`,
+    description: isWalletTopup
+      ? `MMK wallet top-up +${formatMmk(netMmk)} (after ${formatMmk(feeMmk)} service fee)`
+      : `MMK wallet credit +${formatMmk(netMmk)}`,
     createdBy,
-    metadata: { wallet: 'mmk', deposit_ref: deposit.ref_code },
+    metadata: {
+      wallet: 'mmk',
+      deposit_ref: deposit.ref_code,
+      txn_id: txnId,
+      gross_mmk: grossMmk,
+      fee_mmk: feeMmk,
+      net_mmk: netMmk,
+    },
   });
 
   notifyAdminDepositVerified({
@@ -603,7 +779,14 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
 
   await syncWalletAndDeposit(deposit.user_id, updatedDeposit);
 
-  return { deposit: updatedDeposit, user: updatedUser, alreadyVerified: false };
+  return {
+    deposit: updatedDeposit,
+    user: updatedUser,
+    alreadyVerified: false,
+    fee_mmk: feeMmk,
+    net_mmk: netMmk,
+    gross_mmk: grossMmk,
+  };
 }
 
 async function verifyByListener({ ref_code, amount, txn_id, sender_phone }) {

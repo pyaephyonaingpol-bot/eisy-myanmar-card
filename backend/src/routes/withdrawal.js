@@ -70,43 +70,45 @@ router.get('/fees', requireAuth, async (_req, res) => {
         mmk_bank_withdraw_allowed: true,
         usdt_crypto_withdraw_allowed: true,
         usdt_bank_withdraw_allowed: true,
+        service_fee_rule: 'Math.max(amount * 0.02, 1)',
+        service_fee_percent: settings.payment_service_fee_percent ?? 2,
+        service_fee_minimum_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
       },
       networks: [
         {
           network: 'TRC20',
           payout_method: 'crypto',
           label: 'TRC20 (TRON Network)',
-          fee: settings.usdt_withdraw_fee_trc20,
-          fee_type: settings.usdt_withdraw_fee_trc20_type,
-          fee_label: settings.usdt_withdraw_fee_trc20_type === 'percent'
-            ? `${settings.usdt_withdraw_fee_trc20}%`
-            : `${settings.usdt_withdraw_fee_trc20.toFixed(2)} USDT`,
+          fee_rule: 'Math.max(amount * 0.02, 1)',
+          fee_percent: settings.payment_service_fee_percent ?? 2,
+          minimum_fee_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
+          fee_label: '2% (min $1 USDT)',
         },
         {
           network: 'BEP20',
           payout_method: 'crypto',
           label: 'BEP20 (BSC Network)',
-          fee: settings.usdt_withdraw_fee_bep20,
-          fee_type: settings.usdt_withdraw_fee_bep20_type,
-          fee_label: settings.usdt_withdraw_fee_bep20_type === 'percent'
-            ? `${settings.usdt_withdraw_fee_bep20}%`
-            : `${settings.usdt_withdraw_fee_bep20.toFixed(2)} USDT`,
+          fee_rule: 'Math.max(amount * 0.02, 1)',
+          fee_percent: settings.payment_service_fee_percent ?? 2,
+          minimum_fee_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
+          fee_label: '2% (min $1 USDT)',
         },
         {
           network: 'BANK',
           payout_method: 'bank',
           label: 'Bank Account (USDT → MMK)',
-          fee: settings.usdt_withdraw_fee_bank,
-          fee_type: settings.usdt_withdraw_fee_bank_type,
-          fee_label: settings.usdt_withdraw_fee_bank_type === 'percent'
-            ? `${settings.usdt_withdraw_fee_bank}%`
-            : `${Number(settings.usdt_withdraw_fee_bank).toFixed(2)} USDT`,
+          fee_rule: 'Math.max(amount * 0.02, 1)',
+          fee_percent: settings.payment_service_fee_percent ?? 2,
+          minimum_fee_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
+          fee_label: '2% (min $1 USDT)',
           exchange_rate: settings.mmk_to_usd_rate,
         },
       ],
       minimum_usdt_withdrawal: settings.minimum_usdt_withdrawal,
       minimum_mmk_withdrawal: settings.minimum_mmk_withdrawal,
-      mmk_withdraw_fee_percent: settings.mmk_withdraw_fee_percent,
+      mmk_withdraw_fee_percent: settings.payment_service_fee_percent ?? 2,
+      payment_service_fee_percent: settings.payment_service_fee_percent ?? 2,
+      payment_service_fee_minimum_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
       mmk_to_usd_rate: settings.mmk_to_usd_rate,
     });
   } catch (err) {

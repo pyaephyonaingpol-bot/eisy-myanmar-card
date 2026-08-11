@@ -482,15 +482,17 @@
               p2p_seller_fee_percent: parseFloat($('settingP2pSellerFee')?.value || '1'),
               usdt_trc20_address: $('settingUsdtTrc20')?.value?.trim(),
               usdt_bep20_address: $('settingUsdtBep20')?.value?.trim(),
-              usdt_withdraw_fee_trc20: parseFloat($('settingWithdrawFeeTrc20')?.value || '1.5'),
-              usdt_withdraw_fee_bep20: parseFloat($('settingWithdrawFeeBep20')?.value || '0.8'),
-              usdt_withdraw_fee_trc20_type: $('settingWithdrawFeeTrc20Type')?.value || 'fixed',
-              usdt_withdraw_fee_bep20_type: $('settingWithdrawFeeBep20Type')?.value || 'fixed',
-              usdt_withdraw_fee_bank: parseFloat($('settingWithdrawFeeBank')?.value || '1'),
-              usdt_withdraw_fee_bank_type: $('settingWithdrawFeeBankType')?.value || 'fixed',
+              usdt_withdraw_fee_trc20: parseFloat($('settingWithdrawFeeTrc20')?.value || '2'),
+              usdt_withdraw_fee_bep20: parseFloat($('settingWithdrawFeeBep20')?.value || '2'),
+              usdt_withdraw_fee_trc20_type: $('settingWithdrawFeeTrc20Type')?.value || 'percent',
+              usdt_withdraw_fee_bep20_type: $('settingWithdrawFeeBep20Type')?.value || 'percent',
+              usdt_withdraw_fee_bank: parseFloat($('settingWithdrawFeeBank')?.value || '2'),
+              usdt_withdraw_fee_bank_type: $('settingWithdrawFeeBankType')?.value || 'percent',
               minimum_usdt_withdrawal: parseFloat($('settingMinUsdtWithdrawal')?.value || '10'),
               minimum_mmk_withdrawal: parseFloat($('settingMinMmkWithdrawal')?.value || '10000'),
-              mmk_withdraw_fee_percent: parseFloat($('settingMmkWithdrawFeePercent')?.value || '0'),
+              mmk_withdraw_fee_percent: parseFloat($('settingPaymentFeePercent')?.value || $('settingMmkWithdrawFeePercent')?.value || '2'),
+              payment_service_fee_percent: parseFloat($('settingPaymentFeePercent')?.value || '2'),
+              payment_service_fee_minimum_usdt: parseFloat($('settingPaymentFeeMinUsdt')?.value || '1'),
               notes: $('settingNotes')?.value?.trim() || undefined,
               updated_by: $('settingUpdatedBy')?.value?.trim() || 'admin',
             });
@@ -2037,15 +2039,17 @@
         if ($('settingMinUsdtDeposit')) $('settingMinUsdtDeposit').value = p.minimum_usdt_deposit ?? data.settings?.minimum_usdt_deposit ?? 5;
         if ($('settingMinUsdtReload')) $('settingMinUsdtReload').value = p.minimum_usdt_reload ?? data.settings?.minimum_usdt_reload ?? 5;
         if ($('settingP2pSellerFee')) $('settingP2pSellerFee').value = p.p2p_seller_fee_percent ?? 1;
-        if ($('settingWithdrawFeeTrc20')) $('settingWithdrawFeeTrc20').value = p.usdt_withdraw_fee_trc20 ?? 1.5;
-        if ($('settingWithdrawFeeBep20')) $('settingWithdrawFeeBep20').value = p.usdt_withdraw_fee_bep20 ?? 0.8;
-        if ($('settingWithdrawFeeTrc20Type')) $('settingWithdrawFeeTrc20Type').value = p.usdt_withdraw_fee_trc20_type || 'fixed';
-        if ($('settingWithdrawFeeBep20Type')) $('settingWithdrawFeeBep20Type').value = p.usdt_withdraw_fee_bep20_type || 'fixed';
-        if ($('settingWithdrawFeeBank')) $('settingWithdrawFeeBank').value = p.usdt_withdraw_fee_bank ?? 1;
-        if ($('settingWithdrawFeeBankType')) $('settingWithdrawFeeBankType').value = p.usdt_withdraw_fee_bank_type || 'fixed';
+        if ($('settingWithdrawFeeTrc20')) $('settingWithdrawFeeTrc20').value = p.usdt_withdraw_fee_trc20 ?? 2;
+        if ($('settingWithdrawFeeBep20')) $('settingWithdrawFeeBep20').value = p.usdt_withdraw_fee_bep20 ?? 2;
+        if ($('settingWithdrawFeeTrc20Type')) $('settingWithdrawFeeTrc20Type').value = p.usdt_withdraw_fee_trc20_type || 'percent';
+        if ($('settingWithdrawFeeBep20Type')) $('settingWithdrawFeeBep20Type').value = p.usdt_withdraw_fee_bep20_type || 'percent';
+        if ($('settingWithdrawFeeBank')) $('settingWithdrawFeeBank').value = p.usdt_withdraw_fee_bank ?? 2;
+        if ($('settingWithdrawFeeBankType')) $('settingWithdrawFeeBankType').value = p.usdt_withdraw_fee_bank_type || 'percent';
         if ($('settingMinUsdtWithdrawal')) $('settingMinUsdtWithdrawal').value = p.minimum_usdt_withdrawal ?? 10;
         if ($('settingMinMmkWithdrawal')) $('settingMinMmkWithdrawal').value = p.minimum_mmk_withdrawal ?? 10000;
-        if ($('settingMmkWithdrawFeePercent')) $('settingMmkWithdrawFeePercent').value = p.mmk_withdraw_fee_percent ?? 0;
+        if ($('settingMmkWithdrawFeePercent')) $('settingMmkWithdrawFeePercent').value = p.mmk_withdraw_fee_percent ?? p.payment_service_fee_percent ?? 2;
+        if ($('settingPaymentFeePercent')) $('settingPaymentFeePercent').value = p.payment_service_fee_percent ?? 2;
+        if ($('settingPaymentFeeMinUsdt')) $('settingPaymentFeeMinUsdt').value = p.payment_service_fee_minimum_usdt ?? 1;
         if ($('settingPlatformRevenueBalance')) {
           const rev = Number(p.platform_usdt_revenue_balance ?? 0);
           $('settingPlatformRevenueBalance').textContent = rev.toFixed(2) + ' USDT';
