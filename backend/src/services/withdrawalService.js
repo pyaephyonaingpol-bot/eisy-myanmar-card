@@ -17,6 +17,7 @@ const {
   setSetting,
 } = require('./settingsService');
 const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
+const { transferUsdtTrc20 } = require('./tronMasterWalletService');
 
 function generateRefCode(prefix = 'WD') {
   const num = Math.floor(1000 + Math.random() * 9000);
@@ -331,23 +332,61 @@ async function createMmkBankWithdrawalRequest(userId, body = {}) {
   };
 }
 
-async function completeUsdtWithdrawal(id, { adminNote, txHash, adminId } = {}) {
+async function completeUsdtWithdrawal(id, { adminNote, txHash, adminId, skipOnChain } = {}) {
   const row = await UsdtWithdrawal.findById(id);
   if (!row) throw new Error('USDT withdrawal not found');
   if (!['pending', 'processing'].includes(row.status)) {
     throw new Error(`Cannot complete withdrawal in status "${row.status}"`);
   }
 
-  if (row.payout_method === 'crypto' && !txHash && !adminNote) {
-    // tx hash optional but recommended — allow without
+  let resolvedTxHash = txHash ? String(txHash).trim() : null;
+  let note = adminNote || null;
+
+  const network = normalizeNetwork(row.network);
+  const shouldSendOnChain = !skipOnChain
+    && row.payout_method === 'crypto'
+    && network === 'TRC20'
+    && !resolvedTxHash;
+
+  if (shouldSendOnChain) {
+    const netUsdt = Number(row.net_usdt);
+    if (!Number.isFinite(netUsdt) || netUsdt <= 0) {
+      throw new Error('Withdrawal net USDT amount is invalid');
+    }
+    if (!row.wallet_address) {
+      throw new Error('Withdrawal is missing destination wallet address');
+    }
+
+    // Mark processing so concurrent completes do not double-send.
+    await UsdtWithdrawal.updateStatus(id, {
+      status: 'processing',
+      adminNote: note || 'Broadcasting TRC20 USDT from master wallet…',
+      processedBy: adminId || null,
+    });
+
+    try {
+      const transfer = await transferUsdtTrc20({
+        toAddress: row.wallet_address,
+        amountUsdt: netUsdt,
+      });
+      resolvedTxHash = transfer.txId;
+      note = note || `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`;
+    } catch (err) {
+      await UsdtWithdrawal.updateStatus(id, {
+        status: 'pending',
+        adminNote: `On-chain transfer failed: ${err.message}`,
+        processedBy: adminId || null,
+      });
+      throw err;
+    }
   }
 
   return UsdtWithdrawal.updateStatus(id, {
     status: 'completed',
-    adminNote: adminNote || (row.payout_method === 'bank'
+    adminNote: note || (row.payout_method === 'bank'
       ? 'Bank transfer completed'
       : 'On-chain transfer completed'),
-    txHash: txHash || null,
+    txHash: resolvedTxHash || null,
     processedBy: adminId || null,
   });
 }

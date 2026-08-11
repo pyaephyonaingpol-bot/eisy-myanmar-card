@@ -21,6 +21,7 @@
     "node-telegram-bot-api": "^0.66.0",
     "resend": "^6.18.1",
     "sqlite": "^5.1.1",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "tronweb": "^6.4.0"
   }
 }

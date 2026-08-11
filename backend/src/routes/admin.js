@@ -1195,6 +1195,7 @@ router.post('/withdrawals/usdt/:id/complete', async (req, res) => {
       adminNote: req.body.admin_note,
       txHash: req.body.tx_hash,
       adminId: req.user?.id,
+      skipOnChain: Boolean(req.body.skip_on_chain),
     });
     res.json({
       success: true,
@@ -1202,8 +1203,15 @@ router.post('/withdrawals/usdt/:id/complete', async (req, res) => {
       withdrawal,
     });
   } catch (err) {
-    console.error('[admin/withdrawals/usdt complete]', err);
-    res.status(400).json({ error: err.message || 'Failed to complete withdrawal' });
+    console.error('[admin/withdrawals/usdt complete]', err.code || '', err.message);
+    const status = ['INSUFFICIENT_USDT', 'INSUFFICIENT_TRX', 'MASTER_KEY_MISSING'].includes(err.code)
+      ? 422
+      : 400;
+    res.status(status).json({
+      error: err.message || 'Failed to complete withdrawal',
+      code: err.code || undefined,
+      details: err.details || undefined,
+    });
   }
 });
 
