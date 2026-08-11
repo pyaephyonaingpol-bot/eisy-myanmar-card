@@ -3,7 +3,7 @@
   "version": 2,
   "framework": null,
   "installCommand": "npm install --omit=optional",
-  "buildCommand": "mkdir -p .vercel-public-tmp && cp -R public/. .vercel-public-tmp/ && rm -rf .vercel-public-tmp",
+  "buildCommand": "echo 'Using backend/public as static output'",
   "outputDirectory": "public",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
