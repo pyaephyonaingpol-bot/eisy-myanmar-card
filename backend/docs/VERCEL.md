@@ -6,10 +6,16 @@ Pushing to `main` triggers Vercel automatic deployment when the GitHub repo is l
 
 | File | Role |
 |------|------|
-| `vercel.json` (repo root) | Rewrites all traffic to the Express serverless function |
+| `vercel.json` (repo root) | Serverless Express + static `public/` output |
 | `api/index.js` | Thin Vercel entry → `backend/api/index.js` |
 | `backend/api/index.js` | Boots DB + serves the Express `app` |
 | `backend/src/index.js` | Full Express app (Binance Pay routes included) |
+| `backend/public/` | Source static UI (HTML/JS/CSS) |
+
+`vercel.json` sets `"framework": null` and `"outputDirectory": "public"`. The build
+command copies `backend/public` → root `public/` so Vercel’s required output
+directory exists (avoids `No Output Directory named "public" found`). All
+dynamic routes still rewrite to the Express serverless function.
 
 ## Required Vercel Environment Variables
 

@@ -6,6 +6,9 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 !backend/uploads/deposits/.gitkeep
 
+# Vercel copies backend/public → root public/ during build; do not commit the copy
+/public/
+
 # Environment
 .env
 *.env.local
