@@ -1468,13 +1468,18 @@ const { getMasterWalletInfo } = require('../services/tronMasterWalletService');
 router.get('/master-wallet-balance', requirePermission('master_wallet'), async (_req, res) => {
   try {
     const info = await getMasterWalletInfo();
+    const usdt = Number(info.usdtBalance) || 0;
+    const trx = Number(info.trxBalance) || 0;
+    const trxLowThreshold = Number(info.trxLowThreshold) || 30;
     res.json({
       success: true,
       wallet: {
         address: info.address,
         network: 'TRC20',
-        usdt_balance: Number(info.usdtBalance) || 0,
-        trx_balance: Number(info.trxBalance) || 0,
+        usdt_balance: usdt,
+        trx_balance: trx,
+        trx_low_threshold: trxLowThreshold,
+        trx_low: Boolean(info.trxLow),
         usdt_contract: info.contract,
         checked_at: new Date().toISOString(),
       },

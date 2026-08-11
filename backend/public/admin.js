@@ -193,11 +193,15 @@
       const allowedPages = this.pages && this.pages.length
         ? this.pages
         : ['deposits'];
+      // Prefer Overview as the Super Admin / Finance home when available
+      const preferred = allowedPages.includes('overview')
+        ? 'overview'
+        : allowedPages[0];
       const current = (location.hash || '').replace(/^#admin-/, '') || null;
       if (current && allowedPages.includes(current)) {
         this.switchTab(current);
-      } else if (allowedPages[0]) {
-        this.switchTab(allowedPages[0]);
+      } else if (preferred) {
+        this.switchTab(preferred);
       }
     },
 
@@ -325,6 +329,14 @@
     },
 
     _showTabPanel(name) {
+      if (name === 'withdrawal-rates') {
+        // Rates now live on Overview
+        this.switchTab(this.hasPermission('overview') ? 'overview' : 'deposits');
+        return;
+      }
+      if (name === 'overview') {
+        this.loadOverview();
+      }
       if (name === 'deposits') {
         this.loadDeposits();
         this.loadP2pBuyOrders();
@@ -332,6 +344,7 @@
         this.loadP2pSellOrders();
         this.loadUsdtWithdrawals();
         this.loadMmkWithdrawals();
+        if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
       }
       if (name === 'support') this.loadSupportThreads();
       if (name === 'cards') {
@@ -356,9 +369,11 @@
       if (name === 'admins') {
         this.loadAdmins();
       }
-      if (name === 'withdrawal-rates') {
-        this.loadWithdrawalRates();
-      }
+    },
+
+    loadOverview() {
+      if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
+      if (this.hasPermission('withdrawal_rates_read')) this.loadWithdrawalRates();
     },
 
     bindNavigation() {
@@ -407,7 +422,9 @@
 
       $('usdtWithdrawalFilter')?.addEventListener('change', () => this.loadUsdtWithdrawals());
       $('mmkWithdrawalFilter')?.addEventListener('change', () => this.loadMmkWithdrawals());
-      $('btnCheckMasterWallet')?.addEventListener('click', () => this.checkMasterWalletBalance());
+      document.querySelectorAll('[data-master-wallet-refresh]').forEach((btn) => {
+        btn.addEventListener('click', () => this.checkMasterWalletBalance({ force: true }));
+      });
 
       $('adminPaymentMethodForm')?.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -918,6 +935,9 @@
       if (this.hasPermission('users')) tasks.push(this.loadUsers());
       if (this.hasPermission('transactions')) tasks.push(this.loadTransactions());
       if (this.hasPermission('manage_admins')) tasks.push(this.loadAdmins());
+      if (this.hasPermission('overview') || this.hasPermission('master_wallet')) {
+        tasks.push(this.checkMasterWalletBalance());
+      }
       if (this.hasPermission('withdrawal_rates_read')) tasks.push(this.loadWithdrawalRates());
       return Promise.allSettled(tasks);
     },
@@ -929,23 +949,23 @@
       const crypto = p.usdt_crypto || {};
       const bank = p.usdt_to_mmk || {};
       const mmk = p.mmk_bank || {};
+      el.className = 'sa-preview-grid';
       el.innerHTML =
-        '<table class="data-table"><thead><tr>' +
-        '<th>Scenario</th><th>Gross</th><th>Fee</th><th>Net / Payout</th><th>Summary</th>' +
-        '</tr></thead><tbody>' +
-        '<tr><td>USDT crypto (TRC20)</td><td>' + (p.sample_usdt_amount || 100) + ' USDT</td>' +
-          '<td>' + this.esc(String(crypto.fee_usdt ?? '—')) + '</td>' +
-          '<td>' + this.esc(String(crypto.net_usdt ?? '—')) + ' USDT</td>' +
-          '<td>' + this.esc(crypto.summary || '—') + '</td></tr>' +
-        '<tr><td>USDT → MMK bank</td><td>' + (p.sample_usdt_amount || 100) + ' USDT</td>' +
-          '<td>' + this.esc(String(bank.fee_usdt ?? '—')) + '</td>' +
-          '<td>' + this.esc(String(bank.amount_mmk ?? '—')) + ' MMK @ ' + this.esc(String(bank.exchange_rate ?? '—')) + '</td>' +
-          '<td>' + this.esc(bank.summary || '—') + '</td></tr>' +
-        '<tr><td>MMK bank</td><td>' + (p.sample_mmk_amount || 100000) + ' MMK</td>' +
-          '<td>' + this.esc(String(mmk.fee_mmk ?? '—')) + '</td>' +
-          '<td>' + this.esc(String(mmk.net_mmk ?? '—')) + ' MMK</td>' +
-          '<td>' + this.esc(mmk.summary || '—') + '</td></tr>' +
-        '</tbody></table>';
+        '<div class="sa-preview-item">' +
+          '<strong>USDT crypto · ' + (p.sample_usdt_amount || 100) + '</strong>' +
+          '<span>Fee ' + this.esc(String(crypto.fee_usdt ?? '—')) +
+          ' → ' + this.esc(String(crypto.net_usdt ?? '—')) + ' USDT net</span>' +
+        '</div>' +
+        '<div class="sa-preview-item">' +
+          '<strong>USDT → MMK · ' + (p.sample_usdt_amount || 100) + '</strong>' +
+          '<span>Fee ' + this.esc(String(bank.fee_usdt ?? '—')) +
+          ' → ' + this.esc(String(bank.amount_mmk ?? '—')) + ' MMK</span>' +
+        '</div>' +
+        '<div class="sa-preview-item">' +
+          '<strong>MMK bank · ' + Number(p.sample_mmk_amount || 100000).toLocaleString() + '</strong>' +
+          '<span>Fee ' + this.esc(String(mmk.fee_mmk ?? '—')) +
+          ' → ' + this.esc(String(mmk.net_mmk ?? '—')) + ' MMK net</span>' +
+        '</div>';
     },
 
     async loadWithdrawalRates() {
@@ -2301,52 +2321,108 @@
       }
     },
 
-    async checkMasterWalletBalance() {
-      const box = $('masterWalletBalance');
-      const btn = $('btnCheckMasterWallet');
-      if (!box) return;
+    renderMasterWalletStatus(wallet) {
+      const w = wallet || {};
+      const usdt = Number(w.usdt_balance || 0);
+      const trx = Number(w.trx_balance || 0);
+      const threshold = Number(w.trx_low_threshold != null ? w.trx_low_threshold : 30);
+      const trxLow = w.trx_low != null ? Boolean(w.trx_low) : trx < threshold;
+      const checked = w.checked_at
+        ? new Date(w.checked_at).toLocaleString()
+        : new Date().toLocaleString();
 
-      const prevLabel = btn ? btn.textContent : '';
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Checking…';
+      const body =
+        '<div class="sa-balance-row">' +
+          '<div class="sa-balance">' +
+            '<span class="sa-balance-label">USDT (TRC20)</span>' +
+            '<div class="sa-balance-value usdt">' + usdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>' +
+            '<div class="sa-balance-meta">Available for payouts</div>' +
+          '</div>' +
+          '<div class="sa-balance' + (trxLow ? ' is-warning' : '') + '">' +
+            '<span class="sa-balance-label">TRX (gas)</span>' +
+            '<div class="sa-balance-value trx' + (trxLow ? ' is-low' : '') + '">' +
+              trx.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }) +
+            '</div>' +
+            '<div class="sa-balance-meta">' + (trxLow ? 'Below ' + threshold + ' TRX reserve' : 'Reserve ≥ ' + threshold + ' TRX') + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="sa-wallet-footer">' +
+          'Address <code>' + this.esc(w.address || '—') + '</code>' +
+          '<br>Updated ' + this.esc(checked) +
+        '</div>';
+
+      const compact =
+        '<div class="master-wallet-balance-grid">' +
+          '<div class="master-wallet-stat"><span class="label">USDT</span>' +
+            '<span class="value usdt">' + usdt.toFixed(2) + '</span></div>' +
+          '<div class="master-wallet-stat' + (trxLow ? ' is-warning' : '') + '"><span class="label">TRX</span>' +
+            '<span class="value trx' + (trxLow ? ' is-low' : '') + '">' + trx.toFixed(4) + '</span></div>' +
+        '</div>' +
+        '<div class="master-wallet-address"><code>' + this.esc(w.address || '—') + '</code>' +
+          (trxLow ? '<br><span class="hint" style="color:#fbbf24">Low TRX — refill gas</span>' : '') +
+        '</div>';
+
+      const statusEl = $('masterWalletStatusBalance');
+      if (statusEl) statusEl.innerHTML = body;
+      const depositEl = $('masterWalletBalance');
+      if (depositEl) depositEl.innerHTML = compact;
+
+      const alertEl = $('masterWalletTrxAlert');
+      if (alertEl) {
+        if (trxLow) {
+          alertEl.classList.remove('hidden');
+          alertEl.innerHTML = '<strong>Low TRX</strong> — ' + trx.toFixed(4) +
+            ' TRX is under the ' + threshold + ' TRX gas reserve. Refill before TRC20 withdrawals.';
+        } else {
+          alertEl.classList.add('hidden');
+          alertEl.textContent = '';
+        }
       }
-      box.innerHTML = '<p class="hint" style="margin:0">Querying TRON master wallet…</p>';
+
+      const badge = $('adminStatusBadge');
+      if (badge && this.hasPermission('master_wallet')) {
+        if (trxLow) {
+          badge.textContent = 'Low TRX';
+          badge.className = 'badge badge-warn';
+        } else if (badge.textContent === 'Low TRX' || badge.textContent === 'Low TRX — refill') {
+          const role = this.user?.role_label || this.user?.admin_role || 'Admin';
+          badge.textContent = role;
+          badge.className = 'badge badge-ok';
+        }
+      }
+    },
+
+    async checkMasterWalletBalance(opts = {}) {
+      if (!this.hasPermission('master_wallet') && !opts.force) return;
+      const targets = [$('masterWalletStatusBalance'), $('masterWalletBalance')].filter(Boolean);
+      if (!targets.length) return;
+
+      const buttons = Array.from(document.querySelectorAll('[data-master-wallet-refresh], #btnCheckMasterWallet'));
+      const prev = buttons.map((b) => b.textContent);
+      buttons.forEach((b) => { b.disabled = true; b.textContent = 'Refreshing…'; });
+      targets.forEach((el) => {
+        el.innerHTML = '<p class="hint" style="margin:0">Querying TRON…</p>';
+      });
 
       try {
         const data = await this.api('GET', '/api/admin/master-wallet-balance');
-        const w = data.wallet || {};
-        const usdt = Number(w.usdt_balance || 0);
-        const trx = Number(w.trx_balance || 0);
-        const checked = w.checked_at
-          ? new Date(w.checked_at).toLocaleString()
-          : new Date().toLocaleString();
-
-        box.innerHTML =
-          '<div class="master-wallet-balance-grid">' +
-            '<div class="master-wallet-stat">' +
-              '<span class="label">USDT (TRC20)</span>' +
-              '<span class="value usdt">$' + usdt.toFixed(2) + '</span>' +
-            '</div>' +
-            '<div class="master-wallet-stat">' +
-              '<span class="label">TRX</span>' +
-              '<span class="value trx">' + trx.toFixed(4) + '</span>' +
-            '</div>' +
-            '<div class="master-wallet-stat">' +
-              '<span class="label">Network</span>' +
-              '<span class="value">' + this.esc(w.network || 'TRC20') + '</span>' +
-            '</div>' +
-          '</div>' +
-          '<div class="master-wallet-address">Address: <code>' + this.esc(w.address || '—') + '</code>' +
-            '<br><span class="hint">Checked ' + this.esc(checked) + '</span></div>';
+        this.renderMasterWalletStatus(data.wallet || {});
+        if (opts.force) this.showAdminToast('Balances updated', 'ok');
       } catch (err) {
-        box.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' +
-          this.esc(err.message || 'Failed to load master wallet balance') + '</p>';
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = prevLabel || 'Check Master Wallet Balance';
+        const msg = this.esc(err.message || 'Failed to load balances');
+        targets.forEach((el) => {
+          el.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' + msg + '</p>';
+        });
+        const alertEl = $('masterWalletTrxAlert');
+        if (alertEl) {
+          alertEl.classList.remove('hidden');
+          alertEl.innerHTML = '<strong>Could not load wallet</strong> — ' + msg;
         }
+      } finally {
+        buttons.forEach((b, i) => {
+          b.disabled = false;
+          b.textContent = prev[i] || 'Refresh';
+        });
       }
     },
 

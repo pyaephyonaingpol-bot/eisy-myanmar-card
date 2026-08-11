@@ -26,6 +26,8 @@ const PERMISSIONS = {
   /** Super + Finance can view/update withdrawal exchange rate & service fees */
   withdrawal_rates_read: [ROLES.SUPER_ADMIN, ROLES.FINANCE_ADMIN],
   withdrawal_rates_write: [ROLES.SUPER_ADMIN, ROLES.FINANCE_ADMIN],
+  /** Super Admin home: wallet + rates at a glance; Finance sees rates section only */
+  overview: [ROLES.SUPER_ADMIN, ROLES.FINANCE_ADMIN],
   settings_read: [ROLES.SUPER_ADMIN, ROLES.FINANCE_ADMIN],
   balance_adjust: [ROLES.SUPER_ADMIN, ROLES.FINANCE_ADMIN],
   deposits: [ROLES.SUPER_ADMIN, ROLES.FINANCE_ADMIN],
@@ -44,6 +46,7 @@ const PERMISSIONS = {
 
 /** UI nav page → required permission */
 const PAGE_PERMISSIONS = {
+  overview: 'overview',
   deposits: 'deposits',
   cards: 'cards',
   users: 'users',

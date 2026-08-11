@@ -358,6 +358,11 @@ a.btn { text-decoration: none; }
 }
 .master-wallet-stat .value.usdt { color: #34d399; }
 .master-wallet-stat .value.trx { color: #60a5fa; }
+.master-wallet-stat .value.trx.is-low { color: #fbbf24; }
+.master-wallet-stat.is-warning {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.08);
+}
 .master-wallet-address {
   margin-top: 0.65rem;
   font-size: 0.78rem;

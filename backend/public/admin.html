@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eisy Myanmar — Admin</title>
-  <link rel="stylesheet" href="/styles.css?v=20260811b" />
+  <link rel="stylesheet" href="/styles.css?v=20260811j" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     /* Critical fallback — keeps dashboard visible even if styles.css fails */
-    body { margin: 0; background: #0F172A; color: #F1F5F9; font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
+    body { margin: 0; background: #0B1220; color: #E8EEF7; font-family: 'DM Sans', 'IBM Plex Sans', system-ui, sans-serif; }
     #adminApp { min-height: 100vh; }
     #adminApp.hidden, #adminLogin.hidden { display: none !important; }
     #adminLogin .auth-card { max-width: 420px; width: 100%; }
@@ -35,6 +35,216 @@
       border: 1px solid rgba(239, 68, 68, 0.35);
     }
     #adminBootError.visible { display: block; }
+
+    /* ── Super Admin Overview ── */
+    .sa-overview { max-width: 880px; }
+    .sa-overview-intro {
+      margin: 0 0 1.75rem;
+      color: #94a3b8;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      max-width: 42rem;
+    }
+    .sa-card {
+      margin: 0 0 1.5rem;
+      padding: 1.35rem 1.4rem 1.4rem;
+      border-radius: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: linear-gradient(165deg, rgba(20, 30, 48, 0.92), rgba(15, 23, 42, 0.72));
+    }
+    .sa-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.15rem;
+    }
+    .sa-card-eyebrow {
+      margin: 0 0 0.25rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+    .sa-card-title {
+      margin: 0;
+      font-size: 1.2rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      color: #f8fafc;
+    }
+    .sa-card-sub {
+      margin: 0.35rem 0 0;
+      font-size: 0.88rem;
+      color: #94a3b8;
+      line-height: 1.45;
+    }
+    .sa-balance-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.85rem;
+    }
+    @media (max-width: 560px) {
+      .sa-balance-row { grid-template-columns: 1fr; }
+    }
+    .sa-balance {
+      padding: 1rem 1.05rem;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      background: rgba(8, 14, 26, 0.55);
+    }
+    .sa-balance-label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 0.4rem;
+    }
+    .sa-balance-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+      color: #f8fafc;
+    }
+    .sa-balance-value.usdt { color: #34d399; }
+    .sa-balance-value.trx { color: #38bdf8; }
+    .sa-balance-value.is-low { color: #fbbf24; }
+    .sa-balance-meta {
+      margin-top: 0.35rem;
+      font-size: 0.8rem;
+      color: #64748b;
+    }
+    .sa-wallet-footer {
+      margin-top: 1rem;
+      padding-top: 0.9rem;
+      border-top: 1px solid rgba(148, 163, 184, 0.12);
+      font-size: 0.8rem;
+      color: #94a3b8;
+      word-break: break-all;
+    }
+    .sa-wallet-footer code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #cbd5e1;
+      font-size: 0.78rem;
+    }
+    .sa-alert {
+      margin: 0 0 1rem;
+      padding: 0.8rem 0.95rem;
+      border-radius: 10px;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      background: rgba(245, 158, 11, 0.1);
+      color: #fde68a;
+      font-size: 0.9rem;
+      font-weight: 560;
+      line-height: 1.4;
+    }
+    .sa-alert.hidden { display: none; }
+    .sa-alert strong { color: #fbbf24; }
+    .sa-rates-form {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem 1.1rem;
+      margin: 0;
+    }
+    @media (max-width: 640px) {
+      .sa-rates-form { grid-template-columns: 1fr; }
+    }
+    .sa-rates-form .field { margin: 0; }
+    .sa-rates-form .field.full { grid-column: 1 / -1; }
+    .sa-rates-form label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 0.35rem;
+    }
+    .sa-rates-form input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.7rem 0.8rem;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: rgba(8, 14, 26, 0.65);
+      color: #f1f5f9;
+      font: inherit;
+      font-size: 0.95rem;
+    }
+    .sa-rates-form input:focus {
+      outline: none;
+      border-color: rgba(56, 189, 248, 0.55);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+    }
+    .sa-rates-form .hint, .sa-rates-form small.hint {
+      display: block;
+      margin-top: 0.35rem;
+      color: #64748b;
+      font-size: 0.78rem;
+      line-height: 1.4;
+    }
+    .sa-section-label {
+      grid-column: 1 / -1;
+      margin: 0.35rem 0 0;
+      padding-top: 0.35rem;
+      font-size: 0.78rem;
+      font-weight: 650;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+    .sa-actions {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      align-items: center;
+      margin-top: 0.25rem;
+    }
+    .sa-preview {
+      margin-top: 1.15rem;
+      padding-top: 1.1rem;
+      border-top: 1px solid rgba(148, 163, 184, 0.12);
+    }
+    .sa-preview-title {
+      margin: 0 0 0.65rem;
+      font-size: 0.82rem;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #94a3b8;
+    }
+    .sa-preview-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+    @media (max-width: 720px) {
+      .sa-preview-grid { grid-template-columns: 1fr; }
+    }
+    .sa-preview-item {
+      padding: 0.85rem 0.9rem;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: rgba(8, 14, 26, 0.45);
+    }
+    .sa-preview-item strong {
+      display: block;
+      font-size: 0.78rem;
+      color: #94a3b8;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
+    .sa-preview-item span {
+      display: block;
+      font-size: 0.92rem;
+      color: #e2e8f0;
+      line-height: 1.4;
+    }
     .revenue-metrics-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -157,10 +367,14 @@
       <aside class="app-sidebar" id="adminSidebar" aria-label="Admin navigation">
         <div class="sidebar-brand">
           <div class="sidebar-brand-title">Eisy Admin</div>
-          <div class="sidebar-brand-sub">Deposit review · Cards · Support</div>
+          <div class="sidebar-brand-sub">Control · Payouts · Support</div>
         </div>
 
         <nav class="sidebar-nav admin-sidebar-nav" aria-label="Admin sections">
+          <button type="button" class="nav-item" data-page="overview" data-admin-perm="overview">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <span>Overview</span>
+          </button>
           <button type="button" class="nav-item active" data-page="deposits" data-admin-perm="deposits" aria-current="page">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             <span data-i18n="nav_admin_deposits">Deposits</span>
@@ -192,10 +406,6 @@
           <button type="button" class="nav-item" data-page="settings" data-admin-perm="settings_read">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 5 5-9"/></svg>
             <span data-i18n="nav_admin_settings">Rates &amp; Fees</span>
-          </button>
-          <button type="button" class="nav-item" data-page="withdrawal-rates" data-admin-perm="withdrawal_rates_read">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            <span>Withdrawal Rates</span>
           </button>
           <button type="button" class="nav-item" data-page="admins" data-admin-perm="manage_admins">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
@@ -236,6 +446,7 @@
         </header>
 
         <main class="app-content">
+          <span class="hidden" data-page-title="overview">Overview</span>
           <span class="hidden" data-page-title="deposits" data-i18n="nav_admin_deposits">Deposits</span>
           <span class="hidden" data-page-title="cards" data-i18n="nav_admin_cards">Cards</span>
           <span class="hidden" data-page-title="users" data-i18n="nav_admin_users">Users</span>
@@ -244,8 +455,94 @@
           <span class="hidden" data-page-title="support" data-i18n="nav_admin_support">Support</span>
           <span class="hidden" data-page-title="kyc-requests" data-i18n="nav_admin_kyc">KYC Requests</span>
           <span class="hidden" data-page-title="settings" data-i18n="nav_admin_settings">Rates &amp; Fees</span>
-          <span class="hidden" data-page-title="withdrawal-rates">Withdrawal Rates</span>
           <span class="hidden" data-page-title="admins">Admins</span>
+
+      <section id="tabOverview" class="panel app-page" data-page="overview">
+        <div class="sa-overview">
+          <p class="sa-overview-intro">
+            Wallet health and withdrawal pricing in one place. Balances update from the TRON master wallet;
+            rate changes apply to the next user withdrawal.
+          </p>
+
+          <div class="sa-card" id="overviewWalletCard" data-admin-perm="master_wallet">
+            <div class="sa-card-header">
+              <div>
+                <p class="sa-card-eyebrow">Master wallet</p>
+                <h2 class="sa-card-title">Balances</h2>
+                <p class="sa-card-sub">USDT for payouts · TRX for network gas</p>
+              </div>
+              <button type="button" id="btnRefreshMasterWalletStatus" class="btn btn-secondary btn-sm" data-master-wallet-refresh>
+                Refresh
+              </button>
+            </div>
+            <div id="masterWalletTrxAlert" class="sa-alert hidden" role="alert" aria-live="assertive"></div>
+            <div id="masterWalletStatusBalance" aria-live="polite">
+              <p class="hint" style="margin:0">Loading balances…</p>
+            </div>
+          </div>
+
+          <div class="sa-card" id="overviewRatesCard" data-admin-perm="withdrawal_rates_read">
+            <div class="sa-card-header">
+              <div>
+                <p class="sa-card-eyebrow">Payout pricing</p>
+                <h2 class="sa-card-title">Withdrawal rates &amp; fees</h2>
+                <p class="sa-card-sub">USDT→MMK rate and service fee used on every new withdrawal</p>
+              </div>
+            </div>
+
+            <form id="withdrawalRatesForm" class="sa-rates-form">
+              <p class="sa-section-label">Exchange rate</p>
+              <div class="field">
+                <label for="wrExchangeRate">USDT → MMK</label>
+                <input id="wrExchangeRate" type="number" step="1" min="1" required placeholder="4500" />
+                <small class="hint">MMK paid per 1 USDT (after fee)</small>
+              </div>
+              <div class="field">
+                <label for="wrEffectiveDate">Effective date</label>
+                <input id="wrEffectiveDate" type="date" required />
+              </div>
+
+              <p class="sa-section-label">Service fee</p>
+              <div class="field">
+                <label for="wrFeePercent">Percent (%)</label>
+                <input id="wrFeePercent" type="number" step="0.01" min="0" max="20" required />
+              </div>
+              <div class="field">
+                <label for="wrFeeMinUsdt">Minimum (USDT)</label>
+                <input id="wrFeeMinUsdt" type="number" step="0.01" min="0" required />
+                <small class="hint">Fee = max(amount × %, minimum). Use 0% + 2 min for a flat 2 USDT fee.</small>
+              </div>
+
+              <p class="sa-section-label">Minimums</p>
+              <div class="field">
+                <label for="wrMinUsdt">Min USDT withdrawal</label>
+                <input id="wrMinUsdt" type="number" step="0.01" min="0.01" required />
+              </div>
+              <div class="field">
+                <label for="wrMinMmk">Min MMK withdrawal</label>
+                <input id="wrMinMmk" type="number" step="1" min="1" required />
+              </div>
+
+              <div class="field full">
+                <label for="wrNotes">Note (optional)</label>
+                <input id="wrNotes" type="text" placeholder="Why this change?" />
+              </div>
+
+              <div class="sa-actions">
+                <button type="submit" class="btn btn-primary" id="wrSaveBtn">Save rates</button>
+                <button type="button" class="btn btn-secondary" id="wrRefreshBtn">Reload</button>
+                <span id="wrSaveHint" class="hint"></span>
+              </div>
+            </form>
+
+            <div class="sa-preview">
+              <p class="sa-preview-title">Quick preview</p>
+              <div id="withdrawalRatesPreview"><p class="hint" style="margin:0">Loading…</p></div>
+            </div>
+            <pre class="output hidden" id="withdrawalRatesOut" aria-hidden="true"></pre>
+          </div>
+        </div>
+      </section>
 
       <section id="tabDeposits" class="panel app-page is-active" data-page="deposits">
         <h2 data-i18n="wallet_deposit_requests">Wallet Deposit Requests</h2>
@@ -277,13 +574,13 @@
         <div class="master-wallet-panel" id="masterWalletPanel" data-admin-perm="master_wallet">
           <div class="master-wallet-panel-header">
             <div>
-              <strong>Master wallet (TRC20)</strong>
-              <p class="hint" style="margin:0.25rem 0 0">Check TRX and USDT before completing crypto withdrawals.</p>
+              <strong>Master wallet</strong>
+              <p class="hint" style="margin:0.25rem 0 0">Full balances live on <strong>Overview</strong>. Refresh here before approving TRC20 payouts.</p>
             </div>
-            <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm">Check Master Wallet Balance</button>
+            <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm" data-master-wallet-refresh>Refresh</button>
           </div>
           <div id="masterWalletBalance" class="master-wallet-balance" aria-live="polite">
-            <p class="hint" style="margin:0">Click the button to load balances.</p>
+            <p class="hint" style="margin:0">Loading…</p>
           </div>
         </div>
 
@@ -651,77 +948,6 @@
         <div id="exchangeRateHistoryTable" class="data-table-wrap"><p class="hint">Loading history…</p></div>
       </section>
 
-      <section id="tabWithdrawalRates" class="panel app-page" data-page="withdrawal-rates">
-        <h2>Withdrawal Rate Management</h2>
-        <p class="hint" style="margin-bottom:1rem">
-          Set the USDT→MMK exchange rate and withdrawal service fees used when users request payouts.
-          Values are stored in the database; every new withdrawal uses the latest saved rates.
-          Only <strong>Super Admin</strong> and <strong>Finance Admin</strong> can change these.
-        </p>
-
-        <form id="withdrawalRatesForm" class="form grid-admin-form" style="max-width:720px">
-          <div class="field" style="grid-column:1/-1">
-            <h3 style="margin:0;font-size:1rem">Exchange rate (USDT → MMK)</h3>
-            <p class="hint" style="margin:0.35rem 0 0">Used for USDT→bank (local currency) withdrawals after the service fee is deducted.</p>
-          </div>
-          <div class="field">
-            <label for="wrExchangeRate">USDT / MMK Rate</label>
-            <input id="wrExchangeRate" type="number" step="1" min="1" required placeholder="4500" />
-            <small class="hint">MMK per 1 USDT</small>
-          </div>
-          <div class="field">
-            <label for="wrEffectiveDate">Effective Date</label>
-            <input id="wrEffectiveDate" type="date" required />
-          </div>
-
-          <div class="field" style="grid-column:1/-1">
-            <h3 style="margin:0.75rem 0 0;font-size:1rem">Withdrawal service fee</h3>
-            <p class="hint" style="margin:0.35rem 0 0">
-              Fee = <code>Math.max(amount × %, minimum USDT)</code>. Example: 2% with a $1 minimum,
-              or set % to 0 and minimum to 2 for a flat <strong>2 USDT</strong> fee.
-            </p>
-          </div>
-          <div class="field">
-            <label for="wrFeePercent">Service Fee Percent (%)</label>
-            <input id="wrFeePercent" type="number" step="0.01" min="0" max="20" required />
-          </div>
-          <div class="field">
-            <label for="wrFeeMinUsdt">Minimum Fee (USDT)</label>
-            <input id="wrFeeMinUsdt" type="number" step="0.01" min="0" required />
-            <small class="hint">MMK withdrawals: minimum fee = this × exchange rate</small>
-          </div>
-
-          <div class="field" style="grid-column:1/-1">
-            <h3 style="margin:0.75rem 0 0;font-size:1rem">Minimum withdrawal amounts</h3>
-          </div>
-          <div class="field">
-            <label for="wrMinUsdt">Minimum USDT Withdrawal</label>
-            <input id="wrMinUsdt" type="number" step="0.01" min="0.01" required />
-          </div>
-          <div class="field">
-            <label for="wrMinMmk">Minimum MMK Withdrawal</label>
-            <input id="wrMinMmk" type="number" step="1" min="1" required />
-          </div>
-
-          <div class="field" style="grid-column:1/-1">
-            <label for="wrNotes">Change notes (optional)</label>
-            <input id="wrNotes" type="text" placeholder="e.g. Raised min fee to 2 USDT" />
-          </div>
-          <div class="field" style="grid-column:1/-1;display:flex;gap:0.65rem;flex-wrap:wrap;align-items:center">
-            <button type="submit" class="btn btn-primary" id="wrSaveBtn">Save Withdrawal Rates</button>
-            <button type="button" class="btn btn-secondary" id="wrRefreshBtn">Reload</button>
-            <span id="wrSaveHint" class="hint"></span>
-          </div>
-        </form>
-
-        <pre class="output" id="withdrawalRatesOut" style="max-width:720px"></pre>
-
-        <h3 style="margin-top:1.75rem;font-size:1rem">Live fee preview</h3>
-        <p class="hint" style="margin-bottom:0.75rem">Sample calculations using the rates currently loaded (or last saved).</p>
-        <div id="withdrawalRatesPreview" class="data-table-wrap" style="max-width:720px">
-          <p class="hint">Loading preview…</p>
-        </div>
-      </section>
 
       <section id="tabAdmins" class="panel app-page" data-page="admins">
         <h2>Admin Accounts</h2>
@@ -858,6 +1084,6 @@
   <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
   <script src="/i18n.js?v=20260811b"></script>
   <script src="/nav.js?v=20260811b"></script>
-  <script src="/admin.js?v=20260811i" defer></script>
+  <script src="/admin.js?v=20260811j" defer></script>
 </body>
 </html>

@@ -13,6 +13,14 @@ const TRON_FULL_HOST =
 const TRC20_DECIMALS = 6;
 /** Fee limit for USDT transfer (sun). Default 100 TRX. */
 const DEFAULT_FEE_LIMIT = Number(process.env.TRON_USDT_FEE_LIMIT_SUN) || 100_000_000;
+/** Warn Super Admins when master TRX (gas) falls below this level. */
+const TRX_LOW_THRESHOLD = Number(process.env.MASTER_TRX_LOW_THRESHOLD) || 30;
+
+function getTrxLowThreshold() {
+  return Number.isFinite(TRX_LOW_THRESHOLD) && TRX_LOW_THRESHOLD > 0
+    ? TRX_LOW_THRESHOLD
+    : 30;
+}
 
 const USDT_TRC20_ABI = [
   {
@@ -242,10 +250,14 @@ async function getMasterWalletInfo() {
   }
   const usdt = await getUsdtBalance(tronWeb, address);
   const trxSun = await getTrxBalanceSun(tronWeb, address);
+  const trxBalance = Number(trxSun) / 1e6;
+  const trxLowThreshold = getTrxLowThreshold();
   return {
     address,
     usdtBalance: usdt.usdt,
-    trxBalance: Number(trxSun) / 1e6,
+    trxBalance,
+    trxLowThreshold,
+    trxLow: trxBalance < trxLowThreshold,
     contract: USDT_TRC20_CONTRACT,
   };
 }
@@ -254,6 +266,7 @@ module.exports = {
   USDT_TRC20_CONTRACT,
   getMasterPrivateKey,
   getMasterWalletAddress,
+  getTrxLowThreshold,
   usdtToSun,
   sunToUsdt,
   transferUsdtTrc20,
