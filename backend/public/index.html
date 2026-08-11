@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eisy Myanmar</title>
-  <link rel="stylesheet" href="/styles.css?v=20260810d" />
+  <link rel="stylesheet" href="/styles.css?v=20260810e" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -810,7 +810,10 @@
                     <span class="label" data-i18n="status">Status</span>
                     <span id="cardStatusDisplay" class="card-status-pill">—</span>
                   </div>
-                  <div id="cardLast4Display" class="card-status-last4">—</div>
+                  <div class="card-status-hero-aside">
+                    <div id="cardLast4Display" class="card-status-last4">—</div>
+                    <div id="cardBalanceDisplay" class="card-status-balance">—</div>
+                  </div>
                 </div>
                 <div class="card-action-bar">
                   <button type="button" id="btnShowCardDetails" class="btn btn-secondary btn-sm" disabled data-i18n="show_card_details">Show Card Details</button>
@@ -1266,12 +1269,12 @@
     </div>
   </div>
 
-  <script src="/api-config.js?v=20260810d"></script>
-  <script type="module" src="/supabaseBridge.js?v=20260810d"></script>
+  <script src="/api-config.js?v=20260810e"></script>
+  <script type="module" src="/supabaseBridge.js?v=20260810e"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260810d"></script>
-  <script src="/auth.js?v=20260810d"></script>
-  <script src="/nav.js?v=20260810d"></script>
-  <script src="/dashboard.js?v=20260810d"></script>
+  <script src="/i18n.js?v=20260810e"></script>
+  <script src="/auth.js?v=20260810e"></script>
+  <script src="/nav.js?v=20260810e"></script>
+  <script src="/dashboard.js?v=20260810e"></script>
 </body>
 </html>

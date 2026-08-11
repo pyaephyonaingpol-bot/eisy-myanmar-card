@@ -118,6 +118,7 @@ const Dashboard = {
       },
       onReloads: () => {
         this.loadReloadHistory();
+        this.loadAllCards({ preserveSelection: true, silent: true, forceRefresh: true });
       },
       onCards: () => {
         this.loadAllCards({ preserveSelection: true, silent: true, forceRefresh: true });
@@ -160,20 +161,29 @@ const Dashboard = {
 
   bindCardsAutoRefresh() {
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && Auth.isLoggedIn() && Auth.pinToken) {
+      if (
+        document.visibilityState === 'visible'
+        && Auth.isLoggedIn()
+        && !Auth.needsPinUnlock()
+      ) {
         this.loadAllCards({ preserveSelection: true, silent: true });
       }
     });
 
     const schedulePoll = () => {
-      const hasPending = (this.allCards || []).some((c) => this.isCardPending(c));
-      // Slow polls — frequent full refreshes made the Cards page visually shake
-      const intervalMs = hasPending ? 10000 : 45000;
+      const cards = this.allCards || [];
+      const hasPending = cards.some((c) => this.isCardPending(c));
+      // Empty or pending lists need faster refresh so new/approved cards appear promptly
+      const intervalMs = (!cards.length || hasPending) ? 10000 : 45000;
       if (this.cardsPollTimer && this._cardsPollIntervalMs === intervalMs) return;
       if (this.cardsPollTimer) clearInterval(this.cardsPollTimer);
       this._cardsPollIntervalMs = intervalMs;
       this.cardsPollTimer = setInterval(() => {
-        if (document.visibilityState === 'visible' && Auth.isLoggedIn() && Auth.pinToken) {
+        if (
+          document.visibilityState === 'visible'
+          && Auth.isLoggedIn()
+          && !Auth.needsPinUnlock()
+        ) {
           this.loadAllCards({ preserveSelection: true, silent: true });
         }
       }, intervalMs);
@@ -2811,6 +2821,17 @@ const Dashboard = {
         : '—';
     }
 
+    const balanceDisplay = $('cardBalanceDisplay');
+    if (balanceDisplay) {
+      if (!card || pending) {
+        balanceDisplay.textContent = pending ? 'Balance pending' : '—';
+      } else if (card.balance_usd != null && Number.isFinite(Number(card.balance_usd))) {
+        balanceDisplay.textContent = `$${Number(card.balance_usd).toFixed(2)} USD`;
+      } else {
+        balanceDisplay.textContent = '$0.00 USD';
+      }
+    }
+
     const showBtn = $('btnShowCardDetails');
     if (showBtn) {
       showBtn.disabled = !canRevealDetails;
@@ -3338,7 +3359,7 @@ const Dashboard = {
             $('cardRequestForm')?.reset();
             this.loadWallet();
             this.loadUsdtWalletPage(true);
-            this.loadAllCards();
+            this.loadAllCards({ forceRefresh: true });
             this.loadDepositHistory();
             if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
             return;
@@ -3350,7 +3371,7 @@ const Dashboard = {
           this.log('New card request + payment ref generated', 'ok');
           this.loadTransactions();
           this.loadDepositHistory();
-          this.loadAllCards();
+          this.loadAllCards({ forceRefresh: true });
           if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true });
         } catch (err) {
           if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
@@ -3385,7 +3406,7 @@ const Dashboard = {
       }
     };
 
-    $('btnLoadCard').onclick = () => this.loadAllCards();
+    $('btnLoadCard').onclick = () => this.loadAllCards({ forceRefresh: true });
     $('btnShowCardDetails')?.addEventListener('click', () => this.toggleCardDetails());
 
     $('depositForm').onsubmit = async (e) => {
@@ -3529,14 +3550,15 @@ const Dashboard = {
       }
       if (Auth.needsPinUnlock()) {
         $('pinUnlockModal')?.classList.remove('hidden');
+        this.applyCachedCardsIfAvailable();
       } else {
         $('pinUnlockModal')?.classList.add('hidden');
+        this.applyCachedCardsIfAvailable();
+        this.loadAllCards({ preserveSelection: true, silent: true });
       }
       this.loadWallet();
       this.loadTransactions();
       this.loadDepositHistory();
-      this.applyCachedCardsIfAvailable();
-      this.loadAllCards({ preserveSelection: true, silent: true });
       this.loadCardPricing();
       this.loadWithdrawalFees();
       this.updateHomeRateSummary();
@@ -4612,7 +4634,28 @@ const Dashboard = {
 
   async loadAllCards({ preserveSelection = false, silent = false, forceRefresh = false } = {}) {
     if (!Auth.isLoggedIn()) return;
-    if (this._cardsLoading) return;
+
+    if (Auth.needsPinUnlock()) {
+      if (!this.allCards.length) this.applyCachedCardsIfAvailable();
+      if (!silent) $('pinUnlockModal')?.classList.remove('hidden');
+      return;
+    }
+
+    // Never drop refreshes while a request is in flight — queue and replay
+    if (this._cardsLoading) {
+      const queued = this._cardsLoadQueued || {
+        preserveSelection: false,
+        silent: true,
+        forceRefresh: false,
+      };
+      this._cardsLoadQueued = {
+        preserveSelection: queued.preserveSelection || preserveSelection,
+        silent: queued.silent && silent,
+        forceRefresh: queued.forceRefresh || forceRefresh,
+      };
+      return;
+    }
+
     this._cardsLoading = true;
 
     if (!forceRefresh && !this.allCards.length) {
@@ -4626,7 +4669,18 @@ const Dashboard = {
         ? prevCards[this.activeCardIndex].id
         : null;
 
-      const data = await Auth.api('GET', '/api/user/cards', null, { sensitive: true });
+      let data;
+      try {
+        data = await Auth.api('GET', '/api/user/cards', null, { sensitive: true });
+      } catch (err) {
+        // Back-compat: older servers returned 404 for empty card lists
+        if (err.status === 404 && Array.isArray(err.response?.cards)) {
+          data = { cards: err.response.cards, active_index: err.response.active_index || 0 };
+        } else {
+          throw err;
+        }
+      }
+
       const newCards = (data.cards || []).map((c) => this.normalizeCard(c));
       const nextSignature = this.cardsSignature(newCards);
       const unchanged = prevSignature === nextSignature && prevCards.length === newCards.length;
@@ -4635,10 +4689,9 @@ const Dashboard = {
         const prev = prevCards.find((p) => p.id === c.id);
         if (prev && this.isCardPending(prev) && this.isCardActive(c)) {
           console.log('[Dashboard] Card approved — id=', c.id, 'now active');
-          if (!silent) {
-            this.toast(`Your card •••• ${c.last4 || '????'} is now active!`, 'ok');
-            this.log(`Card ending •••• ${c.last4 || '????'} is now active`, 'ok');
-          }
+          // Always notify — silent polls must still surface approval
+          this.toast(`Your card •••• ${c.last4 || '????'} is now active!`, 'ok');
+          this.log(`Card ending •••• ${c.last4 || '????'} is now active`, 'ok');
         }
       });
 
@@ -4653,12 +4706,12 @@ const Dashboard = {
       }
 
       if (!this.allCards.length) {
-        this.allCards = [];
         this.currentCard = null;
         this.cardDetailsRevealed = false;
         $('cardSelectorSection')?.classList.add('hidden');
         $('cardVisual')?.classList.add('hidden');
         $('cardPendingNotice')?.classList.add('hidden');
+        if ($('cardBalanceDisplay')) $('cardBalanceDisplay').textContent = '—';
         if ($('sumCard')) $('sumCard').textContent = 'No card';
         this.updateCardStatusSummary(null);
         if (!silent) {
@@ -4683,21 +4736,34 @@ const Dashboard = {
         showOutput('viewCardOutput', { cards: this.allCards.length, active: this.allCards[this.activeCardIndex] });
       }
     } catch (err) {
-      this.allCards = [];
-      this.currentCard = null;
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+        if (!this.allCards.length) this.applyCachedCardsIfAvailable();
         $('pinUnlockModal')?.classList.remove('hidden');
-        $('cardSelectorSection')?.classList.add('hidden');
-        if ($('sumCard')) $('sumCard').textContent = '🔒 Locked';
-        this.updateCardStatusSummary(null);
+        if ($('sumCard') && !this.allCards.length) $('sumCard').textContent = '🔒 Locked';
+        if (!this.allCards.length) this.updateCardStatusSummary(null);
       } else if (!silent) {
+        // Soft errors: keep existing cards on screen so the page doesn't blank out
         if (err.message?.includes('404') || err.message?.includes('No cards')) {
+          this.allCards = [];
+          this.currentCard = null;
+          this.clearCardsCache();
+          $('cardSelectorSection')?.classList.add('hidden');
+          $('cardVisual')?.classList.add('hidden');
           if ($('sumCard')) $('sumCard').textContent = 'No card';
+          this.updateCardStatusSummary(null);
         }
         showOutput('viewCardOutput', err.message, true);
+      } else {
+        console.warn('[Dashboard] silent loadAllCards failed:', err.message);
       }
     } finally {
       this._cardsLoading = false;
+      const queued = this._cardsLoadQueued;
+      this._cardsLoadQueued = null;
+      if (queued) {
+        // Replay any refresh that arrived while we were loading
+        await this.loadAllCards(queued);
+      }
     }
   },
 

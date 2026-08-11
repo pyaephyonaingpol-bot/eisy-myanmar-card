@@ -99,14 +99,12 @@ router.get('/cards', requireAuth, requireSensitive, async (req, res) => {
     const user = await User.findById(req.user.id);
     const payload = await getUserCardsPayload(req.user.id);
 
-    if (!payload.cards.length) {
-      return res.status(404).json({ error: 'No cards found', cards: [], active_index: 0 });
-    }
-
+    // Always 200 — empty list is a valid state (new users / post-request).
+    // Returning 404 here made the dashboard wipe cards and look "broken".
     res.json({
       user: { id: user.id, name: user.name },
       ...payload,
-      card: payload.cards[payload.active_index],
+      card: payload.cards.length ? payload.cards[payload.active_index] : null,
     });
   } catch (err) {
     console.error('[user/cards]', err);

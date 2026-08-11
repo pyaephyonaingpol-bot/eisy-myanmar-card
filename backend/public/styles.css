@@ -242,7 +242,9 @@ a.btn { text-decoration: none; }
 .card-status-hero { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; padding: 1rem 1.1rem; border-radius: var(--radius-md); background: rgba(15,23,42,0.45); border: 1px solid var(--border-subtle); min-height: 4.25rem; }
 .card-status-hero-main { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; }
 .card-status-hero-main .label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.card-status-hero-aside { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
 .card-status-last4 { font-family: var(--font-mono); font-size: 1rem; letter-spacing: 0.08em; color: var(--text); }
+.card-status-balance { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.95rem; color: #86efac; }
 .card-action-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; min-height: 2.25rem; align-items: center; }
 .card-action-bar .btn { flex: 0 1 auto; }
 .reload-preview-row.reload-preview-sub { font-size: 0.8rem; opacity: 0.85; margin-top: 0.35rem; }
