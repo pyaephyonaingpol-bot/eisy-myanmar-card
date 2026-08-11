@@ -8,7 +8,8 @@
     "create-wallet": "node create-wallet.js",
     "start": "npm start --prefix backend",
     "dev": "npm run dev --prefix backend",
-    "migrate": "npm run migrate --prefix backend"
+    "migrate": "npm run migrate --prefix backend",
+    "vercel-build": "mkdir -p public && cp -R backend/public/. public/"
   },
   "engines": {
     "node": ">=18"
