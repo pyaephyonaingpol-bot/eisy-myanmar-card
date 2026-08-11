@@ -332,6 +332,58 @@ async function createMmkBankWithdrawalRequest(userId, body = {}) {
   };
 }
 
+async function processUsdtTrc20Withdrawal(row) {
+  if (!row) {
+    throw new Error('USDT withdrawal not found');
+  }
+
+  const network = normalizeNetwork(row.network);
+  const payoutMethod = normalizePayoutMethod(row.payout_method || 'crypto');
+
+  // MMK wallet / conversion is never part of TRC20 master-wallet payouts.
+  if (payoutMethod === 'bank' || network === 'BANK') {
+    const err = new Error(
+      'Bank / MMK payouts are not sent from the TRON master wallet. '
+      + 'Complete bank transfers manually. MMK → USDT conversion remains forbidden.'
+    );
+    err.code = 'MMK_WALLET_RESTRICTED';
+    throw err;
+  }
+  if (network !== 'TRC20') {
+    const err = new Error(
+      `Automatic master-wallet payout supports TRC20 only (got ${network || 'unknown'}). `
+      + 'Provide a tx_hash for other networks.'
+    );
+    err.code = 'NETWORK_NOT_SUPPORTED';
+    throw err;
+  }
+
+  const netUsdt = Number(row.net_usdt);
+  if (!Number.isFinite(netUsdt) || netUsdt <= 0) {
+    throw new Error('Withdrawal net USDT amount is invalid');
+  }
+  if (!row.wallet_address) {
+    throw new Error('Withdrawal is missing destination wallet address');
+  }
+
+  // Transfer USDT TRC20 from master wallet (reads MASTER_PRIVATE_KEY from env).
+  // Includes USDT balance + TRX fee checks before broadcasting.
+  const transfer = await transferUsdtTrc20({
+    toAddress: row.wallet_address,
+    amountUsdt: netUsdt,
+  });
+
+  return {
+    txId: transfer.txId,
+    fromAddress: transfer.fromAddress,
+    toAddress: transfer.toAddress,
+    amountUsdt: transfer.amountUsdt,
+    network: 'TRC20',
+    currency: 'USDT',
+    note: `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
+  };
+}
+
 async function completeUsdtWithdrawal(id, { adminNote, txHash, adminId, skipOnChain } = {}) {
   const row = await UsdtWithdrawal.findById(id);
   if (!row) throw new Error('USDT withdrawal not found');
@@ -349,14 +401,6 @@ async function completeUsdtWithdrawal(id, { adminNote, txHash, adminId, skipOnCh
     && !resolvedTxHash;
 
   if (shouldSendOnChain) {
-    const netUsdt = Number(row.net_usdt);
-    if (!Number.isFinite(netUsdt) || netUsdt <= 0) {
-      throw new Error('Withdrawal net USDT amount is invalid');
-    }
-    if (!row.wallet_address) {
-      throw new Error('Withdrawal is missing destination wallet address');
-    }
-
     // Mark processing so concurrent completes do not double-send.
     await UsdtWithdrawal.updateStatus(id, {
       status: 'processing',
@@ -365,12 +409,9 @@ async function completeUsdtWithdrawal(id, { adminNote, txHash, adminId, skipOnCh
     });
 
     try {
-      const transfer = await transferUsdtTrc20({
-        toAddress: row.wallet_address,
-        amountUsdt: netUsdt,
-      });
+      const transfer = await processUsdtTrc20Withdrawal(row);
       resolvedTxHash = transfer.txId;
-      note = note || `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`;
+      note = note || transfer.note;
     } catch (err) {
       await UsdtWithdrawal.updateStatus(id, {
         status: 'pending',
@@ -491,6 +532,7 @@ function assertMmkToUsdtForbidden() {
 module.exports = {
   createUsdtWithdrawalRequest,
   createMmkBankWithdrawalRequest,
+  processUsdtTrc20Withdrawal,
   completeUsdtWithdrawal,
   rejectUsdtWithdrawal,
   completeMmkWithdrawal,
