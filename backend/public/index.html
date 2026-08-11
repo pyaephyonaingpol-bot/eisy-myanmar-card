@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eisy Myanmar</title>
-  <link rel="stylesheet" href="/styles.css?v=20260810e" />
+  <link rel="stylesheet" href="/styles.css?v=20260811a" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -107,42 +107,69 @@
   <div id="withdrawUsdtModal" class="modal hidden" role="dialog" aria-labelledby="withdrawUsdtModalTitle" aria-modal="true">
     <div class="modal-box modal-box-wide">
       <div class="modal-header-row">
-        <h3 id="withdrawUsdtModalTitle">Withdraw USDT</h3>
+        <h3 id="withdrawUsdtModalTitle" data-i18n="withdraw_usdt_title">Withdraw USDT</h3>
         <button type="button" id="withdrawUsdtModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem">Send USDT from your wallet to an external address. A network fee is deducted from your requested amount; the net amount is sent on-chain after admin processing.</p>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">Withdraw USDT to a crypto wallet, or convert at the platform rate and receive MMK in your bank account. MMK wallet → USDT exchange is not available.</p>
 
       <form id="withdrawUsdtForm" class="form">
         <div class="field">
-          <label for="withdrawNetwork">Network</label>
-          <select id="withdrawNetwork" required>
-            <option value="TRC20">TRC20 (TRON Network)</option>
-            <option value="BEP20">BEP20 (BSC Network)</option>
+          <label for="withdrawPayoutMethod" data-i18n="withdraw_payout_method">Payout Method</label>
+          <select id="withdrawPayoutMethod" required>
+            <option value="crypto" data-i18n="withdraw_method_crypto">Crypto Wallet (USDT)</option>
+            <option value="bank" data-i18n="withdraw_method_bank">Bank Account (USDT → MMK)</option>
           </select>
         </div>
-        <div class="field">
-          <label for="withdrawWalletAddress">Destination Wallet Address</label>
-          <input id="withdrawWalletAddress" type="text" required placeholder="T... or 0x..." autocomplete="off" />
+
+        <div id="withdrawCryptoFields">
+          <div class="field">
+            <label for="withdrawNetwork" data-i18n="withdraw_network">Network</label>
+            <select id="withdrawNetwork">
+              <option value="TRC20">TRC20 (TRON Network)</option>
+              <option value="BEP20">BEP20 (BSC Network)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="withdrawWalletAddress" data-i18n="withdraw_wallet_address">Destination Wallet Address</label>
+            <input id="withdrawWalletAddress" type="text" placeholder="T... or 0x..." autocomplete="off" />
+          </div>
         </div>
+
+        <div id="withdrawBankFields" class="hidden">
+          <div class="field">
+            <label for="withdrawUsdtBankName" data-i18n="withdraw_bank_name">Bank Name</label>
+            <input id="withdrawUsdtBankName" type="text" placeholder="KBZ / AYA / CB / Wave" autocomplete="organization" />
+          </div>
+          <div class="field">
+            <label for="withdrawUsdtAccountName" data-i18n="withdraw_account_name">Account Holder Name</label>
+            <input id="withdrawUsdtAccountName" type="text" placeholder="Name on bank account" autocomplete="name" />
+          </div>
+          <div class="field">
+            <label for="withdrawUsdtAccountNumber" data-i18n="withdraw_account_number">Account Number</label>
+            <input id="withdrawUsdtAccountNumber" type="text" placeholder="Bank account number" inputmode="numeric" autocomplete="off" />
+          </div>
+        </div>
+
         <div class="field">
-          <label for="withdrawAmountUsdt">Withdrawal Amount (USDT)</label>
+          <label for="withdrawAmountUsdt" data-i18n="withdraw_amount_usdt">Withdrawal Amount (USDT)</label>
           <input id="withdrawAmountUsdt" type="number" step="0.01" min="10" placeholder="50.00" required />
           <small id="withdrawMinHint" class="hint">Minimum withdrawal: $10.00 USDT</small>
           <small id="withdrawBalanceHint" class="hint">Available: —</small>
         </div>
 
         <div id="withdrawPreviewBox" class="reload-preview-box">
-          <h4>Withdrawal Preview</h4>
-          <div class="reload-preview-row"><span>Network</span><strong id="withdrawPreviewNetwork">—</strong></div>
-          <div class="reload-preview-row"><span>Network Withdrawal Fee</span><strong id="withdrawPreviewFee">—</strong></div>
-          <div class="reload-preview-row reload-preview-highlight">
-            <span>Net Amount Sent</span>
-            <strong id="withdrawPreviewNet">—</strong>
+          <h4 data-i18n="withdraw_preview">Withdrawal Preview</h4>
+          <div class="reload-preview-row"><span data-i18n="withdraw_preview_method">Method</span><strong id="withdrawPreviewNetwork">—</strong></div>
+          <div class="reload-preview-row"><span data-i18n="withdraw_preview_fee">Fee</span><strong id="withdrawPreviewFee">—</strong></div>
+          <div class="reload-preview-row"><span data-i18n="withdraw_preview_net_usdt">Net USDT</span><strong id="withdrawPreviewNet">—</strong></div>
+          <div class="reload-preview-row reload-preview-highlight hidden" id="withdrawPreviewMmkRow">
+            <span data-i18n="withdraw_preview_mmk_payout">MMK to Bank</span>
+            <strong id="withdrawPreviewMmk">—</strong>
           </div>
           <p id="withdrawPreviewSummary" class="reload-preview-receive">Fee is deducted from your requested amount.</p>
         </div>
 
-        <button type="submit" class="btn btn-primary" id="btnSubmitWithdrawUsdt">Submit Withdrawal Request</button>
+        <button type="submit" class="btn btn-primary" id="btnSubmitWithdrawUsdt" data-i18n="btn_submit_withdraw">Submit Withdrawal Request</button>
       </form>
 
       <div id="withdrawSuccessBox" class="ref-box hidden">
@@ -150,6 +177,54 @@
         <p class="status-line" id="withdrawSuccessMessage">Withdrawal submitted.</p>
       </div>
       <pre class="output hidden" id="withdrawOutput" aria-hidden="true"></pre>
+    </div>
+  </div>
+
+  <div id="withdrawMmkModal" class="modal hidden" role="dialog" aria-labelledby="withdrawMmkModalTitle" aria-modal="true">
+    <div class="modal-box modal-box-wide">
+      <div class="modal-header-row">
+        <h3 id="withdrawMmkModalTitle" data-i18n="withdraw_mmk_title">Withdraw MMK to Bank</h3>
+        <button type="button" id="withdrawMmkModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_mmk_hint">Transfer your MMK wallet balance directly to your bank account. MMK cannot be converted to USDT inside the app.</p>
+
+      <form id="withdrawMmkForm" class="form">
+        <div class="field">
+          <label for="withdrawMmkBankName" data-i18n="withdraw_bank_name">Bank Name</label>
+          <input id="withdrawMmkBankName" type="text" required placeholder="KBZ / AYA / CB / Wave" autocomplete="organization" />
+        </div>
+        <div class="field">
+          <label for="withdrawMmkAccountName" data-i18n="withdraw_account_name">Account Holder Name</label>
+          <input id="withdrawMmkAccountName" type="text" required placeholder="Name on bank account" autocomplete="name" />
+        </div>
+        <div class="field">
+          <label for="withdrawMmkAccountNumber" data-i18n="withdraw_account_number">Account Number</label>
+          <input id="withdrawMmkAccountNumber" type="text" required placeholder="Bank account number" inputmode="numeric" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="withdrawAmountMmk" data-i18n="withdraw_amount_mmk">Withdrawal Amount (MMK)</label>
+          <input id="withdrawAmountMmk" type="number" step="1" min="10000" placeholder="50000" required />
+          <small id="withdrawMmkMinHint" class="hint">Minimum withdrawal: 10,000 MMK</small>
+          <small id="withdrawMmkBalanceHint" class="hint">Available: —</small>
+        </div>
+
+        <div id="withdrawMmkPreviewBox" class="reload-preview-box">
+          <h4 data-i18n="withdraw_preview">Withdrawal Preview</h4>
+          <div class="reload-preview-row"><span data-i18n="withdraw_preview_fee">Fee</span><strong id="withdrawMmkPreviewFee">—</strong></div>
+          <div class="reload-preview-row reload-preview-highlight">
+            <span data-i18n="withdraw_preview_net_mmk">Net to Bank</span>
+            <strong id="withdrawMmkPreviewNet">—</strong>
+          </div>
+          <p id="withdrawMmkPreviewSummary" class="reload-preview-receive">MMK is sent to your bank after admin processing.</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="btnSubmitWithdrawMmk" data-i18n="btn_submit_withdraw">Submit Withdrawal Request</button>
+      </form>
+
+      <div id="withdrawMmkSuccessBox" class="ref-box hidden">
+        <div class="ref-code" id="withdrawMmkRefCode">WM-0000</div>
+        <p class="status-line" id="withdrawMmkSuccessMessage">Withdrawal submitted.</p>
+      </div>
     </div>
   </div>
 
@@ -673,13 +748,14 @@
             <section class="panel summary-panel">
               <h2><span data-i18n="wallet_overview">Wallet Overview</span> <span class="badge-secure" data-i18n="pin_protected">🔒 PIN Protected</span></h2>
               <div class="wallet-dual-grid">
-                <div class="wallet-hero-card mmk" id="walletHeroMmk" data-i18n-title="header_mmk_wallet_hint" title="For Virtual Card Issue &amp; Reload Only">
+                <div class="wallet-hero-card mmk" id="walletHeroMmk" data-i18n-title="header_mmk_wallet_hint" title="Cards, reloads, and bank withdrawals">
                   <div class="wallet-hero-label" data-i18n="header_mmk_wallet">MMK Wallet</div>
                   <div class="wallet-hero-value" id="sumBalanceMmk">—</div>
-                  <p class="wallet-balance-subtext" data-i18n="header_mmk_wallet_hint">For Virtual Card Issue &amp; Reload Only</p>
+                  <p class="wallet-balance-subtext" data-i18n="header_mmk_wallet_hint">Cards, reloads &amp; bank withdrawal · no MMK→USDT convert</p>
                   <div class="wallet-hero-actions">
                     <button type="button" class="btn btn-primary btn-sm" data-goto="cards" data-i18n="issue_card">Issue Card</button>
                     <button type="button" class="btn btn-secondary btn-sm" data-open-reload data-i18n="reload_card_action">Reload Card</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawMmk" data-i18n="btn_withdraw_mmk">Withdraw to Bank</button>
                   </div>
                 </div>
                 <div class="wallet-hero-card usdt" id="walletHeroUsdt">
@@ -1269,12 +1345,12 @@
     </div>
   </div>
 
-  <script src="/api-config.js?v=20260810e"></script>
-  <script type="module" src="/supabaseBridge.js?v=20260810e"></script>
+  <script src="/api-config.js?v=20260811a"></script>
+  <script type="module" src="/supabaseBridge.js?v=20260811a"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260810e"></script>
-  <script src="/auth.js?v=20260810e"></script>
-  <script src="/nav.js?v=20260810e"></script>
-  <script src="/dashboard.js?v=20260810e"></script>
+  <script src="/i18n.js?v=20260811a"></script>
+  <script src="/auth.js?v=20260811a"></script>
+  <script src="/nav.js?v=20260811a"></script>
+  <script src="/dashboard.js?v=20260811a"></script>
 </body>
 </html>

@@ -1,21 +1,80 @@
 const express = require('express');
 const { requireAuth, requireSensitive } = require('../middleware/auth');
-const { getWithdrawalFeeSettings, calculateWithdrawalBreakdown } = require('../services/settingsService');
-const { createUsdtWithdrawalRequest } = require('../services/withdrawalService');
+const {
+  getWithdrawalFeeSettings,
+  calculateWithdrawalBreakdown,
+  calculateMmkWithdrawalBreakdown,
+} = require('../services/settingsService');
+const {
+  createUsdtWithdrawalRequest,
+  createMmkBankWithdrawalRequest,
+  assertMmkToUsdtForbidden,
+} = require('../services/withdrawalService');
 const UsdtWithdrawal = require('../models/UsdtWithdrawal');
+const MmkWithdrawal = require('../models/MmkWithdrawal');
 const { walletPayload } = require('../services/walletService');
 const User = require('../models/User');
 
 const router = express.Router();
+
+function mapUsdtWithdrawal(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    ref_code: row.ref_code,
+    payout_method: row.payout_method || 'crypto',
+    network: row.network,
+    wallet_address: row.wallet_address,
+    amount_usdt: row.amount_usdt,
+    fee_usdt: row.fee_usdt,
+    net_usdt: row.net_usdt,
+    exchange_rate: row.exchange_rate,
+    amount_mmk: row.amount_mmk,
+    bank_name: row.bank_name,
+    account_name: row.account_name,
+    account_number: row.account_number,
+    status: row.status,
+    admin_note: row.admin_note,
+    tx_hash: row.tx_hash,
+    created_at: row.created_at,
+    processed_at: row.processed_at,
+  };
+}
+
+function mapMmkWithdrawal(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    ref_code: row.ref_code,
+    amount_mmk: row.amount_mmk,
+    fee_mmk: row.fee_mmk,
+    net_mmk: row.net_mmk,
+    fee_percent: row.fee_percent,
+    bank_name: row.bank_name,
+    account_name: row.account_name,
+    account_number: row.account_number,
+    status: row.status,
+    admin_note: row.admin_note,
+    created_at: row.created_at,
+    processed_at: row.processed_at,
+  };
+}
 
 router.get('/fees', requireAuth, async (_req, res) => {
   try {
     const settings = await getWithdrawalFeeSettings();
     res.json({
       fees: settings,
+      policy: {
+        mmk_to_usdt_allowed: false,
+        mmk_bank_withdraw_allowed: true,
+        usdt_crypto_withdraw_allowed: true,
+        usdt_bank_withdraw_allowed: true,
+      },
       networks: [
         {
           network: 'TRC20',
+          payout_method: 'crypto',
           label: 'TRC20 (TRON Network)',
           fee: settings.usdt_withdraw_fee_trc20,
           fee_type: settings.usdt_withdraw_fee_trc20_type,
@@ -25,6 +84,7 @@ router.get('/fees', requireAuth, async (_req, res) => {
         },
         {
           network: 'BEP20',
+          payout_method: 'crypto',
           label: 'BEP20 (BSC Network)',
           fee: settings.usdt_withdraw_fee_bep20,
           fee_type: settings.usdt_withdraw_fee_bep20_type,
@@ -32,8 +92,22 @@ router.get('/fees', requireAuth, async (_req, res) => {
             ? `${settings.usdt_withdraw_fee_bep20}%`
             : `${settings.usdt_withdraw_fee_bep20.toFixed(2)} USDT`,
         },
+        {
+          network: 'BANK',
+          payout_method: 'bank',
+          label: 'Bank Account (USDT → MMK)',
+          fee: settings.usdt_withdraw_fee_bank,
+          fee_type: settings.usdt_withdraw_fee_bank_type,
+          fee_label: settings.usdt_withdraw_fee_bank_type === 'percent'
+            ? `${settings.usdt_withdraw_fee_bank}%`
+            : `${Number(settings.usdt_withdraw_fee_bank).toFixed(2)} USDT`,
+          exchange_rate: settings.mmk_to_usd_rate,
+        },
       ],
       minimum_usdt_withdrawal: settings.minimum_usdt_withdrawal,
+      minimum_mmk_withdrawal: settings.minimum_mmk_withdrawal,
+      mmk_withdraw_fee_percent: settings.mmk_withdraw_fee_percent,
+      mmk_to_usd_rate: settings.mmk_to_usd_rate,
     });
   } catch (err) {
     console.error('[withdrawal/fees GET]', err);
@@ -44,12 +118,47 @@ router.get('/fees', requireAuth, async (_req, res) => {
 router.post('/preview', requireAuth, async (req, res) => {
   try {
     const settings = await getWithdrawalFeeSettings();
-    const network = String(req.body.network || 'TRC20').toUpperCase();
-    const amount = parseFloat(req.body.amount_usdt);
-    const breakdown = calculateWithdrawalBreakdown(amount, network, settings);
+    const payoutMethod = String(req.body.payout_method || 'crypto').toLowerCase();
+    if (payoutMethod === 'mmk' || req.body.currency === 'MMK') {
+      const breakdown = calculateMmkWithdrawalBreakdown(req.body.amount_mmk, settings);
+      return res.json({ breakdown, settings, payout_method: 'mmk_bank' });
+    }
+    const network = payoutMethod === 'bank'
+      ? 'BANK'
+      : String(req.body.network || 'TRC20').toUpperCase();
+    const breakdown = calculateWithdrawalBreakdown(req.body.amount_usdt, network, settings);
     res.json({ breakdown, settings });
   } catch (err) {
     res.status(400).json({ error: err.message || 'Invalid preview request' });
+  }
+});
+
+/** Hard block — MMK → USDT exchange is never permitted. */
+router.post('/convert/mmk-to-usdt', requireAuth, async (_req, res) => {
+  try {
+    assertMmkToUsdtForbidden();
+  } catch (err) {
+    return res.status(403).json({
+      error: err.message,
+      code: err.code || 'MMK_TO_USDT_FORBIDDEN',
+      allowed: {
+        mmk_bank_withdraw: true,
+        usdt_crypto_withdraw: true,
+        usdt_bank_withdraw: true,
+        mmk_to_usdt_exchange: false,
+      },
+    });
+  }
+});
+
+router.post('/exchange/mmk-to-usdt', requireAuth, async (_req, res) => {
+  try {
+    assertMmkToUsdtForbidden();
+  } catch (err) {
+    return res.status(403).json({
+      error: err.message,
+      code: err.code || 'MMK_TO_USDT_FORBIDDEN',
+    });
   }
 });
 
@@ -60,17 +169,7 @@ router.post('/usdt', requireAuth, requireSensitive, async (req, res) => {
     res.status(201).json({
       success: true,
       ref_code: result.withdrawal.ref_code,
-      withdrawal: {
-        id: result.withdrawal.id,
-        ref_code: result.withdrawal.ref_code,
-        network: result.withdrawal.network,
-        wallet_address: result.withdrawal.wallet_address,
-        amount_usdt: result.withdrawal.amount_usdt,
-        fee_usdt: result.withdrawal.fee_usdt,
-        net_usdt: result.withdrawal.net_usdt,
-        status: result.withdrawal.status,
-        created_at: result.withdrawal.created_at,
-      },
+      withdrawal: mapUsdtWithdrawal(result.withdrawal),
       breakdown: result.breakdown,
       message: result.message,
       wallet: walletPayload(user),
@@ -87,11 +186,44 @@ router.post('/usdt', requireAuth, requireSensitive, async (req, res) => {
   }
 });
 
+router.post('/mmk', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    const result = await createMmkBankWithdrawalRequest(req.user.id, req.body || {});
+    const user = await User.findById(req.user.id);
+    res.status(201).json({
+      success: true,
+      ref_code: result.withdrawal.ref_code,
+      withdrawal: mapMmkWithdrawal(result.withdrawal),
+      breakdown: result.breakdown,
+      message: result.message,
+      wallet: walletPayload(user),
+    });
+  } catch (err) {
+    console.error('[withdrawal/mmk POST]', err);
+    const status = err.code === 'INSUFFICIENT_MMK_BALANCE'
+      ? 402
+      : (err.code === 'MMK_TO_USDT_FORBIDDEN' || err.code === 'MMK_WALLET_RESTRICTED' ? 403 : 400);
+    res.status(status).json({
+      error: err.message || 'MMK withdrawal failed',
+      code: err.code,
+      required_mmk: err.required_mmk,
+      available_mmk: err.available_mmk,
+    });
+  }
+});
+
 router.get('/history', requireAuth, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit, 10) || 20;
-    const rows = await UsdtWithdrawal.findByUserId(req.user.id, { limit });
-    res.json({ withdrawals: rows });
+    const [usdtRows, mmkRows] = await Promise.all([
+      UsdtWithdrawal.findByUserId(req.user.id, { limit }),
+      MmkWithdrawal.findByUserId(req.user.id, { limit }),
+    ]);
+    res.json({
+      withdrawals: usdtRows.map(mapUsdtWithdrawal),
+      usdt_withdrawals: usdtRows.map(mapUsdtWithdrawal),
+      mmk_withdrawals: mmkRows.map(mapMmkWithdrawal),
+    });
   } catch (err) {
     console.error('[withdrawal/history GET]', err);
     res.status(500).json({ error: 'Internal server error' });

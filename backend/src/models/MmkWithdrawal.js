@@ -1,7 +1,7 @@
 const { getDb } = require('../db');
 
-const UsdtWithdrawal = {
-  TABLE: 'usdt_withdrawal_requests',
+const MmkWithdrawal = {
+  TABLE: 'mmk_withdrawal_requests',
 
   async findById(id) {
     const db = getDb();
@@ -25,35 +25,27 @@ const UsdtWithdrawal = {
   async create({
     userId,
     refCode,
-    payoutMethod = 'crypto',
-    network = null,
-    walletAddress = null,
-    amountUsdt,
-    feeUsdt,
-    netUsdt,
-    feeType = 'fixed',
-    exchangeRate = null,
-    amountMmk = null,
-    bankName = null,
-    accountName = null,
-    accountNumber = null,
+    amountMmk,
+    feeMmk,
+    netMmk,
+    feePercent = 0,
+    bankName,
+    accountName,
+    accountNumber,
   }) {
     const db = getDb();
     const result = await db.run(`
       INSERT INTO ${this.TABLE} (
-        user_id, ref_code, payout_method, network, wallet_address,
-        amount_usdt, fee_usdt, net_usdt, fee_type,
-        exchange_rate, amount_mmk, bank_name, account_name, account_number,
+        user_id, ref_code, amount_mmk, fee_mmk, net_mmk, fee_percent,
+        bank_name, account_name, account_number,
         status, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
-    `,
-    userId, refCode, payoutMethod, network, walletAddress,
-    amountUsdt, feeUsdt, netUsdt, feeType,
-    exchangeRate, amountMmk, bankName, accountName, accountNumber);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
+    `, userId, refCode, amountMmk, feeMmk, netMmk, feePercent,
+    bankName, accountName, accountNumber);
     return this.findById(result.lastID);
   },
 
-  async updateStatus(id, { status, adminNote, txHash, processedBy } = {}) {
+  async updateStatus(id, { status, adminNote, processedBy } = {}) {
     const db = getDb();
     const processedAt = ['completed', 'rejected', 'cancelled'].includes(status)
       ? ", processed_at = datetime('now')"
@@ -62,12 +54,11 @@ const UsdtWithdrawal = {
       UPDATE ${this.TABLE}
       SET status = ?,
           admin_note = COALESCE(?, admin_note),
-          tx_hash = COALESCE(?, tx_hash),
           processed_by = COALESCE(?, processed_by),
           updated_at = datetime('now')
           ${processedAt}
       WHERE id = ?
-    `, status, adminNote || null, txHash || null, processedBy ?? null, id);
+    `, status, adminNote || null, processedBy ?? null, id);
     return this.findById(id);
   },
 
@@ -93,4 +84,4 @@ const UsdtWithdrawal = {
   },
 };
 
-module.exports = UsdtWithdrawal;
+module.exports = MmkWithdrawal;

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eisy Myanmar — Admin</title>
-  <link rel="stylesheet" href="/styles.css?v=20260810e" />
+  <link rel="stylesheet" href="/styles.css?v=20260811a" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -215,6 +215,30 @@
         <h2 style="margin-top:2rem">P2P Sell Orders — USDT Escrowed</h2>
         <p class="hint" style="margin-bottom:0.75rem">Sellers escrowed USDT. Buyer sends MMK externally. Seller confirms MMK receipt and releases escrow — admin can reject and refund escrow.</p>
         <div id="p2pSellOrdersTable" class="data-table-wrap"><p class="hint">Loading P2P sell orders…</p></div>
+
+        <h2 style="margin-top:2rem">USDT Withdrawals — Crypto &amp; Bank</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Complete on-chain payouts or USDT→MMK bank transfers. Reject to refund the user's USDT balance.</p>
+        <div class="admin-toolbar">
+          <select id="usdtWithdrawalFilter">
+            <option value="pending" selected>Pending</option>
+            <option value="all">All statuses</option>
+            <option value="completed">Completed</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <div id="usdtWithdrawalsTable" class="data-table-wrap"><p class="hint">Loading USDT withdrawals…</p></div>
+
+        <h2 style="margin-top:2rem">MMK Withdrawals — Bank</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Transfer MMK wallet balance to the user's bank account. Reject to refund MMK. MMK→USDT exchange is disabled platform-wide.</p>
+        <div class="admin-toolbar">
+          <select id="mmkWithdrawalFilter">
+            <option value="pending" selected>Pending</option>
+            <option value="all">All statuses</option>
+            <option value="completed">Completed</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <div id="mmkWithdrawalsTable" class="data-table-wrap"><p class="hint">Loading MMK withdrawals…</p></div>
       </section>
 
       <section id="tabCards" class="panel app-page" data-page="cards">
@@ -461,6 +485,25 @@
             <input id="settingMinUsdtWithdrawal" type="number" step="0.01" min="0.01" required />
             <small class="hint">Minimum gross amount user can request (before fee deduction)</small>
           </div>
+          <div class="field">
+            <label for="settingWithdrawFeeBank">USDT→Bank Withdrawal Fee</label>
+            <input id="settingWithdrawFeeBank" type="number" step="0.01" min="0" required />
+          </div>
+          <div class="field">
+            <label for="settingWithdrawFeeBankType">USDT→Bank Fee Type</label>
+            <select id="settingWithdrawFeeBankType">
+              <option value="fixed">Fixed USDT</option>
+              <option value="percent">Percentage (%)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="settingMinMmkWithdrawal">Minimum MMK Bank Withdrawal</label>
+            <input id="settingMinMmkWithdrawal" type="number" step="1" min="1" required />
+          </div>
+          <div class="field">
+            <label for="settingMmkWithdrawFeePercent">MMK Withdrawal Fee (%)</label>
+            <input id="settingMmkWithdrawFeePercent" type="number" step="0.01" min="0" max="20" required />
+          </div>
           <div class="field" style="grid-column:1/-1">
             <label for="settingUsdtTrc20">USDT Deposit Address (TRC20)</label>
             <input id="settingUsdtTrc20" type="text" placeholder="T..." />
@@ -587,10 +630,10 @@
       if (login) login.classList.add('hidden');
     })();
   </script>
-  <script src="/api-config.js?v=20260810e"></script>
-  <script type="module" src="/supabaseBridge.js?v=20260810e"></script>
-  <script src="/i18n.js?v=20260810e"></script>
-  <script src="/nav.js?v=20260810e"></script>
-  <script src="/admin.js?v=20260810e" defer></script>
+  <script src="/api-config.js?v=20260811a"></script>
+  <script type="module" src="/supabaseBridge.js?v=20260811a"></script>
+  <script src="/i18n.js?v=20260811a"></script>
+  <script src="/nav.js?v=20260811a"></script>
+  <script src="/admin.js?v=20260811a" defer></script>
 </body>
 </html>

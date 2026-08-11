@@ -99,6 +99,8 @@
         this.loadP2pBuyOrders();
         this.loadP2pDisputes();
         this.loadP2pSellOrders();
+        this.loadUsdtWithdrawals();
+        this.loadMmkWithdrawals();
       }
       if (name === 'support') this.loadSupportThreads();
       if (name === 'cards') {
@@ -141,6 +143,39 @@
 
       const depositFilter = $('depositFilter');
       if (depositFilter) depositFilter.addEventListener('change', () => this.loadDeposits());
+
+      $('usdtWithdrawalFilter')?.addEventListener('change', () => this.loadUsdtWithdrawals());
+      $('mmkWithdrawalFilter')?.addEventListener('change', () => this.loadMmkWithdrawals());
+
+      const usdtWdTable = $('usdtWithdrawalsTable');
+      if (usdtWdTable) {
+        usdtWdTable.addEventListener('click', (e) => {
+          const complete = e.target.closest('[data-action="complete-usdt-wd"]');
+          const reject = e.target.closest('[data-action="reject-usdt-wd"]');
+          if (complete) {
+            this.reviewUsdtWithdrawal(complete.getAttribute('data-id'), 'complete', { triggerBtn: complete });
+            return;
+          }
+          if (reject) {
+            this.reviewUsdtWithdrawal(reject.getAttribute('data-id'), 'reject', { triggerBtn: reject });
+          }
+        });
+      }
+
+      const mmkWdTable = $('mmkWithdrawalsTable');
+      if (mmkWdTable) {
+        mmkWdTable.addEventListener('click', (e) => {
+          const complete = e.target.closest('[data-action="complete-mmk-wd"]');
+          const reject = e.target.closest('[data-action="reject-mmk-wd"]');
+          if (complete) {
+            this.reviewMmkWithdrawal(complete.getAttribute('data-id'), 'complete', { triggerBtn: complete });
+            return;
+          }
+          if (reject) {
+            this.reviewMmkWithdrawal(reject.getAttribute('data-id'), 'reject', { triggerBtn: reject });
+          }
+        });
+      }
 
       const depositsTable = $('depositsTable');
       if (depositsTable) {
@@ -451,7 +486,11 @@
               usdt_withdraw_fee_bep20: parseFloat($('settingWithdrawFeeBep20')?.value || '0.8'),
               usdt_withdraw_fee_trc20_type: $('settingWithdrawFeeTrc20Type')?.value || 'fixed',
               usdt_withdraw_fee_bep20_type: $('settingWithdrawFeeBep20Type')?.value || 'fixed',
+              usdt_withdraw_fee_bank: parseFloat($('settingWithdrawFeeBank')?.value || '1'),
+              usdt_withdraw_fee_bank_type: $('settingWithdrawFeeBankType')?.value || 'fixed',
               minimum_usdt_withdrawal: parseFloat($('settingMinUsdtWithdrawal')?.value || '10'),
+              minimum_mmk_withdrawal: parseFloat($('settingMinMmkWithdrawal')?.value || '10000'),
+              mmk_withdraw_fee_percent: parseFloat($('settingMmkWithdrawFeePercent')?.value || '0'),
               notes: $('settingNotes')?.value?.trim() || undefined,
               updated_by: $('settingUpdatedBy')?.value?.trim() || 'admin',
             });
@@ -588,6 +627,8 @@
         this.loadP2pDisputes(),
         this.loadP2pBuyOrders(),
         this.loadP2pSellOrders(),
+        this.loadUsdtWithdrawals(),
+        this.loadMmkWithdrawals(),
         this.loadPendingCards(),
         this.loadIssuedCards(),
         this.loadPendingReloads(),
@@ -1800,6 +1841,174 @@
       }
     },
 
+    async loadUsdtWithdrawals() {
+      const table = $('usdtWithdrawalsTable');
+      if (!table) return;
+      const filter = ($('usdtWithdrawalFilter') && $('usdtWithdrawalFilter').value) || 'pending';
+      try {
+        const qs = filter === 'all' ? '?status=all' : ('?status=' + encodeURIComponent(filter));
+        const data = await this.api('GET', '/api/admin/withdrawals/usdt' + qs);
+        const rows = Array.isArray(data.withdrawals) ? data.withdrawals : [];
+        if (!rows.length) {
+          table.innerHTML = '<p class="hint">No USDT withdrawals found.</p>';
+          return;
+        }
+        table.innerHTML =
+          '<table class="data-table"><thead><tr>' +
+            '<th>ID</th><th>User</th><th>Ref</th><th>Method</th><th>Destination</th><th>Amount</th><th>Fee</th><th>Payout</th><th>Status</th><th>Actions</th>' +
+          '</tr></thead><tbody>' +
+          rows.map((w) => {
+            const pending = ['pending', 'processing'].indexOf(String(w.status || '').toLowerCase()) !== -1;
+            const method = w.payout_method === 'bank' ? 'Bank (USDT→MMK)' : (w.network || 'Crypto');
+            const dest = w.payout_method === 'bank'
+              ? this.esc((w.bank_name || '') + ' · ' + (w.account_name || '') + ' · ' + (w.account_number || ''))
+              : this.esc((w.network || '') + ' · ' + (w.wallet_address || ''));
+            const payout = w.payout_method === 'bank'
+              ? (Math.round(Number(w.amount_mmk || 0)).toLocaleString() + ' MMK @ ' + Number(w.exchange_rate || 0).toLocaleString())
+              : ('$' + Number(w.net_usdt || 0).toFixed(2) + ' USDT');
+            return '<tr>' +
+              '<td>' + w.id + '</td>' +
+              '<td>' + this.esc(w.user_name || w.user_email || ('#' + w.user_id)) + '<br><small>#' + w.user_id + '</small></td>' +
+              '<td>' + this.esc(w.ref_code || '') + '</td>' +
+              '<td>' + this.esc(method) + '</td>' +
+              '<td style="max-width:220px;word-break:break-all">' + dest + '</td>' +
+              '<td>$' + Number(w.amount_usdt || 0).toFixed(2) + '</td>' +
+              '<td>$' + Number(w.fee_usdt || 0).toFixed(2) + '</td>' +
+              '<td>' + payout + '</td>' +
+              '<td>' + this.statusBadge(w.status) + '</td>' +
+              '<td class="actions-cell">' +
+                (pending
+                  ? '<button type="button" class="btn btn-sm btn-approve" data-action="complete-usdt-wd" data-id="' + w.id + '">Complete</button>' +
+                    '<button type="button" class="btn btn-sm btn-reject" data-action="reject-usdt-wd" data-id="' + w.id + '">Reject</button>'
+                  : '') +
+              '</td></tr>';
+          }).join('') +
+          '</tbody></table>';
+      } catch (err) {
+        table.innerHTML = '<p class="hint" style="color:#ef4444">Failed to load USDT withdrawals: ' + this.esc(err.message) + '</p>';
+      }
+    },
+
+    async loadMmkWithdrawals() {
+      const table = $('mmkWithdrawalsTable');
+      if (!table) return;
+      const filter = ($('mmkWithdrawalFilter') && $('mmkWithdrawalFilter').value) || 'pending';
+      try {
+        const qs = filter === 'all' ? '?status=all' : ('?status=' + encodeURIComponent(filter));
+        const data = await this.api('GET', '/api/admin/withdrawals/mmk' + qs);
+        const rows = Array.isArray(data.withdrawals) ? data.withdrawals : [];
+        if (!rows.length) {
+          table.innerHTML = '<p class="hint">No MMK withdrawals found.</p>';
+          return;
+        }
+        table.innerHTML =
+          '<table class="data-table"><thead><tr>' +
+            '<th>ID</th><th>User</th><th>Ref</th><th>Bank</th><th>Amount</th><th>Fee</th><th>Net</th><th>Status</th><th>Actions</th>' +
+          '</tr></thead><tbody>' +
+          rows.map((w) => {
+            const pending = ['pending', 'processing'].indexOf(String(w.status || '').toLowerCase()) !== -1;
+            const bank = this.esc((w.bank_name || '') + ' · ' + (w.account_name || '') + ' · ' + (w.account_number || ''));
+            return '<tr>' +
+              '<td>' + w.id + '</td>' +
+              '<td>' + this.esc(w.user_name || w.user_email || ('#' + w.user_id)) + '<br><small>#' + w.user_id + '</small></td>' +
+              '<td>' + this.esc(w.ref_code || '') + '</td>' +
+              '<td style="max-width:220px;word-break:break-all">' + bank + '</td>' +
+              '<td>' + Math.round(Number(w.amount_mmk || 0)).toLocaleString() + '</td>' +
+              '<td>' + Math.round(Number(w.fee_mmk || 0)).toLocaleString() + '</td>' +
+              '<td>' + Math.round(Number(w.net_mmk || 0)).toLocaleString() + '</td>' +
+              '<td>' + this.statusBadge(w.status) + '</td>' +
+              '<td class="actions-cell">' +
+                (pending
+                  ? '<button type="button" class="btn btn-sm btn-approve" data-action="complete-mmk-wd" data-id="' + w.id + '">Complete</button>' +
+                    '<button type="button" class="btn btn-sm btn-reject" data-action="reject-mmk-wd" data-id="' + w.id + '">Reject</button>'
+                  : '') +
+              '</td></tr>';
+          }).join('') +
+          '</tbody></table>';
+      } catch (err) {
+        table.innerHTML = '<p class="hint" style="color:#ef4444">Failed to load MMK withdrawals: ' + this.esc(err.message) + '</p>';
+      }
+    },
+
+    async reviewUsdtWithdrawal(id, action, options) {
+      options = options || {};
+      const wdId = id != null ? String(id) : '';
+      if (!wdId) return;
+
+      let note = action === 'reject' ? 'Rejected by admin' : 'Completed by admin';
+      let txHash = '';
+      try {
+        if (action === 'complete') {
+          const entered = window.prompt('Admin note / TX hash (optional):', 'Completed');
+          if (entered === null) return;
+          note = String(entered).trim() || 'Completed by admin';
+          if (/^(0x)?[a-fA-F0-9]{16,}$/.test(note) || /^[A-Za-z0-9]{20,}$/.test(note)) {
+            txHash = note;
+          }
+        } else {
+          const entered = window.prompt('Rejection reason (optional):', 'Rejected by admin');
+          if (entered === null) return;
+          note = String(entered).trim() || 'Rejected by admin';
+        }
+      } catch (_) {}
+
+      const btn = options.triggerBtn || null;
+      const prevLabel = btn ? btn.textContent : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = action === 'complete' ? 'Completing…' : 'Rejecting…';
+      }
+
+      try {
+        const path = '/api/admin/withdrawals/usdt/' + encodeURIComponent(wdId) + '/' + (action === 'complete' ? 'complete' : 'reject');
+        const body = { admin_note: note };
+        if (txHash) body.tx_hash = txHash;
+        const data = await this.api('POST', path, body);
+        alert(data.message || 'USDT withdrawal updated');
+        await Promise.all([this.loadUsdtWithdrawals(), this.loadUsers(), this.loadTransactions()]);
+      } catch (err) {
+        alert(err.message || 'Failed to update USDT withdrawal');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prevLabel || (action === 'complete' ? 'Complete' : 'Reject');
+        }
+      }
+    },
+
+    async reviewMmkWithdrawal(id, action, options) {
+      options = options || {};
+      const wdId = id != null ? String(id) : '';
+      if (!wdId) return;
+
+      let note = action === 'reject' ? 'Rejected by admin' : 'Bank transfer completed';
+      try {
+        const promptMsg = action === 'reject' ? 'Rejection reason (optional):' : 'Admin note (optional):';
+        const entered = window.prompt(promptMsg, note);
+        if (entered === null) return;
+        note = String(entered).trim() || note;
+      } catch (_) {}
+
+      const btn = options.triggerBtn || null;
+      const prevLabel = btn ? btn.textContent : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = action === 'complete' ? 'Completing…' : 'Rejecting…';
+      }
+
+      try {
+        const path = '/api/admin/withdrawals/mmk/' + encodeURIComponent(wdId) + '/' + (action === 'complete' ? 'complete' : 'reject');
+        const data = await this.api('POST', path, { admin_note: note });
+        alert(data.message || 'MMK withdrawal updated');
+        await Promise.all([this.loadMmkWithdrawals(), this.loadUsers(), this.loadTransactions()]);
+      } catch (err) {
+        alert(err.message || 'Failed to update MMK withdrawal');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prevLabel || (action === 'complete' ? 'Complete' : 'Reject');
+        }
+      }
+    },
+
     renderPurposeBadge(d) {
       const purpose = d.purpose || 'topup';
       if (purpose === 'usdt_topup' && (d.is_p2p || d.deposit_channel === 'p2p' || d.metadata?.deposit_channel === 'p2p')) {
@@ -1832,7 +2041,11 @@
         if ($('settingWithdrawFeeBep20')) $('settingWithdrawFeeBep20').value = p.usdt_withdraw_fee_bep20 ?? 0.8;
         if ($('settingWithdrawFeeTrc20Type')) $('settingWithdrawFeeTrc20Type').value = p.usdt_withdraw_fee_trc20_type || 'fixed';
         if ($('settingWithdrawFeeBep20Type')) $('settingWithdrawFeeBep20Type').value = p.usdt_withdraw_fee_bep20_type || 'fixed';
+        if ($('settingWithdrawFeeBank')) $('settingWithdrawFeeBank').value = p.usdt_withdraw_fee_bank ?? 1;
+        if ($('settingWithdrawFeeBankType')) $('settingWithdrawFeeBankType').value = p.usdt_withdraw_fee_bank_type || 'fixed';
         if ($('settingMinUsdtWithdrawal')) $('settingMinUsdtWithdrawal').value = p.minimum_usdt_withdrawal ?? 10;
+        if ($('settingMinMmkWithdrawal')) $('settingMinMmkWithdrawal').value = p.minimum_mmk_withdrawal ?? 10000;
+        if ($('settingMmkWithdrawFeePercent')) $('settingMmkWithdrawFeePercent').value = p.mmk_withdraw_fee_percent ?? 0;
         if ($('settingPlatformRevenueBalance')) {
           const rev = Number(p.platform_usdt_revenue_balance ?? 0);
           $('settingPlatformRevenueBalance').textContent = rev.toFixed(2) + ' USDT';

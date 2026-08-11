@@ -28,6 +28,7 @@ const Dashboard = {
       this.bindProofLightbox();
       this.bindReloadCard();
       this.bindWithdrawUsdt();
+      this.bindWithdrawMmk();
       this.bindUsdtWalletPage();
       Auth.restoreSession()
         .catch((err) => console.warn('[Dashboard] session restore:', err.message))
@@ -3905,27 +3906,70 @@ const Dashboard = {
     try {
       const data = await Auth.api('GET', '/api/withdrawal/fees');
       this.withdrawalFees = data.fees || data;
+      if (data.mmk_to_usd_rate != null) {
+        this.withdrawalFees.mmk_to_usd_rate = data.mmk_to_usd_rate;
+      }
       const min = Number(data.minimum_usdt_withdrawal || this.withdrawalFees.minimum_usdt_withdrawal || 10);
       const minInput = $('withdrawAmountUsdt');
       if (minInput) minInput.min = min;
       const minHint = $('withdrawMinHint');
       if (minHint) minHint.textContent = `Minimum withdrawal: $${min.toFixed(2)} USDT`;
+
+      const minMmk = Number(data.minimum_mmk_withdrawal || this.withdrawalFees.minimum_mmk_withdrawal || 10000);
+      const minMmkInput = $('withdrawAmountMmk');
+      if (minMmkInput) minMmkInput.min = minMmk;
+      const minMmkHint = $('withdrawMmkMinHint');
+      if (minMmkHint) minMmkHint.textContent = `Minimum withdrawal: ${Math.round(minMmk).toLocaleString()} MMK`;
+
       this.updateWithdrawPreview();
+      this.updateWithdrawMmkPreview();
     } catch (err) {
       console.warn('[Dashboard] withdrawal fees:', err.message);
     }
+  },
+
+  getWithdrawPayoutMethod() {
+    return ($('withdrawPayoutMethod')?.value || 'crypto') === 'bank' ? 'bank' : 'crypto';
+  },
+
+  syncWithdrawPayoutFields() {
+    const method = this.getWithdrawPayoutMethod();
+    const cryptoFields = $('withdrawCryptoFields');
+    const bankFields = $('withdrawBankFields');
+    const walletInput = $('withdrawWalletAddress');
+    const networkSelect = $('withdrawNetwork');
+    if (cryptoFields) cryptoFields.classList.toggle('hidden', method !== 'crypto');
+    if (bankFields) bankFields.classList.toggle('hidden', method !== 'bank');
+    if (walletInput) walletInput.required = method === 'crypto';
+    if (networkSelect) networkSelect.required = method === 'crypto';
+    ['withdrawUsdtBankName', 'withdrawUsdtAccountName', 'withdrawUsdtAccountNumber'].forEach((id) => {
+      const el = $(id);
+      if (el) el.required = method === 'bank';
+    });
+    this.updateWithdrawPreview();
   },
 
   calculateWithdrawPreviewClient(amountUsdt) {
     const fees = this.withdrawalFees;
     if (!fees || !Number.isFinite(amountUsdt) || amountUsdt <= 0) return null;
 
-    const network = $('withdrawNetwork')?.value || 'TRC20';
+    const method = this.getWithdrawPayoutMethod();
+    const network = method === 'bank' ? 'BANK' : ($('withdrawNetwork')?.value || 'TRC20');
+    const isBank = network === 'BANK';
     const isBep20 = network === 'BEP20';
-    const feeValue = isBep20 ? Number(fees.usdt_withdraw_fee_bep20 || 0) : Number(fees.usdt_withdraw_fee_trc20 || 0);
-    const feeType = isBep20
-      ? (fees.usdt_withdraw_fee_bep20_type === 'percent' ? 'percent' : 'fixed')
-      : (fees.usdt_withdraw_fee_trc20_type === 'percent' ? 'percent' : 'fixed');
+
+    let feeValue;
+    let feeType;
+    if (isBank) {
+      feeValue = Number(fees.usdt_withdraw_fee_bank || 0);
+      feeType = fees.usdt_withdraw_fee_bank_type === 'percent' ? 'percent' : 'fixed';
+    } else if (isBep20) {
+      feeValue = Number(fees.usdt_withdraw_fee_bep20 || 0);
+      feeType = fees.usdt_withdraw_fee_bep20_type === 'percent' ? 'percent' : 'fixed';
+    } else {
+      feeValue = Number(fees.usdt_withdraw_fee_trc20 || 0);
+      feeType = fees.usdt_withdraw_fee_trc20_type === 'percent' ? 'percent' : 'fixed';
+    }
 
     let feeUsdt = feeType === 'percent'
       ? Math.round(amountUsdt * feeValue) / 100
@@ -3933,45 +3977,62 @@ const Dashboard = {
     feeUsdt = Math.round(feeUsdt * 100) / 100;
     const netUsdt = Math.round((amountUsdt - feeUsdt) * 100) / 100;
     const min = Number(fees.minimum_usdt_withdrawal || 10);
+    const rate = Number(fees.mmk_to_usd_rate || 4500);
+    const amountMmk = isBank ? Math.round(netUsdt * rate) : null;
 
     const feeLabel = feeType === 'percent'
       ? `${feeValue}% (${feeUsdt.toFixed(2)} USDT)`
       : `$${feeUsdt.toFixed(2)} USDT`;
 
     return {
+      payout_method: method,
       network,
       amount_usdt: Math.round(amountUsdt * 100) / 100,
       fee_usdt: feeUsdt,
       net_usdt: netUsdt,
       fee_label: feeLabel,
+      exchange_rate: isBank ? rate : null,
+      amount_mmk: amountMmk,
       minimum_usdt_withdrawal: min,
       below_minimum: amountUsdt < min,
-      invalid_net: netUsdt <= 0,
+      invalid_net: netUsdt <= 0 || (isBank && (!amountMmk || amountMmk <= 0)),
     };
   },
 
   updateWithdrawPreview() {
     const amount = parseFloat($('withdrawAmountUsdt')?.value);
     const preview = this.calculateWithdrawPreviewClient(amount);
-    const network = $('withdrawNetwork')?.value || 'TRC20';
+    const method = this.getWithdrawPayoutMethod();
+    const network = method === 'bank' ? 'BANK' : ($('withdrawNetwork')?.value || 'TRC20');
 
     if ($('withdrawPreviewNetwork')) {
-      $('withdrawPreviewNetwork').textContent = network === 'BEP20' ? 'BEP20 (BSC)' : 'TRC20 (TRON)';
+      $('withdrawPreviewNetwork').textContent = method === 'bank'
+        ? 'Bank (USDT → MMK)'
+        : (network === 'BEP20' ? 'BEP20 (BSC)' : 'TRC20 (TRON)');
     }
+
+    const mmkRow = $('withdrawPreviewMmkRow');
+    if (mmkRow) mmkRow.classList.toggle('hidden', method !== 'bank');
 
     if (!preview) {
       if ($('withdrawPreviewFee')) $('withdrawPreviewFee').textContent = '—';
       if ($('withdrawPreviewNet')) $('withdrawPreviewNet').textContent = '—';
+      if ($('withdrawPreviewMmk')) $('withdrawPreviewMmk').textContent = '—';
       if ($('withdrawPreviewSummary')) $('withdrawPreviewSummary').textContent = 'Enter an amount to preview fees.';
       return;
     }
 
     if ($('withdrawPreviewFee')) $('withdrawPreviewFee').textContent = preview.fee_label;
     if ($('withdrawPreviewNet')) $('withdrawPreviewNet').textContent = `$${preview.net_usdt.toFixed(2)} USDT`;
+    if ($('withdrawPreviewMmk') && preview.amount_mmk != null) {
+      $('withdrawPreviewMmk').textContent = `${Math.round(preview.amount_mmk).toLocaleString()} MMK`;
+    }
 
-    let summary = `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} fee = $${preview.net_usdt.toFixed(2)} sent to your wallet.`;
+    let summary = method === 'bank'
+      ? `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} = $${preview.net_usdt.toFixed(2)} USDT → ${Math.round(preview.amount_mmk || 0).toLocaleString()} MMK (rate ${Number(preview.exchange_rate || 0).toLocaleString()}).`
+      : `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} fee = $${preview.net_usdt.toFixed(2)} sent to your wallet.`;
     if (preview.below_minimum) summary = `Minimum withdrawal is $${preview.minimum_usdt_withdrawal.toFixed(2)} USDT.`;
-    if (preview.invalid_net) summary = 'Amount too small after network fee.';
+    if (preview.invalid_net) summary = 'Amount too small after fee.';
     if ($('withdrawPreviewSummary')) $('withdrawPreviewSummary').textContent = summary;
   },
 
@@ -3980,6 +4041,10 @@ const Dashboard = {
     $('withdrawSuccessBox')?.classList.add('hidden');
     if ($('withdrawOutput')) $('withdrawOutput').textContent = '';
     if ($('withdrawWalletAddress')) $('withdrawWalletAddress').value = '';
+    if ($('withdrawUsdtBankName')) $('withdrawUsdtBankName').value = '';
+    if ($('withdrawUsdtAccountName')) $('withdrawUsdtAccountName').value = '';
+    if ($('withdrawUsdtAccountNumber')) $('withdrawUsdtAccountNumber').value = '';
+    if ($('withdrawPayoutMethod')) $('withdrawPayoutMethod').value = 'crypto';
     if ($('withdrawAmountUsdt')) {
       const min = Number(this.withdrawalFees?.minimum_usdt_withdrawal || 10);
       $('withdrawAmountUsdt').value = min > 0 ? min.toFixed(2) : '';
@@ -3988,12 +4053,72 @@ const Dashboard = {
     if (balHint) {
       balHint.textContent = `Available: $${Number(this.walletUsdt ?? 0).toFixed(2)} USDT`;
     }
+    this.syncWithdrawPayoutFields();
     $('withdrawUsdtModal')?.classList.remove('hidden');
     this.updateWithdrawPreview();
   },
 
   closeWithdrawModal() {
     $('withdrawUsdtModal')?.classList.add('hidden');
+  },
+
+  calculateWithdrawMmkPreviewClient(amountMmk) {
+    const fees = this.withdrawalFees || {};
+    const amount = Math.round(Number(amountMmk) || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    const feePercent = Math.max(0, Number(fees.mmk_withdraw_fee_percent || 0));
+    const feeMmk = Math.round(amount * feePercent / 100);
+    const netMmk = amount - feeMmk;
+    const min = Number(fees.minimum_mmk_withdrawal || 10000);
+    return {
+      amount_mmk: amount,
+      fee_mmk: feeMmk,
+      net_mmk: netMmk,
+      fee_percent: feePercent,
+      fee_label: feePercent > 0 ? `${feePercent}% (${feeMmk.toLocaleString()} MMK)` : '0 MMK',
+      minimum_mmk_withdrawal: min,
+      below_minimum: amount < min,
+      invalid_net: netMmk <= 0,
+    };
+  },
+
+  updateWithdrawMmkPreview() {
+    const amount = parseFloat($('withdrawAmountMmk')?.value);
+    const preview = this.calculateWithdrawMmkPreviewClient(amount);
+    if (!preview) {
+      if ($('withdrawMmkPreviewFee')) $('withdrawMmkPreviewFee').textContent = '—';
+      if ($('withdrawMmkPreviewNet')) $('withdrawMmkPreviewNet').textContent = '—';
+      if ($('withdrawMmkPreviewSummary')) $('withdrawMmkPreviewSummary').textContent = 'Enter an amount to preview.';
+      return;
+    }
+    if ($('withdrawMmkPreviewFee')) $('withdrawMmkPreviewFee').textContent = preview.fee_label;
+    if ($('withdrawMmkPreviewNet')) $('withdrawMmkPreviewNet').textContent = `${preview.net_mmk.toLocaleString()} MMK`;
+    let summary = `Requested ${preview.amount_mmk.toLocaleString()} MMK − fee = ${preview.net_mmk.toLocaleString()} MMK to your bank.`;
+    if (preview.below_minimum) summary = `Minimum withdrawal is ${Math.round(preview.minimum_mmk_withdrawal).toLocaleString()} MMK.`;
+    if (preview.invalid_net) summary = 'Amount too small after fee.';
+    if ($('withdrawMmkPreviewSummary')) $('withdrawMmkPreviewSummary').textContent = summary;
+  },
+
+  openWithdrawMmkModal() {
+    $('withdrawMmkForm')?.classList.remove('hidden');
+    $('withdrawMmkSuccessBox')?.classList.add('hidden');
+    if ($('withdrawMmkBankName')) $('withdrawMmkBankName').value = '';
+    if ($('withdrawMmkAccountName')) $('withdrawMmkAccountName').value = '';
+    if ($('withdrawMmkAccountNumber')) $('withdrawMmkAccountNumber').value = '';
+    if ($('withdrawAmountMmk')) {
+      const min = Number(this.withdrawalFees?.minimum_mmk_withdrawal || 10000);
+      $('withdrawAmountMmk').value = String(Math.round(min));
+    }
+    const balHint = $('withdrawMmkBalanceHint');
+    if (balHint) {
+      balHint.textContent = `Available: ${Math.round(Number(this.walletMmk ?? 0)).toLocaleString()} MMK`;
+    }
+    $('withdrawMmkModal')?.classList.remove('hidden');
+    this.updateWithdrawMmkPreview();
+  },
+
+  closeWithdrawMmkModal() {
+    $('withdrawMmkModal')?.classList.add('hidden');
   },
 
   bindWithdrawUsdt() {
@@ -4009,18 +4134,33 @@ const Dashboard = {
       this.openWithdrawModal();
     });
 
+    $('withdrawPayoutMethod')?.addEventListener('change', () => this.syncWithdrawPayoutFields());
     $('withdrawNetwork')?.addEventListener('change', () => this.updateWithdrawPreview());
     $('withdrawAmountUsdt')?.addEventListener('input', () => this.updateWithdrawPreview());
 
     $('withdrawUsdtForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const method = this.getWithdrawPayoutMethod();
       const network = $('withdrawNetwork')?.value;
       const walletAddress = $('withdrawWalletAddress')?.value?.trim();
       const amount = parseFloat($('withdrawAmountUsdt')?.value);
       const preview = this.calculateWithdrawPreviewClient(amount);
 
-      if (!walletAddress || !preview || preview.below_minimum || preview.invalid_net) {
-        this.toast('Enter a valid address and withdrawal amount', 'error');
+      if (!preview || preview.below_minimum || preview.invalid_net) {
+        this.toast('Enter a valid withdrawal amount', 'error');
+        return;
+      }
+
+      if (method === 'crypto' && !walletAddress) {
+        this.toast('Enter a valid crypto wallet address', 'error');
+        return;
+      }
+
+      const bankName = $('withdrawUsdtBankName')?.value?.trim();
+      const accountName = $('withdrawUsdtAccountName')?.value?.trim();
+      const accountNumber = $('withdrawUsdtAccountNumber')?.value?.trim();
+      if (method === 'bank' && (!bankName || !accountName || !accountNumber)) {
+        this.toast('Enter bank name, account name, and account number', 'error');
         return;
       }
 
@@ -4037,15 +4177,28 @@ const Dashboard = {
       }
 
       try {
-        const data = await Auth.api('POST', '/api/withdrawal/usdt', {
-          network,
-          wallet_address: walletAddress,
-          amount_usdt: preview.amount_usdt,
-        }, { sensitive: true });
+        const payload = method === 'bank'
+          ? {
+            payout_method: 'bank',
+            amount_usdt: preview.amount_usdt,
+            bank_name: bankName,
+            account_name: accountName,
+            account_number: accountNumber,
+          }
+          : {
+            payout_method: 'crypto',
+            network,
+            wallet_address: walletAddress,
+            amount_usdt: preview.amount_usdt,
+          };
+
+        const data = await Auth.api('POST', '/api/withdrawal/usdt', payload, { sensitive: true });
 
         if (data.wallet) {
           this.walletUsdt = data.wallet.balance_usdt;
+          this.walletMmk = data.wallet.balance_mmk ?? this.walletMmk;
           if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = data.wallet.usdt_formatted || `$ ${Number(data.wallet.balance_usdt).toFixed(2)} USDT`;
+          if ($('sumBalanceMmk') && data.wallet.mmk_formatted) $('sumBalanceMmk').textContent = data.wallet.mmk_formatted;
         }
 
         $('withdrawUsdtForm')?.classList.add('hidden');
@@ -4053,15 +4206,101 @@ const Dashboard = {
         if ($('withdrawRefCode')) $('withdrawRefCode').textContent = data.ref_code || data.withdrawal?.ref_code || '—';
         if ($('withdrawSuccessMessage')) {
           $('withdrawSuccessMessage').textContent = data.message
-            || `Withdrawal submitted. Net $${Number(data.withdrawal?.net_usdt || preview.net_usdt).toFixed(2)} USDT will be sent after processing.`;
+            || (method === 'bank'
+              ? `Withdrawal submitted. ${Math.round(preview.amount_mmk || 0).toLocaleString()} MMK will be sent to your bank after processing.`
+              : `Withdrawal submitted. Net $${Number(data.withdrawal?.net_usdt || preview.net_usdt).toFixed(2)} USDT will be sent after processing.`);
         }
         this.toast('Withdrawal request submitted', 'ok');
-        this.log(`Withdrawal ${data.ref_code}: $${preview.net_usdt.toFixed(2)} net (${network})`, 'ok');
+        this.log(
+          method === 'bank'
+            ? `Withdrawal ${data.ref_code}: ${Math.round(preview.amount_mmk || 0).toLocaleString()} MMK to bank`
+            : `Withdrawal ${data.ref_code}: $${preview.net_usdt.toFixed(2)} net (${network})`,
+          'ok'
+        );
         this._usdtWalletCache = null;
         this.loadUsdtWalletPage(true);
       } catch (err) {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
         this.toast(err.message || 'Withdrawal failed', 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prevLabel || 'Submit Withdrawal Request';
+        }
+      }
+    });
+  },
+
+  bindWithdrawMmk() {
+    $('withdrawMmkModalClose')?.addEventListener('click', () => this.closeWithdrawMmkModal());
+    $('withdrawMmkModal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'withdrawMmkModal') this.closeWithdrawMmkModal();
+    });
+    $('btnOpenWithdrawMmk')?.addEventListener('click', () => {
+      if (!Auth.isLoggedIn()) {
+        this.toast('Sign in to withdraw MMK', 'error');
+        return;
+      }
+      this.openWithdrawMmkModal();
+    });
+    $('withdrawAmountMmk')?.addEventListener('input', () => this.updateWithdrawMmkPreview());
+
+    $('withdrawMmkForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const bankName = $('withdrawMmkBankName')?.value?.trim();
+      const accountName = $('withdrawMmkAccountName')?.value?.trim();
+      const accountNumber = $('withdrawMmkAccountNumber')?.value?.trim();
+      const amount = Math.round(parseFloat($('withdrawAmountMmk')?.value) || 0);
+      const preview = this.calculateWithdrawMmkPreviewClient(amount);
+
+      if (!bankName || !accountName || !accountNumber) {
+        this.toast('Enter bank name, account name, and account number', 'error');
+        return;
+      }
+      if (!preview || preview.below_minimum || preview.invalid_net) {
+        this.toast('Enter a valid MMK withdrawal amount', 'error');
+        return;
+      }
+      if (Number(this.walletMmk ?? 0) < preview.amount_mmk) {
+        this.toast(`Insufficient MMK balance. Need ${preview.amount_mmk.toLocaleString()} MMK.`, 'error');
+        return;
+      }
+
+      const btn = $('btnSubmitWithdrawMmk');
+      const prevLabel = btn?.textContent;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Submitting…';
+      }
+
+      try {
+        const data = await Auth.api('POST', '/api/withdrawal/mmk', {
+          amount_mmk: preview.amount_mmk,
+          bank_name: bankName,
+          account_name: accountName,
+          account_number: accountNumber,
+        }, { sensitive: true });
+
+        if (data.wallet) {
+          this.walletMmk = data.wallet.balance_mmk;
+          if ($('sumBalanceMmk')) {
+            $('sumBalanceMmk').textContent = data.wallet.mmk_formatted
+              || `Ks ${Math.round(Number(data.wallet.balance_mmk)).toLocaleString()} MMK`;
+          }
+        }
+
+        $('withdrawMmkForm')?.classList.add('hidden');
+        $('withdrawMmkSuccessBox')?.classList.remove('hidden');
+        if ($('withdrawMmkRefCode')) $('withdrawMmkRefCode').textContent = data.ref_code || '—';
+        if ($('withdrawMmkSuccessMessage')) {
+          $('withdrawMmkSuccessMessage').textContent = data.message
+            || `Withdrawal submitted. ${preview.net_mmk.toLocaleString()} MMK will be sent to your bank after processing.`;
+        }
+        this.toast('MMK withdrawal submitted', 'ok');
+        this.log(`MMK withdrawal ${data.ref_code}: ${preview.net_mmk.toLocaleString()} MMK to ${bankName}`, 'ok');
+      } catch (err) {
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+        this.toast(err.message || 'MMK withdrawal failed', 'error');
       } finally {
         if (btn) {
           btn.disabled = false;

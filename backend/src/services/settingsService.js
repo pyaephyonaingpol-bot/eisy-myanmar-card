@@ -25,7 +25,11 @@ const DEFAULTS = {
   usdt_withdraw_fee_bep20: '0.8',
   usdt_withdraw_fee_trc20_type: 'fixed',
   usdt_withdraw_fee_bep20_type: 'fixed',
+  usdt_withdraw_fee_bank: '1.0',
+  usdt_withdraw_fee_bank_type: 'fixed',
   minimum_usdt_withdrawal: '10',
+  minimum_mmk_withdrawal: '10000',
+  mmk_withdraw_fee_percent: '0',
 };
 
 const NUMERIC_KEYS = new Set([
@@ -42,7 +46,10 @@ const NUMERIC_KEYS = new Set([
   'platform_usdt_revenue_balance',
   'usdt_withdraw_fee_trc20',
   'usdt_withdraw_fee_bep20',
+  'usdt_withdraw_fee_bank',
   'minimum_usdt_withdrawal',
+  'minimum_mmk_withdrawal',
+  'mmk_withdraw_fee_percent',
 ]);
 
 const STRING_KEYS = new Set([
@@ -51,11 +58,13 @@ const STRING_KEYS = new Set([
   'usdt_erc20_address',
   'usdt_withdraw_fee_trc20_type',
   'usdt_withdraw_fee_bep20_type',
+  'usdt_withdraw_fee_bank_type',
 ]);
 
 const FEE_TYPE_KEYS = new Set([
   'usdt_withdraw_fee_trc20_type',
   'usdt_withdraw_fee_bep20_type',
+  'usdt_withdraw_fee_bank_type',
 ]);
 
 function todayDateString() {
@@ -123,7 +132,11 @@ async function getCardPricingSettings() {
     usdt_withdraw_fee_bep20: parseFloat(raw.usdt_withdraw_fee_bep20) || 0.8,
     usdt_withdraw_fee_trc20_type: raw.usdt_withdraw_fee_trc20_type === 'percent' ? 'percent' : 'fixed',
     usdt_withdraw_fee_bep20_type: raw.usdt_withdraw_fee_bep20_type === 'percent' ? 'percent' : 'fixed',
+    usdt_withdraw_fee_bank: parseFloat(raw.usdt_withdraw_fee_bank) || 1,
+    usdt_withdraw_fee_bank_type: raw.usdt_withdraw_fee_bank_type === 'percent' ? 'percent' : 'fixed',
     minimum_usdt_withdrawal: parseFloat(raw.minimum_usdt_withdrawal) || 10,
+    minimum_mmk_withdrawal: parseFloat(raw.minimum_mmk_withdrawal) || 10000,
+    mmk_withdraw_fee_percent: parseFloat(raw.mmk_withdraw_fee_percent) || 0,
   };
 }
 
@@ -134,20 +147,32 @@ async function getWithdrawalFeeSettings() {
     usdt_withdraw_fee_bep20: pricing.usdt_withdraw_fee_bep20,
     usdt_withdraw_fee_trc20_type: pricing.usdt_withdraw_fee_trc20_type,
     usdt_withdraw_fee_bep20_type: pricing.usdt_withdraw_fee_bep20_type,
+    usdt_withdraw_fee_bank: pricing.usdt_withdraw_fee_bank,
+    usdt_withdraw_fee_bank_type: pricing.usdt_withdraw_fee_bank_type,
     minimum_usdt_withdrawal: pricing.minimum_usdt_withdrawal,
+    minimum_mmk_withdrawal: pricing.minimum_mmk_withdrawal,
+    mmk_withdraw_fee_percent: pricing.mmk_withdraw_fee_percent,
+    mmk_to_usd_rate: pricing.mmk_to_usd_rate,
   };
 }
 
 function calculateNetworkWithdrawalFee(amountUsdt, network, settings) {
   const amount = Math.round((parseFloat(amountUsdt) || 0) * 100) / 100;
   const net = String(network || 'TRC20').toUpperCase();
+  const isBank = net === 'BANK';
   const isBep20 = net === 'BEP20';
-  const feeValue = isBep20
-    ? (parseFloat(settings?.usdt_withdraw_fee_bep20) || 0)
-    : (parseFloat(settings?.usdt_withdraw_fee_trc20) || 0);
-  const feeType = isBep20
-    ? (settings?.usdt_withdraw_fee_bep20_type === 'percent' ? 'percent' : 'fixed')
-    : (settings?.usdt_withdraw_fee_trc20_type === 'percent' ? 'percent' : 'fixed');
+  let feeValue;
+  let feeType;
+  if (isBank) {
+    feeValue = parseFloat(settings?.usdt_withdraw_fee_bank) || 0;
+    feeType = settings?.usdt_withdraw_fee_bank_type === 'percent' ? 'percent' : 'fixed';
+  } else if (isBep20) {
+    feeValue = parseFloat(settings?.usdt_withdraw_fee_bep20) || 0;
+    feeType = settings?.usdt_withdraw_fee_bep20_type === 'percent' ? 'percent' : 'fixed';
+  } else {
+    feeValue = parseFloat(settings?.usdt_withdraw_fee_trc20) || 0;
+    feeType = settings?.usdt_withdraw_fee_trc20_type === 'percent' ? 'percent' : 'fixed';
+  }
 
   let feeUsdt = 0;
   if (feeType === 'percent') {
@@ -164,7 +189,7 @@ function calculateNetworkWithdrawalFee(amountUsdt, network, settings) {
     : `${feeUsdt.toFixed(2)} USDT`;
 
   return {
-    network: isBep20 ? 'BEP20' : 'TRC20',
+    network: isBank ? 'BANK' : (isBep20 ? 'BEP20' : 'TRC20'),
     amount_usdt: amount,
     fee_usdt: feeUsdt,
     net_usdt: netUsdt,
@@ -182,13 +207,44 @@ function calculateWithdrawalBreakdown(amountUsdt, network, settings) {
 
   const breakdown = calculateNetworkWithdrawalFee(amount, network, settings);
   const min = parseFloat(settings?.minimum_usdt_withdrawal) || 10;
+  const rate = parseFloat(settings?.mmk_to_usd_rate) || 4500;
+  const isBank = breakdown.network === 'BANK';
+  const amountMmk = isBank ? Math.round(breakdown.net_usdt * rate) : null;
 
   return {
     ...breakdown,
+    payout_method: isBank ? 'bank' : 'crypto',
+    exchange_rate: isBank ? rate : null,
+    amount_mmk: amountMmk,
     minimum_usdt_withdrawal: min,
     below_minimum: amount < min,
     invalid_net: breakdown.net_usdt <= 0,
-    summary: `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${breakdown.fee_label} fee = ${breakdown.net_usdt.toFixed(2)} USDT sent`,
+    summary: isBank
+      ? `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${breakdown.fee_label} fee = ${breakdown.net_usdt.toFixed(2)} USDT → ${Math.round(amountMmk || 0).toLocaleString()} MMK at rate ${rate.toLocaleString()}`
+      : `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${breakdown.fee_label} fee = ${breakdown.net_usdt.toFixed(2)} USDT sent`,
+  };
+}
+
+function calculateMmkWithdrawalBreakdown(amountMmk, settings) {
+  const amount = Math.round(parseFloat(amountMmk) || 0);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('Enter a valid MMK withdrawal amount');
+  }
+  const feePercent = Math.max(0, parseFloat(settings?.mmk_withdraw_fee_percent) || 0);
+  const feeMmk = Math.round(amount * feePercent / 100);
+  const netMmk = amount - feeMmk;
+  const min = parseFloat(settings?.minimum_mmk_withdrawal) || 10000;
+
+  return {
+    amount_mmk: amount,
+    fee_mmk: feeMmk,
+    net_mmk: netMmk,
+    fee_percent: feePercent,
+    fee_label: feePercent > 0 ? `${feePercent}% (${feeMmk.toLocaleString()} MMK)` : '0 MMK',
+    minimum_mmk_withdrawal: min,
+    below_minimum: amount < min,
+    invalid_net: netMmk <= 0,
+    summary: `Requested ${amount.toLocaleString()} MMK − ${feePercent}% fee = ${netMmk.toLocaleString()} MMK to your bank`,
   };
 }
 
@@ -290,6 +346,12 @@ async function updateSettings(updates) {
       }
       if (key === 'minimum_usdt_withdrawal' && num <= 0) {
         throw new Error('Minimum USDT withdrawal must be greater than zero');
+      }
+      if (key === 'minimum_mmk_withdrawal' && num <= 0) {
+        throw new Error('Minimum MMK withdrawal must be greater than zero');
+      }
+      if (key === 'mmk_withdraw_fee_percent' && (num < 0 || num > 20)) {
+        throw new Error('MMK withdrawal fee must be between 0% and 20%');
       }
       await setSetting(key, num);
     } else if (FEE_TYPE_KEYS.has(key)) {
@@ -474,6 +536,7 @@ module.exports = {
   getWithdrawalFeeSettings,
   calculateNetworkWithdrawalFee,
   calculateWithdrawalBreakdown,
+  calculateMmkWithdrawalBreakdown,
   parseRecordMetadata,
   todayDateString,
   formatEffectiveDate,

@@ -184,7 +184,11 @@ router.get('/settings', async (_req, res) => {
         usdt_withdraw_fee_bep20: pricing.usdt_withdraw_fee_bep20,
         usdt_withdraw_fee_trc20_type: pricing.usdt_withdraw_fee_trc20_type,
         usdt_withdraw_fee_bep20_type: pricing.usdt_withdraw_fee_bep20_type,
+        usdt_withdraw_fee_bank: pricing.usdt_withdraw_fee_bank,
+        usdt_withdraw_fee_bank_type: pricing.usdt_withdraw_fee_bank_type,
         minimum_usdt_withdrawal: pricing.minimum_usdt_withdrawal,
+        minimum_mmk_withdrawal: pricing.minimum_mmk_withdrawal,
+        mmk_withdraw_fee_percent: pricing.mmk_withdraw_fee_percent,
       },
       ledger_summary: ledgerSummary,
       current_rate: currentRate,
@@ -1154,6 +1158,122 @@ router.post('/kyc-requests/:id/reject', async (req, res) => {
   } catch (err) {
     console.error('[admin/kyc-requests reject]', err);
     res.status(400).json({ error: err.message || 'Failed to reject KYC' });
+  }
+});
+
+// ─── Withdrawal review (USDT crypto/bank + MMK bank) ───
+const UsdtWithdrawal = require('../models/UsdtWithdrawal');
+const MmkWithdrawal = require('../models/MmkWithdrawal');
+const {
+  completeUsdtWithdrawal,
+  rejectUsdtWithdrawal,
+  completeMmkWithdrawal,
+  rejectMmkWithdrawal,
+} = require('../services/withdrawalService');
+const { walletPayload: adminWalletPayload } = require('../services/walletService');
+
+router.get('/withdrawals/usdt', async (req, res) => {
+  try {
+    const status = req.query.status;
+    const rows = await UsdtWithdrawal.listAll({
+      status: status && status !== 'all' ? status : undefined,
+      limit: 200,
+    });
+    res.json({ withdrawals: rows });
+  } catch (err) {
+    console.error('[admin/withdrawals/usdt GET]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/withdrawals/usdt/:id/complete', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const withdrawal = await completeUsdtWithdrawal(id, {
+      adminNote: req.body.admin_note,
+      txHash: req.body.tx_hash,
+      adminId: req.user?.id,
+    });
+    res.json({
+      success: true,
+      message: `USDT withdrawal ${withdrawal.ref_code} marked completed`,
+      withdrawal,
+    });
+  } catch (err) {
+    console.error('[admin/withdrawals/usdt complete]', err);
+    res.status(400).json({ error: err.message || 'Failed to complete withdrawal' });
+  }
+});
+
+router.post('/withdrawals/usdt/:id/reject', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const withdrawal = await rejectUsdtWithdrawal(id, {
+      adminNote: req.body.admin_note || req.body.rejection_reason,
+      adminId: req.user?.id,
+    });
+    const user = await User.findById(withdrawal.user_id);
+    res.json({
+      success: true,
+      message: `USDT withdrawal ${withdrawal.ref_code} rejected — balance refunded`,
+      withdrawal,
+      wallet: user ? adminWalletPayload(user) : null,
+    });
+  } catch (err) {
+    console.error('[admin/withdrawals/usdt reject]', err);
+    res.status(400).json({ error: err.message || 'Failed to reject withdrawal' });
+  }
+});
+
+router.get('/withdrawals/mmk', async (req, res) => {
+  try {
+    const status = req.query.status;
+    const rows = await MmkWithdrawal.listAll({
+      status: status && status !== 'all' ? status : undefined,
+      limit: 200,
+    });
+    res.json({ withdrawals: rows });
+  } catch (err) {
+    console.error('[admin/withdrawals/mmk GET]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/withdrawals/mmk/:id/complete', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const withdrawal = await completeMmkWithdrawal(id, {
+      adminNote: req.body.admin_note,
+      adminId: req.user?.id,
+    });
+    res.json({
+      success: true,
+      message: `MMK withdrawal ${withdrawal.ref_code} marked completed`,
+      withdrawal,
+    });
+  } catch (err) {
+    console.error('[admin/withdrawals/mmk complete]', err);
+    res.status(400).json({ error: err.message || 'Failed to complete withdrawal' });
+  }
+});
+
+router.post('/withdrawals/mmk/:id/reject', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const withdrawal = await rejectMmkWithdrawal(id, {
+      adminNote: req.body.admin_note || req.body.rejection_reason,
+      adminId: req.user?.id,
+    });
+    const user = await User.findById(withdrawal.user_id);
+    res.json({
+      success: true,
+      message: `MMK withdrawal ${withdrawal.ref_code} rejected — balance refunded`,
+      withdrawal,
+      wallet: user ? adminWalletPayload(user) : null,
+    });
+  } catch (err) {
+    console.error('[admin/withdrawals/mmk reject]', err);
+    res.status(400).json({ error: err.message || 'Failed to reject withdrawal' });
   }
 });
 
