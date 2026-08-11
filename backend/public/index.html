@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eisy Myanmar</title>
-  <link rel="stylesheet" href="/styles.css?v=20260811c" />
+  <link rel="stylesheet" href="/styles.css?v=20260811d" />
+  <link rel="icon" href="/assets/qr/placeholder-deposit.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -1151,6 +1152,7 @@
                 <div id="binancePayBox" class="usdt-address-box hidden">
                   <p class="usdt-network-label">Binance Pay checkout</p>
                   <p class="hint" id="binancePayStatus">Complete payment in Binance. Your wallet is credited automatically on PAY_SUCCESS.</p>
+                  <img id="binancePayQrImg" class="usdt-qr hidden" alt="Binance Pay QR code" width="200" height="200" />
                   <div class="ref-code" id="binancePayRef">—</div>
                   <a id="binancePayCheckoutLink" class="btn btn-primary btn-sm" href="#" target="_blank" rel="noopener">Open Binance Pay</a>
                   <a id="binancePayQrLink" class="btn btn-secondary btn-sm hidden" href="#" target="_blank" rel="noopener">Open QR / Deeplink</a>
@@ -1371,12 +1373,12 @@
     </div>
   </div>
 
-  <script src="/api-config.js?v=20260811c"></script>
-  <script type="module" src="/supabaseBridge.js?v=20260811c"></script>
+  <script src="/api-config.js?v=20260811d"></script>
+  <script type="module" src="/supabaseBridge.js?v=20260811d"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260811c"></script>
-  <script src="/auth.js?v=20260811c"></script>
-  <script src="/nav.js?v=20260811c"></script>
-  <script src="/dashboard.js?v=20260811c"></script>
+  <script src="/i18n.js?v=20260811d"></script>
+  <script src="/auth.js?v=20260811d"></script>
+  <script src="/nav.js?v=20260811d"></script>
+  <script src="/dashboard.js?v=20260811d"></script>
 </body>
 </html>

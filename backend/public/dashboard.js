@@ -883,8 +883,13 @@ const Dashboard = {
     this._usdtDepositAddress = address || '';
     const qr = $('usdtQrCode');
     if (qr && address) {
-      qr.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(address)}`;
+      // Local API QR — works on Vercel without third-party image hosts
+      qr.src = `/api/qr?size=180&data=${encodeURIComponent(address)}`;
+      qr.alt = `${network} deposit QR for ${address}`;
       qr.classList.remove('hidden');
+      qr.onerror = () => {
+        qr.src = `/assets/qr/placeholder-deposit.png`;
+      };
     }
     $('usdtAddressBox')?.classList.remove('hidden');
   },
@@ -2590,6 +2595,23 @@ const Dashboard = {
         }
         const checkout = data.checkout_url || data.binance?.checkout_url;
         const qr = data.qrcode_link || data.binance?.qrcode_link;
+        const qrImg = $('binancePayQrImg');
+        if (qrImg) {
+          // Prefer Binance-hosted QR image; fall back to our /api/qr of the checkout URL
+          const qrSrc = qr || (checkout ? `/api/qr?size=200&data=${encodeURIComponent(checkout)}` : '');
+          if (qrSrc) {
+            qrImg.src = qrSrc;
+            qrImg.classList.remove('hidden');
+            qrImg.onerror = () => {
+              if (checkout && qrImg.src !== `/api/qr?size=200&data=${encodeURIComponent(checkout)}`) {
+                qrImg.src = `/api/qr?size=200&data=${encodeURIComponent(checkout)}`;
+              }
+            };
+          } else {
+            qrImg.classList.add('hidden');
+            qrImg.removeAttribute('src');
+          }
+        }
         if ($('binancePayCheckoutLink')) {
           if (checkout) {
             $('binancePayCheckoutLink').href = checkout;
@@ -2599,8 +2621,8 @@ const Dashboard = {
           }
         }
         if ($('binancePayQrLink')) {
-          if (qr) {
-            $('binancePayQrLink').href = qr;
+          if (qr || checkout) {
+            $('binancePayQrLink').href = qr || checkout;
             $('binancePayQrLink').classList.remove('hidden');
           } else {
             $('binancePayQrLink').classList.add('hidden');

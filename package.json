@@ -28,6 +28,7 @@
     "express": "^4.21.2",
     "multer": "^2.2.0",
     "node-telegram-bot-api": "^0.66.0",
+    "qrcode": "^1.5.4",
     "resend": "^6.18.1",
     "tronweb": "^6.4.0"
   }

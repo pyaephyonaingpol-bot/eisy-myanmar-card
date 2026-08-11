@@ -14,8 +14,11 @@ Pushing to `main` triggers Vercel automatic deployment when the GitHub repo is l
 
 `vercel.json` sets `"framework": null` and `"outputDirectory": "public"`. The build
 command copies `backend/public` → root `public/` so Vercel’s required output
-directory exists (avoids `No Output Directory named "public" found`). All
-dynamic routes still rewrite to the Express serverless function.
+directory exists (avoids `No Output Directory named "public" found`).
+
+Static files (`.js`, `.css`, `/assets/**`) are served from `public/` by Vercel CDN.
+Extensionless routes (`/`, `/admin`, `/dashboard`) rewrite to the Express function.
+Deposit QR images use `GET /api/qr?data=…` (PNG) so they do not rely on third-party hosts.
 
 ## Required Vercel Environment Variables
 

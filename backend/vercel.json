@@ -3,17 +3,26 @@
   "version": 2,
   "framework": null,
   "installCommand": "npm install --omit=optional",
-  "buildCommand": "mkdir -p public",
+  "buildCommand": "mkdir -p .vercel-public-tmp && cp -R public/. .vercel-public-tmp/ && rm -rf .vercel-public-tmp",
   "outputDirectory": "public",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/(.*)", "destination": "/api" }
+    {
+      "source": "/((?!assets/)(?!.*\\.).*)",
+      "destination": "/api"
+    }
   ],
   "headers": [
     {
       "source": "/api/webhook/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
       ]
     }
   ],

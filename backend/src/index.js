@@ -79,6 +79,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/config', require('./routes/config'));
+app.use('/api/qr', require('./routes/qr'));
 app.use('/api/auth', authRoutes);
 app.use('/api/deposit', depositRoutes);
 app.use('/api/webhook', require('./routes/webhook'));
