@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eisy Myanmar — Admin</title>
-  <link rel="stylesheet" href="/styles.css?v=20260811b" />
+  <link rel="stylesheet" href="/styles.css?v=20260812b" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -192,6 +192,27 @@
           <span class="hidden" data-page-title="kyc-requests" data-i18n="nav_admin_kyc">KYC Requests</span>
           <span class="hidden" data-page-title="settings" data-i18n="nav_admin_settings">Rates &amp; Fees</span>
 
+          <!-- Always visible at top of Admin Dashboard -->
+          <section class="master-wallet-status" id="masterWalletPanel" aria-label="Master Wallet Status">
+            <div class="master-wallet-status-header">
+              <h2 class="master-wallet-status-title">Master Wallet Status</h2>
+              <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm">Refresh</button>
+            </div>
+            <div id="masterWalletBalance" class="master-wallet-status-body" aria-live="polite">
+              <div class="master-wallet-status-grid">
+                <div class="master-wallet-status-stat">
+                  <span class="label">USDT (TRC20)</span>
+                  <span class="value usdt" id="masterWalletUsdt">—</span>
+                </div>
+                <div class="master-wallet-status-stat">
+                  <span class="label">TRX</span>
+                  <span class="value trx" id="masterWalletTrx">—</span>
+                </div>
+              </div>
+              <p class="master-wallet-status-meta hint" id="masterWalletMeta">Loading…</p>
+            </div>
+          </section>
+
       <section id="tabDeposits" class="panel app-page is-active" data-page="deposits">
         <h2 data-i18n="wallet_deposit_requests">Wallet Deposit Requests</h2>
         <div class="admin-toolbar">
@@ -218,21 +239,6 @@
 
         <h2 style="margin-top:2rem">USDT Withdrawals — Crypto &amp; Bank</h2>
         <p class="hint" style="margin-bottom:0.75rem">Complete on-chain payouts or USDT→MMK bank transfers. Reject to refund the user's USDT balance. TRC20 completes send from the master wallet automatically.</p>
-
-        <div class="master-wallet-panel" id="masterWalletPanel">
-          <div class="master-wallet-panel-header">
-            <div>
-              <strong>Master Wallet — Live On-Chain Balance</strong>
-              <p class="hint" style="margin:0.25rem 0 0">
-                Queries TRON in real time via TronWeb (USDT TRC20 + TRX gas). No caching.
-              </p>
-            </div>
-            <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm">Refresh Live Balance</button>
-          </div>
-          <div id="masterWalletBalance" class="master-wallet-balance" aria-live="polite">
-            <p class="hint" style="margin:0">Loading live balances from TRON…</p>
-          </div>
-        </div>
 
         <div class="admin-toolbar">
           <select id="usdtWithdrawalFilter">
@@ -655,6 +661,6 @@
   <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
   <script src="/i18n.js?v=20260811b"></script>
   <script src="/nav.js?v=20260811b"></script>
-  <script src="/admin.js?v=20260811e" defer></script>
+  <script src="/admin.js?v=20260812a" defer></script>
 </body>
 </html>

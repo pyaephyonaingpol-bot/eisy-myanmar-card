@@ -1867,19 +1867,20 @@
     },
 
     async checkMasterWalletBalance() {
-      const box = $('masterWalletBalance');
+      const usdtEl = $('masterWalletUsdt');
+      const trxEl = $('masterWalletTrx');
+      const metaEl = $('masterWalletMeta');
       const btn = $('btnCheckMasterWallet');
-      if (!box) return;
+      if (!usdtEl && !$('masterWalletBalance')) return;
 
       const prevLabel = btn ? btn.textContent : '';
       if (btn) {
         btn.disabled = true;
-        btn.textContent = 'Querying TRON…';
+        btn.textContent = 'Refreshing…';
       }
-      box.innerHTML = '<p class="hint" style="margin:0">Fetching live USDT + TRX from the blockchain…</p>';
+      if (metaEl) metaEl.textContent = 'Fetching live balances…';
 
       try {
-        // Cache-bust so intermediaries never reuse a previous balance response.
         const data = await this.api(
           'GET',
           '/api/admin/master-wallet-balance?_=' + Date.now()
@@ -1890,44 +1891,37 @@
         const checked = w.checked_at
           ? new Date(w.checked_at).toLocaleString()
           : new Date().toLocaleString();
-        const liveBadge = data.live !== false
-          ? '<span class="master-wallet-live-badge">LIVE</span>'
-          : '';
+        const fmt = (n) => n.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 6,
+        });
 
-        box.innerHTML =
-          '<div class="master-wallet-balance-grid">' +
-            '<div class="master-wallet-stat">' +
-              '<span class="label">USDT (TRC20) ' + liveBadge + '</span>' +
-              '<span class="value usdt">' + usdt.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 6,
-              }) + '</span>' +
-            '</div>' +
-            '<div class="master-wallet-stat">' +
-              '<span class="label">TRX (gas)</span>' +
-              '<span class="value trx">' + trx.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 6,
-              }) + '</span>' +
-            '</div>' +
-            '<div class="master-wallet-stat">' +
-              '<span class="label">Network</span>' +
-              '<span class="value">' + this.esc(w.network || 'TRC20') + '</span>' +
-            '</div>' +
-          '</div>' +
-          '<div class="master-wallet-address">Address: <code>' + this.esc(w.address || '—') + '</code>' +
-            '<br><span class="hint">On-chain · ' + this.esc(checked) +
-            (data.source ? ' · via ' + this.esc(String(data.source)) : '') +
-            '</span></div>';
+        if (usdtEl) usdtEl.textContent = fmt(usdt);
+        if (trxEl) trxEl.textContent = fmt(trx);
+        if (metaEl) {
+          metaEl.textContent = (w.address ? w.address + ' · ' : '') + checked;
+        }
       } catch (err) {
-        box.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' +
-          this.esc(err.message || 'Failed to load master wallet balance') + '</p>';
+        if (usdtEl) usdtEl.textContent = '—';
+        if (trxEl) trxEl.textContent = '—';
+        if (metaEl) {
+          metaEl.textContent = err.message || 'Failed to load master wallet balance';
+          metaEl.style.color = '#ef4444';
+        } else {
+          const box = $('masterWalletBalance');
+          if (box) {
+            box.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' +
+              this.esc(err.message || 'Failed to load master wallet balance') + '</p>';
+          }
+        }
+        return;
       } finally {
         if (btn) {
           btn.disabled = false;
-          btn.textContent = prevLabel || 'Refresh Live Balance';
+          btn.textContent = prevLabel || 'Refresh';
         }
       }
+      if (metaEl) metaEl.style.color = '';
     },
 
     async loadUsdtWithdrawals() {

@@ -21,8 +21,8 @@ If a manual `tx_hash` is provided, the on-chain send is skipped.
 Every request queries TRON via TronWeb (no server-side cache). Response includes
 `live: true`, `cached: false`, and `Cache-Control: no-store`.
 
-The admin Deposits tab shows a **Master Wallet — Live On-Chain Balance** panel that
-auto-loads on open and has a **Refresh Live Balance** button.
+The admin dashboard shows a **Master Wallet Status** card at the top of every page
+(USDT TRC20 + TRX) with a **Refresh** button for an immediate on-chain re-query.
 
 Quick CLI check (loads `MASTER_PRIVATE_KEY` from `.env`):
 
