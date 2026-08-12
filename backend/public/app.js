@@ -188,11 +188,13 @@ $('verifyForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
     const secret = localStorage.getItem('deposit_listener_secret');
+    const adminKey = localStorage.getItem('adminKey') || localStorage.getItem('admin_api_key');
     const opts = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(secret ? { 'X-Deposit-Listener-Secret': secret } : {}),
+        ...(!secret && adminKey ? { 'X-Admin-Key': adminKey } : {}),
       },
       body: JSON.stringify({
         ref_code: $('verifyRef').value.trim(),

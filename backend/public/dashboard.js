@@ -3737,13 +3737,15 @@ const Dashboard = {
     $('verifyForm').onsubmit = async (e) => {
       e.preventDefault();
       try {
+        const secret = localStorage.getItem('deposit_listener_secret');
+        const adminKey = localStorage.getItem('adminKey') || localStorage.getItem('admin_api_key');
         const res = await fetch('/api/deposit/verify', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(localStorage.getItem('deposit_listener_secret')
-              ? { 'X-Deposit-Listener-Secret': localStorage.getItem('deposit_listener_secret') }
-              : {}),
+            ...(secret
+              ? { 'X-Deposit-Listener-Secret': secret }
+              : (adminKey ? { 'X-Admin-Key': adminKey } : {})),
           },
           body: JSON.stringify({
             ref_code: $('verifyRef').value.trim(),
