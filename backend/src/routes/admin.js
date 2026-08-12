@@ -6,6 +6,8 @@ const {
   requireAdmin,
   requireAdminAuth,
   requirePermission,
+  configuredAdminApiKey,
+  isDefaultAdminApiKey,
 } = require('../middleware/auth');
 const {
   loginAdmin,
@@ -174,10 +176,6 @@ router.post('/issue-card', requireAuth, requireSensitive, async (req, res) => {
 // ─── Admin authentication (public login / bootstrap) ───
 router.get('/auth/status', async (_req, res) => {
   try {
-    const {
-      configuredAdminApiKey,
-      isDefaultAdminApiKey,
-    } = require('../middleware/auth');
     const adminCount = await User.countAdmins();
     const bootstrapAvailable = adminCount === 0;
     const payload = {
