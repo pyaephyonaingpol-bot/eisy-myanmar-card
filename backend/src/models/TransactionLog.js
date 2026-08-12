@@ -5,8 +5,9 @@ const TransactionLog = {
     userId, type, direction = 'neutral', amountUsd, amountMmk,
     balanceBefore, balanceAfter, referenceType, referenceId,
     description, metadata, ipAddress, createdBy = 'system',
+    db: dbOverride = null,
   }) {
-    const db = getDb();
+    const db = dbOverride || getDb();
     const result = await db.run(`
       INSERT INTO transaction_logs (
         user_id, type, direction, amount_usd, amount_mmk,

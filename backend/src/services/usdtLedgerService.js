@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { getDb } = require('../db');
+const { withDbTransaction } = require('../lib/libsqlDb');
 const User = require('../models/User');
 const TransactionLog = require('../models/TransactionLog');
 const UsdtInternalTransfer = require('../models/UsdtInternalTransfer');
@@ -14,17 +15,25 @@ function generateJournalId(prefix = 'USDT') {
   return `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 }
 
+/** Map ledger tx types onto transaction_logs CHECK-allowed values. */
+function toAuditLogType(txType, { isAdjustment = false } = {}) {
+  if (isAdjustment) return 'admin_adjustment';
+  const allowed = new Set([
+    'deposit_request', 'deposit_verified', 'deposit_rejected',
+    'balance_credit', 'balance_debit',
+    'card_issued', 'card_frozen', 'card_cancelled', 'card_updated',
+    'login', 'logout', 'pin_set', 'pin_reset', 'otp_sent', 'otp_verified',
+    'biometric_registered', 'support_message', 'admin_adjustment', 'other',
+  ]);
+  if (allowed.has(txType)) return txType;
+  if (/credit/i.test(String(txType || ''))) return 'balance_credit';
+  if (/debit/i.test(String(txType || ''))) return 'balance_debit';
+  return 'other';
+}
+
 async function runInTransaction(fn) {
   const db = getDb();
-  await db.run('BEGIN');
-  try {
-    const result = await fn(db);
-    await db.run('COMMIT');
-    return result;
-  } catch (err) {
-    await db.run('ROLLBACK');
-    throw err;
-  }
+  return withDbTransaction(db, fn);
 }
 
 async function fetchBalances(userId, db) {
@@ -43,12 +52,23 @@ async function fetchBalances(userId, db) {
 }
 
 async function updateUserBalances(db, userId, available, locked) {
-  await db.run(
-    `UPDATE users SET balance_usdt = ?, balance_usdt_locked = ?, updated_at = datetime('now') WHERE id = ?`,
-    roundUsdt(available),
-    roundUsdt(locked),
-    userId
-  );
+  // Prefer updating updated_at when the column exists (post-auth patch).
+  try {
+    await db.run(
+      `UPDATE users SET balance_usdt = ?, balance_usdt_locked = ?, updated_at = datetime('now') WHERE id = ?`,
+      roundUsdt(available),
+      roundUsdt(locked),
+      userId
+    );
+  } catch (err) {
+    if (!/no such column:\s*updated_at/i.test(err.message || '')) throw err;
+    await db.run(
+      `UPDATE users SET balance_usdt = ?, balance_usdt_locked = ? WHERE id = ?`,
+      roundUsdt(available),
+      roundUsdt(locked),
+      userId
+    );
+  }
 }
 
 async function insertLedgerEntry(db, {
@@ -192,6 +212,7 @@ async function creditAvailable(userId, amountUsdt, {
     await updateUserBalances(db, userId, availableAfter, bal.locked);
 
     const jid = journalId || generateJournalId('CR');
+    const isAdjustment = Boolean(metadata?.adjustment);
 
     await insertLedgerEntry(db, {
       userId,
@@ -214,7 +235,7 @@ async function creditAvailable(userId, amountUsdt, {
 
     await TransactionLog.create({
       userId,
-      type: txType,
+      type: toAuditLogType(txType, { isAdjustment }),
       direction: 'credit',
       amountUsd: amount,
       balanceBefore: bal.available,
@@ -229,9 +250,10 @@ async function creditAvailable(userId, amountUsdt, {
         locked_usdt: bal.locked,
         ...(metadata || {}),
       },
+      db,
     });
 
-    return User.findById(userId);
+    return db.get('SELECT * FROM users WHERE id = ?', userId);
   });
 
   syncWallets([userId]);
@@ -271,6 +293,7 @@ async function debitAvailable(userId, amountUsdt, {
     await updateUserBalances(db, userId, availableAfter, bal.locked);
 
     const jid = journalId || generateJournalId('DB');
+    const isAdjustment = Boolean(metadata?.adjustment);
 
     await insertLedgerEntry(db, {
       userId,
@@ -293,7 +316,7 @@ async function debitAvailable(userId, amountUsdt, {
 
     await TransactionLog.create({
       userId,
-      type: txType,
+      type: toAuditLogType(txType, { isAdjustment }),
       direction: 'debit',
       amountUsd: amount,
       balanceBefore: bal.available,
@@ -308,9 +331,10 @@ async function debitAvailable(userId, amountUsdt, {
         locked_usdt: bal.locked,
         ...(metadata || {}),
       },
+      db,
     });
 
-    return User.findById(userId);
+    return db.get('SELECT * FROM users WHERE id = ?', userId);
   });
 
   syncWallets([userId]);
@@ -400,7 +424,7 @@ async function lockUsdtForEscrow(userId, amountUsdt, {
 
     await TransactionLog.create({
       userId,
-      type: 'escrow_lock',
+      type: toAuditLogType('escrow_lock'),
       direction: 'neutral',
       amountUsd: amount,
       balanceBefore: bal.available,
@@ -416,6 +440,7 @@ async function lockUsdtForEscrow(userId, amountUsdt, {
         escrow: true,
         ...(metadata || {}),
       },
+      db,
     });
 
     return {
@@ -494,7 +519,7 @@ async function refundEscrowHold({
 
     await TransactionLog.create({
       userId,
-      type: 'escrow_refund',
+      type: toAuditLogType('escrow_refund'),
       direction: 'credit',
       amountUsd: refundAmount,
       balanceBefore: bal.available,
@@ -504,6 +529,7 @@ async function refundEscrowHold({
       description: description || `Escrow refund — ${formatUsdt(refundAmount)}`,
       createdBy,
       metadata: { wallet: 'usdt', hold_type: holdType, locked_usdt_after: lockedAfter, ...(metadata || {}) },
+      db,
     });
 
     return { refundAmount, available_usdt: availableAfter, locked_usdt: lockedAfter, journalId: jid };
@@ -624,7 +650,7 @@ async function consumeEscrowToBuyer({
 
     await TransactionLog.create({
       userId: fromUserId,
-      type: 'escrow_release',
+      type: toAuditLogType('escrow_release'),
       direction: 'debit',
       amountUsd: gross,
       balanceBefore: sellerBal.available,
@@ -642,11 +668,12 @@ async function consumeEscrowToBuyer({
         journal_id: journalId,
         ...(metadata || {}),
       },
+      db,
     });
 
     await TransactionLog.create({
       userId: toUserId,
-      type: 'escrow_receive',
+      type: toAuditLogType('escrow_receive'),
       direction: 'credit',
       amountUsd: net,
       balanceBefore: buyerBal.available,
@@ -661,6 +688,7 @@ async function consumeEscrowToBuyer({
         journal_id: journalId,
         ...(metadata || {}),
       },
+      db,
     });
 
     if (fee > 0 && platformFeeType) {
@@ -776,7 +804,7 @@ async function transferUsdtInternal(fromUserId, toUserId, amountUsdt, {
 
     await TransactionLog.create({
       userId: fromUserId,
-      type: 'internal_transfer_out',
+      type: toAuditLogType('internal_transfer_out'),
       direction: 'debit',
       amountUsd: totalDebit,
       balanceBefore: senderBal.available,
@@ -786,11 +814,12 @@ async function transferUsdtInternal(fromUserId, toUserId, amountUsdt, {
       description: `Sent ${formatUsdt(amount)} USDT to ${toUser.email || `user #${toUserId}`}`,
       createdBy,
       metadata: { wallet: 'usdt', to_user_id: toUserId, fee_usdt: fee, journal_id: journalId, note },
+      db,
     });
 
     await TransactionLog.create({
       userId: toUserId,
-      type: 'internal_transfer_in',
+      type: toAuditLogType('internal_transfer_in'),
       direction: 'credit',
       amountUsd: amount,
       balanceBefore: receiverBal.available,
@@ -800,6 +829,7 @@ async function transferUsdtInternal(fromUserId, toUserId, amountUsdt, {
       description: `Received ${formatUsdt(amount)} USDT from user #${fromUserId}`,
       createdBy,
       metadata: { wallet: 'usdt', from_user_id: fromUserId, journal_id: journalId, note },
+      db,
     });
 
     if (fee > 0) {

@@ -68,20 +68,16 @@ async function migrateLegacyUsdToMmk(userId) {
   const balanceAfterMmk = balanceBeforeMmk + mmkAmount;
 
   const db = getDb();
-  await db.run('BEGIN');
-  try {
-    await db.run(`
+  const { withDbTransaction } = require('../lib/libsqlDb');
+  await withDbTransaction(db, async (tx) => {
+    await tx.run(`
       UPDATE users
       SET balance_mmk = COALESCE(balance_mmk, 0) + ?,
           balance = 0,
           updated_at = datetime('now')
       WHERE id = ?
     `, mmkAmount, userId);
-    await db.run('COMMIT');
-  } catch (err) {
-    await db.run('ROLLBACK');
-    throw err;
-  }
+  });
 
   await TransactionLog.create({
     userId,

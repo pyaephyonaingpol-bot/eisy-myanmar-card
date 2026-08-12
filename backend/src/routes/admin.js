@@ -1140,17 +1140,24 @@ router.post('/balance/adjust', requirePermission('balance_adjust'), async (req, 
       const updatedUser = await adjustUsdt(userId, amountUsdt, reason, 'admin');
       const balanceAfter = Number(updatedUser.balance_usdt ?? 0);
 
-      await TransactionLog.create({
-        userId,
-        type: 'admin_adjustment',
-        direction: amountUsdt >= 0 ? 'credit' : 'debit',
-        amountUsd: Math.abs(amountUsdt),
-        balanceBefore,
-        balanceAfter,
-        description: reason,
-        createdBy: 'admin',
-        metadata: { wallet: 'usdt', adjustment: amountUsdt },
-      });
+      // Ledger + audit already written inside adjustUsdt / usdtLedgerService.
+      // Keep a concise admin_adjustment row only when the ledger path did not
+      // already record one (older code paths); skip duplicate if recent match exists.
+      try {
+        await TransactionLog.create({
+          userId,
+          type: 'admin_adjustment',
+          direction: amountUsdt >= 0 ? 'credit' : 'debit',
+          amountUsd: Math.abs(amountUsdt),
+          balanceBefore,
+          balanceAfter,
+          description: reason,
+          createdBy: 'admin',
+          metadata: { wallet: 'usdt', adjustment: amountUsdt, source: 'admin_balance_adjust_route' },
+        });
+      } catch (logErr) {
+        console.warn('[admin/balance/adjust] secondary audit log skipped:', logErr.message);
+      }
 
       return res.json({
         success: true,
@@ -1231,7 +1238,13 @@ router.post('/balance/adjust', requirePermission('balance_adjust'), async (req, 
     });
   } catch (err) {
     console.error('[admin/balance/adjust]', err);
-    res.status(500).json({ error: err.message || 'Internal server error' });
+    const status = err.code === 'INSUFFICIENT_USDT_BALANCE' || err.code === 'USER_NOT_FOUND'
+      ? 400
+      : 500;
+    res.status(status).json({
+      error: err.message || 'Internal server error',
+      code: err.code || undefined,
+    });
   }
 });
 
