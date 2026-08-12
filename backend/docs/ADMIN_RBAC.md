@@ -16,6 +16,28 @@ Stored in `app_settings`. User withdrawals always load the latest values via `ge
 ## First Super Admin
 When no admins exist, open `/admin.html` and use **Create Super Admin** with `ADMIN_API_KEY` (or default `eisy-admin-dev-key` in local/dev).
 
+### Set / sync `ADMIN_API_KEY` (local + Vercel)
+
+```bash
+# Ensure a strong key exists in .env (generates one if missing)
+./scripts/set-admin-api-key.sh
+
+# Print the key (for pasting into Create Super Admin)
+./scripts/set-admin-api-key.sh --show
+
+# Push the same key to Vercel Production (requires: npx vercel login && npx vercel link)
+./scripts/set-admin-api-key.sh --vercel
+
+# Then redeploy so the new env is live
+npx vercel --prod
+```
+
+One-liner (after `vercel login` + `vercel link`):
+
+```bash
+grep '^ADMIN_API_KEY=' .env | cut -d= -f2- | npx vercel env add ADMIN_API_KEY production
+```
+
 Or:
 ```bash
 curl -X POST /api/admin/auth/bootstrap \
