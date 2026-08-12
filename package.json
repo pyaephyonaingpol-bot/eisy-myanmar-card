@@ -6,6 +6,7 @@
   "main": "api/index.js",
   "scripts": {
     "create-wallet": "node create-wallet.js",
+    "check-master-wallet": "node backend/scripts/check-master-wallet.js",
     "start": "npm start --prefix backend",
     "dev": "npm run dev --prefix backend",
     "migrate": "npm run migrate --prefix backend",
