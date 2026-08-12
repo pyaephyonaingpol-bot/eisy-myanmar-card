@@ -6,8 +6,10 @@ const {
   requireAdmin,
   requireAdminAuth,
   requirePermission,
+  requireRoles,
   configuredAdminApiKey,
   isDefaultAdminApiKey,
+  ROLES,
 } = require('../middleware/auth');
 const {
   loginAdmin,
@@ -1668,5 +1670,47 @@ router.post('/withdrawals/mmk/:id/reject', requirePermission('withdrawals'), asy
     res.status(400).json({ error: err.message || 'Failed to reject withdrawal' });
   }
 });
+
+/**
+ * Super Admin only — wipe all internal test balances (USDT/MMK/escrow/platform revenue).
+ * Body: { confirm: "RESET_TEST_BALANCES", include_mmk?: true, include_cards?: true }
+ * Master wallet on-chain funds are untouched; response includes a live balance snapshot.
+ */
+router.post(
+  '/maintenance/reset-test-balances',
+  requireRoles(ROLES.SUPER_ADMIN),
+  async (req, res) => {
+    try {
+      const confirm = String(req.body?.confirm || '').trim();
+      if (confirm !== 'RESET_TEST_BALANCES') {
+        return res.status(400).json({
+          error: 'Confirmation required',
+          hint: 'Send JSON body { "confirm": "RESET_TEST_BALANCES" }',
+          code: 'CONFIRMATION_REQUIRED',
+        });
+      }
+
+      const { resetAllTestBalances } = require('../services/resetTestBalancesService');
+      const result = await resetAllTestBalances({
+        includeMmk: req.body?.include_mmk !== false,
+        includeCards: req.body?.include_cards !== false,
+        cancelPendingWithdrawals: req.body?.cancel_pending_withdrawals !== false,
+        syncSupabase: req.body?.sync_supabase !== false,
+        createdBy: req.user?.email || req.user?.name || 'super_admin',
+        actorUserId: req.user?.id,
+        reason: req.body?.reason
+          || 'Admin test balance reset — synced with new master wallet',
+      });
+
+      return res.json(result);
+    } catch (err) {
+      console.error('[admin/maintenance/reset-test-balances]', err);
+      return res.status(500).json({
+        error: err.message || 'Failed to reset test balances',
+        code: err.code || undefined,
+      });
+    }
+  }
+);
 
 module.exports = router;
