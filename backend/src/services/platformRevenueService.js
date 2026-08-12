@@ -1,52 +1,64 @@
 const { getDb } = require('../db');
 const PlatformFeeEvent = require('../models/PlatformFeeEvent');
 const TransactionLog = require('../models/TransactionLog');
-const { PLATFORM_FEE_TYPES, USDT_FEE_TYPES } = require('../constants/platformFeeTypes');
+const {
+  PLATFORM_FEE_TYPES,
+  USDT_FEE_TYPES,
+  MMK_FEE_TYPES,
+} = require('../constants/platformFeeTypes');
 const { getSetting, setSetting } = require('./settingsService');
-const { formatUsdt } = require('./walletService');
+const { formatUsdt, formatMmk } = require('./walletService');
 
 const SUB_BALANCE_KEYS = {
   [PLATFORM_FEE_TYPES.P2P]: 'platform_revenue_p2p_usdt',
   [PLATFORM_FEE_TYPES.WITHDRAWAL]: 'platform_revenue_withdrawal_usdt',
   [PLATFORM_FEE_TYPES.DEPOSIT]: 'platform_revenue_deposit_usdt',
-  [PLATFORM_FEE_TYPES.CARD_RELOAD]: 'platform_revenue_card_reload_usd',
-  [PLATFORM_FEE_TYPES.CARD_ISSUE]: 'platform_revenue_card_issue_usd',
-};
-
-const SUB_BALANCE_CURRENCY = {
-  [PLATFORM_FEE_TYPES.P2P]: 'USDT',
-  [PLATFORM_FEE_TYPES.WITHDRAWAL]: 'USDT',
-  [PLATFORM_FEE_TYPES.DEPOSIT]: 'USDT',
-  [PLATFORM_FEE_TYPES.CARD_RELOAD]: 'USD',
-  [PLATFORM_FEE_TYPES.CARD_ISSUE]: 'USD',
+  [PLATFORM_FEE_TYPES.CARD_RELOAD]: 'platform_revenue_card_reload_usdt',
+  [PLATFORM_FEE_TYPES.CARD_ISSUE]: 'platform_revenue_card_issue_usdt',
 };
 
 const MMK_SUB_BALANCE_KEYS = {
   [PLATFORM_FEE_TYPES.WITHDRAWAL]: 'platform_revenue_withdrawal_mmk',
   [PLATFORM_FEE_TYPES.DEPOSIT]: 'platform_revenue_deposit_mmk',
+  [PLATFORM_FEE_TYPES.CARD_RELOAD]: 'platform_revenue_card_reload_mmk',
+  [PLATFORM_FEE_TYPES.CARD_ISSUE]: 'platform_revenue_card_issue_mmk',
 };
+
+function roundUsdt(n) {
+  return Math.round((parseFloat(n) || 0) * 100) / 100;
+}
+
+function roundMmk(n) {
+  return Math.round(Number(n) || 0);
+}
 
 async function getPlatformUsdtRevenueBalance() {
   const raw = await getSetting('platform_usdt_revenue_balance');
-  return Math.round((parseFloat(raw) || 0) * 100) / 100;
+  return roundUsdt(raw);
+}
+
+async function getPlatformMmkRevenueBalance() {
+  const raw = await getSetting('platform_mmk_revenue_balance');
+  return roundMmk(raw);
 }
 
 async function getSubBalance(feeType, currency) {
   const db = getDb();
-  const cur = currency || SUB_BALANCE_CURRENCY[feeType] || null;
+  const cur = currency ? String(currency).toUpperCase() : null;
   if (cur) {
     const row = await db.get(
       `SELECT COALESCE(SUM(amount), 0) AS total FROM platform_fee_events WHERE fee_type = ? AND UPPER(currency) = ?`,
       feeType,
-      String(cur).toUpperCase()
+      cur
     );
-    return Math.round((parseFloat(row?.total) || 0) * 100) / 100;
+    if (cur === 'MMK') return roundMmk(row?.total);
+    return roundUsdt(row?.total);
   }
   const row = await db.get(
     `SELECT COALESCE(SUM(amount), 0) AS total FROM platform_fee_events WHERE fee_type = ?`,
     feeType
   );
-  return Math.round((parseFloat(row?.total) || 0) * 100) / 100;
+  return roundUsdt(row?.total);
 }
 
 async function incrementSubBalance(feeType, amount, currency) {
@@ -55,19 +67,25 @@ async function incrementSubBalance(feeType, amount, currency) {
     const key = MMK_SUB_BALANCE_KEYS[feeType];
     if (!key) return;
     const current = await getSubBalance(feeType, 'MMK');
-    const next = Math.round(current + amount);
-    await setSetting(key, next);
+    await setSetting(key, roundMmk(current + amount));
     return;
   }
-
-  const expected = SUB_BALANCE_CURRENCY[feeType];
-  if (expected && cur && cur !== expected) return;
-
-  const key = SUB_BALANCE_KEYS[feeType];
-  if (!key) return;
-  const current = await getSubBalance(feeType, expected || cur || undefined);
-  const next = Math.round((current + amount) * 100) / 100;
-  await setSetting(key, next);
+  if (cur === 'USDT') {
+    const key = SUB_BALANCE_KEYS[feeType];
+    if (!key) return;
+    const current = await getSubBalance(feeType, 'USDT');
+    await setSetting(key, roundUsdt(current + amount));
+  }
+  // Legacy USD events: keep optional USD keys for old analytics only
+  if (cur === 'USD') {
+    const legacyKey = {
+      [PLATFORM_FEE_TYPES.CARD_RELOAD]: 'platform_revenue_card_reload_usd',
+      [PLATFORM_FEE_TYPES.CARD_ISSUE]: 'platform_revenue_card_issue_usd',
+    }[feeType];
+    if (!legacyKey) return;
+    const current = await getSubBalance(feeType, 'USD');
+    await setSetting(legacyKey, roundUsdt(current + amount));
+  }
 }
 
 async function recordPlatformFeeEvent({
@@ -82,7 +100,8 @@ async function recordPlatformFeeEvent({
   collectedAt,
   createdBy = 'system',
 } = {}) {
-  const parsed = parseFloat(amount);
+  const cur = String(currency || '').toUpperCase();
+  const parsed = cur === 'MMK' ? roundMmk(amount) : roundUsdt(amount);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     throw new Error('Platform fee amount must be a positive number');
   }
@@ -100,7 +119,7 @@ async function recordPlatformFeeEvent({
   const row = await PlatformFeeEvent.create({
     feeType,
     amount: parsed,
-    currency,
+    currency: cur,
     referenceType,
     referenceId,
     relatedUserId,
@@ -110,7 +129,7 @@ async function recordPlatformFeeEvent({
     createdBy,
   });
 
-  await incrementSubBalance(feeType, parsed, currency);
+  await incrementSubBalance(feeType, parsed, cur);
   return PlatformFeeEvent.mapForClient(row);
 }
 
@@ -123,7 +142,7 @@ async function creditPlatformUsdtRevenue(amountUsdt, {
   metadata,
   createdBy = 'system',
 } = {}) {
-  const amount = parseFloat(amountUsdt);
+  const amount = roundUsdt(amountUsdt);
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('Platform revenue credit must be a positive number');
   }
@@ -135,7 +154,7 @@ async function creditPlatformUsdtRevenue(amountUsdt, {
     const existing = await PlatformFeeEvent.findByReference(referenceType, referenceId);
     if (existing) {
       const current = await getPlatformUsdtRevenueBalance();
-      return { balance_before: current, balance_after: current, duplicate: true };
+      return { balance_before: current, balance_after: current, duplicate: true, currency: 'USDT' };
     }
   }
 
@@ -143,7 +162,7 @@ async function creditPlatformUsdtRevenue(amountUsdt, {
   await db.run('BEGIN');
   try {
     const current = await getPlatformUsdtRevenueBalance();
-    const balanceAfter = Math.round((current + amount) * 100) / 100;
+    const balanceAfter = roundUsdt(current + amount);
     await setSetting('platform_usdt_revenue_balance', balanceAfter);
 
     await recordPlatformFeeEvent({
@@ -157,6 +176,7 @@ async function creditPlatformUsdtRevenue(amountUsdt, {
       metadata: {
         wallet: 'platform_revenue',
         account: 'platform_usdt_revenue',
+        profit_currency: 'USDT',
         ...(metadata || {}),
       },
       createdBy,
@@ -179,19 +199,157 @@ async function creditPlatformUsdtRevenue(amountUsdt, {
           account: 'platform_usdt_revenue',
           fee_type: feeType,
           fee_category: feeType,
+          profit_currency: 'USDT',
           ...(metadata || {}),
         },
       });
     }
 
     await db.run('COMMIT');
-    return { balance_before: current, balance_after: balanceAfter };
+    return { balance_before: current, balance_after: balanceAfter, currency: 'USDT' };
   } catch (err) {
     await db.run('ROLLBACK');
     throw err;
   }
 }
 
+async function creditPlatformMmkRevenue(amountMmk, {
+  feeType = PLATFORM_FEE_TYPES.DEPOSIT,
+  description,
+  referenceType,
+  referenceId,
+  relatedUserId,
+  metadata,
+  createdBy = 'system',
+} = {}) {
+  const amount = roundMmk(amountMmk);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('Platform MMK revenue credit must be a positive number');
+  }
+  if (!MMK_FEE_TYPES.has(feeType)) {
+    throw new Error(`Invalid MMK platform fee type: ${feeType}`);
+  }
+
+  if (referenceType && referenceId != null) {
+    const existing = await PlatformFeeEvent.findByReference(referenceType, referenceId);
+    if (existing) {
+      const current = await getPlatformMmkRevenueBalance();
+      return { balance_before: current, balance_after: current, duplicate: true, currency: 'MMK' };
+    }
+  }
+
+  const db = getDb();
+  await db.run('BEGIN');
+  try {
+    const current = await getPlatformMmkRevenueBalance();
+    const balanceAfter = roundMmk(current + amount);
+    await setSetting('platform_mmk_revenue_balance', balanceAfter);
+
+    await recordPlatformFeeEvent({
+      feeType,
+      amount,
+      currency: 'MMK',
+      referenceType,
+      referenceId,
+      relatedUserId,
+      description: description || `Platform MMK revenue +${formatMmk(amount)}`,
+      metadata: {
+        wallet: 'platform_revenue',
+        account: 'platform_mmk_revenue',
+        profit_currency: 'MMK',
+        ...(metadata || {}),
+      },
+      createdBy,
+    });
+
+    if (relatedUserId) {
+      await TransactionLog.create({
+        userId: relatedUserId,
+        type: 'other',
+        direction: 'credit',
+        amountMmk: amount,
+        balanceBefore: current,
+        balanceAfter,
+        referenceType,
+        referenceId,
+        description: description || `Platform MMK revenue +${formatMmk(amount)}`,
+        createdBy,
+        metadata: {
+          wallet: 'platform_revenue',
+          account: 'platform_mmk_revenue',
+          fee_type: feeType,
+          fee_category: feeType,
+          profit_currency: 'MMK',
+          ...(metadata || {}),
+        },
+      });
+    }
+
+    await db.run('COMMIT');
+    return { balance_before: current, balance_after: balanceAfter, currency: 'MMK' };
+  } catch (err) {
+    await db.run('ROLLBACK');
+    throw err;
+  }
+}
+
+/**
+ * Record card (reload/issue) profit into the correct currency ledger.
+ * Never mixes: MMK wallet → MMK ledger; USDT wallet → USDT ledger.
+ */
+async function recordCardProfitByWallet({
+  walletType,
+  amountUsd,
+  mmkRate,
+  feeType,
+  description,
+  referenceType,
+  referenceId,
+  relatedUserId,
+  metadata,
+  createdBy = 'system',
+} = {}) {
+  const profitUsd = roundUsdt(amountUsd);
+  if (!Number.isFinite(profitUsd) || profitUsd <= 0) return null;
+
+  const wallet = String(walletType || 'mmk').toLowerCase();
+  const rate = Number(mmkRate) > 0 ? Number(mmkRate) : 4500;
+  const baseMeta = {
+    wallet_type: wallet === 'usdt' ? 'usdt' : 'mmk',
+    net_profit_usd: profitUsd,
+    mmk_to_usd_rate: rate,
+    ...(metadata || {}),
+  };
+
+  if (wallet === 'usdt') {
+    return creditPlatformUsdtRevenue(profitUsd, {
+      feeType,
+      description: description || `Card profit ${formatUsdt(profitUsd)} (USDT wallet)`,
+      referenceType,
+      referenceId,
+      relatedUserId,
+      createdBy,
+      metadata: baseMeta,
+    });
+  }
+
+  const amountMmk = roundMmk(profitUsd * rate);
+  return creditPlatformMmkRevenue(amountMmk, {
+    feeType,
+    description: description
+      || `Card profit ${formatMmk(amountMmk)} (MMK wallet, $${profitUsd.toFixed(2)} @ ${rate})`,
+    referenceType,
+    referenceId,
+    relatedUserId,
+    createdBy,
+    metadata: {
+      ...baseMeta,
+      net_profit_mmk: amountMmk,
+    },
+  });
+}
+
+/** @deprecated Prefer recordCardProfitByWallet / creditPlatform{Usdt,Mmk}Revenue */
 async function recordPlatformUsdFee(amountUsd, {
   feeType,
   description,
@@ -201,59 +359,45 @@ async function recordPlatformUsdFee(amountUsd, {
   metadata,
   createdBy = 'system',
 } = {}) {
-  const amount = parseFloat(amountUsd);
+  const amount = roundUsdt(amountUsd);
   if (!Number.isFinite(amount) || amount <= 0) {
     return null;
   }
 
-  const db = getDb();
-  await db.run('BEGIN');
-  try {
-    const event = await recordPlatformFeeEvent({
-      feeType,
-      amount,
-      currency: 'USD',
-      referenceType,
-      referenceId,
-      relatedUserId,
-      description,
-      metadata,
-      createdBy,
-    });
-
-    if (relatedUserId) {
-      await TransactionLog.create({
-        userId: relatedUserId,
-        type: 'other',
-        direction: 'neutral',
-        amountUsd: amount,
-        referenceType,
-        referenceId,
-        description: description || `Platform fee (${feeType}) $${amount.toFixed(2)}`,
-        createdBy,
-        metadata: {
-          wallet: 'platform_revenue',
-          fee_type: feeType,
-          fee_category: feeType,
-          currency: 'USD',
-          ...(metadata || {}),
-        },
-      });
+  const wallet = String(metadata?.wallet_type || metadata?.wallet || 'mmk').toLowerCase();
+  let mmkRate = Number(metadata?.mmk_to_usd_rate);
+  if (!(mmkRate > 0)) {
+    try {
+      const { getCardPricingSettings } = require('./settingsService');
+      const settings = await getCardPricingSettings();
+      mmkRate = settings.mmk_to_usd_rate || 4500;
+    } catch (_) {
+      mmkRate = 4500;
     }
-
-    await db.run('COMMIT');
-    return event;
-  } catch (err) {
-    await db.run('ROLLBACK');
-    throw err;
   }
+
+  return recordCardProfitByWallet({
+    walletType: wallet === 'usdt' ? 'usdt' : 'mmk',
+    amountUsd: amount,
+    mmkRate,
+    feeType,
+    description,
+    referenceType,
+    referenceId,
+    relatedUserId,
+    metadata,
+    createdBy,
+  });
 }
 
 module.exports = {
   PLATFORM_FEE_TYPES,
   getPlatformUsdtRevenueBalance,
+  getPlatformMmkRevenueBalance,
   getSubBalance,
   recordPlatformFeeEvent,
   creditPlatformUsdtRevenue,
+  creditPlatformMmkRevenue,
+  recordCardProfitByWallet,
   recordPlatformUsdFee,
 };

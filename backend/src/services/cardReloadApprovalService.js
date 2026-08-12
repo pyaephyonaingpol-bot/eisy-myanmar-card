@@ -7,7 +7,7 @@ const User = require('../models/User');
 const { applyCardTransaction } = require('./cardBalanceService');
 const { creditDepositAndVerify } = require('./depositService');
 const { creditMmk, creditUsdt, formatMmk, formatUsdt } = require('./walletService');
-const { recordPlatformUsdFee, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
+const { recordCardProfitByWallet, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { resolveReloadNetProfit } = require('../constants/cardReloadFees');
 const { parseRecordMetadata } = require('./settingsService');
 
@@ -94,9 +94,16 @@ async function approvePendingReload(reloadId, {
   });
 
   if (Number.isFinite(netProfitUsd) && netProfitUsd > 0) {
-    await recordPlatformUsdFee(netProfitUsd, {
+    const { getCardPricingSettings } = require('./settingsService');
+    const settings = await getCardPricingSettings();
+    await recordCardProfitByWallet({
+      walletType: request.wallet_type,
+      amountUsd: netProfitUsd,
+      mmkRate: settings.mmk_to_usd_rate,
       feeType: PLATFORM_FEE_TYPES.CARD_RELOAD,
-      description: `Card reload net profit — RELOAD-${reloadId} ($${netProfitUsd.toFixed(2)})`,
+      description: request.wallet_type === 'usdt'
+        ? `Card reload net profit — RELOAD-${reloadId} (${formatUsdt(netProfitUsd)})`
+        : `Card reload net profit — RELOAD-${reloadId} ($${netProfitUsd.toFixed(2)} → MMK)`,
       referenceType: 'card_reload_requests',
       referenceId: reloadId,
       relatedUserId: request.user_id,

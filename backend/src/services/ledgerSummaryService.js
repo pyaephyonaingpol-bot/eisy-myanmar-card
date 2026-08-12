@@ -1,5 +1,8 @@
 const { getDb } = require('../db');
-const { getPlatformUsdtRevenueBalance } = require('./platformRevenueService');
+const {
+  getPlatformUsdtRevenueBalance,
+  getPlatformMmkRevenueBalance,
+} = require('./platformRevenueService');
 
 function roundUsdt(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
@@ -41,6 +44,7 @@ async function getSystemLedgerSummary() {
   const escrowFromHolds = roundUsdt(escrowHolds?.escrow_usdt);
   const totalUsdtLedger = roundUsdt(availableUsdt + lockedUsdt);
   const platformRevenueUsdt = await getPlatformUsdtRevenueBalance();
+  const platformRevenueMmk = await getPlatformMmkRevenueBalance();
 
   return {
     available_usdt: availableUsdt,
@@ -53,6 +57,7 @@ async function getSystemLedgerSummary() {
     total_usdt_ledger: totalUsdtLedger,
     total_mmk: roundMmk(userTotals?.total_mmk),
     platform_revenue_usdt: platformRevenueUsdt,
+    platform_revenue_mmk: platformRevenueMmk,
     pending_withdrawals: {
       net_usdt: roundUsdt(pendingWithdrawals?.pending_net_usdt),
       fee_usdt: roundUsdt(pendingWithdrawals?.pending_fee_usdt),

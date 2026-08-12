@@ -2752,6 +2752,10 @@
           const rev = Number(p.platform_usdt_revenue_balance ?? 0);
           $('settingPlatformRevenueBalance').textContent = rev.toFixed(2) + ' USDT';
         }
+        if ($('settingPlatformMmkRevenueBalance')) {
+          const revMmk = Math.round(Number(p.platform_mmk_revenue_balance ?? 0));
+          $('settingPlatformMmkRevenueBalance').textContent = revMmk.toLocaleString() + ' MMK';
+        }
         if ($('settingExchangeRate')) $('settingExchangeRate').value = p.mmk_to_usd_rate ?? 4500;
         if ($('settingEffectiveDate')) {
           $('settingEffectiveDate').value = p.rate_effective_date || this.todayDateInputValue();
@@ -2778,6 +2782,7 @@
       }
       if ($('ledgerTotalMmk')) $('ledgerTotalMmk').textContent = fmtMmk(summary.total_mmk);
       if ($('ledgerPlatformRevenue')) $('ledgerPlatformRevenue').textContent = fmtUsdt(summary.platform_revenue_usdt);
+      if ($('ledgerPlatformRevenueMmk')) $('ledgerPlatformRevenueMmk').textContent = fmtMmk(summary.platform_revenue_mmk);
       if ($('ledgerPendingWithdrawals')) {
         const pending = summary.pending_withdrawals || {};
         $('ledgerPendingWithdrawals').textContent =
@@ -3351,38 +3356,37 @@
       try {
         const data = await this.api('GET', '/api/admin/revenue/dashboard');
         const s = data.summary || {};
-        const rate = Number(s.mmk_to_usd_rate || 4500);
 
         metricsEl.innerHTML = `
           <div class="revenue-metric-card highlight highlight-mmk">
-            <div class="revenue-metric-label">MMK Wallet Net Profit (Today)</div>
-            <div class="revenue-metric-value">${Math.round(Number(s.today_mmk_wallet_net_profit_mmk || 0)).toLocaleString()} MMK</div>
-            <div class="revenue-metric-sub">$${Number(s.today_mmk_wallet_net_profit_usd || 0).toFixed(2)} · Card reload/issue + MMK deposit/withdraw fees · All-time ${Math.round(Number(s.all_time_mmk_wallet_net_profit_mmk || 0)).toLocaleString()} MMK</div>
+            <div class="revenue-metric-label">MMK Profit (Today)</div>
+            <div class="revenue-metric-value">${Math.round(Number(s.today_mmk_profit_mmk ?? s.today_mmk_wallet_net_profit_mmk || 0)).toLocaleString()} MMK</div>
+            <div class="revenue-metric-sub">Card + deposit + withdraw fees · All-time ${Math.round(Number(s.all_time_mmk_profit_mmk ?? s.all_time_mmk_wallet_net_profit_mmk || 0)).toLocaleString()} MMK · Booked ${Math.round(Number(s.platform_mmk_revenue_balance || 0)).toLocaleString()} MMK</div>
           </div>
           <div class="revenue-metric-card highlight highlight-usdt">
-            <div class="revenue-metric-label">USDT Wallet Net Profit (Today)</div>
-            <div class="revenue-metric-value">${Number(s.today_usdt_wallet_net_profit_usdt || 0).toFixed(2)} USDT</div>
-            <div class="revenue-metric-sub">P2P + USDT deposit/withdraw + USDT card fees · All-time ${Number(s.all_time_usdt_wallet_net_profit_usdt || 0).toFixed(2)} USDT · Platform ${Number(s.platform_usdt_revenue_balance || 0).toFixed(2)} USDT</div>
+            <div class="revenue-metric-label">USDT Profit (Today)</div>
+            <div class="revenue-metric-value">${Number(s.today_usdt_profit_usdt ?? s.today_usdt_wallet_net_profit_usdt || 0).toFixed(2)} USDT</div>
+            <div class="revenue-metric-sub">P2P + deposit + withdraw + card · All-time ${Number(s.all_time_usdt_profit_usdt ?? s.all_time_usdt_wallet_net_profit_usdt || 0).toFixed(2)} USDT · Booked ${Number(s.platform_usdt_revenue_balance || 0).toFixed(2)} USDT</div>
           </div>
           <div class="revenue-metric-card">
-            <div class="revenue-metric-label">P2P Trading Profit</div>
+            <div class="revenue-metric-label">P2P Trading (USDT)</div>
             <div class="revenue-metric-value">${Number(s.today_p2p_profit_usdt || s.today_p2p_fees_usdt || 0).toFixed(2)} USDT</div>
             <div class="revenue-metric-sub">Today · All-time ${Number(s.all_time_p2p_profit_usdt || s.all_time_p2p_usdt || 0).toFixed(2)} USDT</div>
           </div>
           <div class="revenue-metric-card">
-            <div class="revenue-metric-label">Card Reload Profit</div>
-            <div class="revenue-metric-value">$${Number(s.today_card_reload_profit_usd || 0).toFixed(2)}</div>
-            <div class="revenue-metric-sub">MMK wallet $${Number(s.today_card_reload_profit_usd_mmk || 0).toFixed(2)} · USDT wallet $${Number(s.today_card_reload_profit_usd_usdt || 0).toFixed(2)} · All-time $${Number(s.all_time_card_reload_profit_usd || 0).toFixed(2)}</div>
+            <div class="revenue-metric-label">Card Fees</div>
+            <div class="revenue-metric-value">${Math.round(Number(s.today_card_reload_profit_mmk || 0) + Number(s.today_card_issue_profit_mmk || 0)).toLocaleString()} / ${Number((s.today_card_reload_profit_usdt || 0) + (s.today_card_issue_profit_usdt || 0)).toFixed(2)}</div>
+            <div class="revenue-metric-sub">MMK · USDT · Reload MMK ${Math.round(Number(s.today_card_reload_profit_mmk || 0)).toLocaleString()} · Reload USDT ${Number(s.today_card_reload_profit_usdt || 0).toFixed(2)}</div>
           </div>
           <div class="revenue-metric-card">
-            <div class="revenue-metric-label">Withdrawal Fees</div>
-            <div class="revenue-metric-value">${Number(s.today_withdrawal_profit_usdt || 0).toFixed(2)} USDT</div>
-            <div class="revenue-metric-sub">USDT today · MMK ${Math.round(Number(s.today_withdrawal_profit_mmk || 0)).toLocaleString()} · All-time ${Number(s.all_time_withdrawal_profit_usdt || 0).toFixed(2)} USDT / ${Math.round(Number(s.all_time_withdrawal_profit_mmk || 0)).toLocaleString()} MMK</div>
+            <div class="revenue-metric-label">Deposit + Withdraw Fees</div>
+            <div class="revenue-metric-value">${Math.round(Number(s.today_deposit_profit_mmk || 0) + Number(s.today_withdrawal_profit_mmk || 0)).toLocaleString()} / ${Number((s.today_deposit_profit_usdt || 0) + (s.today_withdrawal_profit_usdt || 0)).toFixed(2)}</div>
+            <div class="revenue-metric-sub">MMK · USDT today · All-time MMK ${Math.round(Number(s.all_time_deposit_profit_mmk || 0) + Number(s.all_time_withdrawal_profit_mmk || 0)).toLocaleString()} · USDT ${Number((s.all_time_deposit_profit_usdt || 0) + (s.all_time_withdrawal_profit_usdt || 0)).toFixed(2)}</div>
           </div>
           <div class="revenue-metric-card">
-            <div class="revenue-metric-label">All-Time Wallet Nets</div>
-            <div class="revenue-metric-value">${Math.round(Number(s.all_time_mmk_wallet_net_profit_mmk || 0)).toLocaleString()} / ${Number(s.all_time_usdt_wallet_net_profit_usdt || 0).toFixed(2)}</div>
-            <div class="revenue-metric-sub">MMK · USDT · ${Number(data.counts?.total_fee_events || 0)} fee events · rate ${Math.round(rate).toLocaleString()}</div>
+            <div class="revenue-metric-label">All-Time Separated</div>
+            <div class="revenue-metric-value">${Math.round(Number(s.all_time_mmk_profit_mmk ?? s.all_time_mmk_wallet_net_profit_mmk || 0)).toLocaleString()} MMK</div>
+            <div class="revenue-metric-sub">${Number(s.all_time_usdt_profit_usdt ?? s.all_time_usdt_wallet_net_profit_usdt || 0).toFixed(2)} USDT · ${Number(data.counts?.total_fee_events || 0)} fee events · no mixed total</div>
           </div>
         `;
 
@@ -3390,11 +3394,10 @@
           const pt = data.period_totals || {};
           periodEl.classList.remove('hidden');
           periodEl.innerHTML = `
-            <span class="revenue-period-chip">Today USDT: <strong>${Number(pt.today_usdt_wallet || 0).toFixed(2)} USDT</strong></span>
-            <span class="revenue-period-chip">Today MMK: <strong>${Math.round(Number(pt.today_mmk_wallet_mmk || 0)).toLocaleString()} MMK</strong></span>
-            <span class="revenue-period-chip">Yesterday: <strong>$${Number(pt.yesterday || 0).toFixed(2)}</strong></span>
-            <span class="revenue-period-chip">Last 7 Days: <strong>$${Number(pt.last_7_days || 0).toFixed(2)}</strong></span>
-            <span class="revenue-period-chip">This Month: <strong>$${Number(pt.this_month || 0).toFixed(2)}</strong></span>
+            <span class="revenue-period-chip">Today: <strong>${Math.round(Number(pt.today_mmk || pt.today_mmk_wallet_mmk || 0)).toLocaleString()} MMK</strong> · <strong>${Number(pt.today_usdt || pt.today_usdt_wallet || 0).toFixed(2)} USDT</strong></span>
+            <span class="revenue-period-chip">Yesterday: <strong>${Math.round(Number(pt.yesterday_mmk || 0)).toLocaleString()} MMK</strong> · <strong>${Number(pt.yesterday_usdt || 0).toFixed(2)} USDT</strong></span>
+            <span class="revenue-period-chip">Last 7 Days: <strong>${Math.round(Number(pt.last_7_days_mmk || 0)).toLocaleString()} MMK</strong> · <strong>${Number(pt.last_7_days_usdt || 0).toFixed(2)} USDT</strong></span>
+            <span class="revenue-period-chip">This Month: <strong>${Math.round(Number(pt.this_month_mmk || 0)).toLocaleString()} MMK</strong> · <strong>${Number(pt.this_month_usdt || 0).toFixed(2)} USDT</strong></span>
           `;
         }
 
@@ -3406,21 +3409,18 @@
             dailyEl.innerHTML =
               '<table class="data-table">' +
               '<thead><tr>' +
-              '<th>Date</th><th>P2P (USDT)</th><th>Card Reload ($)</th><th>Withdraw USDT</th><th>Withdraw MMK</th><th>Card Issue ($)</th><th>USDT Wallet Net</th><th>MMK Wallet Net</th><th>Txns</th>' +
+              '<th>Date</th><th>USDT Profit</th><th>P2P</th><th>USDT Dep/WD</th><th>USDT Cards</th><th>MMK Profit</th><th>MMK Dep/WD</th><th>MMK Cards</th><th>Txns</th>' +
               '</tr></thead><tbody>' +
               daily.map((row) =>
                 '<tr>' +
                 '<td><strong>' + this.esc(row.label || row.date) + '</strong><br><small>' + this.esc(row.date) + '</small></td>' +
+                '<td><strong>' + Number(row.usdt_profit_usdt || row.usdt_wallet_net_usdt || 0).toFixed(2) + ' USDT</strong></td>' +
                 '<td>' + Number(row.p2p_fees_usdt || 0).toFixed(2) + '</td>' +
-                '<td>$' + Number(row.card_reload_fees_usd || 0).toFixed(2) +
-                  '<br><small>MMK $' + Number(row.card_reload_fees_usd_mmk || 0).toFixed(2) +
-                  ' · USDT $' + Number(row.card_reload_fees_usd_usdt || 0).toFixed(2) + '</small></td>' +
-                '<td>' + Number(row.withdrawal_fees_usdt || 0).toFixed(2) + '</td>' +
-                '<td>' + Math.round(Number(row.withdrawal_fees_mmk || 0)).toLocaleString() + '</td>' +
-                '<td>$' + Number(row.card_issue_fees_usd || 0).toFixed(2) + '</td>' +
-                '<td><strong>' + Number(row.usdt_wallet_net_usdt || 0).toFixed(2) + ' USDT</strong></td>' +
-                '<td><strong>' + Math.round(Number(row.mmk_wallet_net_mmk || 0)).toLocaleString() + ' MMK</strong>' +
-                  '<br><small>$' + Number(row.mmk_wallet_net_usd || 0).toFixed(2) + '</small></td>' +
+                '<td>' + Number((row.deposit_fees_usdt || 0) + (row.withdrawal_fees_usdt || 0)).toFixed(2) + '</td>' +
+                '<td>' + Number((row.card_reload_fees_usdt || 0) + (row.card_issue_fees_usdt || 0)).toFixed(2) + '</td>' +
+                '<td><strong>' + Math.round(Number(row.mmk_profit_mmk || row.mmk_wallet_net_mmk || 0)).toLocaleString() + ' MMK</strong></td>' +
+                '<td>' + Math.round(Number((row.deposit_fees_mmk || 0) + (row.withdrawal_fees_mmk || 0))).toLocaleString() + '</td>' +
+                '<td>' + Math.round(Number((row.card_reload_fees_mmk || 0) + (row.card_issue_fees_mmk || 0))).toLocaleString() + '</td>' +
                 '<td>' + (row.transaction_count || 0) + '</td>' +
                 '</tr>'
               ).join('') +
@@ -3436,18 +3436,17 @@
             auditEl.innerHTML =
               '<table class="data-table">' +
               '<thead><tr>' +
-              '<th>Date / Time</th><th>Wallet</th><th>Category</th><th>Source</th><th>Order Ref</th><th>Amount</th><th>MMK Equiv.</th><th>Status</th>' +
+              '<th>Date / Time</th><th>Profit Currency</th><th>Category</th><th>Source</th><th>Order Ref</th><th>Amount</th><th>Status</th>' +
               '</tr></thead><tbody>' +
               audit.map((row) =>
                 '<tr>' +
                 '<td>' + this.esc(row.collected_at || '—') + '</td>' +
-                '<td><span class="badge ' + (row.profit_wallet === 'usdt' ? 'badge-ok' : 'badge-warn') + '">' +
-                  this.esc((row.profit_wallet || '—').toUpperCase()) + '</span></td>' +
+                '<td><span class="badge ' + ((row.profit_currency || row.profit_wallet) === 'USDT' || row.profit_wallet === 'usdt' ? 'badge-ok' : 'badge-warn') + '">' +
+                  this.esc(row.profit_currency || (row.profit_wallet || '—').toUpperCase()) + '</span></td>' +
                 '<td><code>' + this.esc(row.fee_type || '—') + '</code></td>' +
                 '<td>' + this.esc(row.source) + '</td>' +
                 '<td><code>' + this.esc(row.order_ref) + '</code></td>' +
                 '<td><strong>' + this.esc(row.amount_display) + '</strong></td>' +
-                '<td>' + Math.round(Number(row.amount_mmk || 0)).toLocaleString() + ' MMK</td>' +
                 '<td><span class="badge badge-ok">' + this.esc(row.status) + '</span></td>' +
                 '</tr>'
               ).join('') +

@@ -5,7 +5,7 @@ const TransactionLog = require('../models/TransactionLog');
 const { getDb } = require('../db');
 const { parseRecordMetadata } = require('./settingsService');
 const { mapCardForAdmin } = require('./cardBalanceService');
-const { recordPlatformUsdFee, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
+const { recordCardProfitByWallet, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 
 function generateCardNumber() {
   const digits = '4532' + String(Math.floor(100000000000 + Math.random() * 900000000000));
@@ -209,9 +209,17 @@ async function approvePendingCardRequest(cardId, options = {}) {
       meta.paid_from_wallet
       && (meta.wallet_type === 'usdt' || meta.payment_method === 'usdt_wallet' || meta.wallet === 'usdt')
     );
-    await recordPlatformUsdFee(issuanceFeeUsd, {
+    const { getCardPricingSettings } = require('./settingsService');
+    const settings = await getCardPricingSettings();
+    const rate = Number(pricing.mmk_to_usd_rate) || settings.mmk_to_usd_rate || 4500;
+    await recordCardProfitByWallet({
+      walletType: paidFromUsdt ? 'usdt' : 'mmk',
+      amountUsd: issuanceFeeUsd,
+      mmkRate: rate,
       feeType: PLATFORM_FEE_TYPES.CARD_ISSUE,
-      description: `Card issuance fee — CARD-${cardId} ($${issuanceFeeUsd.toFixed(2)})`,
+      description: paidFromUsdt
+        ? `Card issuance fee — CARD-${cardId} ($${issuanceFeeUsd.toFixed(2)} USDT wallet)`
+        : `Card issuance fee — CARD-${cardId} ($${issuanceFeeUsd.toFixed(2)} → MMK)`,
       referenceType: 'cards_v2',
       referenceId: cardId,
       relatedUserId: card.user_id,

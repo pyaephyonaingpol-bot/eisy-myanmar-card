@@ -13,7 +13,7 @@ const { verifyUsdtTransaction } = require('./usdtBlockchainService');
 const { assertValidPaymentAmount } = require('./paymentFeeService');
 const {
   creditPlatformUsdtRevenue,
-  recordPlatformFeeEvent,
+  creditPlatformMmkRevenue,
   PLATFORM_FEE_TYPES,
 } = require('./platformRevenueService');
 
@@ -867,14 +867,12 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
 
   if (isWalletTopup && feeMmk > 0) {
     try {
-      await recordPlatformFeeEvent({
+      await creditPlatformMmkRevenue(feeMmk, {
         feeType: PLATFORM_FEE_TYPES.DEPOSIT,
-        amount: feeMmk,
-        currency: 'MMK',
+        description: `MMK deposit fee — ${deposit.ref_code} (${formatMmk(feeMmk)})`,
         referenceType: 'deposit_requests_v2',
         referenceId: deposit.id,
         relatedUserId: deposit.user_id,
-        description: `MMK deposit fee — ${deposit.ref_code} (${formatMmk(feeMmk)})`,
         createdBy,
         metadata: {
           purpose: deposit.purpose || 'topup',

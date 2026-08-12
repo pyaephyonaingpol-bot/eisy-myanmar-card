@@ -18,7 +18,7 @@ const {
 } = require('./settingsService');
 const {
   creditPlatformUsdtRevenue,
-  recordPlatformFeeEvent,
+  creditPlatformMmkRevenue,
   PLATFORM_FEE_TYPES,
 } = require('./platformRevenueService');
 const { transferUsdtTrc20 } = require('./tronMasterWalletService');
@@ -493,14 +493,12 @@ async function completeMmkWithdrawal(id, { adminNote, adminId } = {}) {
   const feeMmk = Math.round(Number(row.fee_mmk) || 0);
   if (feeMmk > 0) {
     try {
-      await recordPlatformFeeEvent({
+      await creditPlatformMmkRevenue(feeMmk, {
         feeType: PLATFORM_FEE_TYPES.WITHDRAWAL,
-        amount: feeMmk,
-        currency: 'MMK',
+        description: `MMK withdrawal fee — ${row.ref_code} (${formatMmk(feeMmk)})`,
         referenceType: 'mmk_withdrawal_requests',
         referenceId: row.id,
         relatedUserId: row.user_id,
-        description: `MMK withdrawal fee — ${row.ref_code} (${formatMmk(feeMmk)})`,
         createdBy: adminId || 'admin',
         metadata: {
           purpose: 'mmk_bank_withdrawal',

@@ -702,7 +702,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem">
           <div>
             <h2 style="margin:0">Revenue &amp; Profit Analytics</h2>
-            <p class="hint" style="margin:0.35rem 0 0">MMK wallet and USDT wallet net profit are tracked separately.</p>
+            <p class="hint" style="margin:0.35rem 0 0">MMK profit and USDT profit are fully separate ledgers — never mixed into one total.</p>
             <p class="hint" style="margin:0.35rem 0 0">Separate profit tracking for P2P trading fees, card reload markup, and withdrawal fees.</p>
           </div>
           <button type="button" id="btnRefreshRevenue" class="btn btn-secondary btn-sm">Refresh</button>
@@ -775,9 +775,14 @@
             <p class="ledger-summary-sub">Sum of all user MMK wallets</p>
           </div>
           <div class="ledger-summary-card revenue">
-            <div class="ledger-summary-label">Platform USDT Revenue</div>
+            <div class="ledger-summary-label">Platform USDT Profit</div>
             <div class="ledger-summary-value" id="ledgerPlatformRevenue">—</div>
             <p class="ledger-summary-sub" id="ledgerPendingWithdrawals">Pending withdrawals: —</p>
+          </div>
+          <div class="ledger-summary-card mmk">
+            <div class="ledger-summary-label">Platform MMK Profit</div>
+            <div class="ledger-summary-value" id="ledgerPlatformRevenueMmk">—</div>
+            <p class="ledger-summary-sub">Booked MMK fee revenue (separate from USDT)</p>
           </div>
         </div>
 
@@ -830,9 +835,14 @@
             <input id="settingP2pSellerFee" type="number" step="0.1" min="0" max="10" required />
           </div>
           <div class="field">
-            <label>Platform USDT revenue</label>
+            <label>Platform USDT profit</label>
             <div id="settingPlatformRevenueBalance" class="p2p-revenue-balance">—</div>
-            <small class="hint">Read-only</small>
+            <small class="hint">Read-only · USDT fees only</small>
+          </div>
+          <div class="field">
+            <label>Platform MMK profit</label>
+            <div id="settingPlatformMmkRevenueBalance" class="p2p-revenue-balance">—</div>
+            <small class="hint">Read-only · MMK fees only (never mixed with USDT)</small>
           </div>
           <div class="field">
             <label for="settingPaymentFeePercent">Service fee (%)</label>
@@ -1042,6 +1052,6 @@
   <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
   <script src="/i18n.js?v=20260811b"></script>
   <script src="/nav.js?v=20260811b"></script>
-  <script src="/admin.js?v=20260812f" defer></script>
+  <script src="/admin.js?v=20260812h" defer></script>
 </body>
 </html>

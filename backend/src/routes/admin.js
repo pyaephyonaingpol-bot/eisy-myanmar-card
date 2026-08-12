@@ -369,6 +369,7 @@ router.get('/settings', requirePermission('settings_read'), async (_req, res) =>
         rate_effective_date: pricing.rate_effective_date,
         p2p_seller_fee_percent: pricing.p2p_seller_fee_percent,
         platform_usdt_revenue_balance: pricing.platform_usdt_revenue_balance,
+        platform_mmk_revenue_balance: pricing.platform_mmk_revenue_balance,
         usdt_withdraw_fee_trc20: pricing.usdt_withdraw_fee_trc20,
         usdt_withdraw_fee_bep20: pricing.usdt_withdraw_fee_bep20,
         usdt_withdraw_fee_trc20_type: pricing.usdt_withdraw_fee_trc20_type,
