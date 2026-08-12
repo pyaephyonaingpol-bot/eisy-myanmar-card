@@ -370,6 +370,9 @@ router.get('/settings', requirePermission('settings_read'), async (_req, res) =>
         p2p_seller_fee_percent: pricing.p2p_seller_fee_percent,
         platform_usdt_revenue_balance: pricing.platform_usdt_revenue_balance,
         platform_mmk_revenue_balance: pricing.platform_mmk_revenue_balance,
+        platform_mmk_cash_float: pricing.platform_mmk_cash_float === '' || pricing.platform_mmk_cash_float == null
+          ? ''
+          : pricing.platform_mmk_cash_float,
         usdt_withdraw_fee_trc20: pricing.usdt_withdraw_fee_trc20,
         usdt_withdraw_fee_bep20: pricing.usdt_withdraw_fee_bep20,
         usdt_withdraw_fee_trc20_type: pricing.usdt_withdraw_fee_trc20_type,
@@ -1472,6 +1475,19 @@ router.get('/revenue/dashboard', requirePermission('revenue'), async (_req, res)
   } catch (err) {
     console.error('[admin/revenue/dashboard]', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/** Withdrawable net profit = pool − user liabilities (MMK and USDT separately). */
+router.get('/withdrawable-profit', requirePermission('ledger'), async (req, res) => {
+  try {
+    const { getWithdrawableNetProfit } = require('../services/withdrawableProfitService');
+    const skipChain = ['1', 'true', 'yes'].includes(String(req.query.skip_chain || '').toLowerCase());
+    const report = await getWithdrawableNetProfit({ skipChain });
+    res.json({ success: true, ...report });
+  } catch (err) {
+    console.error('[admin/withdrawable-profit GET]', err);
+    res.status(500).json({ error: err.message || 'Failed to compute withdrawable net profit' });
   }
 });
 

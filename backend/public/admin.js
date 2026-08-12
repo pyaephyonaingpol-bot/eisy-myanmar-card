@@ -796,6 +796,9 @@
               minimum_usdt_deposit: parseFloat($('settingMinUsdtDeposit')?.value || '5'),
               minimum_usdt_reload: parseFloat($('settingMinUsdtReload')?.value || '5'),
               p2p_seller_fee_percent: parseFloat($('settingP2pSellerFee')?.value || '1'),
+              platform_mmk_cash_float: ($('settingMmkCashFloat')?.value || '').trim() === ''
+                ? 0
+                : parseFloat($('settingMmkCashFloat').value || '0'),
               minimum_usdt_withdrawal: parseFloat($('settingMinUsdtWithdrawal')?.value || '10'),
               minimum_mmk_withdrawal: parseFloat($('settingMinMmkWithdrawal')?.value || '10000'),
               payment_service_fee_percent: parseFloat($('settingPaymentFeePercent')?.value || '2'),
@@ -2756,6 +2759,11 @@
           const revMmk = Math.round(Number(p.platform_mmk_revenue_balance ?? 0));
           $('settingPlatformMmkRevenueBalance').textContent = revMmk.toLocaleString() + ' MMK';
         }
+        if ($('settingMmkCashFloat')) {
+          const floatVal = p.platform_mmk_cash_float;
+          $('settingMmkCashFloat').value =
+            floatVal === '' || floatVal == null || Number(floatVal) === 0 ? '' : String(Math.round(Number(floatVal)));
+        }
         if ($('settingExchangeRate')) $('settingExchangeRate').value = p.mmk_to_usd_rate ?? 4500;
         if ($('settingEffectiveDate')) {
           $('settingEffectiveDate').value = p.rate_effective_date || this.todayDateInputValue();
@@ -2783,6 +2791,28 @@
       if ($('ledgerTotalMmk')) $('ledgerTotalMmk').textContent = fmtMmk(summary.total_mmk);
       if ($('ledgerPlatformRevenue')) $('ledgerPlatformRevenue').textContent = fmtUsdt(summary.platform_revenue_usdt);
       if ($('ledgerPlatformRevenueMmk')) $('ledgerPlatformRevenueMmk').textContent = fmtMmk(summary.platform_revenue_mmk);
+      if ($('ledgerWithdrawableUsdt')) {
+        const v = summary.withdrawable_net_profit_usdt;
+        $('ledgerWithdrawableUsdt').textContent = v == null ? '—' : fmtUsdt(v);
+      }
+      if ($('ledgerWithdrawableUsdtSub')) {
+        const pool = summary.usdt_total_pool_usdt;
+        const liab = summary.usdt_user_liabilities_usdt;
+        $('ledgerWithdrawableUsdtSub').textContent =
+          'Pool ' + (pool == null ? '—' : fmtUsdt(pool))
+          + ' − liabilities ' + (liab == null ? '—' : fmtUsdt(liab));
+      }
+      if ($('ledgerWithdrawableMmk')) {
+        const v = summary.withdrawable_net_profit_mmk;
+        $('ledgerWithdrawableMmk').textContent = v == null ? '—' : fmtMmk(v);
+      }
+      if ($('ledgerWithdrawableMmkSub')) {
+        const pool = summary.mmk_total_pool_mmk;
+        const liab = summary.mmk_user_liabilities_mmk;
+        $('ledgerWithdrawableMmkSub').textContent =
+          'Pool ' + (pool == null ? '—' : fmtMmk(pool))
+          + ' − liabilities ' + (liab == null ? '—' : fmtMmk(liab));
+      }
       if ($('ledgerPendingWithdrawals')) {
         const pending = summary.pending_withdrawals || {};
         $('ledgerPendingWithdrawals').textContent =
@@ -3359,12 +3389,47 @@
 
         metricsEl.innerHTML = `
           <div class="revenue-metric-card highlight highlight-mmk">
-            <div class="revenue-metric-label">MMK Profit (Today)</div>
+            <div class="revenue-metric-label">Withdrawable MMK Net Profit</div>
+            <div class="revenue-metric-value">${(() => {
+              const w = data.withdrawable_net_profit?.mmk || {};
+              const v = s.withdrawable_net_profit_mmk ?? w.withdrawable_net_profit_mmk;
+              return v == null ? '—' : Math.round(Number(v)).toLocaleString() + ' MMK';
+            })()}</div>
+            <div class="revenue-metric-sub">${(() => {
+              const w = data.withdrawable_net_profit?.mmk || {};
+              const pool = s.mmk_total_pool_mmk ?? w.total_pool_mmk;
+              const liab = s.mmk_user_liabilities_mmk ?? w.user_liabilities_mmk;
+              return 'Pool ' + (pool == null ? '—' : Math.round(Number(pool)).toLocaleString())
+                + ' − user liabilities ' + (liab == null ? '—' : Math.round(Number(liab)).toLocaleString())
+                + ' MMK · booked fees ' + Math.round(Number(s.platform_mmk_revenue_balance || w.booked_fee_profit_mmk || 0)).toLocaleString();
+            })()}</div>
+          </div>
+          <div class="revenue-metric-card highlight highlight-usdt">
+            <div class="revenue-metric-label">Withdrawable USDT Net Profit</div>
+            <div class="revenue-metric-value">${(() => {
+              const w = data.withdrawable_net_profit?.usdt || {};
+              const v = s.withdrawable_net_profit_usdt ?? w.withdrawable_net_profit_usdt;
+              return v == null ? '—' : Number(v).toFixed(2) + ' USDT';
+            })()}</div>
+            <div class="revenue-metric-sub">${(() => {
+              const w = data.withdrawable_net_profit?.usdt || {};
+              const pool = s.usdt_total_pool_usdt ?? w.total_pool_usdt;
+              const liab = s.usdt_user_liabilities_usdt ?? w.user_liabilities_usdt;
+              const err = w.master_query_error;
+              if (err) return 'Master wallet query failed: ' + err;
+              return 'Master pool ' + (pool == null ? '—' : Number(pool).toFixed(2))
+                + ' − user liabilities ' + (liab == null ? '—' : Number(liab).toFixed(2))
+                + ' − pending crypto ' + Number(w.reserved_pending_crypto_net_usdt || 0).toFixed(2)
+                + ' USDT';
+            })()}</div>
+          </div>
+          <div class="revenue-metric-card highlight-mmk">
+            <div class="revenue-metric-label">MMK Fee Profit (Today)</div>
             <div class="revenue-metric-value">${Math.round(Number(s.today_mmk_profit_mmk ?? s.today_mmk_wallet_net_profit_mmk || 0)).toLocaleString()} MMK</div>
             <div class="revenue-metric-sub">Card + deposit + withdraw fees · All-time ${Math.round(Number(s.all_time_mmk_profit_mmk ?? s.all_time_mmk_wallet_net_profit_mmk || 0)).toLocaleString()} MMK · Booked ${Math.round(Number(s.platform_mmk_revenue_balance || 0)).toLocaleString()} MMK</div>
           </div>
-          <div class="revenue-metric-card highlight highlight-usdt">
-            <div class="revenue-metric-label">USDT Profit (Today)</div>
+          <div class="revenue-metric-card highlight-usdt">
+            <div class="revenue-metric-label">USDT Fee Profit (Today)</div>
             <div class="revenue-metric-value">${Number(s.today_usdt_profit_usdt ?? s.today_usdt_wallet_net_profit_usdt || 0).toFixed(2)} USDT</div>
             <div class="revenue-metric-sub">P2P + deposit + withdraw + card · All-time ${Number(s.all_time_usdt_profit_usdt ?? s.all_time_usdt_wallet_net_profit_usdt || 0).toFixed(2)} USDT · Booked ${Number(s.platform_usdt_revenue_balance || 0).toFixed(2)} USDT</div>
           </div>
@@ -3377,16 +3442,6 @@
             <div class="revenue-metric-label">Card Fees</div>
             <div class="revenue-metric-value">${Math.round(Number(s.today_card_reload_profit_mmk || 0) + Number(s.today_card_issue_profit_mmk || 0)).toLocaleString()} / ${Number((s.today_card_reload_profit_usdt || 0) + (s.today_card_issue_profit_usdt || 0)).toFixed(2)}</div>
             <div class="revenue-metric-sub">MMK · USDT · Reload MMK ${Math.round(Number(s.today_card_reload_profit_mmk || 0)).toLocaleString()} · Reload USDT ${Number(s.today_card_reload_profit_usdt || 0).toFixed(2)}</div>
-          </div>
-          <div class="revenue-metric-card">
-            <div class="revenue-metric-label">Deposit + Withdraw Fees</div>
-            <div class="revenue-metric-value">${Math.round(Number(s.today_deposit_profit_mmk || 0) + Number(s.today_withdrawal_profit_mmk || 0)).toLocaleString()} / ${Number((s.today_deposit_profit_usdt || 0) + (s.today_withdrawal_profit_usdt || 0)).toFixed(2)}</div>
-            <div class="revenue-metric-sub">MMK · USDT today · All-time MMK ${Math.round(Number(s.all_time_deposit_profit_mmk || 0) + Number(s.all_time_withdrawal_profit_mmk || 0)).toLocaleString()} · USDT ${Number((s.all_time_deposit_profit_usdt || 0) + (s.all_time_withdrawal_profit_usdt || 0)).toFixed(2)}</div>
-          </div>
-          <div class="revenue-metric-card">
-            <div class="revenue-metric-label">All-Time Separated</div>
-            <div class="revenue-metric-value">${Math.round(Number(s.all_time_mmk_profit_mmk ?? s.all_time_mmk_wallet_net_profit_mmk || 0)).toLocaleString()} MMK</div>
-            <div class="revenue-metric-sub">${Number(s.all_time_usdt_profit_usdt ?? s.all_time_usdt_wallet_net_profit_usdt || 0).toFixed(2)} USDT · ${Number(data.counts?.total_fee_events || 0)} fee events · no mixed total</div>
           </div>
         `;
 

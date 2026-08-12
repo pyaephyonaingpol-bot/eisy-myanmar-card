@@ -46,6 +46,15 @@ async function getSystemLedgerSummary() {
   const platformRevenueUsdt = await getPlatformUsdtRevenueBalance();
   const platformRevenueMmk = await getPlatformMmkRevenueBalance();
 
+  let withdrawable = null;
+  try {
+    const { getWithdrawableNetProfit } = require('./withdrawableProfitService');
+    // Settings page should load fast; skip chain if needed callers can use revenue dashboard.
+    withdrawable = await getWithdrawableNetProfit({ skipChain: false });
+  } catch (err) {
+    console.warn('[ledger-summary] withdrawable profit:', err.message);
+  }
+
   return {
     available_usdt: availableUsdt,
     locked_usdt: lockedUsdt,
@@ -64,6 +73,13 @@ async function getSystemLedgerSummary() {
       count: Number(pendingWithdrawals?.pending_count) || 0,
     },
     user_count: Number(userTotals?.user_count) || 0,
+    withdrawable_net_profit_usdt: withdrawable?.usdt?.withdrawable_net_profit_usdt ?? null,
+    withdrawable_net_profit_mmk: withdrawable?.mmk?.withdrawable_net_profit_mmk ?? null,
+    usdt_total_pool_usdt: withdrawable?.usdt?.total_pool_usdt ?? null,
+    usdt_user_liabilities_usdt: withdrawable?.usdt?.user_liabilities_usdt ?? null,
+    mmk_total_pool_mmk: withdrawable?.mmk?.total_pool_mmk ?? null,
+    mmk_user_liabilities_mmk: withdrawable?.mmk?.user_liabilities_mmk ?? null,
+    withdrawable: withdrawable || null,
   };
 }
 

@@ -702,7 +702,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem">
           <div>
             <h2 style="margin:0">Revenue &amp; Profit Analytics</h2>
-            <p class="hint" style="margin:0.35rem 0 0">MMK profit and USDT profit are fully separate ledgers — never mixed into one total.</p>
+            <p class="hint" style="margin:0.35rem 0 0">Withdrawable net profit = total pool − user liabilities, shown separately for MMK and USDT.</p>
             <p class="hint" style="margin:0.35rem 0 0">Separate profit tracking for P2P trading fees, card reload markup, and withdrawal fees.</p>
           </div>
           <button type="button" id="btnRefreshRevenue" class="btn btn-secondary btn-sm">Refresh</button>
@@ -775,12 +775,22 @@
             <p class="ledger-summary-sub">Sum of all user MMK wallets</p>
           </div>
           <div class="ledger-summary-card revenue">
-            <div class="ledger-summary-label">Platform USDT Profit</div>
+            <div class="ledger-summary-label">Withdrawable USDT Net Profit</div>
+            <div class="ledger-summary-value" id="ledgerWithdrawableUsdt">—</div>
+            <p class="ledger-summary-sub" id="ledgerWithdrawableUsdtSub">Master pool − user liabilities</p>
+          </div>
+          <div class="ledger-summary-card mmk">
+            <div class="ledger-summary-label">Withdrawable MMK Net Profit</div>
+            <div class="ledger-summary-value" id="ledgerWithdrawableMmk">—</div>
+            <p class="ledger-summary-sub" id="ledgerWithdrawableMmkSub">Pool − user liabilities</p>
+          </div>
+          <div class="ledger-summary-card revenue">
+            <div class="ledger-summary-label">Platform USDT Fee Profit</div>
             <div class="ledger-summary-value" id="ledgerPlatformRevenue">—</div>
             <p class="ledger-summary-sub" id="ledgerPendingWithdrawals">Pending withdrawals: —</p>
           </div>
           <div class="ledger-summary-card mmk">
-            <div class="ledger-summary-label">Platform MMK Profit</div>
+            <div class="ledger-summary-label">Platform MMK Fee Profit</div>
             <div class="ledger-summary-value" id="ledgerPlatformRevenueMmk">—</div>
             <p class="ledger-summary-sub">Booked MMK fee revenue (separate from USDT)</p>
           </div>
@@ -843,6 +853,11 @@
             <label>Platform MMK profit</label>
             <div id="settingPlatformMmkRevenueBalance" class="p2p-revenue-balance">—</div>
             <small class="hint">Read-only · MMK fees only (never mixed with USDT)</small>
+          </div>
+          <div class="field">
+            <label for="settingMmkCashFloat">MMK cash float (optional)</label>
+            <input id="settingMmkCashFloat" type="number" step="1" min="0" placeholder="Leave empty / 0 for accounting pool" />
+            <small class="hint">Total MMK held in bank/payment accounts. Withdrawable MMK = float − user MMK balances. Leave 0 to use booked fee profit only.</small>
           </div>
           <div class="field">
             <label for="settingPaymentFeePercent">Service fee (%)</label>
@@ -1052,6 +1067,6 @@
   <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
   <script src="/i18n.js?v=20260811b"></script>
   <script src="/nav.js?v=20260811b"></script>
-  <script src="/admin.js?v=20260812h" defer></script>
+  <script src="/admin.js?v=20260812i" defer></script>
 </body>
 </html>

@@ -346,6 +346,15 @@ async function getRevenueDashboard() {
   const period7 = periodCurrencyTotals(daily.periods.last_7_days);
   const periodMonth = periodCurrencyTotals(daily.periods.this_month);
 
+  let withdrawable = null;
+  try {
+    const { getWithdrawableNetProfit } = require('./withdrawableProfitService');
+    withdrawable = await getWithdrawableNetProfit({ skipChain: false });
+  } catch (err) {
+    console.warn('[revenue] withdrawable profit calc failed:', err.message);
+    withdrawable = { error: err.message };
+  }
+
   return {
     summary: {
       // Primary separated profits
@@ -353,6 +362,14 @@ async function getRevenueDashboard() {
       today_mmk_profit_mmk: todayMmk,
       all_time_usdt_profit_usdt: allTimeUsdt,
       all_time_mmk_profit_mmk: allTimeMmk,
+
+      // Withdrawable net profit = pool − user liabilities (per currency)
+      withdrawable_net_profit_usdt: withdrawable?.usdt?.withdrawable_net_profit_usdt ?? null,
+      withdrawable_net_profit_mmk: withdrawable?.mmk?.withdrawable_net_profit_mmk ?? null,
+      usdt_total_pool_usdt: withdrawable?.usdt?.total_pool_usdt ?? null,
+      usdt_user_liabilities_usdt: withdrawable?.usdt?.user_liabilities_usdt ?? null,
+      mmk_total_pool_mmk: withdrawable?.mmk?.total_pool_mmk ?? null,
+      mmk_user_liabilities_mmk: withdrawable?.mmk?.user_liabilities_mmk ?? null,
 
       // Component breakdowns — USDT
       today_p2p_profit_usdt: round2(todayTotals.p2p_usdt),
@@ -407,6 +424,7 @@ async function getRevenueDashboard() {
       today_p2p_fees_usdt: round2(todayTotals.p2p_usdt),
       all_time_p2p_usdt: round2(allTimeTotals.p2p_usdt),
     },
+    withdrawable_net_profit: withdrawable,
     daily_breakdown: daily.by_date.slice(0, 31),
     period_totals: {
       // Separated period totals (primary)

@@ -17,6 +17,7 @@ const DEFAULTS = {
   p2p_seller_fee_percent: '1.0',
   platform_usdt_revenue_balance: '0',
   platform_mmk_revenue_balance: '0',
+  platform_mmk_cash_float: '',
   mmk_to_usd_rate: String(process.env.MMK_TO_USD_RATE || '4500'),
   rate_effective_date: new Date().toISOString().slice(0, 10),
   usdt_trc20_address: process.env.USDT_TRC20_ADDRESS || 'TExampleTrc20Address1234567890',
@@ -48,6 +49,7 @@ const NUMERIC_KEYS = new Set([
   'p2p_seller_fee_percent',
   'platform_usdt_revenue_balance',
   'platform_mmk_revenue_balance',
+  'platform_mmk_cash_float',
   'usdt_withdraw_fee_trc20',
   'usdt_withdraw_fee_bep20',
   'usdt_withdraw_fee_bank',
@@ -135,6 +137,9 @@ async function getCardPricingSettings() {
     p2p_seller_fee_percent: parseFloat(raw.p2p_seller_fee_percent) || 1,
     platform_usdt_revenue_balance: parseFloat(raw.platform_usdt_revenue_balance) || 0,
     platform_mmk_revenue_balance: Math.round(parseFloat(raw.platform_mmk_revenue_balance) || 0),
+    platform_mmk_cash_float: raw.platform_mmk_cash_float === '' || raw.platform_mmk_cash_float == null
+      ? ''
+      : Math.round(parseFloat(raw.platform_mmk_cash_float) || 0),
     usdt_withdraw_fee_trc20: parseFloat(raw.usdt_withdraw_fee_trc20) || 2,
     usdt_withdraw_fee_bep20: parseFloat(raw.usdt_withdraw_fee_bep20) || 2,
     usdt_withdraw_fee_trc20_type: raw.usdt_withdraw_fee_trc20_type === 'percent' ? 'percent' : 'fixed',
