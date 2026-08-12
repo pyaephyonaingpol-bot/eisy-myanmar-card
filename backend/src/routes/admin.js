@@ -352,6 +352,27 @@ router.get('/ledger-summary', requirePermission('ledger'), async (_req, res) => 
   }
 });
 
+/** Reconcile user USDT ledger vs TRON master wallet (sync / discrepancy audit). */
+router.get('/usdt-balance-audit', requirePermission('ledger'), async (req, res) => {
+  try {
+    const { runUsdtBalanceAudit, formatAuditReport } = require('../services/usdtBalanceAuditService');
+    const skipChain = ['1', 'true', 'yes'].includes(String(req.query.skip_chain || '').toLowerCase());
+    const toleranceRaw = req.query.tolerance != null ? parseFloat(req.query.tolerance) : undefined;
+    const audit = await runUsdtBalanceAudit({
+      skipChain,
+      toleranceUsdt: Number.isFinite(toleranceRaw) ? toleranceRaw : undefined,
+    });
+    res.json({
+      success: true,
+      audit,
+      report: formatAuditReport(audit),
+    });
+  } catch (err) {
+    console.error('[admin/usdt-balance-audit GET]', err);
+    res.status(500).json({ error: err.message || 'Failed to run USDT balance audit' });
+  }
+});
+
 router.get('/settings', requirePermission('settings_read'), async (_req, res) => {
   try {
     const settings = await getAllSettings();

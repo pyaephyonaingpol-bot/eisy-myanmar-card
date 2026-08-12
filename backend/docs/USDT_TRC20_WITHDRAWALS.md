@@ -18,6 +18,16 @@ If a manual `tx_hash` is provided, the on-chain send is skipped.
 ## Admin balance check
 
 `GET /api/admin/master-wallet-balance` returns TRX + USDT for the master address.
+
+## Balance audit
+
+Reconcile Σ user USDT (+ retained float) against the on-chain master wallet:
+
+```bash
+cd backend && npm run audit:usdt-balances
+```
+
+See [USDT_BALANCE_AUDIT.md](./USDT_BALANCE_AUDIT.md). Admin UI: Settings → **Audit USDT vs Master Wallet**.
 The admin Deposits/Withdrawals tab has a **Check Master Wallet Balance** button that calls this endpoint.
 
 ## Env

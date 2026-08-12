@@ -413,6 +413,7 @@
       if (refreshBtn) refreshBtn.addEventListener('click', () => this.loadAll());
 
       $('btnRefreshRevenue')?.addEventListener('click', () => this.loadRevenueDashboard());
+      $('btnUsdtBalanceAudit')?.addEventListener('click', () => this.runUsdtBalanceAudit());
 
       $('adminCreateForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -2782,6 +2783,43 @@
         const pending = summary.pending_withdrawals || {};
         $('ledgerPendingWithdrawals').textContent =
           `Pending withdrawals: ${fmtUsdt(pending.net_usdt)} net (${pending.count || 0} request${pending.count === 1 ? '' : 's'})`;
+      }
+    },
+
+    async runUsdtBalanceAudit() {
+      const out = $('usdtBalanceAuditOut');
+      const btn = $('btnUsdtBalanceAudit');
+      const hint = $('usdtBalanceAuditHint');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Auditing…';
+      }
+      if (hint) hint.textContent = 'Querying ledger + TRON master wallet…';
+      if (out) {
+        out.style.display = 'block';
+        out.textContent = 'Running USDT balance audit…';
+      }
+      try {
+        const data = await this.api('GET', '/api/admin/usdt-balance-audit');
+        const audit = data.audit || {};
+        const r = audit.reconciliation || {};
+        const verdict = r.verdict || {};
+        if (out) out.textContent = data.report || JSON.stringify(audit, null, 2);
+        if (hint) {
+          const disc = r.discrepancy_usdt == null ? 'n/a' : (Number(r.discrepancy_usdt).toFixed(2) + ' USDT');
+          hint.textContent = (verdict.label || 'DONE') + ' · discrepancy ' + disc
+            + ' · booked profit ' + Number(r.booked_platform_net_profit_usdt || 0).toFixed(2) + ' USDT';
+        }
+        this.showAdminToast(verdict.synced ? 'USDT balances synced' : ('Audit: ' + (verdict.label || 'done')), verdict.synced ? 'ok' : 'error');
+      } catch (err) {
+        if (out) out.textContent = err.message || 'Audit failed';
+        if (hint) hint.textContent = 'Audit failed';
+        this.showAdminToast(err.message || 'USDT audit failed', 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Audit USDT vs Master Wallet';
+        }
       }
     },
 
