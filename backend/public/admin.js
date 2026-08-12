@@ -3354,10 +3354,15 @@
         const rate = Number(s.mmk_to_usd_rate || 4500);
 
         metricsEl.innerHTML = `
-          <div class="revenue-metric-card highlight">
-            <div class="revenue-metric-label">Total Net Admin Profit (Today)</div>
-            <div class="revenue-metric-value">$${Number(s.today_net_admin_profit_usd || s.today_profit_usd || 0).toFixed(2)}</div>
-            <div class="revenue-metric-sub">P2P + Card Reload + Withdrawal · ${Math.round(Number(s.today_net_admin_profit_mmk || s.today_profit_mmk || 0)).toLocaleString()} MMK</div>
+          <div class="revenue-metric-card highlight highlight-mmk">
+            <div class="revenue-metric-label">MMK Wallet Net Profit (Today)</div>
+            <div class="revenue-metric-value">${Math.round(Number(s.today_mmk_wallet_net_profit_mmk || 0)).toLocaleString()} MMK</div>
+            <div class="revenue-metric-sub">$${Number(s.today_mmk_wallet_net_profit_usd || 0).toFixed(2)} · Card reload/issue + MMK deposit/withdraw fees · All-time ${Math.round(Number(s.all_time_mmk_wallet_net_profit_mmk || 0)).toLocaleString()} MMK</div>
+          </div>
+          <div class="revenue-metric-card highlight highlight-usdt">
+            <div class="revenue-metric-label">USDT Wallet Net Profit (Today)</div>
+            <div class="revenue-metric-value">${Number(s.today_usdt_wallet_net_profit_usdt || 0).toFixed(2)} USDT</div>
+            <div class="revenue-metric-sub">P2P + USDT deposit/withdraw + USDT card fees · All-time ${Number(s.all_time_usdt_wallet_net_profit_usdt || 0).toFixed(2)} USDT · Platform ${Number(s.platform_usdt_revenue_balance || 0).toFixed(2)} USDT</div>
           </div>
           <div class="revenue-metric-card">
             <div class="revenue-metric-label">P2P Trading Profit</div>
@@ -3367,17 +3372,17 @@
           <div class="revenue-metric-card">
             <div class="revenue-metric-label">Card Reload Profit</div>
             <div class="revenue-metric-value">$${Number(s.today_card_reload_profit_usd || 0).toFixed(2)}</div>
-            <div class="revenue-metric-sub">Today markup/fees · All-time $${Number(s.all_time_card_reload_profit_usd || 0).toFixed(2)}</div>
+            <div class="revenue-metric-sub">MMK wallet $${Number(s.today_card_reload_profit_usd_mmk || 0).toFixed(2)} · USDT wallet $${Number(s.today_card_reload_profit_usd_usdt || 0).toFixed(2)} · All-time $${Number(s.all_time_card_reload_profit_usd || 0).toFixed(2)}</div>
           </div>
           <div class="revenue-metric-card">
             <div class="revenue-metric-label">Withdrawal Fees</div>
             <div class="revenue-metric-value">${Number(s.today_withdrawal_profit_usdt || 0).toFixed(2)} USDT</div>
-            <div class="revenue-metric-sub">Today · All-time ${Number(s.all_time_withdrawal_profit_usdt || 0).toFixed(2)} USDT · Platform balance ${Number(s.platform_usdt_revenue_balance || 0).toFixed(2)} USDT</div>
+            <div class="revenue-metric-sub">USDT today · MMK ${Math.round(Number(s.today_withdrawal_profit_mmk || 0)).toLocaleString()} · All-time ${Number(s.all_time_withdrawal_profit_usdt || 0).toFixed(2)} USDT / ${Math.round(Number(s.all_time_withdrawal_profit_mmk || 0)).toLocaleString()} MMK</div>
           </div>
           <div class="revenue-metric-card">
-            <div class="revenue-metric-label">All-Time Net Admin Profit</div>
-            <div class="revenue-metric-value">$${Number(s.all_time_net_admin_profit_usd || s.all_time_profit_usd || 0).toFixed(2)}</div>
-            <div class="revenue-metric-sub">${Math.round(Number(s.all_time_net_admin_profit_mmk || s.all_time_profit_mmk || 0)).toLocaleString()} MMK · ${Number(data.counts?.total_fee_events || 0)} fee events</div>
+            <div class="revenue-metric-label">All-Time Wallet Nets</div>
+            <div class="revenue-metric-value">${Math.round(Number(s.all_time_mmk_wallet_net_profit_mmk || 0)).toLocaleString()} / ${Number(s.all_time_usdt_wallet_net_profit_usdt || 0).toFixed(2)}</div>
+            <div class="revenue-metric-sub">MMK · USDT · ${Number(data.counts?.total_fee_events || 0)} fee events · rate ${Math.round(rate).toLocaleString()}</div>
           </div>
         `;
 
@@ -3385,7 +3390,8 @@
           const pt = data.period_totals || {};
           periodEl.classList.remove('hidden');
           periodEl.innerHTML = `
-            <span class="revenue-period-chip">Today: <strong>$${Number(pt.today || 0).toFixed(2)}</strong></span>
+            <span class="revenue-period-chip">Today USDT: <strong>${Number(pt.today_usdt_wallet || 0).toFixed(2)} USDT</strong></span>
+            <span class="revenue-period-chip">Today MMK: <strong>${Math.round(Number(pt.today_mmk_wallet_mmk || 0)).toLocaleString()} MMK</strong></span>
             <span class="revenue-period-chip">Yesterday: <strong>$${Number(pt.yesterday || 0).toFixed(2)}</strong></span>
             <span class="revenue-period-chip">Last 7 Days: <strong>$${Number(pt.last_7_days || 0).toFixed(2)}</strong></span>
             <span class="revenue-period-chip">This Month: <strong>$${Number(pt.this_month || 0).toFixed(2)}</strong></span>
@@ -3400,17 +3406,21 @@
             dailyEl.innerHTML =
               '<table class="data-table">' +
               '<thead><tr>' +
-              '<th>Date</th><th>P2P Fees (USDT)</th><th>Card Reload ($)</th><th>Withdrawal (USDT)</th><th>Card Issue ($)</th><th>Total ($)</th><th>Total (MMK)</th><th>Txns</th>' +
+              '<th>Date</th><th>P2P (USDT)</th><th>Card Reload ($)</th><th>Withdraw USDT</th><th>Withdraw MMK</th><th>Card Issue ($)</th><th>USDT Wallet Net</th><th>MMK Wallet Net</th><th>Txns</th>' +
               '</tr></thead><tbody>' +
               daily.map((row) =>
                 '<tr>' +
                 '<td><strong>' + this.esc(row.label || row.date) + '</strong><br><small>' + this.esc(row.date) + '</small></td>' +
                 '<td>' + Number(row.p2p_fees_usdt || 0).toFixed(2) + '</td>' +
-                '<td>$' + Number(row.card_reload_fees_usd || 0).toFixed(2) + '</td>' +
+                '<td>$' + Number(row.card_reload_fees_usd || 0).toFixed(2) +
+                  '<br><small>MMK $' + Number(row.card_reload_fees_usd_mmk || 0).toFixed(2) +
+                  ' · USDT $' + Number(row.card_reload_fees_usd_usdt || 0).toFixed(2) + '</small></td>' +
                 '<td>' + Number(row.withdrawal_fees_usdt || 0).toFixed(2) + '</td>' +
+                '<td>' + Math.round(Number(row.withdrawal_fees_mmk || 0)).toLocaleString() + '</td>' +
                 '<td>$' + Number(row.card_issue_fees_usd || 0).toFixed(2) + '</td>' +
-                '<td><strong>$' + Number(row.total_usd_equivalent || 0).toFixed(2) + '</strong></td>' +
-                '<td>' + Math.round(Number(row.total_mmk_equivalent || 0)).toLocaleString() + '</td>' +
+                '<td><strong>' + Number(row.usdt_wallet_net_usdt || 0).toFixed(2) + ' USDT</strong></td>' +
+                '<td><strong>' + Math.round(Number(row.mmk_wallet_net_mmk || 0)).toLocaleString() + ' MMK</strong>' +
+                  '<br><small>$' + Number(row.mmk_wallet_net_usd || 0).toFixed(2) + '</small></td>' +
                 '<td>' + (row.transaction_count || 0) + '</td>' +
                 '</tr>'
               ).join('') +
@@ -3426,11 +3436,13 @@
             auditEl.innerHTML =
               '<table class="data-table">' +
               '<thead><tr>' +
-              '<th>Date / Time</th><th>Category</th><th>Source</th><th>Order Ref</th><th>Amount</th><th>MMK Equiv.</th><th>Status</th>' +
+              '<th>Date / Time</th><th>Wallet</th><th>Category</th><th>Source</th><th>Order Ref</th><th>Amount</th><th>MMK Equiv.</th><th>Status</th>' +
               '</tr></thead><tbody>' +
               audit.map((row) =>
                 '<tr>' +
                 '<td>' + this.esc(row.collected_at || '—') + '</td>' +
+                '<td><span class="badge ' + (row.profit_wallet === 'usdt' ? 'badge-ok' : 'badge-warn') + '">' +
+                  this.esc((row.profit_wallet || '—').toUpperCase()) + '</span></td>' +
                 '<td><code>' + this.esc(row.fee_type || '—') + '</code></td>' +
                 '<td>' + this.esc(row.source) + '</td>' +
                 '<td><code>' + this.esc(row.order_ref) + '</code></td>' +

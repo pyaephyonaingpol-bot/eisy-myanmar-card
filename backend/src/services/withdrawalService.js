@@ -16,7 +16,11 @@ const {
   getSetting,
   setSetting,
 } = require('./settingsService');
-const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
+const {
+  creditPlatformUsdtRevenue,
+  recordPlatformFeeEvent,
+  PLATFORM_FEE_TYPES,
+} = require('./platformRevenueService');
 const { transferUsdtTrc20 } = require('./tronMasterWalletService');
 
 function generateRefCode(prefix = 'WD') {
@@ -480,11 +484,40 @@ async function completeMmkWithdrawal(id, { adminNote, adminId } = {}) {
     throw new Error(`Cannot complete withdrawal in status "${row.status}"`);
   }
 
-  return MmkWithdrawal.updateStatus(id, {
+  const updated = await MmkWithdrawal.updateStatus(id, {
     status: 'completed',
     adminNote: adminNote || 'Bank transfer completed',
     processedBy: adminId || null,
   });
+
+  const feeMmk = Math.round(Number(row.fee_mmk) || 0);
+  if (feeMmk > 0) {
+    try {
+      await recordPlatformFeeEvent({
+        feeType: PLATFORM_FEE_TYPES.WITHDRAWAL,
+        amount: feeMmk,
+        currency: 'MMK',
+        referenceType: 'mmk_withdrawal_requests',
+        referenceId: row.id,
+        relatedUserId: row.user_id,
+        description: `MMK withdrawal fee — ${row.ref_code} (${formatMmk(feeMmk)})`,
+        createdBy: adminId || 'admin',
+        metadata: {
+          purpose: 'mmk_bank_withdrawal',
+          wallet_type: 'mmk',
+          wallet: 'mmk',
+          ref_code: row.ref_code,
+          fee_mmk: feeMmk,
+          net_mmk: row.net_mmk,
+          amount_mmk: row.amount_mmk,
+        },
+      });
+    } catch (feeErr) {
+      console.warn('[withdrawal] platform MMK withdrawal fee record failed:', feeErr.message);
+    }
+  }
+
+  return updated;
 }
 
 async function rejectMmkWithdrawal(id, { adminNote, adminId } = {}) {

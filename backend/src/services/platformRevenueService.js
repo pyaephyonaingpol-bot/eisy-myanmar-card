@@ -13,13 +13,35 @@ const SUB_BALANCE_KEYS = {
   [PLATFORM_FEE_TYPES.CARD_ISSUE]: 'platform_revenue_card_issue_usd',
 };
 
+const SUB_BALANCE_CURRENCY = {
+  [PLATFORM_FEE_TYPES.P2P]: 'USDT',
+  [PLATFORM_FEE_TYPES.WITHDRAWAL]: 'USDT',
+  [PLATFORM_FEE_TYPES.DEPOSIT]: 'USDT',
+  [PLATFORM_FEE_TYPES.CARD_RELOAD]: 'USD',
+  [PLATFORM_FEE_TYPES.CARD_ISSUE]: 'USD',
+};
+
+const MMK_SUB_BALANCE_KEYS = {
+  [PLATFORM_FEE_TYPES.WITHDRAWAL]: 'platform_revenue_withdrawal_mmk',
+  [PLATFORM_FEE_TYPES.DEPOSIT]: 'platform_revenue_deposit_mmk',
+};
+
 async function getPlatformUsdtRevenueBalance() {
   const raw = await getSetting('platform_usdt_revenue_balance');
   return Math.round((parseFloat(raw) || 0) * 100) / 100;
 }
 
-async function getSubBalance(feeType) {
+async function getSubBalance(feeType, currency) {
   const db = getDb();
+  const cur = currency || SUB_BALANCE_CURRENCY[feeType] || null;
+  if (cur) {
+    const row = await db.get(
+      `SELECT COALESCE(SUM(amount), 0) AS total FROM platform_fee_events WHERE fee_type = ? AND UPPER(currency) = ?`,
+      feeType,
+      String(cur).toUpperCase()
+    );
+    return Math.round((parseFloat(row?.total) || 0) * 100) / 100;
+  }
   const row = await db.get(
     `SELECT COALESCE(SUM(amount), 0) AS total FROM platform_fee_events WHERE fee_type = ?`,
     feeType
@@ -27,10 +49,23 @@ async function getSubBalance(feeType) {
   return Math.round((parseFloat(row?.total) || 0) * 100) / 100;
 }
 
-async function incrementSubBalance(feeType, amount) {
+async function incrementSubBalance(feeType, amount, currency) {
+  const cur = String(currency || '').toUpperCase();
+  if (cur === 'MMK') {
+    const key = MMK_SUB_BALANCE_KEYS[feeType];
+    if (!key) return;
+    const current = await getSubBalance(feeType, 'MMK');
+    const next = Math.round(current + amount);
+    await setSetting(key, next);
+    return;
+  }
+
+  const expected = SUB_BALANCE_CURRENCY[feeType];
+  if (expected && cur && cur !== expected) return;
+
   const key = SUB_BALANCE_KEYS[feeType];
   if (!key) return;
-  const current = await getSubBalance(feeType);
+  const current = await getSubBalance(feeType, expected || cur || undefined);
   const next = Math.round((current + amount) * 100) / 100;
   await setSetting(key, next);
 }
@@ -75,7 +110,7 @@ async function recordPlatformFeeEvent({
     createdBy,
   });
 
-  await incrementSubBalance(feeType, parsed);
+  await incrementSubBalance(feeType, parsed, currency);
   return PlatformFeeEvent.mapForClient(row);
 }
 

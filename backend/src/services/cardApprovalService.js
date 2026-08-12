@@ -205,6 +205,10 @@ async function approvePendingCardRequest(cardId, options = {}) {
 
   const issuanceFeeUsd = Number(pricing.issuance_fee_usd);
   if (Number.isFinite(issuanceFeeUsd) && issuanceFeeUsd > 0) {
+    const paidFromUsdt = Boolean(
+      meta.paid_from_wallet
+      && (meta.wallet_type === 'usdt' || meta.payment_method === 'usdt_wallet' || meta.wallet === 'usdt')
+    );
     await recordPlatformUsdFee(issuanceFeeUsd, {
       feeType: PLATFORM_FEE_TYPES.CARD_ISSUE,
       description: `Card issuance fee — CARD-${cardId} ($${issuanceFeeUsd.toFixed(2)})`,
@@ -216,6 +220,9 @@ async function approvePendingCardRequest(cardId, options = {}) {
         deposit_id: deposit?.id || meta.deposit_id || null,
         deposit_ref: deposit?.ref_code || meta.deposit_ref || null,
         pricing,
+        wallet_type: paidFromUsdt ? 'usdt' : 'mmk',
+        paid_from_wallet: Boolean(meta.paid_from_wallet),
+        payment_method: meta.payment_method || null,
       },
     });
   }

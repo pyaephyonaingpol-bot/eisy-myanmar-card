@@ -11,7 +11,11 @@ const { formatMmk, formatUsdt } = require('./walletService');
 const { syncUserWalletById, syncDeposit } = require('./supabaseSyncService');
 const { verifyUsdtTransaction } = require('./usdtBlockchainService');
 const { assertValidPaymentAmount } = require('./paymentFeeService');
-const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
+const {
+  creditPlatformUsdtRevenue,
+  recordPlatformFeeEvent,
+  PLATFORM_FEE_TYPES,
+} = require('./platformRevenueService');
 
 async function syncWalletAndDeposit(userId, depositRow) {
   try {
@@ -860,6 +864,32 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       net_mmk: netMmk,
     },
   });
+
+  if (isWalletTopup && feeMmk > 0) {
+    try {
+      await recordPlatformFeeEvent({
+        feeType: PLATFORM_FEE_TYPES.DEPOSIT,
+        amount: feeMmk,
+        currency: 'MMK',
+        referenceType: 'deposit_requests_v2',
+        referenceId: deposit.id,
+        relatedUserId: deposit.user_id,
+        description: `MMK deposit fee — ${deposit.ref_code} (${formatMmk(feeMmk)})`,
+        createdBy,
+        metadata: {
+          purpose: deposit.purpose || 'topup',
+          wallet_type: 'mmk',
+          wallet: 'mmk',
+          gross_mmk: grossMmk,
+          net_mmk: netMmk,
+          fee_mmk: feeMmk,
+          deposit_ref: deposit.ref_code,
+        },
+      });
+    } catch (feeErr) {
+      console.warn('[deposit] platform MMK deposit fee record failed:', feeErr.message);
+    }
+  }
 
   notifyAdminDepositVerified({
     user: updatedUser,
