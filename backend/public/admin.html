@@ -342,7 +342,7 @@
         <button type="submit" class="btn btn-primary" id="adminLoginBtn">Sign in</button>
       </form>
       <div class="bootstrap-box hidden" id="adminBootstrapBox">
-        <p class="auth-hint" style="margin-top:0">No admins yet. Create the first Super Admin (requires the server admin API key).</p>
+        <p class="auth-hint" style="margin-top:0">No admins yet. Create the first Super Admin (API key temporarily not required).</p>
         <form id="adminBootstrapForm" class="form">
           <label for="adminBootstrapName">Name</label>
           <input type="text" id="adminBootstrapName" placeholder="Super Admin" />
@@ -350,8 +350,7 @@
           <input type="email" id="adminBootstrapEmail" required placeholder="admin@example.com" />
           <label for="adminBootstrapPassword">Password</label>
           <input type="password" id="adminBootstrapPassword" required minlength="6" placeholder="Min 6 characters" />
-          <label for="adminBootstrapKey">Admin API Key</label>
-          <input type="password" id="adminBootstrapKey" required placeholder="ADMIN_API_KEY" />
+          <input type="hidden" id="adminBootstrapKey" value="" />
           <p id="adminBootstrapError" class="auth-inline-error hidden" role="alert"></p>
           <button type="submit" class="btn btn-secondary" id="adminBootstrapBtn">Create Super Admin</button>
         </form>
