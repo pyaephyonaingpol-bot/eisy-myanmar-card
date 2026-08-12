@@ -246,24 +246,257 @@ async function debitUsdt(userId, amountUsdt, opts = {}) {
 }
 
 async function adjustUsdt(userId, deltaUsdt, reason, createdBy = 'admin') {
-  const delta = parseFloat(deltaUsdt);
-  if (!Number.isFinite(delta) || delta === 0) {
-    throw new Error('Adjustment amount must be a non-zero number');
-  }
-
-  if (delta > 0) {
-    return creditUsdt(userId, delta, {
-      description: reason || 'Admin USDT wallet adjustment',
-      createdBy,
-      metadata: { adjustment: true },
-    });
-  }
-
-  return debitUsdt(userId, Math.abs(delta), {
-    description: reason || 'Admin USDT wallet adjustment',
+  return adminAdjustUsdtBalance({
+    userId,
+    deltaUsdt,
+    reason,
     createdBy,
-    metadata: { adjustment: true },
   });
+}
+
+/**
+ * Reliable admin USDT balance adjustment for Turso/LibSQL.
+ * Avoids fragile BEGIN/ROLLBACK across HTTP executes.
+ *
+ * @param {object} opts
+ * @param {number} opts.userId
+ * @param {number} [opts.deltaUsdt] - signed delta (+ credit / − debit)
+ * @param {number} [opts.setBalance] - absolute target available balance
+ * @param {string} [opts.reason]
+ * @param {string} [opts.createdBy]
+ */
+async function adminAdjustUsdtBalance({
+  userId,
+  deltaUsdt = null,
+  setBalance = null,
+  reason = 'Admin USDT wallet adjustment',
+  createdBy = 'admin',
+} = {}) {
+  const db = getDb();
+  const uid = parseInt(userId, 10);
+  console.log('[adjustUsdt] start', {
+    userId: uid,
+    deltaUsdt,
+    setBalance,
+    reason,
+    createdBy,
+  });
+
+  if (!Number.isFinite(uid) || uid <= 0) {
+    throw new Error('Valid user_id is required');
+  }
+
+  const row = await db.get(
+    'SELECT id, balance_usdt, balance_usdt_locked FROM users WHERE id = ?',
+    uid
+  );
+  if (!row) {
+    const err = new Error('User not found');
+    err.code = 'USER_NOT_FOUND';
+    throw err;
+  }
+
+  const balanceBefore = Math.round((Number(row.balance_usdt) || 0) * 100) / 100;
+  const locked = Math.round((Number(row.balance_usdt_locked) || 0) * 100) / 100;
+
+  let balanceAfter;
+  let delta;
+  if (setBalance != null && setBalance !== '') {
+    balanceAfter = Math.round((Number(setBalance) || 0) * 100) / 100;
+    if (!Number.isFinite(balanceAfter) || balanceAfter < 0) {
+      throw new Error('set_balance must be a number >= 0');
+    }
+    delta = Math.round((balanceAfter - balanceBefore) * 100) / 100;
+  } else {
+    delta = Math.round((Number(deltaUsdt) || 0) * 100) / 100;
+    if (!Number.isFinite(delta) || delta === 0) {
+      throw new Error('Adjustment amount must be a non-zero number (or pass set_balance)');
+    }
+    balanceAfter = Math.round((balanceBefore + delta) * 100) / 100;
+    if (balanceAfter < -0.001) {
+      const err = new Error(
+        `Insufficient available USDT. Required ${formatUsdt(Math.abs(delta))}, available ${formatUsdt(balanceBefore)}`
+      );
+      err.code = 'INSUFFICIENT_USDT_BALANCE';
+      throw err;
+    }
+    if (balanceAfter < 0) balanceAfter = 0;
+  }
+
+  console.log('[adjustUsdt] computed', {
+    userId: uid,
+    balanceBefore,
+    delta,
+    balanceAfter,
+    locked,
+  });
+
+  if (delta === 0) {
+    console.log('[adjustUsdt] no-op (already at target)');
+    return {
+      id: uid,
+      balance_usdt: balanceBefore,
+      balance_usdt_locked: locked,
+      _adjust: { delta: 0, balance_before: balanceBefore, balance_after: balanceBefore },
+    };
+  }
+
+  const direction = delta > 0 ? 'credit' : 'debit';
+  const absAmount = Math.abs(delta);
+  const journalId = `ADJ-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const description = reason || 'Admin USDT wallet adjustment';
+  const meta = JSON.stringify({
+    wallet: 'usdt',
+    adjustment: true,
+    delta,
+    set_balance: setBalance != null,
+    journal_id: journalId,
+  });
+
+  const statements = [
+    {
+      sql: `UPDATE users
+            SET balance_usdt = ?, updated_at = datetime('now')
+            WHERE id = ?`,
+      args: [balanceAfter, uid],
+      label: 'update_users_balance',
+    },
+  ];
+
+  // Critical path: update balance WITHOUT BEGIN/ROLLBACK (Turso-safe).
+  try {
+    console.log('[adjustUsdt] executing UPDATE users.balance_usdt', {
+      userId: uid,
+      balanceAfter,
+    });
+    let updateResult;
+    try {
+      updateResult = await db.run(statements[0].sql, ...statements[0].args);
+    } catch (updateErr) {
+      // Some environments may lack updated_at until auth patches run.
+      if (/no such column:\s*updated_at/i.test(updateErr.message || '')) {
+        console.warn('[adjustUsdt] retrying UPDATE without updated_at');
+        updateResult = await db.run(
+          `UPDATE users SET balance_usdt = ? WHERE id = ?`,
+          balanceAfter,
+          uid
+        );
+      } else {
+        throw updateErr;
+      }
+    }
+    console.log('[adjustUsdt] UPDATE result', {
+      changes: updateResult?.changes,
+      lastID: updateResult?.lastID,
+    });
+    if (!updateResult || Number(updateResult.changes) < 1) {
+      const err = new Error(`USDT balance UPDATE affected 0 rows for user ${uid}`);
+      err.code = 'BALANCE_UPDATE_FAILED';
+      throw err;
+    }
+  } catch (err) {
+    console.error('[adjustUsdt] SQL UPDATE failed', {
+      message: err.message,
+      code: err.code,
+      userId: uid,
+      balanceBefore,
+      balanceAfter,
+      delta,
+    });
+    throw err;
+  }
+
+  const verify = await db.get(
+    'SELECT id, balance_usdt, balance_usdt_locked FROM users WHERE id = ?',
+    uid
+  );
+  console.log('[adjustUsdt] verify after write', verify);
+
+  if (Math.abs(Number(verify?.balance_usdt) - balanceAfter) > 0.001) {
+    const err = new Error(
+      `USDT balance update did not persist (expected ${balanceAfter}, got ${verify?.balance_usdt})`
+    );
+    err.code = 'BALANCE_UPDATE_FAILED';
+    throw err;
+  }
+
+  // Best-effort audit rows — never undo the balance update if these fail.
+  try {
+    await db.run(
+      `INSERT INTO usdt_wallet_transactions (
+         user_id, network, tx_type, direction, amount_usdt,
+         balance_before, balance_after, locked_balance_after,
+         status, description, metadata, journal_id
+       ) VALUES (?, NULL, 'admin_adjustment', ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`,
+      uid,
+      direction,
+      absAmount,
+      balanceBefore,
+      balanceAfter,
+      locked,
+      description,
+      meta,
+      journalId
+    );
+    console.log('[adjustUsdt] wallet ledger row inserted');
+  } catch (ledgerErr) {
+    console.warn('[adjustUsdt] wallet ledger insert skipped:', ledgerErr.message);
+    try {
+      await db.run(
+        `INSERT INTO usdt_wallet_transactions (
+           user_id, tx_type, direction, amount_usdt, balance_after, status, description, metadata
+         ) VALUES (?, 'admin_adjustment', ?, ?, ?, 'completed', ?, ?)`,
+        uid,
+        direction,
+        absAmount,
+        balanceAfter,
+        description,
+        meta
+      );
+    } catch (fallbackErr) {
+      console.warn('[adjustUsdt] wallet ledger fallback skipped:', fallbackErr.message);
+    }
+  }
+
+  try {
+    await db.run(
+      `INSERT INTO transaction_logs (
+         user_id, type, direction, amount_usd, amount_mmk,
+         balance_before, balance_after, reference_type, reference_id,
+         description, metadata, ip_address, created_by
+       ) VALUES (?, 'admin_adjustment', ?, ?, NULL, ?, ?, NULL, NULL, ?, ?, NULL, ?)`,
+      uid,
+      direction,
+      absAmount,
+      balanceBefore,
+      balanceAfter,
+      description,
+      meta,
+      createdBy === 'admin' || createdBy === 'system' || createdBy === 'user' || createdBy === 'listener'
+        ? createdBy
+        : 'admin'
+    );
+    console.log('[adjustUsdt] transaction_logs row inserted');
+  } catch (logErr) {
+    console.warn('[adjustUsdt] transaction_logs insert skipped:', logErr.message);
+  }
+
+  try {
+    const { syncUserWalletById } = require('./supabaseSyncService');
+    await syncUserWalletById(uid);
+  } catch (syncErr) {
+    console.warn('[adjustUsdt] supabase sync skipped:', syncErr.message);
+  }
+
+  return {
+    ...verify,
+    _adjust: {
+      delta,
+      balance_before: balanceBefore,
+      balance_after: Number(verify.balance_usdt),
+      journal_id: journalId,
+    },
+  };
 }
 
 async function adjustMmk(userId, deltaMmk, reason, createdBy = 'admin') {
@@ -318,6 +551,7 @@ module.exports = {
   debitUsdt,
   adjustMmk,
   adjustUsdt,
+  adminAdjustUsdtBalance,
   migrateLegacyUsdToMmk,
   migrateAllLegacyUsdBalances,
   walletPayload,

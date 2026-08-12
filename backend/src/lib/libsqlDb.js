@@ -2,8 +2,8 @@
  * Wrap @libsql/client with the subset of the sqlite package API used by this app.
  *
  * IMPORTANT: Remote Turso / LibSQL does NOT keep `BEGIN` open across separate
- * `client.execute()` HTTP calls. Use `withTransaction()` (interactive transaction)
- * for multi-statement atomic work — never rely on `db.run('BEGIN')` alone.
+ * `client.execute()` HTTP calls. Use `withTransaction()` (interactive) or
+ * `batchWrite()` for multi-statement atomic work — never rely on `db.run('BEGIN')`.
  */
 
 function normalizeRow(row, columns) {
@@ -75,32 +75,58 @@ function createLibsqlDb(client) {
     ...createQueryApi(client),
 
     /**
-     * Run `fn(txDb)` inside a real LibSQL interactive write transaction.
-     * All queries must use the provided `txDb`, not getDb().
+     * Atomic multi-statement write via LibSQL HTTP batch (preferred on Turso/Vercel).
+     * @param {Array<{ sql: string, args?: any[] }>} statements
+     */
+    async batchWrite(statements) {
+      if (typeof client.batch !== 'function') {
+        for (const stmt of statements) {
+          await client.execute({
+            sql: stmt.sql,
+            args: stmt.args || [],
+          });
+        }
+        return;
+      }
+      await client.batch(
+        statements.map((stmt) => ({
+          sql: stmt.sql,
+          args: stmt.args || [],
+        })),
+        'write'
+      );
+    },
+
+    /**
+     * Run `fn(txDb)` inside a LibSQL interactive write transaction.
+     * Rollback is only attempted when a transaction was started and not committed.
      */
     async withTransaction(fn) {
       if (typeof client.transaction !== 'function') {
-        // Extremely old client — best-effort BEGIN/COMMIT on the shared client.
         return runBeginCommitTransaction(adapter, fn);
       }
 
-      const tx = await client.transaction('write');
-      const txDb = {
-        isLibsql: true,
-        isTransaction: true,
-        ...createQueryApi(tx),
-      };
-
+      let tx = null;
+      let committed = false;
       try {
+        tx = await client.transaction('write');
+        const txDb = {
+          isLibsql: true,
+          isTransaction: true,
+          ...createQueryApi(tx),
+        };
         const result = await fn(txDb);
         await tx.commit();
+        committed = true;
         return result;
       } catch (err) {
-        try {
-          await tx.rollback();
-        } catch (rollbackErr) {
-          if (!isNoActiveTransactionError(rollbackErr)) {
-            console.warn('[db] transaction rollback failed:', rollbackErr.message);
+        if (tx && !committed) {
+          try {
+            await tx.rollback();
+          } catch (rollbackErr) {
+            if (!isNoActiveTransactionError(rollbackErr)) {
+              console.warn('[db] transaction rollback failed:', rollbackErr.message);
+            }
           }
         }
         throw err;
@@ -134,9 +160,6 @@ async function runBeginCommitTransaction(db, fn) {
   }
 }
 
-/**
- * Shared helper for services: prefer db.withTransaction when available.
- */
 async function withDbTransaction(db, fn) {
   if (db && typeof db.withTransaction === 'function') {
     return db.withTransaction(fn);

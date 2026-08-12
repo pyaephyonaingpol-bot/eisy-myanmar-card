@@ -579,21 +579,48 @@
 
       const balanceUsdtForm = $('balanceAdjustUsdtForm');
       if (balanceUsdtForm) {
+        const syncUsdtModeLabel = () => {
+          const mode = ($('adjUsdtMode') && $('adjUsdtMode').value) || 'delta';
+          const label = $('adjAmountUsdtLabel');
+          const input = $('adjAmountUsdt');
+          if (label) {
+            label.textContent = mode === 'set' ? 'New balance (USDT)' : 'Amount USDT (+/−)';
+          }
+          if (input) {
+            input.placeholder = mode === 'set' ? '0' : '-39 or 10';
+          }
+        };
+        $('adjUsdtMode')?.addEventListener('change', syncUsdtModeLabel);
+        syncUsdtModeLabel();
+
         balanceUsdtForm.addEventListener('submit', async (e) => {
           e.preventDefault();
           const out = $('balanceAdjustOut');
+          const mode = ($('adjUsdtMode') && $('adjUsdtMode').value) || 'delta';
+          const amount = parseFloat($('adjAmountUsdt').value);
+          const payload = {
+            user_id: parseInt($('adjUsdtUserId').value, 10),
+            wallet_type: 'usdt',
+            mode,
+            reason: $('adjUsdtReason').value.trim() || 'Admin USDT adjustment',
+          };
+          if (mode === 'set') {
+            payload.set_balance = amount;
+          } else {
+            payload.amount_usdt = amount;
+          }
           try {
-            const data = await this.api('POST', '/api/admin/balance/adjust', {
-              user_id: parseInt($('adjUsdtUserId').value, 10),
-              amount_usdt: parseFloat($('adjAmountUsdt').value),
-              wallet_type: 'usdt',
-              reason: $('adjUsdtReason').value.trim() || 'Admin USDT adjustment',
-            });
+            const data = await this.api('POST', '/api/admin/balance/adjust', payload);
             if (out) out.textContent = JSON.stringify(data, null, 2);
+            this.showAdminToast(
+              'USDT wallet updated → ' + (data.user?.usdt_formatted || data.balance_after),
+              'ok'
+            );
             this.loadUsers();
             this.loadTransactions();
           } catch (err) {
             if (out) out.textContent = err.message;
+            this.showAdminToast(err.message || 'USDT adjust failed', 'error');
           }
         });
       }

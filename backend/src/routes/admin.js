@@ -86,7 +86,7 @@ const {
   updateCardLifecycleStatus,
   listIssuedCardsForAdmin,
 } = require('../services/cardStatusService');
-const { adjustMmk, adjustUsdt, formatMmk, formatUsdt } = require('../services/walletService');
+const { adjustMmk, adminAdjustUsdtBalance, formatMmk, formatUsdt } = require('../services/walletService');
 
 const router = express.Router();
 
@@ -1130,34 +1130,45 @@ router.post('/balance/adjust', requirePermission('balance_adjust'), async (req, 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    if (walletType === 'usdt' || req.body.amount_usdt != null) {
+    if (walletType === 'usdt' || req.body.amount_usdt != null || req.body.set_balance != null || req.body.target_usdt != null) {
+      const rawSet = req.body.set_balance != null ? req.body.set_balance : req.body.target_usdt;
+      const hasSet = rawSet != null && rawSet !== '';
       const amountUsdt = parseFloat(req.body.amount_usdt ?? req.body.amount);
-      if (Number.isNaN(amountUsdt)) {
-        return res.status(400).json({ error: 'amount_usdt (or amount) required for USDT wallet adjustment' });
+      const mode = String(req.body.mode || (hasSet ? 'set' : 'delta')).toLowerCase();
+
+      console.log('[admin/balance/adjust] USDT request', {
+        userId,
+        mode,
+        amount_usdt: req.body.amount_usdt,
+        set_balance: rawSet,
+        reason,
+      });
+
+      if (mode !== 'set' && !hasSet && Number.isNaN(amountUsdt)) {
+        return res.status(400).json({
+          error: 'amount_usdt (delta +/-) or set_balance / target_usdt is required',
+        });
       }
 
       const balanceBefore = Number(user.balance_usdt ?? 0);
-      const updatedUser = await adjustUsdt(userId, amountUsdt, reason, 'admin');
+      const updatedUser = await adminAdjustUsdtBalance({
+        userId,
+        deltaUsdt: mode === 'set' || hasSet ? null : amountUsdt,
+        setBalance: mode === 'set' || hasSet
+          ? (hasSet ? rawSet : amountUsdt)
+          : null,
+        reason,
+        createdBy: 'admin',
+      });
       const balanceAfter = Number(updatedUser.balance_usdt ?? 0);
+      const deltaApplied = Number(updatedUser._adjust?.delta ?? (balanceAfter - balanceBefore));
 
-      // Ledger + audit already written inside adjustUsdt / usdtLedgerService.
-      // Keep a concise admin_adjustment row only when the ledger path did not
-      // already record one (older code paths); skip duplicate if recent match exists.
-      try {
-        await TransactionLog.create({
-          userId,
-          type: 'admin_adjustment',
-          direction: amountUsdt >= 0 ? 'credit' : 'debit',
-          amountUsd: Math.abs(amountUsdt),
-          balanceBefore,
-          balanceAfter,
-          description: reason,
-          createdBy: 'admin',
-          metadata: { wallet: 'usdt', adjustment: amountUsdt, source: 'admin_balance_adjust_route' },
-        });
-      } catch (logErr) {
-        console.warn('[admin/balance/adjust] secondary audit log skipped:', logErr.message);
-      }
+      console.log('[admin/balance/adjust] USDT success', {
+        userId,
+        balanceBefore,
+        balanceAfter,
+        deltaApplied,
+      });
 
       return res.json({
         success: true,
@@ -1167,7 +1178,10 @@ router.post('/balance/adjust', requirePermission('balance_adjust'), async (req, 
           balance_usdt: balanceAfter,
           usdt_formatted: formatUsdt(balanceAfter),
         },
-        adjustment: amountUsdt,
+        adjustment: deltaApplied,
+        balance_before: balanceBefore,
+        balance_after: balanceAfter,
+        mode: mode === 'set' || hasSet ? 'set' : 'delta',
       });
     }
 
