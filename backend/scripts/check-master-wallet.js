@@ -4,10 +4,12 @@
  * Reads MASTER_PRIVATE_KEY (and optional MASTER_WALLET_ADDRESS, TRONGRID_API_KEY)
  * from .env via dotenv, then queries Tron via TronWeb.
  *
+ * For a read-only check you can set MASTER_WALLET_ADDRESS alone (no private key).
+ *
  * Usage (from repo root or backend/):
  *   node backend/scripts/check-master-wallet.js
  *   npm run check-master-wallet
- *   npm run check-master-wallet --prefix backend
+ *   npm run check-master-wallet -- --json
  */
 
 const path = require('path');
@@ -68,8 +70,8 @@ if (require.main === module) {
     console.error(`  ${err.code ? `[${err.code}] ` : ''}${err.message || err}`);
     console.error('');
     if (err.code === 'MASTER_KEY_MISSING') {
-      console.error('Set MASTER_PRIVATE_KEY in backend/.env or the root .env file.');
-      console.error('Optional: MASTER_WALLET_ADDRESS, TRONGRID_API_KEY, TRON_FULL_HOST');
+      console.error('Set MASTER_PRIVATE_KEY and/or MASTER_WALLET_ADDRESS in backend/.env or the root .env file.');
+      console.error('Optional: TRONGRID_API_KEY, TRON_FULL_HOST');
     }
     process.exit(1);
   });

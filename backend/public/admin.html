@@ -222,13 +222,15 @@
         <div class="master-wallet-panel" id="masterWalletPanel">
           <div class="master-wallet-panel-header">
             <div>
-              <strong>Master wallet (TRC20)</strong>
-              <p class="hint" style="margin:0.25rem 0 0">Check TRX and USDT before completing crypto withdrawals.</p>
+              <strong>Master Wallet — Live On-Chain Balance</strong>
+              <p class="hint" style="margin:0.25rem 0 0">
+                Queries TRON in real time via TronWeb (USDT TRC20 + TRX gas). No caching.
+              </p>
             </div>
-            <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm">Check Master Wallet Balance</button>
+            <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm">Refresh Live Balance</button>
           </div>
           <div id="masterWalletBalance" class="master-wallet-balance" aria-live="polite">
-            <p class="hint" style="margin:0">Click the button to load balances.</p>
+            <p class="hint" style="margin:0">Loading live balances from TRON…</p>
           </div>
         </div>
 

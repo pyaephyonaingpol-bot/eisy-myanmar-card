@@ -1228,19 +1228,30 @@ const {
 const { walletPayload: adminWalletPayload } = require('../services/walletService');
 const { getMasterWalletInfo } = require('../services/tronMasterWalletService');
 
-/** TRON master wallet TRX + USDT balances (for withdrawal funding checks). */
-router.get('/master-wallet-balance', async (_req, res) => {
+/** Live TRON master wallet TRX + USDT balances (no caching — always queries chain). */
+router.get('/master-wallet-balance', async (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    Pragma: 'no-cache',
+    Expires: '0',
+  });
+
   try {
+    // Fresh TronWeb RPC / contract call on every request (never served from app cache).
     const info = await getMasterWalletInfo();
+    const checkedAt = new Date().toISOString();
     res.json({
       success: true,
+      live: true,
+      source: 'tronweb',
+      cached: false,
       wallet: {
         address: info.address,
         network: 'TRC20',
         usdt_balance: Number(info.usdtBalance) || 0,
         trx_balance: Number(info.trxBalance) || 0,
         usdt_contract: info.contract,
-        checked_at: new Date().toISOString(),
+        checked_at: checkedAt,
       },
     });
   } catch (err) {
@@ -1251,6 +1262,8 @@ router.get('/master-wallet-balance', async (_req, res) => {
     res.status(status).json({
       error: err.message || 'Failed to query master wallet balance',
       code: err.code || undefined,
+      live: true,
+      cached: false,
     });
   }
 });

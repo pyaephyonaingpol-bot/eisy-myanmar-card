@@ -72,6 +72,8 @@
         method,
         headers: this.headers(),
         body: body != null ? JSON.stringify(body) : undefined,
+        // Admin data should always be fresh (esp. master wallet / withdrawals).
+        cache: 'no-store',
       });
       let data = {};
       try {
@@ -101,6 +103,7 @@
         this.loadP2pSellOrders();
         this.loadUsdtWithdrawals();
         this.loadMmkWithdrawals();
+        this.checkMasterWalletBalance();
       }
       if (name === 'support') this.loadSupportThreads();
       if (name === 'cards') {
@@ -650,6 +653,7 @@
         this.loadP2pSellOrders(),
         this.loadUsdtWithdrawals(),
         this.loadMmkWithdrawals(),
+        this.checkMasterWalletBalance(),
         this.loadPendingCards(),
         this.loadIssuedCards(),
         this.loadPendingReloads(),
@@ -1870,28 +1874,41 @@
       const prevLabel = btn ? btn.textContent : '';
       if (btn) {
         btn.disabled = true;
-        btn.textContent = 'Checking…';
+        btn.textContent = 'Querying TRON…';
       }
-      box.innerHTML = '<p class="hint" style="margin:0">Querying TRON master wallet…</p>';
+      box.innerHTML = '<p class="hint" style="margin:0">Fetching live USDT + TRX from the blockchain…</p>';
 
       try {
-        const data = await this.api('GET', '/api/admin/master-wallet-balance');
+        // Cache-bust so intermediaries never reuse a previous balance response.
+        const data = await this.api(
+          'GET',
+          '/api/admin/master-wallet-balance?_=' + Date.now()
+        );
         const w = data.wallet || {};
         const usdt = Number(w.usdt_balance || 0);
         const trx = Number(w.trx_balance || 0);
         const checked = w.checked_at
           ? new Date(w.checked_at).toLocaleString()
           : new Date().toLocaleString();
+        const liveBadge = data.live !== false
+          ? '<span class="master-wallet-live-badge">LIVE</span>'
+          : '';
 
         box.innerHTML =
           '<div class="master-wallet-balance-grid">' +
             '<div class="master-wallet-stat">' +
-              '<span class="label">USDT (TRC20)</span>' +
-              '<span class="value usdt">$' + usdt.toFixed(2) + '</span>' +
+              '<span class="label">USDT (TRC20) ' + liveBadge + '</span>' +
+              '<span class="value usdt">' + usdt.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 6,
+              }) + '</span>' +
             '</div>' +
             '<div class="master-wallet-stat">' +
-              '<span class="label">TRX</span>' +
-              '<span class="value trx">' + trx.toFixed(4) + '</span>' +
+              '<span class="label">TRX (gas)</span>' +
+              '<span class="value trx">' + trx.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 6,
+              }) + '</span>' +
             '</div>' +
             '<div class="master-wallet-stat">' +
               '<span class="label">Network</span>' +
@@ -1899,14 +1916,16 @@
             '</div>' +
           '</div>' +
           '<div class="master-wallet-address">Address: <code>' + this.esc(w.address || '—') + '</code>' +
-            '<br><span class="hint">Checked ' + this.esc(checked) + '</span></div>';
+            '<br><span class="hint">On-chain · ' + this.esc(checked) +
+            (data.source ? ' · via ' + this.esc(String(data.source)) : '') +
+            '</span></div>';
       } catch (err) {
         box.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' +
           this.esc(err.message || 'Failed to load master wallet balance') + '</p>';
       } finally {
         if (btn) {
           btn.disabled = false;
-          btn.textContent = prevLabel || 'Check Master Wallet Balance';
+          btn.textContent = prevLabel || 'Refresh Live Balance';
         }
       }
     },

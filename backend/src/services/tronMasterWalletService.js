@@ -227,7 +227,9 @@ function getMasterWalletAddress() {
   return getMasterAddress(tronWeb, privateKey);
 }
 
-/** Read-only helper for health / diagnostics (never returns the private key). */
+/** Read-only helper for health / diagnostics (never returns the private key).
+ *  Always queries TRON live via TronWeb — no in-process balance cache.
+ */
 async function getMasterWalletInfo() {
   const address = getMasterWalletAddress();
   let tronWeb;
@@ -240,13 +242,17 @@ async function getMasterWalletInfo() {
     tronWeb = new TronWeb({ fullHost: TRON_FULL_HOST, headers });
     tronWeb.setAddress(address);
   }
-  const usdt = await getUsdtBalance(tronWeb, address);
-  const trxSun = await getTrxBalanceSun(tronWeb, address);
+  // Parallel live RPC: TRC20 USDT balanceOf + native TRX balance
+  const [usdt, trxSun] = await Promise.all([
+    getUsdtBalance(tronWeb, address),
+    getTrxBalanceSun(tronWeb, address),
+  ]);
   return {
     address,
     usdtBalance: usdt.usdt,
     trxBalance: Number(trxSun) / 1e6,
     contract: USDT_TRC20_CONTRACT,
+    queriedAt: new Date().toISOString(),
   };
 }
 
