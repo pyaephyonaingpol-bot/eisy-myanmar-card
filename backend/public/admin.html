@@ -342,7 +342,7 @@
         <button type="submit" class="btn btn-primary" id="adminLoginBtn">Sign in</button>
       </form>
       <div class="bootstrap-box hidden" id="adminBootstrapBox">
-        <p class="auth-hint" style="margin-top:0">No admins yet. Create the first Super Admin (requires the server <code>ADMIN_API_KEY</code>).</p>
+        <p class="auth-hint" style="margin-top:0">No admins yet. Create the first Super Admin. The API key field is filled from what the server currently expects.</p>
         <form id="adminBootstrapForm" class="form">
           <label for="adminBootstrapName">Name</label>
           <input type="text" id="adminBootstrapName" placeholder="Super Admin" />
@@ -351,7 +351,8 @@
           <label for="adminBootstrapPassword">Password</label>
           <input type="password" id="adminBootstrapPassword" required minlength="6" placeholder="Min 6 characters" />
           <label for="adminBootstrapKey">Admin API Key</label>
-          <input type="password" id="adminBootstrapKey" required placeholder="ADMIN_API_KEY" autocomplete="off" />
+          <input type="text" id="adminBootstrapKey" required placeholder="ADMIN_API_KEY" autocomplete="off" />
+          <p id="adminBootstrapKeyHint" class="auth-hint hidden" style="margin-top:0.35rem"></p>
           <p id="adminBootstrapError" class="auth-inline-error hidden" role="alert"></p>
           <button type="submit" class="btn btn-secondary" id="adminBootstrapBtn">Create Super Admin</button>
         </form>
@@ -1032,6 +1033,6 @@
   <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
   <script src="/i18n.js?v=20260811b"></script>
   <script src="/nav.js?v=20260811b"></script>
-  <script src="/admin.js?v=20260812b" defer></script>
+  <script src="/admin.js?v=20260812c" defer></script>
 </body>
 </html>

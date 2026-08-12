@@ -10,8 +10,15 @@ const {
 
 const SESSION_EXPIRY_DAYS = parseInt(process.env.SESSION_EXPIRY_DAYS || '30', 10);
 
+/** Fallback when ADMIN_API_KEY env is unset (local/dev or misconfigured deploy). */
+const DEFAULT_ADMIN_API_KEY = 'eisy-admin-dev-key';
+
 function configuredAdminApiKey() {
-  return process.env.ADMIN_API_KEY || 'eisy-admin-dev-key';
+  return process.env.ADMIN_API_KEY || DEFAULT_ADMIN_API_KEY;
+}
+
+function isDefaultAdminApiKey() {
+  return !process.env.ADMIN_API_KEY;
 }
 
 function adminDevBypassEnabled() {
@@ -263,4 +270,7 @@ module.exports = {
   requireRoles,
   requireOwnerOrAdmin,
   ROLES,
+  DEFAULT_ADMIN_API_KEY,
+  configuredAdminApiKey,
+  isDefaultAdminApiKey,
 };

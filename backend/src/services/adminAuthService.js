@@ -20,6 +20,10 @@ const {
   pagesForRole,
   ROLE_LABELS,
 } = require('../lib/adminRoles');
+const {
+  configuredAdminApiKey,
+  isDefaultAdminApiKey,
+} = require('../middleware/auth');
 
 function adminPublic(user) {
   if (!user) return null;
@@ -123,14 +127,26 @@ async function bootstrapSuperAdmin({
   adminApiKey,
   ipAddress,
 }) {
-  const expectedKey = process.env.ADMIN_API_KEY || 'eisy-admin-dev-key';
-  if (!adminApiKey || adminApiKey !== expectedKey) {
-    throw new Error('Valid admin API key required for bootstrap');
-  }
-
   const existingAdmins = await User.countAdmins();
   if (existingAdmins > 0) {
     throw new Error('Admins already exist — use Super Admin to manage accounts');
+  }
+
+  const expectedKey = configuredAdminApiKey();
+  if (!adminApiKey || adminApiKey !== expectedKey) {
+    // Log exact expected key so deploy logs (e.g. Vercel) show what to paste.
+    // Only reached when no admins exist yet.
+    console.error(
+      '[admin/bootstrap] Invalid ADMIN_API_KEY.',
+      'env_set=',
+      Boolean(process.env.ADMIN_API_KEY),
+      'expected=',
+      expectedKey
+    );
+    const hint = isDefaultAdminApiKey()
+      ? ` ADMIN_API_KEY is unset on the server — use the default: ${expectedKey}`
+      : ` Server expects the value of env ADMIN_API_KEY (length ${expectedKey.length}): ${expectedKey}`;
+    throw new Error(`Invalid ADMIN_API_KEY.${hint}`);
   }
 
   const normalized = normalizeEmail(email);

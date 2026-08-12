@@ -225,8 +225,27 @@
       try {
         const res = await fetch('/api/admin/auth/status');
         const data = await res.json().catch(() => ({}));
-        if (data.bootstrap_available) box.classList.remove('hidden');
-        else box.classList.add('hidden');
+        if (data.bootstrap_available) {
+          box.classList.remove('hidden');
+          const keyInput = $('adminBootstrapKey');
+          const hint = $('adminBootstrapKeyHint');
+          if (data.bootstrap_api_key && keyInput && !keyInput.value) {
+            keyInput.value = data.bootstrap_api_key;
+            keyInput.type = 'text';
+          }
+          if (hint) {
+            if (data.bootstrap_api_key) {
+              hint.textContent = data.uses_default_admin_api_key
+                ? `Server ADMIN_API_KEY is unset — prefilled default: ${data.bootstrap_api_key}`
+                : `Prefilled from server ADMIN_API_KEY (length ${data.bootstrap_api_key.length}).`;
+              hint.classList.remove('hidden');
+            } else {
+              hint.classList.add('hidden');
+            }
+          }
+        } else {
+          box.classList.add('hidden');
+        }
       } catch (_) {
         box.classList.add('hidden');
       }

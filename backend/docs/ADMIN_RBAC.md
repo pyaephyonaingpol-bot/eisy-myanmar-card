@@ -14,7 +14,7 @@ Super Admin and Finance Admin can open **Withdrawal Rates** to update:
 Stored in `app_settings`. User withdrawals always load the latest values via `getWithdrawalFeeSettings()`.
 
 ## First Super Admin
-When no admins exist, open `/admin.html` and use **Create Super Admin** with `ADMIN_API_KEY` (or default `eisy-admin-dev-key` in local/dev).
+When no admins exist, open `/admin.html` and use **Create Super Admin**. While bootstrap is open, `GET /api/admin/auth/status` returns `bootstrap_api_key` (the exact value the server will accept). If `ADMIN_API_KEY` is unset, that value is the default `eisy-admin-dev-key`. A wrong key also returns/logs the expected value until the first admin exists.
 
 ### Set / sync `ADMIN_API_KEY` (local + Vercel)
 

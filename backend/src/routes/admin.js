@@ -174,11 +174,24 @@ router.post('/issue-card', requireAuth, requireSensitive, async (req, res) => {
 // ─── Admin authentication (public login / bootstrap) ───
 router.get('/auth/status', async (_req, res) => {
   try {
+    const {
+      configuredAdminApiKey,
+      isDefaultAdminApiKey,
+    } = require('../middleware/auth');
     const adminCount = await User.countAdmins();
-    res.json({
+    const bootstrapAvailable = adminCount === 0;
+    const payload = {
       has_admins: adminCount > 0,
-      bootstrap_available: adminCount === 0,
-    });
+      bootstrap_available: bootstrapAvailable,
+      admin_api_key_configured: Boolean(process.env.ADMIN_API_KEY),
+      uses_default_admin_api_key: isDefaultAdminApiKey(),
+    };
+    // While no admins exist, expose the exact key the server will accept so
+    // first-time setup cannot fail due to a mismatched/unknown secret.
+    if (bootstrapAvailable) {
+      payload.bootstrap_api_key = configuredAdminApiKey();
+    }
+    res.json(payload);
   } catch (err) {
     console.error('[admin/auth/status]', err);
     res.status(500).json({ error: 'Internal server error' });
