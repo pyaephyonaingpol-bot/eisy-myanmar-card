@@ -421,17 +421,24 @@
           </div>
         </div>
 
-        <h2 style="margin-top:2rem">Daily Rate &amp; Pricing Management</h2>
-        <p class="hint" style="margin-bottom:1rem">Update today's exchange rate and card fees. Each save is logged to Exchange Rate History so past deposits keep their original rate.</p>
+        <h2 style="margin-top:2rem">Rate &amp; Pricing</h2>
+        <p class="hint" style="margin-bottom:1rem">Update exchange rate, fees, and withdrawal minimums. Each save is logged to history so past deposits keep their original rate.</p>
         <form id="adminSettingsForm" class="form grid-admin-form" style="max-width:640px">
+          <div class="field" style="grid-column:1/-1">
+            <h3 style="margin:0 0 0.25rem;font-size:1rem">Exchange Rate</h3>
+          </div>
           <div class="field">
-            <label for="settingExchangeRate">Today's USD/MMK Exchange Rate</label>
+            <label for="settingExchangeRate">USD/MMK Exchange Rate</label>
             <input id="settingExchangeRate" type="number" step="1" min="1" required placeholder="4200" />
             <small class="hint">MMK per 1 USD</small>
           </div>
           <div class="field">
             <label for="settingEffectiveDate">Effective Date</label>
             <input id="settingEffectiveDate" type="date" required />
+          </div>
+
+          <div class="field" style="grid-column:1/-1">
+            <h3 style="margin:0.75rem 0 0.25rem;font-size:1rem">Card &amp; Deposit</h3>
           </div>
           <div class="field">
             <label for="settingCardFee">New Card Issuance Fee (USD)</label>
@@ -442,9 +449,8 @@
             <input id="settingMinDeposit" type="number" step="0.01" min="0" required />
           </div>
           <div class="field">
-            <label for="settingReloadFee">Card Reload Service Fee (USD)</label>
+            <label for="settingReloadFee">Card Reload Fee (USD)</label>
             <input id="settingReloadFee" type="number" step="0.01" min="0" required />
-            <small class="hint">Fixed $3.50 user fee per reload — $1.50 provider cost, $2.00 net profit</small>
           </div>
           <div class="field">
             <label for="settingMinReloadMmk">Minimum Card Reload (MMK)</label>
@@ -459,95 +465,41 @@
             <input id="settingMinUsdtReload" type="number" step="0.01" min="0" required />
           </div>
           <div class="field">
-            <label for="settingP2pSellerFee">P2P Seller Platform Fee (%)</label>
+            <label for="settingP2pSellerFee">P2P Seller Fee (%)</label>
             <input id="settingP2pSellerFee" type="number" step="0.1" min="0" max="10" required />
-            <small class="hint">Charged to seller on release — buyer receives full order amount (e.g. 0.5 or 1.0).</small>
           </div>
           <div class="field">
-            <label>Platform USDT Revenue Balance</label>
+            <label>Platform USDT Revenue</label>
             <div id="settingPlatformRevenueBalance" class="p2p-revenue-balance">—</div>
-            <small class="hint">Accumulated P2P seller fees + withdrawal fees (read-only)</small>
+            <small class="hint">P2P + withdrawal fees (read-only)</small>
           </div>
+
           <div class="field" style="grid-column:1/-1">
-            <h3 style="margin:0.5rem 0 0.25rem;font-size:1rem">Payment Service Fee (Deposit &amp; Withdrawal)</h3>
-            <p class="hint" style="margin:0 0 0.75rem">Fee = Math.max(amount × %, minimum $). Applies to wallet deposits and withdrawals (USDT and MMK).</p>
+            <h3 style="margin:0.75rem 0 0.25rem;font-size:1rem">Withdrawal Fee / Rate</h3>
+            <p class="hint" style="margin:0 0 0.75rem">Fee = max(amount × %, minimum). Applies to deposits and withdrawals.</p>
           </div>
           <div class="field">
-            <label for="settingPaymentFeePercent">Service Fee Percent (%)</label>
+            <label for="settingPaymentFeePercent">Fee Percent (%)</label>
             <input id="settingPaymentFeePercent" type="number" step="0.01" min="0" max="20" required />
           </div>
           <div class="field">
-            <label for="settingPaymentFeeMinUsdt">Minimum Fee (USDT / $1 peg)</label>
+            <label for="settingPaymentFeeMinUsdt">Minimum Fee (USDT)</label>
             <input id="settingPaymentFeeMinUsdt" type="number" step="0.01" min="0" required />
-            <small class="hint">MMK minimum fee = this value × exchange rate</small>
+            <small class="hint">MMK minimum = this × exchange rate</small>
           </div>
+
           <div class="field" style="grid-column:1/-1">
-            <h3 style="margin:0.5rem 0 0.25rem;font-size:1rem">Withdrawal Limits (legacy network labels use same 2% / min $1 rule)</h3>
-            <p class="hint" style="margin:0 0 0.75rem">Network destination still matters for payout routing; fee calculation is unified.</p>
-          </div>
-          <div class="field">
-            <label for="settingWithdrawFeeTrc20">TRC20 (TRON) Withdrawal Fee</label>
-            <input id="settingWithdrawFeeTrc20" type="number" step="0.01" min="0" required />
-          </div>
-          <div class="field">
-            <label for="settingWithdrawFeeTrc20Type">TRC20 Fee Type</label>
-            <select id="settingWithdrawFeeTrc20Type">
-              <option value="fixed">Fixed USDT</option>
-              <option value="percent">Percentage (%)</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="settingWithdrawFeeBep20">BEP20 (BSC) Withdrawal Fee</label>
-            <input id="settingWithdrawFeeBep20" type="number" step="0.01" min="0" required />
-          </div>
-          <div class="field">
-            <label for="settingWithdrawFeeBep20Type">BEP20 Fee Type</label>
-            <select id="settingWithdrawFeeBep20Type">
-              <option value="fixed">Fixed USDT</option>
-              <option value="percent">Percentage (%)</option>
-            </select>
+            <h3 style="margin:0.75rem 0 0.25rem;font-size:1rem">Minimum Withdrawal</h3>
           </div>
           <div class="field">
             <label for="settingMinUsdtWithdrawal">Minimum USDT Withdrawal</label>
             <input id="settingMinUsdtWithdrawal" type="number" step="0.01" min="0.01" required />
-            <small class="hint">Minimum gross amount user can request (before fee deduction)</small>
           </div>
           <div class="field">
-            <label for="settingWithdrawFeeBank">USDT→Bank Withdrawal Fee</label>
-            <input id="settingWithdrawFeeBank" type="number" step="0.01" min="0" required />
-          </div>
-          <div class="field">
-            <label for="settingWithdrawFeeBankType">USDT→Bank Fee Type</label>
-            <select id="settingWithdrawFeeBankType">
-              <option value="fixed">Fixed USDT</option>
-              <option value="percent">Percentage (%)</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="settingMinMmkWithdrawal">Minimum MMK Bank Withdrawal</label>
+            <label for="settingMinMmkWithdrawal">Minimum MMK Withdrawal</label>
             <input id="settingMinMmkWithdrawal" type="number" step="1" min="1" required />
           </div>
-          <div class="field">
-            <label for="settingMmkWithdrawFeePercent">MMK Withdrawal Fee (%)</label>
-            <input id="settingMmkWithdrawFeePercent" type="number" step="0.01" min="0" max="20" required />
-          </div>
-          <div class="field" style="grid-column:1/-1">
-            <label for="settingUsdtTrc20">USDT Deposit Address (TRC20) — legacy fallback</label>
-            <input id="settingUsdtTrc20" type="text" placeholder="T... (overridden by MASTER_WALLET_ADDRESS when set)" />
-            <small class="hint">Live deposits use <code>MASTER_WALLET_ADDRESS</code> / master private key. This field is a fallback only.</small>
-          </div>
-          <div class="field" style="grid-column:1/-1">
-            <label for="settingUsdtBep20">USDT Deposit Address (BEP20)</label>
-            <input id="settingUsdtBep20" type="text" placeholder="0x..." />
-          </div>
-          <div class="field" style="grid-column:1/-1">
-            <label for="settingNotes">Notes (optional)</label>
-            <input id="settingNotes" type="text" placeholder="Updated due to market trend" />
-          </div>
-          <div class="field">
-            <label for="settingUpdatedBy">Updated By</label>
-            <input id="settingUpdatedBy" type="text" value="admin" placeholder="admin" />
-          </div>
+
           <button type="submit" class="btn btn-primary">Save Rate &amp; Pricing</button>
         </form>
         <pre class="output" id="adminSettingsOut"></pre>
