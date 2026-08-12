@@ -389,7 +389,13 @@ a.btn { text-decoration: none; }
 .data-table code { font-family: var(--font-mono); font-size: 0.78rem; background: rgba(15,23,42,0.55); padding: 0.15rem 0.4rem; border-radius: 6px; border: 1px solid var(--border-subtle); color: #93c5fd; font-variant-numeric: tabular-nums; }
 .actions-cell { display: flex; gap: 0.4rem; flex-wrap: nowrap; align-items: center; min-width: 140px; }
 .actions-cell .btn { flex-shrink: 0; min-width: 72px; }
-.data-table-wrap.is-refreshing {
+.data-table-wrap.is-refreshing,
+.revenue-metrics-grid.is-refreshing,
+.ledger-summary-grid.is-refreshing,
+.master-wallet-balance.is-refreshing,
+#masterWalletStatusBalance.is-refreshing,
+.thread-list.is-refreshing,
+.admins-table-wrap.is-refreshing {
   opacity: 0.78;
   pointer-events: none;
   transition: opacity 0.15s ease;
@@ -821,15 +827,22 @@ a.btn { text-decoration: none; }
 }
 .ledger-summary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
   margin-bottom: 0.5rem;
+}
+@media (max-width: 960px) {
+  .ledger-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .ledger-summary-grid { grid-template-columns: 1fr; }
 }
 .ledger-summary-card {
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   padding: 1rem 1.1rem;
   background: rgba(15, 23, 42, 0.35);
+  min-height: 7rem;
 }
 .ledger-summary-card.usdt { border-color: rgba(52, 211, 153, 0.35); }
 .ledger-summary-card.mmk { border-color: rgba(96, 165, 250, 0.35); }
@@ -851,6 +864,29 @@ a.btn { text-decoration: none; }
   opacity: 0.8;
   margin: 0;
   line-height: 1.35;
+  min-height: 2.6em;
+}
+.revenue-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+@media (max-width: 960px) {
+  .revenue-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .revenue-metrics-grid { grid-template-columns: 1fr; }
+}
+.revenue-metric-card {
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.55);
+  min-height: 7.5rem;
+}
+.revenue-metric-sub {
+  min-height: 2.8em;
 }
 .p2p-external-mmk-display {
   padding: 0.65rem 0.85rem;

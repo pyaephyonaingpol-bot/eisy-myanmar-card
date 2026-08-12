@@ -21,6 +21,12 @@
     pendingReloadsById: {},
     pricingSettings: null,
     kycDocsBySubmissionId: {},
+    _panelLoadAt: {},
+    _panelReloadMs: 45000,
+    _masterWalletCache: null,
+    _masterWalletCacheAt: 0,
+    _masterWalletTtlMs: 60000,
+    _depositsRefreshTimer: null,
 
     init() {
       try {
@@ -46,6 +52,46 @@
 
     hasPermission(perm) {
       return Array.isArray(this.permissions) && this.permissions.includes(perm);
+    },
+
+    shouldReloadPanel(name, opts = {}) {
+      if (opts && opts.force) return true;
+      const at = this._panelLoadAt[name] || 0;
+      return Date.now() - at > (this._panelReloadMs || 45000);
+    },
+
+    markPanelLoaded(name) {
+      this._panelLoadAt[name] = Date.now();
+    },
+
+    beginTableRefresh(table, loadingText) {
+      if (!table) return;
+      const hasTable = Boolean(table.querySelector('table.data-table'));
+      if (!hasTable) {
+        table.innerHTML = '<p class="hint">' + (loadingText || 'Loading…') + '</p>';
+      } else {
+        table.classList.add('is-refreshing');
+      }
+    },
+
+    endTableRefresh(table) {
+      if (table) table.classList.remove('is-refreshing');
+    },
+
+    beginContainerRefresh(container, loadingText, contentSelector) {
+      if (!container) return;
+      const hasContent = contentSelector
+        ? Boolean(container.querySelector(contentSelector))
+        : Boolean(container.querySelector('table.data-table, .revenue-metric-card, .thread-item, .master-wallet-balance-grid, .sa-balance-row'));
+      if (!hasContent) {
+        container.innerHTML = '<p class="hint">' + (loadingText || 'Loading…') + '</p>';
+      } else {
+        container.classList.add('is-refreshing');
+      }
+    },
+
+    endContainerRefresh(container) {
+      if (container) container.classList.remove('is-refreshing');
     },
 
     showLogin() {
@@ -355,39 +401,68 @@
         return;
       }
       if (name === 'overview') {
-        this.loadOverview();
+        if (this.shouldReloadPanel('overview')) {
+          this.loadOverview();
+          this.markPanelLoaded('overview');
+        }
       }
       if (name === 'deposits') {
-        this.loadDeposits();
-        this.loadP2pBuyOrders();
-        this.loadP2pDisputes();
-        this.loadP2pSellOrders();
-        this.loadUsdtWithdrawals();
-        this.loadMmkWithdrawals();
-        if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
+        if (this.shouldReloadPanel('deposits')) {
+          this.loadDeposits();
+          this.loadP2pBuyOrders();
+          this.loadP2pDisputes();
+          this.loadP2pSellOrders();
+          this.loadUsdtWithdrawals();
+          this.loadMmkWithdrawals();
+          if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
+          this.markPanelLoaded('deposits');
+        }
       }
-      if (name === 'support') this.loadSupportThreads();
+      if (name === 'support') {
+        if (this.shouldReloadPanel('support')) {
+          this.loadSupportThreads();
+          this.markPanelLoaded('support');
+        }
+      }
       if (name === 'cards') {
-        this.loadPendingCards();
-        this.loadIssuedCards();
-        this.loadPendingReloads();
+        if (this.shouldReloadPanel('cards')) {
+          this.loadPendingCards();
+          this.loadIssuedCards();
+          this.loadPendingReloads();
+          this.markPanelLoaded('cards');
+        }
       }
       if (name === 'settings') {
-        this.loadSettings();
-        this.loadExchangeRateHistory();
-        if (this.hasPermission('payment_methods')) this.loadPaymentMethods();
+        if (this.shouldReloadPanel('settings')) {
+          this.loadSettings();
+          this.loadExchangeRateHistory();
+          if (this.hasPermission('payment_methods')) this.loadPaymentMethods();
+          this.markPanelLoaded('settings');
+        }
       }
       if (name === 'kyc-requests') {
-        this.loadKycRequests();
+        if (this.shouldReloadPanel('kyc-requests')) {
+          this.loadKycRequests();
+          this.markPanelLoaded('kyc-requests');
+        }
       }
       if (name === 'revenue') {
-        this.loadRevenueDashboard();
+        if (this.shouldReloadPanel('revenue')) {
+          this.loadRevenueDashboard();
+          this.markPanelLoaded('revenue');
+        }
       }
       if (name === 'transactions') {
-        this.loadTransactions();
+        if (this.shouldReloadPanel('transactions')) {
+          this.loadTransactions();
+          this.markPanelLoaded('transactions');
+        }
       }
       if (name === 'admins') {
-        this.loadAdmins();
+        if (this.shouldReloadPanel('admins')) {
+          this.loadAdmins();
+          this.markPanelLoaded('admins');
+        }
       }
     },
 
@@ -412,7 +487,10 @@
       const refreshBtn = $('adminRefreshBtn');
       if (refreshBtn) refreshBtn.addEventListener('click', () => this.loadAll());
 
-      $('btnRefreshRevenue')?.addEventListener('click', () => this.loadRevenueDashboard());
+      $('btnRefreshRevenue')?.addEventListener('click', () => {
+        this.loadRevenueDashboard({ force: true });
+        this.markPanelLoaded('revenue');
+      });
 
       $('adminCreateForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -921,9 +999,11 @@
     scheduleDepositsRefresh() {
       clearTimeout(this._depositsRefreshTimer);
       this._depositsRefreshTimer = setTimeout(() => {
+        const active = typeof AppNav !== 'undefined' ? AppNav.currentPage : null;
+        if (active && active !== 'deposits') return;
         // Prefer API after realtime events so status changes stick
         this.loadDeposits({ forceApi: true });
-      }, 350);
+      }, 800);
     },
 
     onLanguageChange() {
@@ -945,12 +1025,18 @@
     },
 
     loadAll() {
+      const force = { force: true };
       const tasks = [];
       if (this.hasPermission('settings_read') || this.hasPermission('rates')) {
         tasks.push(this.loadPricingSettings());
       }
       if (this.hasPermission('deposits')) {
-        tasks.push(this.loadDeposits(), this.loadP2pDisputes(), this.loadP2pBuyOrders(), this.loadP2pSellOrders());
+        tasks.push(
+          this.loadDeposits(force),
+          this.loadP2pDisputes(),
+          this.loadP2pBuyOrders(),
+          this.loadP2pSellOrders()
+        );
       }
       if (this.hasPermission('withdrawals')) {
         tasks.push(this.loadUsdtWithdrawals(), this.loadMmkWithdrawals());
@@ -959,12 +1045,21 @@
         tasks.push(this.loadPendingCards(), this.loadIssuedCards(), this.loadPendingReloads());
       }
       if (this.hasPermission('users')) tasks.push(this.loadUsers());
-      if (this.hasPermission('transactions')) tasks.push(this.loadTransactions());
-      if (this.hasPermission('manage_admins')) tasks.push(this.loadAdmins());
+      if (this.hasPermission('transactions')) tasks.push(this.loadTransactions(force));
+      if (this.hasPermission('manage_admins')) tasks.push(this.loadAdmins(force));
       if (this.hasPermission('overview') || this.hasPermission('master_wallet')) {
-        tasks.push(this.checkMasterWalletBalance());
+        tasks.push(this.checkMasterWalletBalance(force));
       }
       if (this.hasPermission('withdrawal_rates_read')) tasks.push(this.loadWithdrawalRates());
+      if (this.hasPermission('settings_read')) {
+        tasks.push(this.loadSettings(force));
+      }
+      if (this.hasPermission('revenue') || this.hasPermission('ledger')) {
+        tasks.push(this.loadRevenueDashboard(force));
+      }
+      Object.keys(this._panelLoadAt || {}).forEach((k) => {
+        this._panelLoadAt[k] = Date.now();
+      });
       return Promise.allSettled(tasks);
     },
 
@@ -1073,7 +1168,7 @@
     async loadAdmins() {
       const el = $('adminsTable');
       if (!el || !this.hasPermission('manage_admins')) return;
-      el.innerHTML = '<p class="hint">Loading admins…</p>';
+      this.beginTableRefresh(el, 'Loading admins…');
       try {
         const data = await this.api('GET', '/api/admin/admins');
         const admins = data.admins || [];
@@ -1140,6 +1235,8 @@
         });
       } catch (err) {
         el.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+      } finally {
+        this.endTableRefresh(el);
       }
     },
 
@@ -2011,7 +2108,7 @@
     async loadKycRequests() {
       const table = $('kycRequestsTable');
       if (!table) return;
-      table.innerHTML = '<p class="hint">Loading KYC requests…</p>';
+      this.beginTableRefresh(table, 'Loading KYC requests…');
       try {
         const status = $('kycStatusFilter')?.value || 'PENDING_REVIEW';
         const qs = status ? `?status=${encodeURIComponent(status)}` : '';
@@ -2060,6 +2157,8 @@
           '</tbody></table>';
       } catch (err) {
         table.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+      } finally {
+        this.endTableRefresh(table);
       }
     },
 
@@ -2404,18 +2503,6 @@
           alertEl.textContent = '';
         }
       }
-
-      const badge = $('adminStatusBadge');
-      if (badge && this.hasPermission('master_wallet')) {
-        if (trxLow) {
-          badge.textContent = 'Low TRX';
-          badge.className = 'badge badge-warn';
-        } else if (badge.textContent === 'Low TRX' || badge.textContent === 'Low TRX — refill') {
-          const role = this.user?.role_label || this.user?.admin_role || 'Admin';
-          badge.textContent = role;
-          badge.className = 'badge badge-ok';
-        }
-      }
     },
 
     async checkMasterWalletBalance(opts = {}) {
@@ -2423,32 +2510,55 @@
       const targets = [$('masterWalletStatusBalance'), $('masterWalletBalance')].filter(Boolean);
       if (!targets.length) return;
 
+      const now = Date.now();
+      if (!opts.force && this._masterWalletCache && (now - this._masterWalletCacheAt) < this._masterWalletTtlMs) {
+        this.renderMasterWalletStatus(this._masterWalletCache);
+        return;
+      }
+
+      const hasContent = targets.some((el) =>
+        el.querySelector('.master-wallet-balance-grid, .sa-balance-row, .sa-balance')
+      );
+      if (!hasContent) {
+        targets.forEach((el) => {
+          el.innerHTML = '<p class="hint" style="margin:0">Querying TRON…</p>';
+        });
+      } else {
+        targets.forEach((el) => el.classList.add('is-refreshing'));
+      }
+
       const buttons = Array.from(document.querySelectorAll('[data-master-wallet-refresh], #btnCheckMasterWallet'));
       const prev = buttons.map((b) => b.textContent);
-      buttons.forEach((b) => { b.disabled = true; b.textContent = 'Refreshing…'; });
-      targets.forEach((el) => {
-        el.innerHTML = '<p class="hint" style="margin:0">Querying TRON…</p>';
-      });
+      if (opts.force) {
+        buttons.forEach((b) => { b.disabled = true; b.textContent = 'Refreshing…'; });
+      }
 
       try {
         const data = await this.api('GET', '/api/admin/master-wallet-balance');
-        this.renderMasterWalletStatus(data.wallet || {});
+        this._masterWalletCache = data.wallet || {};
+        this._masterWalletCacheAt = Date.now();
+        this.renderMasterWalletStatus(this._masterWalletCache);
         if (opts.force) this.showAdminToast('Balances updated', 'ok');
       } catch (err) {
         const msg = this.esc(err.message || 'Failed to load balances');
-        targets.forEach((el) => {
-          el.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' + msg + '</p>';
-        });
+        if (!hasContent) {
+          targets.forEach((el) => {
+            el.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' + msg + '</p>';
+          });
+        }
         const alertEl = $('masterWalletTrxAlert');
         if (alertEl) {
           alertEl.classList.remove('hidden');
           alertEl.innerHTML = '<strong>Could not load wallet</strong> — ' + msg;
         }
       } finally {
-        buttons.forEach((b, i) => {
-          b.disabled = false;
-          b.textContent = prev[i] || 'Refresh';
-        });
+        targets.forEach((el) => el.classList.remove('is-refreshing'));
+        if (opts.force) {
+          buttons.forEach((b, i) => {
+            b.disabled = false;
+            b.textContent = prev[i] || 'Refresh';
+          });
+        }
       }
     },
 
@@ -2737,6 +2847,8 @@
     },
 
     async loadSettings() {
+      const ledgerGrid = $('adminLedgerSummary');
+      this.beginContainerRefresh(ledgerGrid, null, '.ledger-summary-card');
       try {
         const data = await this.api('GET', '/api/admin/settings');
         const p = data.pricing || {};
@@ -2774,6 +2886,8 @@
       } catch (err) {
         const out = $('adminSettingsOut');
         if (out) out.textContent = err.message;
+      } finally {
+        this.endContainerRefresh($('adminLedgerSummary'));
       }
     },
 
@@ -2864,12 +2978,7 @@
       const table = $('depositsTable');
       if (!table) return;
 
-      const hasExistingRows = Boolean(table.querySelector('table.data-table'));
-      if (!hasExistingRows) {
-        table.innerHTML = '<p class="hint">Loading deposits…</p>';
-      } else {
-        table.classList.add('is-refreshing');
-      }
+      this.beginTableRefresh(table, 'Loading deposits…');
 
       try {
         const filterEl = $('depositFilter');
@@ -2931,7 +3040,7 @@
         console.error('[Admin] loadDeposits:', err);
         table.innerHTML = '<p class="hint" style="color:#ef4444">Failed to load deposits: ' + this.esc(err.message) + '</p>';
       } finally {
-        table.classList.remove('is-refreshing');
+        this.endTableRefresh(table);
       }
     },
 
@@ -3320,6 +3429,7 @@
       const list = $('supportThreadsList');
       if (!list) return;
 
+      this.beginContainerRefresh(list, 'Loading…', '.thread-item');
       try {
         const data = await this.api('GET', '/api/admin/support/threads');
         const threads = Array.isArray(data.threads) ? data.threads : [];
@@ -3341,6 +3451,8 @@
         });
       } catch (err) {
         list.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+      } finally {
+        this.endContainerRefresh(list);
       }
     },
 
@@ -3372,16 +3484,16 @@
       }
     },
 
-    async loadRevenueDashboard() {
+    async loadRevenueDashboard(opts = {}) {
       const metricsEl = $('revenueMetricsGrid');
       const periodEl = $('revenuePeriodRow');
       const dailyEl = $('revenueDailyTable');
       const auditEl = $('revenueAuditTable');
       if (!metricsEl) return;
 
-      metricsEl.innerHTML = '<p class="hint">Loading revenue metrics…</p>';
-      if (dailyEl) dailyEl.innerHTML = '<p class="hint">Loading…</p>';
-      if (auditEl) auditEl.innerHTML = '<p class="hint">Loading…</p>';
+      this.beginContainerRefresh(metricsEl, 'Loading revenue metrics…', '.revenue-metric-card');
+      if (dailyEl) this.beginTableRefresh(dailyEl, 'Loading…');
+      if (auditEl) this.beginTableRefresh(auditEl, 'Loading…');
 
       try {
         const data = await this.api('GET', '/api/admin/revenue/dashboard');
@@ -3513,6 +3625,10 @@
         if (dailyEl) dailyEl.innerHTML = '';
         if (auditEl) auditEl.innerHTML = '';
         if (periodEl) periodEl.classList.add('hidden');
+      } finally {
+        this.endContainerRefresh(metricsEl);
+        if (dailyEl) this.endTableRefresh(dailyEl);
+        if (auditEl) this.endTableRefresh(auditEl);
       }
     },
   };

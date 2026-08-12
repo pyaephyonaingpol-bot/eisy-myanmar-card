@@ -12,7 +12,8 @@ function roundMmk(n) {
   return Math.round(Number(n) || 0);
 }
 
-async function getSystemLedgerSummary() {
+async function getSystemLedgerSummary(options = {}) {
+  const skipChain = options.skipChain !== false;
   const db = getDb();
 
   const userTotals = await db.get(`
@@ -49,8 +50,8 @@ async function getSystemLedgerSummary() {
   let withdrawable = null;
   try {
     const { getWithdrawableNetProfit } = require('./withdrawableProfitService');
-    // Settings page should load fast; skip chain if needed callers can use revenue dashboard.
-    withdrawable = await getWithdrawableNetProfit({ skipChain: false });
+    // Settings / ledger summary should load fast; revenue dashboard queries chain separately.
+    withdrawable = await getWithdrawableNetProfit({ skipChain });
   } catch (err) {
     console.warn('[ledger-summary] withdrawable profit:', err.message);
   }
