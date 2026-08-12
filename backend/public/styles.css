@@ -64,6 +64,39 @@ h3 { font-size: 0.95rem; font-weight: 600; }
 .subtitle { color: var(--text-secondary); font-size: 0.8125rem; margin-top: 0.2rem; }
 .hint { font-size: 0.8125rem; color: var(--text-muted); margin-top: 0.65rem; line-height: 1.45; }
 .hint code { background: var(--bg-surface); padding: 0.12rem 0.4rem; border-radius: 6px; font-size: 0.78rem; border: 1px solid var(--border-subtle); }
+.kyc-photo-status {
+  margin-top: 0.35rem;
+  min-height: 1.2em;
+}
+.kyc-photo-status.is-compressing {
+  color: #93c5fd;
+}
+.kyc-photo-status.is-compressing::before {
+  content: '';
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-right: 0.4rem;
+  border: 2px solid rgba(147, 197, 253, 0.35);
+  border-top-color: #93c5fd;
+  border-radius: 50%;
+  vertical-align: -0.1rem;
+  animation: kycSpin 0.7s linear infinite;
+}
+.kyc-photo-status.is-ok { color: #86efac; }
+.kyc-photo-status.is-error { color: #fca5a5; }
+.kyc-compress-banner {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  background: rgba(14, 165, 233, 0.1);
+  color: #7dd3fc;
+}
+.kyc-compress-banner.hidden { display: none; }
+@keyframes kycSpin {
+  to { transform: rotate(360deg); }
+}
 
 /* Auth */
 .auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }

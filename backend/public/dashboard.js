@@ -1162,7 +1162,13 @@ const Dashboard = {
 
   openKycModal() {
     this.closeKycGateModal();
-    $('kycFormError').textContent = '';
+    if ($('kycFormError')) $('kycFormError').textContent = '';
+    this._kycCompressedFiles = {};
+    this.setKycPhotoStatus('front', '', null);
+    this.setKycPhotoStatus('back', '', null);
+    this.setKycPhotoStatus('selfie', '', null);
+    this.setKycCompressBanner('', false);
+    this.setKycSubmitBusy(false);
     const status = (this._kycStatus?.kyc_status || '').toUpperCase();
     const form = $('kycForm');
     if (form) form.classList.toggle('hidden', status === 'PENDING_REVIEW' || status === 'VERIFIED');
@@ -1173,6 +1179,127 @@ const Dashboard = {
   closeKycModal() {
     $('kycModal')?.classList.add('hidden');
     document.body.classList.remove('sidebar-scroll-lock');
+  },
+
+  _kycCompressedFiles: {},
+
+  formatFileSize(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(2) + ' MB';
+  },
+
+  setKycPhotoStatus(kind, message, state) {
+    const map = {
+      front: 'kycFrontPhotoStatus',
+      back: 'kycBackPhotoStatus',
+      selfie: 'kycSelfiePhotoStatus',
+    };
+    const el = $(map[kind]);
+    if (!el) return;
+    el.textContent = message || '';
+    el.classList.remove('is-compressing', 'is-ok', 'is-error');
+    if (state) el.classList.add(state);
+  },
+
+  setKycCompressBanner(message, visible) {
+    const el = $('kycCompressStatus');
+    if (!el) return;
+    el.textContent = message || '';
+    el.classList.toggle('hidden', !visible);
+  },
+
+  setKycSubmitBusy(busy) {
+    const btn = $('kycSubmitBtn');
+    if (!btn) return;
+    btn.disabled = Boolean(busy);
+    btn.textContent = busy ? 'Compressing photos…' : 'Submit for Review';
+  },
+
+  async compressKycImage(file, { onProgress } = {}) {
+    if (!file || !/^image\//.test(file.type)) {
+      throw new Error('Please select an image file');
+    }
+    // Already small enough — skip work
+    if (file.size <= 900 * 1024 && file.size > 0) {
+      return file;
+    }
+    const compressFn = typeof imageCompression === 'function'
+      ? imageCompression
+      : (typeof window !== 'undefined' && typeof window.imageCompression === 'function'
+        ? window.imageCompression
+        : null);
+    if (!compressFn) {
+      console.warn('[kyc] browser-image-compression not loaded — uploading original');
+      return file;
+    }
+
+    const options = {
+      maxSizeMB: 1,
+      maxWidthOrHeight: 1920,
+      useWebWorker: true,
+      // Prefer local vendor copy so workers don't hit CDN
+      libURL: '/vendor/browser-image-compression.js?v=20260812a',
+      initialQuality: 0.8,
+      fileType: 'image/jpeg',
+      onProgress: typeof onProgress === 'function'
+        ? (p) => onProgress(Math.round(Number(p) || 0))
+        : undefined,
+    };
+
+    let compressed = await compressFn(file, options);
+    // Ensure File has a stable name for multer / UX
+    if (!(compressed instanceof File)) {
+      compressed = new File([compressed], file.name.replace(/\.\w+$/, '') + '.jpg', {
+        type: compressed.type || 'image/jpeg',
+        lastModified: Date.now(),
+      });
+    } else if (!/\.jpe?g$/i.test(compressed.name)) {
+      compressed = new File([compressed], file.name.replace(/\.\w+$/, '') + '.jpg', {
+        type: 'image/jpeg',
+        lastModified: compressed.lastModified || Date.now(),
+      });
+    }
+    return compressed;
+  },
+
+  async prepareKycPhoto(kind, file) {
+    if (!file) {
+      delete this._kycCompressedFiles[kind];
+      this.setKycPhotoStatus(kind, '', null);
+      return null;
+    }
+    this.setKycPhotoStatus(
+      kind,
+      'Compressing… 0% · original ' + this.formatFileSize(file.size),
+      'is-compressing'
+    );
+    try {
+      const compressed = await this.compressKycImage(file, {
+        onProgress: (pct) => {
+          this.setKycPhotoStatus(
+            kind,
+            'Compressing… ' + pct + '% · original ' + this.formatFileSize(file.size),
+            'is-compressing'
+          );
+        },
+      });
+      this._kycCompressedFiles[kind] = compressed;
+      const same = compressed === file || compressed.size >= file.size * 0.98;
+      this.setKycPhotoStatus(
+        kind,
+        same
+          ? 'Ready · ' + this.formatFileSize(compressed.size)
+          : 'Compressed ' + this.formatFileSize(file.size) + ' → ' + this.formatFileSize(compressed.size),
+        'is-ok'
+      );
+      return compressed;
+    } catch (err) {
+      delete this._kycCompressedFiles[kind];
+      this.setKycPhotoStatus(kind, err.message || 'Compression failed', 'is-error');
+      throw err;
+    }
   },
 
   bindKycModal() {
@@ -1190,27 +1317,71 @@ const Dashboard = {
       e.preventDefault();
       this.submitKycForm();
     });
+
+    const photoInputs = [
+      ['kycFrontPhoto', 'front'],
+      ['kycBackPhoto', 'back'],
+      ['kycSelfiePhoto', 'selfie'],
+    ];
+    photoInputs.forEach(([id, kind]) => {
+      $(id)?.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0] || null;
+        if ($('kycFormError')) $('kycFormError').textContent = '';
+        try {
+          await this.prepareKycPhoto(kind, file);
+        } catch (_) {
+          // Status already set; keep original selection for retry on submit
+        }
+      });
+    });
   },
 
   async submitKycForm() {
-    const formData = new FormData();
-    formData.append('full_name', $('kycFullName')?.value?.trim() || '');
-    formData.append('id_type', $('kycIdType')?.value || 'NRC');
-    formData.append('id_number', $('kycIdNumber')?.value?.trim() || '');
-    const front = $('kycFrontPhoto')?.files?.[0];
-    const back = $('kycBackPhoto')?.files?.[0];
-    const selfie = $('kycSelfiePhoto')?.files?.[0];
-    if (front) formData.append('front_photo', front);
-    if (back) formData.append('back_photo', back);
-    if (selfie) formData.append('selfie_photo', selfie);
+    if ($('kycFormError')) $('kycFormError').textContent = '';
+    const frontInput = $('kycFrontPhoto');
+    const backInput = $('kycBackPhoto');
+    const selfieInput = $('kycSelfiePhoto');
+    const frontRaw = frontInput?.files?.[0];
+    const backRaw = backInput?.files?.[0];
+    const selfieRaw = selfieInput?.files?.[0];
+
+    if (!frontRaw || !backRaw || !selfieRaw) {
+      if ($('kycFormError')) $('kycFormError').textContent = 'Please attach front, back, and selfie photos.';
+      return;
+    }
+
+    this.setKycSubmitBusy(true);
+    this.setKycCompressBanner('Compressing photos before upload…', true);
+
     try {
+      const front = this._kycCompressedFiles.front
+        || await this.prepareKycPhoto('front', frontRaw);
+      const back = this._kycCompressedFiles.back
+        || await this.prepareKycPhoto('back', backRaw);
+      const selfie = this._kycCompressedFiles.selfie
+        || await this.prepareKycPhoto('selfie', selfieRaw);
+
+      this.setKycCompressBanner('Uploading compressed photos…', true);
+
+      const formData = new FormData();
+      formData.append('full_name', $('kycFullName')?.value?.trim() || '');
+      formData.append('id_type', $('kycIdType')?.value || 'NRC');
+      formData.append('id_number', $('kycIdNumber')?.value?.trim() || '');
+      formData.append('front_photo', front, front.name || 'front.jpg');
+      formData.append('back_photo', back, back.name || 'back.jpg');
+      formData.append('selfie_photo', selfie, selfie.name || 'selfie.jpg');
+
       const data = await Auth.apiForm('/api/kyc/submit', formData, { sensitive: true });
       this.toast(data.message || 'KYC submitted', 'ok');
+      this._kycCompressedFiles = {};
       this.closeKycModal();
       await this.loadKycStatus();
     } catch (err) {
       if ($('kycFormError')) $('kycFormError').textContent = err.message || 'Failed to submit KYC';
       if (err.code === 'KYC_REQUIRED') this.showKycGateModal(err.message);
+    } finally {
+      this.setKycCompressBanner('', false);
+      this.setKycSubmitBusy(false);
     }
   },
 

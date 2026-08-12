@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eisy Myanmar</title>
-  <link rel="stylesheet" href="/styles.css?v=20260811e" />
+  <link rel="stylesheet" href="/styles.css?v=20260812a" />
   <link rel="icon" href="/assets/qr/placeholder-deposit.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -553,11 +553,24 @@
           <select id="kycIdType" required><option value="NRC">NRC</option><option value="Passport">Passport</option></select>
         </div>
         <div class="field"><label for="kycIdNumber">ID Number</label><input id="kycIdNumber" required placeholder="NRC or Passport number" /></div>
-        <div class="field"><label for="kycFrontPhoto">Front Photo of ID</label><input id="kycFrontPhoto" type="file" accept="image/*" required /></div>
-        <div class="field"><label for="kycBackPhoto">Back Photo of ID</label><input id="kycBackPhoto" type="file" accept="image/*" required /></div>
-        <div class="field"><label for="kycSelfiePhoto">Selfie Holding ID</label><input id="kycSelfiePhoto" type="file" accept="image/*" required /></div>
+        <div class="field">
+          <label for="kycFrontPhoto">Front Photo of ID</label>
+          <input id="kycFrontPhoto" type="file" accept="image/*" required data-kyc-photo="front" />
+          <p id="kycFrontPhotoStatus" class="hint kyc-photo-status" aria-live="polite"></p>
+        </div>
+        <div class="field">
+          <label for="kycBackPhoto">Back Photo of ID</label>
+          <input id="kycBackPhoto" type="file" accept="image/*" required data-kyc-photo="back" />
+          <p id="kycBackPhotoStatus" class="hint kyc-photo-status" aria-live="polite"></p>
+        </div>
+        <div class="field">
+          <label for="kycSelfiePhoto">Selfie Holding ID</label>
+          <input id="kycSelfiePhoto" type="file" accept="image/*" required data-kyc-photo="selfie" />
+          <p id="kycSelfiePhotoStatus" class="hint kyc-photo-status" aria-live="polite"></p>
+        </div>
+        <p id="kycCompressStatus" class="hint kyc-compress-banner hidden" aria-live="polite"></p>
         <p id="kycFormError" class="error-text"></p>
-        <button type="submit" class="btn btn-primary" style="width:100%">Submit for Review</button>
+        <button type="submit" id="kycSubmitBtn" class="btn btn-primary" style="width:100%">Submit for Review</button>
       </form>
     </div>
   </div>
@@ -1383,11 +1396,12 @@
   </div>
 
   <script src="/api-config.js?v=20260811e"></script>
+  <script src="/vendor/browser-image-compression.js?v=20260812a"></script>
   <script type="module" src="/supabaseBridge.js?v=20260811e"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
   <script src="/i18n.js?v=20260811e"></script>
-  <script src="/auth.js?v=20260811e"></script>
+  <script src="/auth.js?v=20260812a"></script>
   <script src="/nav.js?v=20260811e"></script>
-  <script src="/dashboard.js?v=20260811e"></script>
+  <script src="/dashboard.js?v=20260812a"></script>
 </body>
 </html>
