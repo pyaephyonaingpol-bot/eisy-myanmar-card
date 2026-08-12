@@ -994,6 +994,10 @@
     async loadWithdrawalRates() {
       if (!this.hasPermission('withdrawal_rates_read')) return;
       const out = $('withdrawalRatesOut');
+      const preview = $('withdrawalRatesPreview');
+      if (preview && !preview.dataset.loaded) {
+        preview.innerHTML = '<p class="hint" style="margin:0">Loading rates…</p>';
+      }
       try {
         const data = await this.api('GET', '/api/admin/withdrawal-rates');
         const r = data.rates || {};
@@ -1006,6 +1010,15 @@
         if ($('wrMinUsdt')) $('wrMinUsdt').value = r.minimum_usdt_withdrawal ?? '';
         if ($('wrMinMmk')) $('wrMinMmk').value = r.minimum_mmk_withdrawal ?? '';
         this.renderWithdrawalRatesPreview(data.preview);
+        if (preview) preview.dataset.loaded = '1';
+        if (data.current_rate) {
+          this.updateRateBadge(data.current_rate);
+        } else if (r.mmk_to_usd_rate != null) {
+          this.updateRateBadge({
+            mmk_to_usd_rate: r.mmk_to_usd_rate,
+            effective_date: r.rate_effective_date,
+          });
+        }
         if (out) {
           out.textContent = JSON.stringify({
             mmk_to_usd_rate: r.mmk_to_usd_rate,
@@ -1026,9 +1039,15 @@
         }
       } catch (err) {
         if (out) out.textContent = err.message || 'Failed to load withdrawal rates';
-        const preview = $('withdrawalRatesPreview');
         if (preview) {
-          preview.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+          preview.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message || 'Failed to load rates') + '</p>';
+          delete preview.dataset.loaded;
+        }
+        const badge = $('adminCurrentRateBadge');
+        if (badge && /loading/i.test(badge.textContent || '')) {
+          badge.textContent = typeof t === 'function'
+            ? `${t('current_rate')}: unavailable`
+            : 'Current Rate: unavailable';
         }
       }
     },
@@ -2420,6 +2439,11 @@
       const targets = [$('masterWalletStatusBalance'), $('masterWalletBalance')].filter(Boolean);
       if (!targets.length) return;
 
+      // Prevent overlapping refreshes from leaving the UI stuck on "Querying TRON…"
+      if (this._masterWalletBalanceInFlight) {
+        return this._masterWalletBalanceInFlight;
+      }
+
       const buttons = Array.from(document.querySelectorAll('[data-master-wallet-refresh], #btnCheckMasterWallet'));
       const prev = buttons.map((b) => b.textContent);
       buttons.forEach((b) => { b.disabled = true; b.textContent = 'Refreshing…'; });
@@ -2427,26 +2451,59 @@
         el.innerHTML = '<p class="hint" style="margin:0">Querying TRON…</p>';
       });
 
-      try {
-        const data = await this.api('GET', '/api/admin/master-wallet-balance');
-        this.renderMasterWalletStatus(data.wallet || {});
-        if (opts.force) this.showAdminToast('Balances updated', 'ok');
-      } catch (err) {
-        const msg = this.esc(err.message || 'Failed to load balances');
-        targets.forEach((el) => {
-          el.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' + msg + '</p>';
-        });
-        const alertEl = $('masterWalletTrxAlert');
-        if (alertEl) {
-          alertEl.classList.remove('hidden');
-          alertEl.innerHTML = '<strong>Could not load wallet</strong> — ' + msg;
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const CLIENT_TIMEOUT_MS = 20000;
+      const timer = controller
+        ? setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS)
+        : null;
+
+      this._masterWalletBalanceInFlight = (async () => {
+        try {
+          const res = await fetch('/api/admin/master-wallet-balance', {
+            method: 'GET',
+            headers: this.headers(),
+            signal: controller ? controller.signal : undefined,
+          });
+          let data = {};
+          try {
+            data = await res.json();
+          } catch (_) {
+            data = {};
+          }
+          if (res.status === 401) {
+            this.clearSession();
+            this.showLogin();
+            throw new Error(data.error || 'Admin session expired — please sign in again');
+          }
+          if (!res.ok) {
+            throw new Error(data.error || res.statusText || ('HTTP ' + res.status));
+          }
+          this.renderMasterWalletStatus(data.wallet || {});
+          if (opts.force) this.showAdminToast('Balances updated', 'ok');
+        } catch (err) {
+          const raw = err.name === 'AbortError'
+            ? 'TRON balance request timed out — check MASTER_WALLET_ADDRESS / TRONGRID_API_KEY'
+            : (err.message || 'Failed to load balances');
+          const msg = this.esc(raw);
+          targets.forEach((el) => {
+            el.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' + msg + '</p>';
+          });
+          const alertEl = $('masterWalletTrxAlert');
+          if (alertEl) {
+            alertEl.classList.remove('hidden');
+            alertEl.innerHTML = '<strong>Could not load wallet</strong> — ' + msg;
+          }
+        } finally {
+          if (timer) clearTimeout(timer);
+          buttons.forEach((b, i) => {
+            b.disabled = false;
+            b.textContent = prev[i] || 'Refresh';
+          });
+          this._masterWalletBalanceInFlight = null;
         }
-      } finally {
-        buttons.forEach((b, i) => {
-          b.disabled = false;
-          b.textContent = prev[i] || 'Refresh';
-        });
-      }
+      })();
+
+      return this._masterWalletBalanceInFlight;
     },
 
     async loadUsdtWithdrawals() {

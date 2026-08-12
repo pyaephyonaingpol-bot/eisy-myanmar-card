@@ -15,6 +15,11 @@ const TRC20_DECIMALS = 6;
 const DEFAULT_FEE_LIMIT = Number(process.env.TRON_USDT_FEE_LIMIT_SUN) || 100_000_000;
 /** Warn Super Admins when master TRX (gas) falls below this level. */
 const TRX_LOW_THRESHOLD = Number(process.env.MASTER_TRX_LOW_THRESHOLD) || 30;
+/** Max wait for a single balance provider (TronGrid / Tronscan / TronWeb). */
+const BALANCE_FETCH_TIMEOUT_MS = Math.max(
+  3000,
+  parseInt(process.env.MASTER_WALLET_BALANCE_TIMEOUT_MS || '12000', 10) || 12000
+);
 
 function getTrxLowThreshold() {
   return Number.isFinite(TRX_LOW_THRESHOLD) && TRX_LOW_THRESHOLD > 0
@@ -228,6 +233,13 @@ async function transferUsdtTrc20({ toAddress, amountUsdt }) {
 function getMasterWalletAddress() {
   const configured = String(process.env.MASTER_WALLET_ADDRESS || '').trim();
   if (configured) {
+    if (!isLikelyTronAddress(configured)) {
+      const err = new Error(
+        `MASTER_WALLET_ADDRESS is not a valid TRON address: ${configured}`
+      );
+      err.code = 'MASTER_ADDRESS_INVALID';
+      throw err;
+    }
     return configured;
   }
   const privateKey = getMasterPrivateKey();
@@ -235,31 +247,226 @@ function getMasterWalletAddress() {
   return getMasterAddress(tronWeb, privateKey);
 }
 
-/** Read-only helper for health / diagnostics (never returns the private key). */
-async function getMasterWalletInfo() {
-  const address = getMasterWalletAddress();
+function isLikelyTronAddress(addr) {
+  const s = String(addr || '').trim();
+  // Mainnet Base58Check addresses are 34 chars starting with T.
+  if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(s)) return false;
+  try {
+    const tw = new TronWeb({ fullHost: TRON_FULL_HOST });
+    return Boolean(tw.isAddress(s));
+  } catch (_) {
+    return true;
+  }
+}
+
+function withTimeout(promise, ms, label = 'TRON request') {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`${label} timed out after ${ms}ms`);
+      err.code = 'TRON_TIMEOUT';
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function fetchJsonTimed(url, options = {}, timeoutMs = BALANCE_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (_) {
+      data = null;
+    }
+    if (res.status === 429) {
+      const err = new Error('TronGrid / Tronscan rate limit exceeded — retry shortly or set TRONGRID_API_KEY');
+      err.code = 'TRON_RATE_LIMITED';
+      err.status = 429;
+      throw err;
+    }
+    if (!res.ok) {
+      const err = new Error(`TRON HTTP ${res.status}${data?.Error || data?.error ? `: ${data.Error || data.error}` : ''}`);
+      err.code = 'TRON_HTTP_ERROR';
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  } catch (err) {
+    if (err.name === 'AbortError' || err.code === 'ABORT_ERR') {
+      const timed = new Error(`TRON request timed out after ${timeoutMs}ms`);
+      timed.code = 'TRON_TIMEOUT';
+      throw timed;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function tronApiHeaders() {
+  const headers = { Accept: 'application/json' };
+  const apiKey = process.env.TRONGRID_API_KEY || process.env.TRON_PRO_API_KEY;
+  if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
+  return headers;
+}
+
+function parseUsdtFromTrc20Map(trc20List) {
+  if (!Array.isArray(trc20List)) return 0;
+  for (const entry of trc20List) {
+    if (!entry || typeof entry !== 'object') continue;
+    // TronGrid v1: [{ "TContract…": "1000000" }]
+    if (Object.prototype.hasOwnProperty.call(entry, USDT_TRC20_CONTRACT)) {
+      return sunToUsdt(entry[USDT_TRC20_CONTRACT]);
+    }
+    const key = Object.keys(entry).find(
+      (k) => k.toUpperCase() === USDT_TRC20_CONTRACT.toUpperCase()
+    );
+    if (key) return sunToUsdt(entry[key]);
+  }
+  return 0;
+}
+
+/** Timed TronGrid REST account lookup (preferred — does not hang like TronWeb RPC). */
+async function fetchBalancesViaTronGrid(address) {
+  const base = TRON_FULL_HOST.replace(/\/$/, '');
+  const data = await fetchJsonTimed(
+    `${base}/v1/accounts/${encodeURIComponent(address)}`,
+    { headers: tronApiHeaders() }
+  );
+  const row = Array.isArray(data?.data) ? data.data[0] : null;
+  if (!row) {
+    // Brand-new wallets may not exist on-chain yet — treat as zero balances.
+    return { usdt: 0, trx: 0, source: 'trongrid' };
+  }
+  const trxSun = Number(row.balance || 0);
+  const usdt = parseUsdtFromTrc20Map(row.trc20);
+  return {
+    usdt,
+    trx: trxSun / 1e6,
+    source: 'trongrid',
+  };
+}
+
+/** Timed Tronscan fallback. */
+async function fetchBalancesViaTronscan(address) {
+  const api = (process.env.TRONSCAN_API_URL || 'https://apilist.tronscan.org').replace(/\/$/, '');
+  const data = await fetchJsonTimed(
+    `${api}/api/account?address=${encodeURIComponent(address)}`,
+    { headers: { Accept: 'application/json' } }
+  );
+  if (!data || (data.message && !data.address && data.balance == null)) {
+    const err = new Error(data?.message || 'Tronscan account lookup failed');
+    err.code = 'TRONSCAN_ERROR';
+    throw err;
+  }
+  const trxSun = Number(data.balance || 0);
+  const tokens = data.trc20token_balances || data.tokens || [];
+  const usdtTok = tokens.find((t) => {
+    const id = String(t.tokenId || t.token_id || t.contract_address || '').toUpperCase();
+    return id === USDT_TRC20_CONTRACT.toUpperCase()
+      || String(t.tokenAbbr || t.symbol || '').toUpperCase() === 'USDT';
+  });
+  let usdt = 0;
+  if (usdtTok) {
+    const raw = usdtTok.balance ?? usdtTok.amount ?? 0;
+    const decimals = Number(usdtTok.tokenDecimal ?? usdtTok.decimals ?? TRC20_DECIMALS);
+    // Tronscan sometimes returns already-decimalized amounts; prefer raw integer / decimals.
+    const asNum = Number(raw);
+    if (Number.isFinite(asNum) && String(raw).includes('.')) {
+      usdt = asNum;
+    } else {
+      usdt = asNum / (10 ** decimals);
+    }
+  }
+  return { usdt, trx: trxSun / 1e6, source: 'tronscan' };
+}
+
+/** Last-resort TronWeb call — always raced against a timeout. */
+async function fetchBalancesViaTronWeb(address) {
   let tronWeb;
   try {
     tronWeb = createTronWeb(getMasterPrivateKey());
   } catch (_) {
-    const headers = {};
-    const apiKey = process.env.TRONGRID_API_KEY || process.env.TRON_PRO_API_KEY;
-    if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
+    const headers = tronApiHeaders();
     tronWeb = new TronWeb({ fullHost: TRON_FULL_HOST, headers });
     tronWeb.setAddress(address);
   }
-  const usdt = await getUsdtBalance(tronWeb, address);
-  const trxSun = await getTrxBalanceSun(tronWeb, address);
-  const trxBalance = Number(trxSun) / 1e6;
-  const trxLowThreshold = getTrxLowThreshold();
+  const [usdtInfo, trxSun] = await withTimeout(
+    Promise.all([
+      getUsdtBalance(tronWeb, address),
+      getTrxBalanceSun(tronWeb, address),
+    ]),
+    BALANCE_FETCH_TIMEOUT_MS,
+    'TronWeb balance query'
+  );
   return {
-    address,
-    usdtBalance: usdt.usdt,
-    trxBalance,
-    trxLowThreshold,
-    trxLow: trxBalance < trxLowThreshold,
-    contract: USDT_TRC20_CONTRACT,
+    usdt: Number(usdtInfo.usdt) || 0,
+    trx: Number(trxSun) / 1e6,
+    source: 'tronweb',
   };
+}
+
+/**
+ * Read-only helper for health / diagnostics (never returns the private key).
+ * Uses timed HTTP APIs first so TronGrid rate-limits / RPC hangs cannot stall the admin UI.
+ */
+async function getMasterWalletInfo() {
+  let address;
+  try {
+    address = getMasterWalletAddress();
+  } catch (err) {
+    throw err;
+  }
+
+  if (!isLikelyTronAddress(address)) {
+    const err = new Error(`Master wallet address is invalid: ${address}`);
+    err.code = 'MASTER_ADDRESS_INVALID';
+    throw err;
+  }
+
+  const errors = [];
+  const providers = [
+    fetchBalancesViaTronGrid,
+    fetchBalancesViaTronscan,
+    fetchBalancesViaTronWeb,
+  ];
+
+  for (const provider of providers) {
+    try {
+      const bal = await provider(address);
+      const trxBalance = Number(bal.trx) || 0;
+      const usdtBalance = Number(bal.usdt) || 0;
+      const trxLowThreshold = getTrxLowThreshold();
+      return {
+        address,
+        usdtBalance,
+        trxBalance,
+        trxLowThreshold,
+        trxLow: trxBalance < trxLowThreshold,
+        contract: USDT_TRC20_CONTRACT,
+        source: bal.source,
+      };
+    } catch (err) {
+      console.warn(`[tron] balance via ${provider.name} failed:`, err.code || '', err.message);
+      errors.push({ provider: provider.name, code: err.code, message: err.message });
+      // Keep trying other providers unless the address itself is invalid.
+      if (err.code === 'MASTER_ADDRESS_INVALID') throw err;
+    }
+  }
+
+  const last = errors[errors.length - 1] || {};
+  const err = new Error(
+    last.message
+      || 'Failed to query master wallet balance from TronGrid / Tronscan'
+  );
+  err.code = last.code || 'TRON_BALANCE_UNAVAILABLE';
+  err.details = { address, errors };
+  throw err;
 }
 
 module.exports = {
@@ -272,4 +479,6 @@ module.exports = {
   transferUsdtTrc20,
   assertMasterHasFunds,
   getMasterWalletInfo,
+  isLikelyTronAddress,
+  BALANCE_FETCH_TIMEOUT_MS,
 };
