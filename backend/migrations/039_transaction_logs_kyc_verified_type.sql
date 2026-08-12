@@ -1,13 +1,12 @@
--- Expand transaction_logs.type CHECK to include KYC + other types used by the app.
--- SQLite cannot ALTER CHECK constraints in place — rebuild the table.
+-- Ensure kyc_verified is allowed (in case 038 was applied before that alias was added).
+-- Idempotent rebuild of transaction_logs CHECK list.
 
 PRAGMA foreign_keys=OFF;
 
-CREATE TABLE IF NOT EXISTS transaction_logs__v2 (
+CREATE TABLE IF NOT EXISTS transaction_logs__v3 (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   type TEXT NOT NULL CHECK(type IN (
-    -- Original (006)
     'deposit_request',
     'deposit_verified',
     'deposit_rejected',
@@ -32,19 +31,16 @@ CREATE TABLE IF NOT EXISTS transaction_logs__v2 (
     'support_message',
     'admin_adjustment',
     'other',
-    -- KYC
     'kyc_submitted',
     'kyc_approved',
     'kyc_verified',
     'kyc_rejected',
-    -- Admin auth / RBAC
     'admin_login',
     'admin_bootstrap',
     'admin_role_assigned',
     'admin_role_updated',
     'admin_role_removed',
     'admin_password_set',
-    -- P2P / escrow / transfers
     'p2p_ad_created',
     'p2p_ad_cancelled',
     'p2p_buy_order',
@@ -89,8 +85,7 @@ CREATE TABLE IF NOT EXISTS transaction_logs__v2 (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Remap any legacy/unknown values so the INSERT cannot fail the new CHECKs.
-INSERT INTO transaction_logs__v2 (
+INSERT INTO transaction_logs__v3 (
   id, user_id, type, direction, amount_usd, amount_mmk,
   balance_before, balance_after, reference_type, reference_id,
   description, metadata, ip_address, created_by, created_at
@@ -183,7 +178,7 @@ SELECT
 FROM transaction_logs;
 
 DROP TABLE transaction_logs;
-ALTER TABLE transaction_logs__v2 RENAME TO transaction_logs;
+ALTER TABLE transaction_logs__v3 RENAME TO transaction_logs;
 
 CREATE INDEX IF NOT EXISTS idx_transaction_logs_user ON transaction_logs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transaction_logs_type ON transaction_logs(type);

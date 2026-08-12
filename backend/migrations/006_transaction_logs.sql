@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS transaction_logs (
     'other',
     'kyc_submitted',
     'kyc_approved',
+    'kyc_verified',
     'kyc_rejected',
     'admin_login',
     'admin_bootstrap',

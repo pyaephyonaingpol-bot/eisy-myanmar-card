@@ -15,6 +15,65 @@ function isKycVerified(status) {
   return normalizeKycStatus(status) === 'VERIFIED';
 }
 
+function normalizeKycLogCreatedBy(createdBy) {
+  const value = String(createdBy || 'system').trim().toLowerCase();
+  if (['system', 'user', 'admin', 'listener', 'blockchain', 'binance_pay', 'test-bypass', 'tron-indexer'].includes(value)) {
+    return value;
+  }
+  // Admin UI may pass a display name / id — map to allowed CHECK value
+  return 'admin';
+}
+
+/**
+ * Write a KYC audit row. Prefers explicit KYC types; falls back to `other`
+ * if an older DB CHECK constraint rejects the type (pre-migration 038).
+ */
+async function logKycActivity({
+  userId,
+  type,
+  description,
+  referenceId,
+  createdBy = 'system',
+  metadata,
+}) {
+  const payload = {
+    userId,
+    type,
+    direction: 'neutral',
+    referenceType: 'kyc_submissions',
+    referenceId,
+    description,
+    createdBy: normalizeKycLogCreatedBy(createdBy),
+    metadata,
+  };
+
+  try {
+    return await TransactionLog.create(payload);
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    const isCheck = /CHECK constraint failed/i.test(msg) || err?.code === 'SQLITE_CONSTRAINT';
+    if (!isCheck || type === 'other') {
+      console.warn('[kyc] activity log failed:', msg);
+      return null;
+    }
+    console.warn(`[kyc] type "${type}" rejected by DB CHECK — falling back to "other"`);
+    try {
+      return await TransactionLog.create({
+        ...payload,
+        type: 'other',
+        metadata: {
+          ...(metadata || {}),
+          kyc_log_type: type,
+          fallback_reason: 'transaction_logs_type_check',
+        },
+      });
+    } catch (fallbackErr) {
+      console.warn('[kyc] activity log fallback failed:', fallbackErr.message);
+      return null;
+    }
+  }
+}
+
 async function getKycStatusForUser(userId) {
   const user = await User.findById(userId);
   if (!user) return null;
@@ -84,11 +143,9 @@ async function submitKyc(userId, { full_name, id_type, id_number, front_photo_pa
     UPDATE users SET kyc_status = 'PENDING_REVIEW', updated_at = datetime('now') WHERE id = ?
   `, userId);
 
-  await TransactionLog.create({
+  await logKycActivity({
     userId,
     type: 'kyc_submitted',
-    direction: 'neutral',
-    referenceType: 'kyc_submissions',
     referenceId: submission.id,
     description: `KYC submitted — ${idType} ${idNumber}`,
     createdBy: 'user',
@@ -129,15 +186,13 @@ async function approveKyc(submissionId, { reviewedBy = 'admin', adminNote } = {}
     UPDATE users SET kyc_status = 'VERIFIED', updated_at = datetime('now') WHERE id = ?
   `, submission.user_id);
 
-  await TransactionLog.create({
+  await logKycActivity({
     userId: submission.user_id,
-    type: 'kyc_approved',
-    direction: 'neutral',
-    referenceType: 'kyc_submissions',
+    type: 'kyc_verified',
     referenceId: submissionId,
     description: `KYC approved — ${submission.full_name}`,
     createdBy: reviewedBy,
-    metadata: { admin_note: adminNote || null },
+    metadata: { admin_note: adminNote || null, legacy_type: 'kyc_approved' },
   });
 
   const user = await User.findById(submission.user_id);
@@ -168,11 +223,9 @@ async function rejectKyc(submissionId, { rejectionReason, reviewedBy = 'admin' }
     UPDATE users SET kyc_status = 'REJECTED', updated_at = datetime('now') WHERE id = ?
   `, submission.user_id);
 
-  await TransactionLog.create({
+  await logKycActivity({
     userId: submission.user_id,
     type: 'kyc_rejected',
-    direction: 'neutral',
-    referenceType: 'kyc_submissions',
     referenceId: submissionId,
     description: `KYC rejected — ${rejectionReason.trim()}`,
     createdBy: reviewedBy,
