@@ -16,6 +16,8 @@ android {
 
         // Change to your backend server IP (use 10.0.2.2 for Android emulator → host machine)
         buildConfigField("String", "SERVER_URL", "\"http://10.0.2.2:3000\"")
+        // Must match server DEPOSIT_LISTENER_SECRET (leave empty only for local unsigned builds)
+        buildConfigField("String", "LISTENER_SECRET", "\"${project.findProperty("DEPOSIT_LISTENER_SECRET") ?: ""}\"")
     }
 
     buildFeatures {

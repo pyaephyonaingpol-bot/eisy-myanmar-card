@@ -3739,7 +3739,12 @@ const Dashboard = {
       try {
         const res = await fetch('/api/deposit/verify', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(localStorage.getItem('deposit_listener_secret')
+              ? { 'X-Deposit-Listener-Secret': localStorage.getItem('deposit_listener_secret') }
+              : {}),
+          },
           body: JSON.stringify({
             ref_code: $('verifyRef').value.trim(),
             amount: parseFloat($('verifyAmount').value),

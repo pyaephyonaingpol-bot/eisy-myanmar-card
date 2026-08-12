@@ -251,8 +251,9 @@ async function handleBinancePayWebhook(req) {
     };
   }
 
-  // Optional: confirm with Binance query API before credit
-  if (process.env.BINANCE_PAY_QUERY_BEFORE_CREDIT === 'true') {
+  // Prefer confirming with Binance query API before credit (default on when configured)
+  const shouldQuery = process.env.BINANCE_PAY_QUERY_BEFORE_CREDIT !== 'false';
+  if (shouldQuery) {
     try {
       const query = await queryBinancePayOrder({
         prepayId: event.prepayId,
@@ -262,14 +263,50 @@ async function handleBinancePayWebhook(req) {
       if (status && !['PAID', 'SUCCESS', 'PAY_SUCCESS'].includes(status)) {
         throw new Error(`Binance order status is ${status}, not paid`);
       }
+      const paidAmount = Number(
+        query?.data?.totalFee
+        ?? query?.data?.orderAmount
+        ?? query?.data?.amount
+        ?? event.totalFee
+      );
+      const expected = Number(deposit.amount_usd);
+      if (Number.isFinite(paidAmount) && Number.isFinite(expected) && expected > 0) {
+        const tol = Math.max(0.01, expected * 0.005);
+        if (Math.abs(paidAmount - expected) > tol) {
+          const err = new Error(
+            `Binance paid amount (${paidAmount}) does not match deposit gross (${expected})`
+          );
+          err.code = 'BINANCE_AMOUNT_MISMATCH';
+          throw err;
+        }
+      }
     } catch (queryErr) {
+      if (queryErr.code === 'BINANCE_AMOUNT_MISMATCH') throw queryErr;
       if (queryErr.code !== 'BINANCE_PAY_NOT_CONFIGURED') {
+        // Fail closed when query is available but rejects; warn-only if not configured
+        if (String(queryErr.message || '').includes('not paid') || queryErr.code === 'BINANCE_ORDER_UNPAID') {
+          throw queryErr;
+        }
         console.warn('[binancePay] query-before-credit failed:', queryErr.message);
       }
+    }
+  } else if (event.totalFee != null && Number.isFinite(Number(event.totalFee))) {
+    const paidAmount = Number(event.totalFee);
+    const expected = Number(deposit.amount_usd);
+    const tol = Math.max(0.01, expected * 0.005);
+    if (Number.isFinite(expected) && Math.abs(paidAmount - expected) > tol) {
+      const err = new Error(
+        `Binance paid amount (${paidAmount}) does not match deposit gross (${expected})`
+      );
+      err.code = 'BINANCE_AMOUNT_MISMATCH';
+      throw err;
     }
   }
 
   const txnId = event.transactionId || event.prepayId || event.merchantTradeNo;
+  const { assertTxHashAvailable } = require('./depositService');
+  await assertTxHashAvailable(txnId, deposit.id);
+
   const result = await creditDepositAndVerify(deposit, {
     txnId,
     createdBy: 'binance_pay',

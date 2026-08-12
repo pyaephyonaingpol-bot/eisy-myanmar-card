@@ -7,7 +7,9 @@ const USDT_BEP20_CONTRACT = (process.env.USDT_BEP20_CONTRACT || '0x55d398326f990
 const BSC_RPC_URL = process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org/';
 const TRONSCAN_API = process.env.TRONSCAN_API_URL || 'https://apilist.tronscan.org';
 const BSCSCAN_API_KEY = process.env.BSCSCAN_API_KEY || '';
-const TRANSFER_EVENT_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4d7b4e6';
+// keccak256("Transfer(address,address,uint256)")
+const TRANSFER_EVENT_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df5bb2db6';
+const MIN_CONFIRMATIONS = Math.max(0, parseInt(process.env.USDT_MIN_CONFIRMATIONS || '1', 10) || 0);
 
 const TRC20_DECIMALS = 6;
 const BEP20_DECIMALS = 18;
@@ -134,6 +136,16 @@ async function verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt) {
     return { ok: false, status: 'pending', message: 'Transaction pending on blockchain or invalid TxHash.' };
   }
 
+  const confirmations = data.confirmations != null ? Number(data.confirmations) : null;
+  if (MIN_CONFIRMATIONS > 0 && Number.isFinite(confirmations) && confirmations < MIN_CONFIRMATIONS) {
+    return {
+      ok: false,
+      status: 'pending',
+      message: `Waiting for confirmations (${confirmations}/${MIN_CONFIRMATIONS}).`,
+      confirmations,
+    };
+  }
+
   if (data.contractRet && data.contractRet !== 'SUCCESS') {
     return { ok: false, status: 'invalid', message: 'Transaction failed on blockchain — check your TxHash.' };
   }
@@ -200,6 +212,27 @@ async function verifyBep20UsdtViaRpc(txHash, expectedAddress, expectedAmountUsdt
 
   if (receipt.status !== '0x1') {
     return { ok: false, status: 'invalid', message: 'Transaction failed on blockchain — check your TxHash.' };
+  }
+
+  if (MIN_CONFIRMATIONS > 0) {
+    try {
+      const txBlock = receipt.blockNumber ? parseInt(receipt.blockNumber, 16) : null;
+      const latestHex = await bscRpc('eth_blockNumber', []);
+      const latest = latestHex ? parseInt(latestHex, 16) : null;
+      if (Number.isFinite(txBlock) && Number.isFinite(latest)) {
+        const confirmations = Math.max(0, latest - txBlock + 1);
+        if (confirmations < MIN_CONFIRMATIONS) {
+          return {
+            ok: false,
+            status: 'pending',
+            message: `Waiting for confirmations (${confirmations}/${MIN_CONFIRMATIONS}).`,
+            confirmations,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('[usdt-blockchain] BEP20 confirmation check failed:', err.message);
+    }
   }
 
   const logs = receipt.logs || [];

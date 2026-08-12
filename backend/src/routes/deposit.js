@@ -1,5 +1,6 @@
 const express = require('express');
 const fs = require('fs');
+const crypto = require('crypto');
 const { requireAuth, requireSensitive } = require('../middleware/auth');
 const { uploadDepositScreenshot, publicUploadPath, saveDepositScreenshotFromBase64 } = require('../middleware/upload');
 const DepositRequest = require('../models/DepositRequest');
@@ -22,6 +23,36 @@ const { listPaymentMethods, getPaymentMethod } = require('../services/depositPay
 const { getMasterWalletAddress } = require('../services/tronMasterWalletService');
 
 const router = express.Router();
+
+function timingSafeEqualString(a, b) {
+  const left = Buffer.from(String(a || ''), 'utf8');
+  const right = Buffer.from(String(b || ''), 'utf8');
+  if (left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
+}
+
+/** Require DEPOSIT_LISTENER_SECRET for MMK auto-verify (production-safe). */
+function requireListenerSecret(req, res, next) {
+  const expected = process.env.DEPOSIT_LISTENER_SECRET || '';
+  if (!expected) {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(503).json({
+        error: 'Deposit listener verify is disabled until DEPOSIT_LISTENER_SECRET is configured',
+        code: 'LISTENER_DISABLED',
+      });
+    }
+    console.warn('[deposit/verify] DEPOSIT_LISTENER_SECRET unset — allowing request in non-production');
+    return next();
+  }
+  const provided = req.headers['x-deposit-listener-secret']
+    || req.headers['x-listener-secret']
+    || req.body?.listener_secret
+    || '';
+  if (!timingSafeEqualString(provided, expected)) {
+    return res.status(401).json({ error: 'Unauthorized listener', code: 'LISTENER_UNAUTHORIZED' });
+  }
+  return next();
+}
 
 /**
  * POST /api/deposit/create
@@ -395,12 +426,12 @@ router.get('/mine', requireAuth, async (req, res) => {
   }
 });
 
-// Public — called by Android notification listener
-router.post('/verify', async (req, res) => {
+// Called by Android notification listener — requires DEPOSIT_LISTENER_SECRET
+router.post('/verify', requireListenerSecret, async (req, res) => {
   try {
     const { ref_code, amount, txn_id, sender_phone } = req.body;
 
-    if (!ref_code || !amount) {
+    if (!ref_code || amount == null || amount === '') {
       return res.status(400).json({ error: 'ref_code and amount are required' });
     }
 
@@ -422,12 +453,15 @@ router.post('/verify', async (req, res) => {
       user: { id: result.user.id, balance: result.user.balance },
     });
   } catch (err) {
-    console.error('[deposit/verify]', err);
+    console.error('[deposit/verify]', err.message || err);
     if (err.message === 'Deposit request not found') {
       return res.status(404).json({ error: err.message, ref_code: req.body.ref_code });
     }
-    if (err.message === 'Amount mismatch') {
-      return res.status(400).json({ error: 'Amount mismatch' });
+    if (err.message === 'Amount mismatch' || err.code === 'TX_HASH_REUSED') {
+      return res.status(400).json({ error: err.message });
+    }
+    if (/cannot be verified|USDT deposits cannot/i.test(err.message || '')) {
+      return res.status(400).json({ error: err.message });
     }
     res.status(500).json({ error: 'Internal server error' });
   }

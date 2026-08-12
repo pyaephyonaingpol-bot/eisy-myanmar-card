@@ -186,7 +186,13 @@ async function approveP2pUsdtDeposit(deposit, {
   const expectedAmount = Number(deposit.amount_usd ?? metadata.amount_usdt ?? 0);
   const txHash = deposit.tx_hash || deposit.txn_id || deposit.kpay_transaction_id;
 
-  if (verifyOnChain && txHash && expectedAddress) {
+  if (verifyOnChain) {
+    if (!txHash) {
+      throw new Error('P2P deposit has no TxHash — cannot verify on-chain');
+    }
+    if (!expectedAddress) {
+      throw new Error('P2P deposit address missing — cannot verify on-chain');
+    }
     const verification = await verifyUsdtTransaction({
       network,
       txHash,

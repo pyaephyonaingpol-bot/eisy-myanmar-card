@@ -560,7 +560,53 @@ router.post('/deposits/:id/review', requirePermission('deposits'), async (req, r
         result = await approveP2pUsdtDeposit(deposit, {
           adminNote: admin_note || 'P2P deposit approved by admin',
           reviewedBy: 'admin',
-          verifyOnChain: process.env.NODE_ENV === 'production',
+          // Always verify on-chain when a TxHash is present (including staging).
+          verifyOnChain: true,
+        });
+      } else if (deposit.purpose === 'usdt_topup' || deposit.deposit_currency === 'USDT') {
+        const { verifyUsdtTransaction } = require('../services/usdtBlockchainService');
+        const { assertTxHashAvailable } = require('../services/depositService');
+        const meta = parseRecordMetadata(deposit.metadata);
+        const hash = deposit.tx_hash || deposit.txn_id || deposit.kpay_transaction_id;
+        const expectedAddress = meta.deposit_address;
+        const expectedAmount = Number(deposit.amount_usd ?? meta.amount_usdt ?? 0);
+        const network = deposit.usdt_network || meta.usdt_network || 'TRC20';
+
+        if (!hash) {
+          return res.status(400).json({
+            error: 'USDT deposit has no TxHash — user must submit proof before approval',
+            code: 'MISSING_TX_HASH',
+          });
+        }
+        await assertTxHashAvailable(hash, deposit.id);
+
+        // Skip chain verify only when explicitly forced by Super Admin in non-production.
+        const force = Boolean(req.body.force_approve) && process.env.NODE_ENV !== 'production';
+        if (!force) {
+          if (!expectedAddress) {
+            return res.status(400).json({ error: 'Deposit address missing on record — cannot verify on-chain' });
+          }
+          const verification = await verifyUsdtTransaction({
+            network,
+            txHash: hash,
+            expectedAddress,
+            expectedAmountUsdt: expectedAmount,
+          });
+          if (!verification.ok) {
+            return res.status(400).json({
+              error: verification.message || 'On-chain verification failed',
+              code: 'ON_CHAIN_VERIFY_FAILED',
+              verification,
+            });
+          }
+        }
+
+        result = await creditDepositAndVerify(deposit, {
+          txnId: hash,
+          adminNote: admin_note || (force
+            ? `Force-approved by admin (dev) — TxHash: ${hash}`
+            : `Approved by admin after on-chain verify — TxHash: ${hash}`),
+          createdBy: 'admin',
         });
       } else {
         result = await creditDepositAndVerify(deposit, {
@@ -665,7 +711,10 @@ router.post('/deposits/:id/review', requirePermission('deposits'), async (req, r
     res.status(400).json({ error: 'action must be approve, reject, or review' });
   } catch (err) {
     console.error('[admin/deposits/review]', err);
-    res.status(500).json({ error: 'Internal server error' });
+    if (err.code === 'TX_HASH_REUSED' || /already been used|On-chain|TxHash/i.test(err.message || '')) {
+      return res.status(400).json({ error: err.message, code: err.code || 'DEPOSIT_REVIEW_FAILED' });
+    }
+    res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
 

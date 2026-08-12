@@ -1,4 +1,5 @@
 const { getDb } = require('../db');
+const crypto = require('crypto');
 const User = require('../models/User');
 const DepositRequest = require('../models/DepositRequest');
 const CardReloadRequest = require('../models/CardReloadRequest');
@@ -25,12 +26,25 @@ async function syncWalletAndDeposit(userId, depositRow) {
   }
 }
 
-/** TEMPORARY: skip on-chain verification and auto-approve any USDT TxHash (testing). Set false before production. */
-const BYPASS_USDT_TX_VERIFICATION = true;
+/**
+ * On-chain USDT verification bypass — OFF by default.
+ * Only enable with BYPASS_USDT_TX_VERIFICATION=true for local testing.
+ * Hard-blocked in production (NODE_ENV=production).
+ */
+function isUsdtVerificationBypassEnabled() {
+  const requested = String(process.env.BYPASS_USDT_TX_VERIFICATION || '').toLowerCase() === 'true';
+  if (!requested) return false;
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[deposit] Refusing BYPASS_USDT_TX_VERIFICATION in production');
+    return false;
+  }
+  console.warn('[deposit] BYPASS_USDT_TX_VERIFICATION enabled — insecure, local/dev only');
+  return true;
+}
 
 function generateRefCode() {
-  const num = Math.floor(1000 + Math.random() * 9000);
-  return `REF-${num}`;
+  // 8 hex chars (~4B space) — harder to guess than 4 digits for listener attacks
+  return `REF-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 }
 
 async function uniqueRefCode() {
@@ -43,7 +57,7 @@ async function uniqueRefCode() {
     const inLegacy = await db.get('SELECT id FROM deposit_requests WHERE ref_code = ?', refCode);
     if (!inV2 && !inLegacy) break;
     attempts++;
-  } while (attempts < 10);
+  } while (attempts < 20);
   return refCode;
 }
 
@@ -240,7 +254,7 @@ async function createUsdtDepositRequest(userId, {
 
 async function findVerifiedDepositByTxHash(txHash) {
   const db = getDb();
-  const hash = String(txHash).trim();
+  const hash = String(txHash || '').trim();
   if (!hash) return null;
   return db.get(`
     SELECT * FROM deposit_requests_v2
@@ -248,6 +262,43 @@ async function findVerifiedDepositByTxHash(txHash) {
       AND (tx_hash = ? OR txn_id = ? OR kpay_transaction_id = ?)
     LIMIT 1
   `, hash, hash, hash);
+}
+
+async function assertTxHashAvailable(txHash, depositId) {
+  const hash = String(txHash || '').trim();
+  if (!hash) return;
+  const existing = await findVerifiedDepositByTxHash(hash);
+  if (existing && Number(existing.id) !== Number(depositId)) {
+    const err = new Error('This TxHash / transaction ID has already been used for a verified deposit');
+    err.code = 'TX_HASH_REUSED';
+    throw err;
+  }
+}
+
+/**
+ * Claim deposit for credit inside an open transaction. If another worker already
+ * credited it, return { alreadyVerified: true }. On other terminal states, throw.
+ */
+async function claimDepositOrThrow(deposit, {
+  txnId,
+  reviewedByAdminId,
+  adminNote,
+}) {
+  const claimed = await DepositRequest.claimForCredit(deposit.id, {
+    adminNote,
+    reviewedByAdminId,
+    txnId,
+    txHash: txnId,
+  });
+  if (claimed) return { claimed: true };
+
+  const fresh = await DepositRequest.findById(deposit.id);
+  if (fresh?.status === 'VERIFIED') {
+    return { claimed: false, alreadyVerified: true, deposit: fresh };
+  }
+  const err = new Error(`Deposit cannot be credited in status: ${fresh?.status || 'unknown'}`);
+  err.code = 'DEPOSIT_NOT_CREDITABLE';
+  throw err;
 }
 
 async function submitAndAutoVerifyUsdtDeposit(depositId, {
@@ -270,12 +321,7 @@ async function submitAndAutoVerifyUsdtDeposit(depositId, {
     throw new Error('TxHash is required');
   }
 
-  if (!BYPASS_USDT_TX_VERIFICATION) {
-    const existing = await findVerifiedDepositByTxHash(hash);
-    if (existing && existing.id !== depositId) {
-      throw new Error('This TxHash has already been used for a verified deposit');
-    }
-  }
+  await assertTxHashAvailable(hash, depositId);
 
   if (deposit.status === 'VERIFIED') {
     const user = await User.findById(userId);
@@ -300,7 +346,7 @@ async function submitAndAutoVerifyUsdtDeposit(depositId, {
   const expectedAddress = metadata.deposit_address;
   const expectedAmount = Number(deposit.amount_usd ?? metadata.amount_usdt ?? 0);
 
-  if (BYPASS_USDT_TX_VERIFICATION) {
+  if (isUsdtVerificationBypassEnabled()) {
     console.warn('[deposit] TEMP: bypassing USDT blockchain verification — auto-approving deposit');
     const refreshed = await DepositRequest.findById(depositId);
     const creditResult = await creditDepositAndVerify(refreshed, {
@@ -317,6 +363,17 @@ async function submitAndAutoVerifyUsdtDeposit(depositId, {
       verification: { ok: true, status: 'bypass', bypass: true },
       message: 'USDT Deposit Approved Successfully!',
       balance_usdt: Number(creditResult.user?.balance_usdt ?? 0),
+    };
+  }
+
+  if (!expectedAddress) {
+    const updated = await DepositRequest.findById(depositId);
+    return {
+      autoVerified: false,
+      pending: true,
+      deposit: updated,
+      verification: { status: 'error', message: 'Platform deposit address not configured' },
+      message: 'Deposit address not configured — contact support.',
     };
   }
 
@@ -352,6 +409,9 @@ async function submitAndAutoVerifyUsdtDeposit(depositId, {
     };
   }
 
+  // Re-check reuse after chain confirm (TOCTOU window)
+  await assertTxHashAvailable(hash, depositId);
+
   const refreshed = await DepositRequest.findById(depositId);
   const creditResult = await creditDepositAndVerify(refreshed, {
     txnId: hash,
@@ -370,6 +430,7 @@ async function submitAndAutoVerifyUsdtDeposit(depositId, {
   };
 }
 
+
 async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, createdBy = 'admin', adminNote }) {
   const db = getDb();
   const user = await User.findById(deposit.user_id);
@@ -379,6 +440,9 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
     return { deposit, user, alreadyVerified: true };
   }
 
+  const creditTxnId = txnId || deposit.tx_hash || deposit.txn_id || deposit.kpay_transaction_id || null;
+  await assertTxHashAvailable(creditTxnId, deposit.id);
+
   const purpose = deposit.purpose || parseRecordMetadata(deposit.metadata).purpose || 'topup';
   const metadata = parseRecordMetadata(deposit.metadata);
 
@@ -386,12 +450,16 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
     const dbTxn = getDb();
     await dbTxn.run('BEGIN');
     try {
-      await DepositRequest.review(deposit.id, {
-        status: 'VERIFIED',
-        adminNote: adminNote || 'Card issuance deposit verified',
+      const claim = await claimDepositOrThrow(deposit, {
+        txnId: creditTxnId,
         reviewedByAdminId,
-        skipSync: true,
+        adminNote: adminNote || 'Card issuance deposit verified',
       });
+      if (!claim.claimed) {
+        await dbTxn.run('ROLLBACK');
+        const freshUser = await User.findById(deposit.user_id);
+        return { deposit: claim.deposit, user: freshUser, alreadyVerified: true };
+      }
       await dbTxn.run('COMMIT');
     } catch (err) {
       await dbTxn.run('ROLLBACK');
@@ -410,13 +478,13 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       referenceId: deposit.id,
       description: `Card issuance deposit verified: ${deposit.ref_code} (awaiting card activation)`,
       createdBy,
-      metadata: { txn_id: txnId, admin_note: adminNote, purpose: 'card_issuance', wallet_credit_skipped: true },
+      metadata: { txn_id: creditTxnId, admin_note: adminNote, purpose: 'card_issuance', wallet_credit_skipped: true },
     });
 
     notifyAdminDepositVerified({
       user,
       deposit: updatedDeposit,
-      txnId: txnId || deposit.kpay_transaction_id,
+      txnId: creditTxnId || deposit.kpay_transaction_id,
       senderPhone: user?.phone,
     });
 
@@ -456,18 +524,22 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
     const netUsd = metadata.pricing?.net_usd_to_card ?? deposit.amount_usd;
     if (!cardId) throw new Error('Card reload deposit missing card_id in metadata');
 
-    const db = getDb();
-    await db.run('BEGIN');
+    const dbReload = getDb();
+    await dbReload.run('BEGIN');
     try {
-      await DepositRequest.review(deposit.id, {
-        status: 'VERIFIED',
-        adminNote,
+      const claim = await claimDepositOrThrow(deposit, {
+        txnId: creditTxnId,
         reviewedByAdminId,
-        skipSync: true,
+        adminNote,
       });
-      await db.run('COMMIT');
+      if (!claim.claimed) {
+        await dbReload.run('ROLLBACK');
+        const freshUser = await User.findById(deposit.user_id);
+        return { deposit: claim.deposit, user: freshUser, alreadyVerified: true };
+      }
+      await dbReload.run('COMMIT');
     } catch (err) {
-      await db.run('ROLLBACK');
+      await dbReload.run('ROLLBACK');
       throw err;
     }
 
@@ -489,15 +561,15 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       amountUsd: netUsd,
       referenceType: 'deposit_requests_v2',
       referenceId: deposit.id,
-      description: `Card reload verified: ${deposit.ref_code} — $${netUsd.toFixed(2)} added to card`,
+      description: `Card reload verified: ${deposit.ref_code} — $${Number(netUsd).toFixed(2)} added to card`,
       createdBy,
-      metadata: { txn_id: txnId, admin_note: adminNote, purpose: 'card_reload', card_id: cardId },
+      metadata: { txn_id: creditTxnId, admin_note: adminNote, purpose: 'card_reload', card_id: cardId },
     });
 
     notifyAdminDepositVerified({
       user: updatedUser,
       deposit: updatedDeposit,
-      txnId: txnId || deposit.kpay_transaction_id,
+      txnId: creditTxnId || deposit.kpay_transaction_id,
       senderPhone: updatedUser?.phone,
     });
 
@@ -543,12 +615,16 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
 
     await db.run('BEGIN');
     try {
-      await DepositRequest.review(deposit.id, {
-        status: 'VERIFIED',
-        adminNote,
+      const claim = await claimDepositOrThrow(deposit, {
+        txnId: creditTxnId,
         reviewedByAdminId,
-        skipSync: true,
+        adminNote,
       });
+      if (!claim.claimed) {
+        await db.run('ROLLBACK');
+        const freshUser = await User.findById(deposit.user_id);
+        return { deposit: claim.deposit, user: freshUser, alreadyVerified: true };
+      }
 
       await db.run(`
         UPDATE users SET balance_usdt = COALESCE(balance_usdt, 0) + ?, updated_at = datetime('now') WHERE id = ?
@@ -556,8 +632,8 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
 
       await db.run(`
         UPDATE deposit_requests SET status = 'VERIFIED', txn_id = COALESCE(?, txn_id)
-        WHERE ref_code = ?
-      `, txnId || deposit.kpay_transaction_id || deposit.txn_id, deposit.ref_code).catch(() => {});
+        WHERE ref_code = ? AND status != 'VERIFIED'
+      `, creditTxnId, deposit.ref_code).catch(() => {});
 
       await db.run('COMMIT');
     } catch (err) {
@@ -581,7 +657,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       description: `USDT deposit verified: ${deposit.ref_code} — gross ${formatUsdt(grossUsdt)}, fee ${formatUsdt(feeUsdt)}, credited ${formatUsdt(netUsdt)}`,
       createdBy,
       metadata: {
-        txn_id: txnId,
+        txn_id: creditTxnId,
         admin_note: adminNote,
         purpose: 'usdt_topup',
         wallet: 'usdt',
@@ -606,7 +682,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
         wallet: 'usdt',
         deposit_ref: deposit.ref_code,
         network: deposit.usdt_network || metadata.usdt_network || null,
-        txn_id: txnId,
+        txn_id: creditTxnId,
         gross_usdt: grossUsdt,
         fee_usdt: feeUsdt,
         net_usdt: netUsdt,
@@ -642,7 +718,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
         amountUsdt: netUsdt,
         balanceAfter: balanceAfterUsdt,
         network: deposit.usdt_network || metadata.usdt_network || null,
-        txHash: txnId || deposit.kpay_transaction_id || null,
+        txHash: creditTxnId || null,
         counterpartyAddress: metadata.deposit_address || null,
         referenceType: 'deposit_requests_v2',
         referenceId: deposit.id,
@@ -663,7 +739,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
     notifyAdminDepositVerified({
       user: updatedUser,
       deposit: updatedDeposit,
-      txnId: txnId || deposit.kpay_transaction_id,
+      txnId: creditTxnId || deposit.kpay_transaction_id,
       senderPhone: user.phone,
     });
 
@@ -707,12 +783,16 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
 
   await db.run('BEGIN');
   try {
-    await DepositRequest.review(deposit.id, {
-      status: 'VERIFIED',
-      adminNote,
+    const claim = await claimDepositOrThrow(deposit, {
+      txnId: creditTxnId,
       reviewedByAdminId,
-      skipSync: true,
+      adminNote,
     });
+    if (!claim.claimed) {
+      await db.run('ROLLBACK');
+      const freshUser = await User.findById(deposit.user_id);
+      return { deposit: claim.deposit, user: freshUser, alreadyVerified: true };
+    }
 
     await db.run(`
       UPDATE users SET balance_mmk = COALESCE(balance_mmk, 0) + ?, updated_at = datetime('now') WHERE id = ?
@@ -720,8 +800,8 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
 
     await db.run(`
       UPDATE deposit_requests SET status = 'VERIFIED', txn_id = COALESCE(?, txn_id)
-      WHERE ref_code = ?
-    `, txnId || deposit.kpay_transaction_id || deposit.txn_id, deposit.ref_code).catch(() => {});
+      WHERE ref_code = ? AND status != 'VERIFIED'
+    `, creditTxnId, deposit.ref_code).catch(() => {});
 
     await db.run('COMMIT');
   } catch (err) {
@@ -748,7 +828,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       : `Deposit verified: ${deposit.ref_code} — MMK wallet credited ${formatMmk(netMmk)}`,
     createdBy,
     metadata: {
-      txn_id: txnId,
+      txn_id: creditTxnId,
       admin_note: adminNote,
       purpose: deposit.purpose,
       wallet: 'mmk',
@@ -774,7 +854,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
     metadata: {
       wallet: 'mmk',
       deposit_ref: deposit.ref_code,
-      txn_id: txnId,
+      txn_id: creditTxnId,
       gross_mmk: grossMmk,
       fee_mmk: feeMmk,
       net_mmk: netMmk,
@@ -784,7 +864,7 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
   notifyAdminDepositVerified({
     user: updatedUser,
     deposit: updatedDeposit,
-    txnId: txnId || deposit.kpay_transaction_id,
+    txnId: creditTxnId || deposit.kpay_transaction_id,
     senderPhone: user.phone,
   });
 
@@ -801,28 +881,51 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
 }
 
 async function verifyByListener({ ref_code, amount, txn_id, sender_phone }) {
-  let deposit = await DepositRequest.findByRefCode(ref_code);
+  const deposit = await DepositRequest.findByRefCode(ref_code);
 
   if (!deposit) {
     const db = getDb();
     const legacy = await db.get(`
-      SELECT dr.*, u.name, u.phone, u.balance
+      SELECT dr.*, u.name, u.phone, u.balance, u.balance_mmk
       FROM deposit_requests dr JOIN users u ON u.id = dr.user_id
       WHERE dr.ref_code = ?
     `, ref_code);
     if (!legacy) throw new Error('Deposit request not found');
 
+    if (String(legacy.status || '').toUpperCase() === 'VERIFIED') {
+      const updatedUser = await User.findById(legacy.user_id);
+      return { deposit: legacy, user: updatedUser, alreadyVerified: true };
+    }
+
     const parsedAmount = parseFloat(amount);
-    const tolerance = legacy.amount_mmk * 0.01;
-    if (Math.abs(parsedAmount - legacy.amount_mmk) > tolerance) {
+    const expected = Number(legacy.amount_mmk);
+    if (!Number.isFinite(parsedAmount) || Math.round(parsedAmount) !== Math.round(expected)) {
       throw new Error('Amount mismatch');
     }
 
-    const balanceBeforeMmk = Number(legacy.balance_mmk ?? legacy.balance * 4500 ?? 0);
+    if (txn_id) {
+      await assertTxHashAvailable(txn_id, legacy.id);
+    }
+
+    const balanceBeforeMmk = Number(legacy.balance_mmk ?? 0);
     await db.run('BEGIN');
     try {
-      await db.run(`UPDATE deposit_requests SET status = 'VERIFIED', txn_id = ? WHERE id = ?`, txn_id, legacy.id);
-      await db.run(`UPDATE users SET balance_mmk = COALESCE(balance_mmk, 0) + ?, updated_at = datetime('now') WHERE id = ?`, legacy.amount_mmk, legacy.user_id);
+      const claim = await db.run(
+        `UPDATE deposit_requests SET status = 'VERIFIED', txn_id = COALESCE(?, txn_id)
+         WHERE id = ? AND status != 'VERIFIED'`,
+        txn_id || null,
+        legacy.id
+      );
+      if (Number(claim?.changes || 0) !== 1) {
+        await db.run('ROLLBACK');
+        const updatedUser = await User.findById(legacy.user_id);
+        return { deposit: legacy, user: updatedUser, alreadyVerified: true };
+      }
+      await db.run(
+        `UPDATE users SET balance_mmk = COALESCE(balance_mmk, 0) + ?, updated_at = datetime('now') WHERE id = ?`,
+        expected,
+        legacy.user_id
+      );
       await db.run('COMMIT');
     } catch (e) {
       await db.run('ROLLBACK');
@@ -833,7 +936,7 @@ async function verifyByListener({ ref_code, amount, txn_id, sender_phone }) {
       userId: legacy.user_id,
       type: 'deposit_verified',
       direction: 'credit',
-      amountMmk: legacy.amount_mmk,
+      amountMmk: expected,
       amountUsd: legacy.amount_usd,
       balanceBefore: balanceBeforeMmk,
       balanceAfter: Number(updatedUser.balance_mmk ?? 0),
@@ -841,16 +944,32 @@ async function verifyByListener({ ref_code, amount, txn_id, sender_phone }) {
       referenceId: legacy.id,
       description: `Auto-verified via listener: ${ref_code}`,
       createdBy: 'listener',
-      metadata: { wallet: 'mmk' },
+      metadata: { wallet: 'mmk', txn_id: txn_id || null },
     });
     return { deposit: legacy, user: updatedUser };
   }
 
+  if (deposit.status === 'VERIFIED') {
+    const user = await User.findById(deposit.user_id);
+    return { deposit, user, alreadyVerified: true };
+  }
+
+  if (['REJECTED', 'FAILED'].includes(deposit.status)) {
+    throw new Error(`Deposit cannot be verified in status: ${deposit.status}`);
+  }
+
+  if (deposit.purpose === 'usdt_topup' || deposit.deposit_currency === 'USDT') {
+    throw new Error('USDT deposits cannot be verified via MMK listener');
+  }
+
   const parsedAmount = parseFloat(amount);
-  const tolerance = deposit.amount_mmk * 0.01;
-  if (Math.abs(parsedAmount - deposit.amount_mmk) > tolerance) {
-    await DepositRequest.review(deposit.id, { status: 'FAILED', rejectionReason: 'Amount mismatch' });
+  const expected = Number(deposit.amount_mmk);
+  if (!Number.isFinite(parsedAmount) || Math.round(parsedAmount) !== Math.round(expected)) {
     throw new Error('Amount mismatch');
+  }
+
+  if (txn_id) {
+    await assertTxHashAvailable(txn_id, deposit.id);
   }
 
   return creditDepositAndVerify(deposit, {
@@ -867,5 +986,8 @@ module.exports = {
   submitAndAutoVerifyUsdtDeposit,
   creditDepositAndVerify,
   verifyByListener,
+  findVerifiedDepositByTxHash,
+  assertTxHashAvailable,
+  isUsdtVerificationBypassEnabled,
   uniqueRefCode,
 };

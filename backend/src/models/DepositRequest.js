@@ -98,6 +98,36 @@ const DepositRequest = {
     return row;
   },
 
+  /**
+   * Atomically claim a deposit for credit. Returns true only if this caller
+   * transitioned the row out of a non-terminal status (prevents double-credit).
+   */
+  async claimForCredit(id, {
+    adminNote,
+    reviewedByAdminId,
+    txnId,
+    txHash,
+  } = {}) {
+    const db = getDb();
+    const hash = (txHash || txnId || null) ? String(txHash || txnId).trim() || null : null;
+    const result = await db.run(`
+      UPDATE ${this.TABLE}
+      SET status = 'VERIFIED',
+          admin_note = COALESCE(?, admin_note),
+          reviewed_by_admin_id = COALESCE(?, reviewed_by_admin_id),
+          reviewed_at = datetime('now'),
+          verified_at = datetime('now'),
+          updated_at = datetime('now'),
+          txn_id = COALESCE(?, txn_id),
+          tx_hash = COALESCE(?, tx_hash),
+          kpay_transaction_id = COALESCE(?, kpay_transaction_id)
+      WHERE id = ?
+        AND status NOT IN ('VERIFIED', 'REJECTED', 'FAILED')
+    `, adminNote || null, reviewedByAdminId || null, hash, hash, hash, id);
+
+    return Number(result?.changes || 0) === 1;
+  },
+
   async _syncDepositSafe(row) {
     if (!row) return;
     try {

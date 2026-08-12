@@ -187,12 +187,23 @@ $('btnCopyRef').addEventListener('click', () => {
 $('verifyForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
-    const data = await api('POST', '/api/deposit/verify', {
-      ref_code: $('verifyRef').value.trim(),
-      amount: parseFloat($('verifyAmount').value),
-      txn_id: $('verifyTxn').value.trim() || undefined,
-      sender_phone: $('verifyPhone').value.trim() || undefined,
-    });
+    const secret = localStorage.getItem('deposit_listener_secret');
+    const opts = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(secret ? { 'X-Deposit-Listener-Secret': secret } : {}),
+      },
+      body: JSON.stringify({
+        ref_code: $('verifyRef').value.trim(),
+        amount: parseFloat($('verifyAmount').value),
+        txn_id: $('verifyTxn').value.trim() || undefined,
+        sender_phone: $('verifyPhone').value.trim() || undefined,
+      }),
+    };
+    const res = await fetch(`${API}/api/deposit/verify`, opts);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     showOutput('verifyOutput', data);
     log(`Verified ${data.deposit.ref_code} — new balance $${Number(data.user.balance).toFixed(2)}`, 'ok');
 

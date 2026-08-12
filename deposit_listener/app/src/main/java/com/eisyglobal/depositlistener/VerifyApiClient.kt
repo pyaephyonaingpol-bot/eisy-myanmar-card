@@ -32,10 +32,14 @@ object VerifyApiClient {
                 put("sender_phone", senderPhone ?: "")
             }.toString()
 
-            val request = Request.Builder()
+            val requestBuilder = Request.Builder()
                 .url(url)
                 .post(body.toRequestBody("application/json".toMediaType()))
-                .build()
+            val secret = BuildConfig.LISTENER_SECRET
+            if (secret.isNotBlank()) {
+                requestBuilder.header("X-Deposit-Listener-Secret", secret)
+            }
+            val request = requestBuilder.build()
 
             client.newCall(request).execute().use { response ->
                 val responseBody = response.body?.string() ?: ""
