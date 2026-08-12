@@ -1540,6 +1540,10 @@ const {
 } = require('../services/withdrawalService');
 const { walletPayload: adminWalletPayload } = require('../services/walletService');
 const { getMasterWalletInfo } = require('../services/tronMasterWalletService');
+const {
+  getIndexerStatus,
+  pollMasterWalletDeposits,
+} = require('../services/tronDepositIndexerService');
 
 /** TRON master wallet TRX + USDT balances (for withdrawal funding checks). */
 router.get('/master-wallet-balance', requirePermission('master_wallet'), async (_req, res) => {
@@ -1570,6 +1574,29 @@ router.get('/master-wallet-balance', requirePermission('master_wallet'), async (
       error: err.message || 'Failed to query master wallet balance',
       code: err.code || undefined,
     });
+  }
+});
+
+/** TRON USDT deposit indexer status (auto-credit from master wallet inbound TRC20). */
+router.get('/tron-deposit-indexer', requirePermission('deposits'), async (_req, res) => {
+  try {
+    const status = await getIndexerStatus();
+    res.json({ success: true, indexer: status });
+  } catch (err) {
+    console.error('[admin/tron-deposit-indexer GET]', err);
+    res.status(500).json({ error: err.message || 'Failed to load indexer status' });
+  }
+});
+
+/** Trigger one indexer poll cycle (manual refresh). */
+router.post('/tron-deposit-indexer/poll', requirePermission('deposits'), async (_req, res) => {
+  try {
+    const result = await pollMasterWalletDeposits();
+    const status = await getIndexerStatus();
+    res.json({ success: true, result, indexer: status });
+  } catch (err) {
+    console.error('[admin/tron-deposit-indexer/poll POST]', err);
+    res.status(500).json({ error: err.message || 'Indexer poll failed' });
   }
 });
 

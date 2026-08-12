@@ -104,6 +104,11 @@ async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
 
+  try {
+    const { stopTronDepositIndexer } = require('./services/tronDepositIndexerService');
+    stopTronDepositIndexer();
+  } catch (_) { /* ignore */ }
+
   await new Promise((resolve) => {
     if (server) {
       server.close(() => resolve());
@@ -145,6 +150,9 @@ async function start() {
     });
   }, 60 * 1000);
   expiryInterval.unref?.();
+
+  const { startTronDepositIndexer } = require('./services/tronDepositIndexerService');
+  startTronDepositIndexer();
 
   await new Promise((resolve, reject) => {
     server = app.listen(PORT, '0.0.0.0', () => {
