@@ -178,8 +178,6 @@ router.get('/auth/status', async (_req, res) => {
     res.json({
       has_admins: adminCount > 0,
       bootstrap_available: adminCount === 0,
-      // Temporary: first Super Admin can be created without ADMIN_API_KEY
-      bootstrap_open: adminCount === 0 && process.env.ADMIN_BOOTSTRAP_OPEN !== 'false',
     });
   } catch (err) {
     console.error('[admin/auth/status]', err);

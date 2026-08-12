@@ -113,11 +113,7 @@ async function loginAdmin({ email, password, ipAddress, deviceName, devicePlatfo
 }
 
 /**
- * Bootstrap the first Super Admin.
- * TEMPORARY: ADMIN_API_KEY check is skipped when no admins exist so the first
- * Super Admin can be created without Vercel env vars. Re-enable the key check
- * after the first admin is set up (set ADMIN_BOOTSTRAP_OPEN=false or restore
- * the key requirement below).
+ * Bootstrap the first Super Admin using ADMIN_API_KEY.
  * Only allowed when no users currently have an admin_role.
  */
 async function bootstrapSuperAdmin({
@@ -127,19 +123,14 @@ async function bootstrapSuperAdmin({
   adminApiKey,
   ipAddress,
 }) {
+  const expectedKey = process.env.ADMIN_API_KEY || 'eisy-admin-dev-key';
+  if (!adminApiKey || adminApiKey !== expectedKey) {
+    throw new Error('Valid admin API key required for bootstrap');
+  }
+
   const existingAdmins = await User.countAdmins();
   if (existingAdmins > 0) {
     throw new Error('Admins already exist — use Super Admin to manage accounts');
-  }
-
-  // Temporary open bootstrap: allow first Super Admin without ADMIN_API_KEY.
-  // Set ADMIN_BOOTSTRAP_OPEN=false to require the API key again.
-  const bootstrapOpen = process.env.ADMIN_BOOTSTRAP_OPEN !== 'false';
-  if (!bootstrapOpen) {
-    const expectedKey = process.env.ADMIN_API_KEY || 'eisy-admin-dev-key';
-    if (!adminApiKey || adminApiKey !== expectedKey) {
-      throw new Error('Valid admin API key required for bootstrap');
-    }
   }
 
   const normalized = normalizeEmail(email);
@@ -169,9 +160,7 @@ async function bootstrapSuperAdmin({
   await TransactionLog.create({
     userId: user.id,
     type: 'admin_bootstrap',
-    description: bootstrapOpen
-      ? 'First Super Admin bootstrapped (temporary open bootstrap)'
-      : 'First Super Admin bootstrapped via API key',
+    description: 'First Super Admin bootstrapped via API key',
     ipAddress,
     createdBy: 'admin',
   }).catch(() => {});

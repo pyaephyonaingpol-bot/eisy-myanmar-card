@@ -276,15 +276,18 @@
         }
         if (btn) btn.disabled = true;
         try {
+          const adminKey = $('adminBootstrapKey')?.value || '';
           const res = await fetch('/api/admin/auth/bootstrap', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'X-Admin-Key': adminKey,
             },
             body: JSON.stringify({
               name: ($('adminBootstrapName')?.value || '').trim(),
               email: ($('adminBootstrapEmail')?.value || '').trim(),
               password: $('adminBootstrapPassword')?.value || '',
+              admin_api_key: adminKey,
             }),
           });
           const data = await res.json().catch(() => ({}));
