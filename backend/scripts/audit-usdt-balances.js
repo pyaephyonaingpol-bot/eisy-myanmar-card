@@ -65,8 +65,7 @@ async function main() {
   await closeDb();
 
   const status = audit.reconciliation?.verdict?.status;
-  if (status === 'synced') process.exit(0);
-  if (status === 'chain_unavailable' && skipChain) process.exit(0);
+  if (status === 'synced' || status === 'db_only') process.exit(0);
   if (status === 'chain_unavailable') process.exit(2);
   process.exit(1);
 }

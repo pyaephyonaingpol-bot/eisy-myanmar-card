@@ -366,9 +366,11 @@ async function runUsdtBalanceAudit(opts = {}) {
     }
   }
 
-  const verdict = master.usdt_balance == null
-    ? { status: 'chain_unavailable', synced: false, label: 'CHAIN_UNAVAILABLE' }
-    : classifyDiscrepancy(discrepancy, tolerance);
+  const verdict = master.skipped
+    ? { status: 'db_only', synced: false, label: 'DB_ONLY', hint: 'On-chain check skipped; review internal expected_master only' }
+    : master.usdt_balance == null
+      ? { status: 'chain_unavailable', synced: false, label: 'CHAIN_UNAVAILABLE' }
+      : classifyDiscrepancy(discrepancy, tolerance);
 
   return {
     checked_at: new Date().toISOString(),
