@@ -1,5 +1,6 @@
 const { getDb } = require('../db');
 const { syncCardApplication } = require('../services/supabaseSyncService');
+const { withWriteTransaction } = require('../lib/dbTransactions');
 
 const Card = {
   TABLE: 'cards_v2',
@@ -37,16 +38,15 @@ const Card = {
     issuedByAdminId, adminNotes, isPrimary = false, dailyLimitUsd, metadata,
   }) {
     const db = getDb();
-    await db.run('BEGIN');
-    try {
+    const lastID = await withWriteTransaction(db, async (tx) => {
       if (isPrimary) {
-        await db.run(
+        await tx.run(
           `UPDATE ${this.TABLE} SET is_primary = 0, updated_at = datetime('now') WHERE user_id = ?`,
           userId
         );
       }
 
-      const result = await db.run(`
+      const result = await tx.run(`
         INSERT INTO ${this.TABLE} (
           user_id, card_number, exp_date, cvv, card_holder_name,
           card_type, currency, status, is_primary, issued_by_admin_id,
@@ -59,14 +59,15 @@ const Card = {
         metadata ? JSON.stringify(metadata) : null
       );
 
-      await db.run('COMMIT');
-      const row = await this.findById(result.lastID);
-      syncCardApplication(row).catch((err) => console.warn('[supabase] card sync:', err.message));
-      return row;
-    } catch (err) {
-      await db.run('ROLLBACK');
-      throw err;
+      return result.lastID;
+    });
+
+    const row = await this.findById(lastID);
+    if (!row) {
+      throw new Error('Card was issued but could not be reloaded from the database');
     }
+    syncCardApplication(row).catch((err) => console.warn('[supabase] card sync:', err.message));
+    return row;
   },
 
   async updateStatus(id, status, { adminNotes, adminId, statusReason } = {}) {
@@ -98,22 +99,17 @@ const Card = {
 
   async setPrimary(id, userId) {
     const db = getDb();
-    await db.run('BEGIN');
-    try {
-      await db.run(
+    await withWriteTransaction(db, async (tx) => {
+      await tx.run(
         `UPDATE ${this.TABLE} SET is_primary = 0, updated_at = datetime('now') WHERE user_id = ?`,
         userId
       );
-      await db.run(
+      await tx.run(
         `UPDATE ${this.TABLE} SET is_primary = 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
         id, userId
       );
-      await db.run('COMMIT');
-      return this.findById(id);
-    } catch (err) {
-      await db.run('ROLLBACK');
-      throw err;
-    }
+    });
+    return this.findById(id);
   },
 
   async requestPending({ userId, cardHolderName, userNote, metadata }) {

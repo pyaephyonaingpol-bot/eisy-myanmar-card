@@ -1023,7 +1023,9 @@ router.post('/cards/issue', requirePermission('cards'), async (req, res) => {
           dailyLimitUsd: daily_limit_usd,
         });
       }
-      await Card.setPrimary(card.id, userId).catch(() => {});
+      await Card.setPrimary(card.id, userId).catch((err) => {
+        console.warn('[admin/cards/issue] setPrimary failed:', err.message);
+      });
     } else {
       card = await Card.issue({
         userId,
@@ -1039,6 +1041,10 @@ router.post('/cards/issue', requirePermission('cards'), async (req, res) => {
       });
     }
 
+    if (!card) {
+      return res.status(500).json({ error: 'Card issue failed — no card record returned' });
+    }
+
     const db = getDb();
     await db.run(`
       INSERT OR REPLACE INTO cards (user_id, card_number, exp_date, cvv, card_holder_name)
@@ -1049,18 +1055,23 @@ router.post('/cards/issue', requirePermission('cards'), async (req, res) => {
       UPDATE cards SET card_number = ?, exp_date = ?, cvv = ?, card_holder_name = ? WHERE user_id = ?
     `, card_number, exp_date, cvv, card_holder_name || user.name, userId).catch(() => {});
 
-    await TransactionLog.create({
-      userId,
-      type: isUpdate ? 'card_updated' : 'card_issued',
-      direction: 'neutral',
-      referenceType: 'cards_v2',
-      referenceId: card.id,
-      description: isUpdate
-        ? `Admin updated card ending ${String(card_number).replace(/\s/g, '').slice(-4)}`
-        : `Admin issued card ending ${String(card_number).slice(-4)}`,
-      createdBy: 'admin',
-      metadata: { balance_usd, daily_limit_usd, updated: isUpdate },
-    });
+    // Post-action audit log must not fail the admin response after a successful issue
+    try {
+      await TransactionLog.create({
+        userId,
+        type: isUpdate ? 'card_updated' : 'card_issued',
+        direction: 'neutral',
+        referenceType: 'cards_v2',
+        referenceId: card.id,
+        description: isUpdate
+          ? `Admin updated card ending ${String(card_number).replace(/\s/g, '').slice(-4)}`
+          : `Admin issued card ending ${String(card_number).replace(/\s/g, '').slice(-4)}`,
+        createdBy: 'admin',
+        metadata: { balance_usd, daily_limit_usd, updated: isUpdate },
+      });
+    } catch (logErr) {
+      console.warn('[admin/cards/issue] activity log failed (card already saved):', logErr.message);
+    }
 
     res.json({
       success: true,
@@ -1069,7 +1080,14 @@ router.post('/cards/issue', requirePermission('cards'), async (req, res) => {
     });
   } catch (err) {
     console.error('[admin/cards/issue]', err);
-    res.status(500).json({ error: 'Internal server error' });
+    const msg = err.message || 'Internal server error';
+    // Surface useful errors; never claim failure due solely to inactive-txn rollback noise
+    if (/no transaction is active/i.test(msg)) {
+      return res.status(500).json({
+        error: 'Card may have been saved, but a database transaction cleanup error occurred. Refresh Issued Cards to confirm.',
+      });
+    }
+    res.status(500).json({ error: msg });
   }
 });
 

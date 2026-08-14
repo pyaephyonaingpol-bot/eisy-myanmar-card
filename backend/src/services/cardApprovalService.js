@@ -6,6 +6,7 @@ const { getDb } = require('../db');
 const { parseRecordMetadata } = require('./settingsService');
 const { mapCardForAdmin } = require('./cardBalanceService');
 const { recordPlatformUsdFee, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
+const { withWriteTransaction, safeRollback } = require('../lib/dbTransactions');
 
 function generateCardNumber() {
   const digits = '4532' + String(Math.floor(100000000000 + Math.random() * 900000000000));
@@ -32,37 +33,41 @@ async function verifyCardIssuanceDeposit(deposit, { adminNote, reviewedByAdminId
   }
 
   const db = getDb();
-  await db.run('BEGIN');
   try {
-    await DepositRequest.review(deposit.id, {
-      status: 'VERIFIED',
-      adminNote: adminNote || 'Approved with card activation',
-      reviewedByAdminId,
+    await withWriteTransaction(db, async () => {
+      await DepositRequest.review(deposit.id, {
+        status: 'VERIFIED',
+        adminNote: adminNote || 'Approved with card activation',
+        reviewedByAdminId,
+      });
     });
-    await db.run('COMMIT');
   } catch (err) {
-    await db.run('ROLLBACK');
+    await safeRollback(db);
     throw err;
   }
 
   const updated = await DepositRequest.findById(deposit.id);
 
-  await TransactionLog.create({
-    userId: deposit.user_id,
-    type: 'deposit_verified',
-    direction: 'neutral',
-    amountMmk: deposit.amount_mmk,
-    amountUsd: deposit.amount_usd,
-    referenceType: 'deposit_requests_v2',
-    referenceId: deposit.id,
-    description: `Card issuance deposit verified: ${deposit.ref_code} (funds allocated to card on activation)`,
-    createdBy,
-    metadata: {
-      purpose: 'card_issuance',
-      admin_note: adminNote,
-      wallet_credit_skipped: true,
-    },
-  });
+  try {
+    await TransactionLog.create({
+      userId: deposit.user_id,
+      type: 'deposit_verified',
+      direction: 'neutral',
+      amountMmk: deposit.amount_mmk,
+      amountUsd: deposit.amount_usd,
+      referenceType: 'deposit_requests_v2',
+      referenceId: deposit.id,
+      description: `Card issuance deposit verified: ${deposit.ref_code} (funds allocated to card on activation)`,
+      createdBy,
+      metadata: {
+        purpose: 'card_issuance',
+        admin_note: adminNote,
+        wallet_credit_skipped: true,
+      },
+    });
+  } catch (logErr) {
+    console.warn('[cardApproval] deposit verify log failed:', logErr.message);
+  }
 
   console.log('[cardApproval] Deposit verified for card issuance:', deposit.ref_code, 'id=', deposit.id);
   return updated;
@@ -186,57 +191,69 @@ async function approvePendingCardRequest(cardId, options = {}) {
 
   await syncLegacyCardRow(card.user_id, finalNumber, finalExp, finalCvv, holder);
 
-  await TransactionLog.create({
-    userId: card.user_id,
-    type: 'card_issued',
-    direction: 'neutral',
-    amountUsd: balanceUsd,
-    referenceType: 'cards_v2',
-    referenceId: cardId,
-    description: `Pending card approved — ending ${String(finalNumber).replace(/\s/g, '').slice(-4)}`,
-    createdBy,
-    metadata: {
-      deposit_id: deposit?.id || meta.deposit_id || null,
-      deposit_ref: deposit?.ref_code || meta.deposit_ref || null,
-      pricing,
-      fee_type: PLATFORM_FEE_TYPES.CARD_ISSUE,
-    },
-  });
-
-  const issuanceFeeUsd = Number(pricing.issuance_fee_usd);
-  if (Number.isFinite(issuanceFeeUsd) && issuanceFeeUsd > 0) {
-    await recordPlatformUsdFee(issuanceFeeUsd, {
-      feeType: PLATFORM_FEE_TYPES.CARD_ISSUE,
-      description: `Card issuance fee — CARD-${cardId} ($${issuanceFeeUsd.toFixed(2)})`,
+  try {
+    await TransactionLog.create({
+      userId: card.user_id,
+      type: 'card_issued',
+      direction: 'neutral',
+      amountUsd: balanceUsd,
       referenceType: 'cards_v2',
       referenceId: cardId,
-      relatedUserId: card.user_id,
+      description: `Pending card approved — ending ${String(finalNumber).replace(/\s/g, '').slice(-4)}`,
       createdBy,
       metadata: {
         deposit_id: deposit?.id || meta.deposit_id || null,
         deposit_ref: deposit?.ref_code || meta.deposit_ref || null,
         pricing,
+        fee_type: PLATFORM_FEE_TYPES.CARD_ISSUE,
       },
     });
+  } catch (logErr) {
+    console.warn('[cardApproval] card_issued log failed:', logErr.message);
+  }
+
+  const issuanceFeeUsd = Number(pricing.issuance_fee_usd);
+  if (Number.isFinite(issuanceFeeUsd) && issuanceFeeUsd > 0) {
+    try {
+      await recordPlatformUsdFee(issuanceFeeUsd, {
+        feeType: PLATFORM_FEE_TYPES.CARD_ISSUE,
+        description: `Card issuance fee — CARD-${cardId} ($${issuanceFeeUsd.toFixed(2)})`,
+        referenceType: 'cards_v2',
+        referenceId: cardId,
+        relatedUserId: card.user_id,
+        createdBy,
+        metadata: {
+          deposit_id: deposit?.id || meta.deposit_id || null,
+          deposit_ref: deposit?.ref_code || meta.deposit_ref || null,
+          pricing,
+        },
+      });
+    } catch (feeErr) {
+      console.warn('[cardApproval] platform fee record failed:', feeErr.message);
+    }
   }
 
   const last4 = String(finalNumber).replace(/\s/g, '').slice(-4);
-  await TransactionLog.create({
-    userId: card.user_id,
-    type: 'card_updated',
-    direction: 'neutral',
-    amountUsd: balanceUsd,
-    referenceType: 'cards_v2',
-    referenceId: cardId,
-    description: `Your virtual card is now ACTIVE — ending ${last4}. Initial balance: $${balanceUsd.toFixed(2)} USD`,
-    createdBy,
-    metadata: {
-      notification: 'card_issued',
-      card_id: cardId,
-      status: 'ACTIVE',
-      last4,
-    },
-  });
+  try {
+    await TransactionLog.create({
+      userId: card.user_id,
+      type: 'card_updated',
+      direction: 'neutral',
+      amountUsd: balanceUsd,
+      referenceType: 'cards_v2',
+      referenceId: cardId,
+      description: `Your virtual card is now ACTIVE — ending ${last4}. Initial balance: $${balanceUsd.toFixed(2)} USD`,
+      createdBy,
+      metadata: {
+        notification: 'card_issued',
+        card_id: cardId,
+        status: 'ACTIVE',
+        last4,
+      },
+    });
+  } catch (logErr) {
+    console.warn('[cardApproval] card_updated notification log failed:', logErr.message);
+  }
 
   return {
     card: mapCardForAdmin(activated, user),
