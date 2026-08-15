@@ -1541,17 +1541,26 @@ router.get('/master-wallet-balance', requirePermission('master_wallet'), async (
         trx_low_threshold: trxLowThreshold,
         trx_low: Boolean(info.trxLow),
         usdt_contract: info.contract,
+        source: info.source || null,
         checked_at: new Date().toISOString(),
       },
     });
   } catch (err) {
     console.error('[admin/master-wallet-balance]', err.code || '', err.message);
-    const status = err.code === 'MASTER_KEY_MISSING' || err.code === 'MASTER_KEY_INVALID'
-      ? 503
-      : 502;
+    const code = err.code || '';
+    let status = 502;
+    if (code === 'MASTER_KEY_MISSING' || code === 'MASTER_KEY_INVALID' || code === 'MASTER_ADDRESS_INVALID') {
+      status = 503;
+    } else if (code === 'TRON_TIMEOUT') {
+      status = 504;
+    } else if (code === 'TRON_RATE_LIMITED') {
+      status = 429;
+    }
     res.status(status).json({
+      success: false,
       error: err.message || 'Failed to query master wallet balance',
-      code: err.code || undefined,
+      code: code || undefined,
+      details: err.details || undefined,
     });
   }
 });
