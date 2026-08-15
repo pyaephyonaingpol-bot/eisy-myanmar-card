@@ -1,7 +1,12 @@
 const express = require('express');
 const fs = require('fs');
 const crypto = require('crypto');
-const { requireAuth, requireSensitive } = require('../middleware/auth');
+const {
+  requireAuth,
+  requireSensitive,
+  requireAdminAuth,
+  requirePermission,
+} = require('../middleware/auth');
 const { uploadDepositScreenshot, publicUploadPath, saveDepositScreenshotFromBase64 } = require('../middleware/upload');
 const DepositRequest = require('../models/DepositRequest');
 const {
@@ -31,27 +36,39 @@ function timingSafeEqualString(a, b) {
   return crypto.timingSafeEqual(left, right);
 }
 
-/** Require DEPOSIT_LISTENER_SECRET for MMK auto-verify (production-safe). */
-function requireListenerSecret(req, res, next) {
+/**
+ * Secure POST /api/deposit/verify:
+ * - Verified server hook via DEPOSIT_LISTENER_SECRET header, OR
+ * - Authorized admin (API key / admin session) with deposits permission.
+ * Never open to anonymous callers — even in non-production.
+ */
+function requireListenerOrAdmin(req, res, next) {
   const expected = process.env.DEPOSIT_LISTENER_SECRET || '';
-  if (!expected) {
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(503).json({
-        error: 'Deposit listener verify is disabled until DEPOSIT_LISTENER_SECRET is configured',
-        code: 'LISTENER_DISABLED',
-      });
-    }
-    console.warn('[deposit/verify] DEPOSIT_LISTENER_SECRET unset — allowing request in non-production');
-    return next();
-  }
   const provided = req.headers['x-deposit-listener-secret']
     || req.headers['x-listener-secret']
-    || req.body?.listener_secret
     || '';
-  if (!timingSafeEqualString(provided, expected)) {
-    return res.status(401).json({ error: 'Unauthorized listener', code: 'LISTENER_UNAUTHORIZED' });
+
+  if (expected) {
+    if (provided) {
+      if (timingSafeEqualString(provided, expected)) {
+        req.verifyAuth = 'listener';
+        return next();
+      }
+      return res.status(401).json({ error: 'Unauthorized listener', code: 'LISTENER_UNAUTHORIZED' });
+    }
+    // No listener secret header — allow authorized admin instead.
+  } else if (process.env.NODE_ENV === 'production') {
+    console.warn('[deposit/verify] DEPOSIT_LISTENER_SECRET unset in production — admin auth required');
   }
-  return next();
+
+  return requireAdminAuth(req, res, (err) => {
+    if (err) return next(err);
+    return requirePermission('deposits')(req, res, (permErr) => {
+      if (permErr) return next(permErr);
+      req.verifyAuth = 'admin';
+      return next();
+    });
+  });
 }
 
 /**
@@ -426,8 +443,8 @@ router.get('/mine', requireAuth, async (req, res) => {
   }
 });
 
-// Called by Android notification listener — requires DEPOSIT_LISTENER_SECRET
-router.post('/verify', requireListenerSecret, async (req, res) => {
+// Android MMK listener hook or authorized admin — never anonymous
+router.post('/verify', requireListenerOrAdmin, async (req, res) => {
   try {
     const { ref_code, amount, txn_id, sender_phone } = req.body;
 

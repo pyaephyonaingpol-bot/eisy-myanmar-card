@@ -252,6 +252,22 @@ async function createUsdtDepositRequest(userId, {
   return { deposit, depositAddress, network: net, fee_breakdown: feeBreakdown };
 }
 
+/**
+ * Find any deposit that already recorded this TxID / TxHash
+ * (pending or verified). Used to block reuse before credit.
+ */
+async function findDepositByTxHash(txHash) {
+  const db = getDb();
+  const hash = String(txHash || '').trim();
+  if (!hash) return null;
+  return db.get(`
+    SELECT * FROM deposit_requests_v2
+    WHERE tx_hash = ? OR txn_id = ? OR kpay_transaction_id = ?
+    ORDER BY CASE WHEN status = 'VERIFIED' THEN 0 ELSE 1 END, id ASC
+    LIMIT 1
+  `, hash, hash, hash);
+}
+
 async function findVerifiedDepositByTxHash(txHash) {
   const db = getDb();
   const hash = String(txHash || '').trim();
@@ -267,9 +283,13 @@ async function findVerifiedDepositByTxHash(txHash) {
 async function assertTxHashAvailable(txHash, depositId) {
   const hash = String(txHash || '').trim();
   if (!hash) return;
-  const existing = await findVerifiedDepositByTxHash(hash);
+  const existing = await findDepositByTxHash(hash);
   if (existing && Number(existing.id) !== Number(depositId)) {
-    const err = new Error('This TxHash / transaction ID has already been used for a verified deposit');
+    const err = new Error(
+      existing.status === 'VERIFIED'
+        ? 'This TxHash / transaction ID has already been used for a verified deposit'
+        : 'This TxHash / transaction ID is already attached to another deposit'
+    );
     err.code = 'TX_HASH_REUSED';
     throw err;
   }
@@ -987,6 +1007,7 @@ module.exports = {
   creditDepositAndVerify,
   verifyByListener,
   findVerifiedDepositByTxHash,
+  findDepositByTxHash,
   assertTxHashAvailable,
   isUsdtVerificationBypassEnabled,
   uniqueRefCode,

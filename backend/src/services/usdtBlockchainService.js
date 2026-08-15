@@ -200,6 +200,29 @@ async function verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt) {
   };
 }
 
+async function checkBep20Confirmations(receipt) {
+  if (MIN_CONFIRMATIONS <= 0 || !receipt?.blockNumber) return null;
+  try {
+    const txBlock = parseInt(receipt.blockNumber, 16);
+    const latestHex = await bscRpc('eth_blockNumber', []);
+    const latest = latestHex ? parseInt(latestHex, 16) : null;
+    if (!Number.isFinite(txBlock) || !Number.isFinite(latest)) return null;
+    const confirmations = Math.max(0, latest - txBlock + 1);
+    if (confirmations < MIN_CONFIRMATIONS) {
+      return {
+        ok: false,
+        status: 'pending',
+        message: `Waiting for confirmations (${confirmations}/${MIN_CONFIRMATIONS}).`,
+        confirmations,
+      };
+    }
+    return { confirmations };
+  } catch (err) {
+    console.warn('[usdt-blockchain] BEP20 confirmation check failed:', err.message);
+    return null;
+  }
+}
+
 async function verifyBep20UsdtViaRpc(txHash, expectedAddress, expectedAmountUsdt) {
   const hash = String(txHash).trim();
   const expectedTo = normalizeBscAddress(expectedAddress);
@@ -214,26 +237,8 @@ async function verifyBep20UsdtViaRpc(txHash, expectedAddress, expectedAmountUsdt
     return { ok: false, status: 'invalid', message: 'Transaction failed on blockchain — check your TxHash.' };
   }
 
-  if (MIN_CONFIRMATIONS > 0) {
-    try {
-      const txBlock = receipt.blockNumber ? parseInt(receipt.blockNumber, 16) : null;
-      const latestHex = await bscRpc('eth_blockNumber', []);
-      const latest = latestHex ? parseInt(latestHex, 16) : null;
-      if (Number.isFinite(txBlock) && Number.isFinite(latest)) {
-        const confirmations = Math.max(0, latest - txBlock + 1);
-        if (confirmations < MIN_CONFIRMATIONS) {
-          return {
-            ok: false,
-            status: 'pending',
-            message: `Waiting for confirmations (${confirmations}/${MIN_CONFIRMATIONS}).`,
-            confirmations,
-          };
-        }
-      }
-    } catch (err) {
-      console.warn('[usdt-blockchain] BEP20 confirmation check failed:', err.message);
-    }
-  }
+  const conf = await checkBep20Confirmations(receipt);
+  if (conf && conf.ok === false) return conf;
 
   const logs = receipt.logs || [];
   const usdtLogs = logs.filter((log) => {
@@ -284,6 +289,7 @@ async function verifyBep20UsdtViaRpc(txHash, expectedAddress, expectedAmountUsdt
     toAddress: expectedTo,
     txHash: hash,
     blockNumber: receipt.blockNumber,
+    confirmations: conf?.confirmations ?? null,
   };
 }
 
@@ -302,7 +308,7 @@ async function verifyBep20UsdtViaBscScan(txHash, expectedAddress, expectedAmount
   return null;
 }
 
-function verifyBep20UsdtFromReceipt(receipt, hash, expectedAddress, expectedAmountUsdt) {
+async function verifyBep20UsdtFromReceipt(receipt, hash, expectedAddress, expectedAmountUsdt) {
   const expectedTo = normalizeBscAddress(expectedAddress);
   if (!receipt) {
     return { ok: false, status: 'pending', message: 'Transaction pending on blockchain or invalid TxHash.' };
@@ -310,6 +316,10 @@ function verifyBep20UsdtFromReceipt(receipt, hash, expectedAddress, expectedAmou
   if (receipt.status !== '0x1') {
     return { ok: false, status: 'invalid', message: 'Transaction failed on blockchain — check your TxHash.' };
   }
+
+  const conf = await checkBep20Confirmations(receipt);
+  if (conf && conf.ok === false) return conf;
+
   const logs = receipt.logs || [];
   const usdtLogs = logs.filter((log) => {
     const addr = normalizeBscAddress(log.address);
@@ -339,6 +349,7 @@ function verifyBep20UsdtFromReceipt(receipt, hash, expectedAddress, expectedAmou
     amountUsdt,
     toAddress: expectedTo,
     txHash: hash,
+    confirmations: conf?.confirmations ?? null,
   };
 }
 
@@ -476,4 +487,6 @@ module.exports = {
   USDT_TRC20_CONTRACT,
   USDT_BEP20_CONTRACT,
   USDT_ERC20_CONTRACT,
+  TRANSFER_EVENT_TOPIC,
+  MIN_CONFIRMATIONS,
 };

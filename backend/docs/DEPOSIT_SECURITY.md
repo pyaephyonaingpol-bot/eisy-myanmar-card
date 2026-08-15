@@ -10,8 +10,10 @@ post-deposit “sweep.” Withdrawals pay **from** the same master wallet.
    `BYPASS_USDT_TX_VERIFICATION` defaults off and is **refused in production**.
 
 2. **No fake / reused TxHashes**  
-   - Application check (`assertTxHashAvailable`) before credit  
-   - Partial unique indexes on `deposit_requests_v2.tx_hash` / `txn_id`  
+   - Application check (`assertTxHashAvailable`) before credit — blocks reuse on
+     any deposit status (pending or verified)  
+   - Partial unique indexes on `deposit_requests_v2.tx_hash` / `txn_id` /
+     `kpay_transaction_id`  
    - Admin USDT approve re-verifies on-chain (unless non-prod `force_approve`)
 
 3. **Idempotent credit**  
@@ -20,14 +22,17 @@ post-deposit “sweep.” Withdrawals pay **from** the same master wallet.
    cannot double-increase balances.
 
 4. **MMK listener locked down**  
-   `POST /api/deposit/verify` requires `DEPOSIT_LISTENER_SECRET`  
-   (`X-Deposit-Listener-Secret`). Disabled in production if unset.  
-   Exact amount match; USDT deposits rejected on this path.
+   `POST /api/deposit/verify` accepts **only**:
+   - `DEPOSIT_LISTENER_SECRET` via `X-Deposit-Listener-Secret` (server hook), **or**
+   - Authorized admin (API key / admin session) with `deposits` permission  
+   Anonymous callers are always rejected. Exact amount match; USDT deposits
+   rejected on this path.
 
 5. **Binance Pay**  
    Query-before-credit enabled by default; paid amount checked vs deposit gross.
 
-6. **BEP20 Transfer topic** corrected; configurable `USDT_MIN_CONFIRMATIONS`.
+6. **BEP20 Transfer topic** corrected (`keccak256(Transfer(address,address,uint256))`);
+   configurable `USDT_MIN_CONFIRMATIONS` on both RPC and BscScan paths.
 
 ## Required env (production)
 
@@ -44,3 +49,4 @@ Android listener: set Gradle property `DEPOSIT_LISTENER_SECRET` to the same valu
 
 Dashboard listener simulation:  
 `localStorage.setItem('deposit_listener_secret', '…')` then use the verify form.
+Admin simulation may instead send `X-Admin-Key`.

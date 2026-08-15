@@ -55,22 +55,31 @@ const DepositRequest = {
   }) {
     const db = getDb();
     const hash = txHash || txnId || kpayTransactionId || null;
-    await db.run(`
-      UPDATE ${this.TABLE}
-      SET kpay_transaction_id = COALESCE(?, kpay_transaction_id),
-          txn_id = COALESCE(?, txn_id),
-          tx_hash = COALESCE(?, tx_hash),
-          screenshot_path = COALESCE(?, screenshot_path),
-          screenshot_original_name = COALESCE(?, screenshot_original_name),
-          screenshot_mime_type = COALESCE(?, screenshot_mime_type),
-          user_note = COALESCE(?, user_note),
-          status = 'SUBMITTED',
-          submitted_at = datetime('now'),
-          updated_at = datetime('now')
-      WHERE id = ?
-    `, kpayTransactionId || hash, txnId || hash, hash,
-      screenshotPath || null, screenshotOriginalName || null,
-      screenshotMimeType || null, userNote || null, id);
+    try {
+      await db.run(`
+        UPDATE ${this.TABLE}
+        SET kpay_transaction_id = COALESCE(?, kpay_transaction_id),
+            txn_id = COALESCE(?, txn_id),
+            tx_hash = COALESCE(?, tx_hash),
+            screenshot_path = COALESCE(?, screenshot_path),
+            screenshot_original_name = COALESCE(?, screenshot_original_name),
+            screenshot_mime_type = COALESCE(?, screenshot_mime_type),
+            user_note = COALESCE(?, user_note),
+            status = 'SUBMITTED',
+            submitted_at = datetime('now'),
+            updated_at = datetime('now')
+        WHERE id = ?
+      `, kpayTransactionId || hash, txnId || hash, hash,
+        screenshotPath || null, screenshotOriginalName || null,
+        screenshotMimeType || null, userNote || null, id);
+    } catch (err) {
+      if (/UNIQUE|constraint/i.test(err.message || '')) {
+        const reuse = new Error('This TxHash / transaction ID has already been used');
+        reuse.code = 'TX_HASH_REUSED';
+        throw reuse;
+      }
+      throw err;
+    }
 
     const row = await this.findById(id);
     await this._syncDepositSafe(row);
