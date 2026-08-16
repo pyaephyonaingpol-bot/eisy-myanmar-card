@@ -1,19 +1,30 @@
 # USDT TRC20 withdrawals (master wallet)
 
-When an admin processes a pending **TRC20 crypto** USDT withdrawal, the backend
-sends `net_usdt` from the platform master wallet via TronWeb.
+When a user creates a **TRC20 crypto** USDT withdrawal, the backend may pay it
+automatically from the platform master (hot) wallet — or leave it pending for
+admin review when safety checks require it.
 
 ## Flow
 
 1. User creates `POST /api/withdrawal/usdt` with `network=TRC20` → USDT balance debited, row `pending`
-2. Admin completes `POST /api/admin/withdrawals/usdt/:id/complete`
-3. `processUsdtTrc20Withdrawal` → `transferUsdtTrc20`:
-   - Reads `process.env.MASTER_PRIVATE_KEY` (never hardcoded)
-   - Checks master USDT balance (≥ net amount) and TRX for fees
-   - Transfers TRC20 USDT to `wallet_address`
-   - Stores returned `txId` and marks withdrawal `completed`
+2. **Auto-payout** (when enabled and amount ≤ `USDT_AUTO_WITHDRAW_MAX_USDT`):
+   - `maybeAutoProcessUsdtWithdrawal` → `processUsdtTrc20Withdrawal` → `transferUsdtTrc20`
+   - Marks withdrawal `completed` and stores the on-chain `txId`
+3. **Manual / large withdrawals** stay `pending` for admin:
+   - Admin completes `POST /api/admin/withdrawals/usdt/:id/complete`
+   - Same on-chain send path as auto-payout when no `tx_hash` is provided
 
-If a manual `tx_hash` is provided, the on-chain send is skipped.
+If a manual `tx_hash` is provided on admin complete, the on-chain send is skipped.
+
+## Safety thresholds
+
+| Variable | Default | Notes |
+|----------|---------|--------|
+| `USDT_AUTO_WITHDRAW_ENABLED` | `true` | Set `false` to require admin for all |
+| `USDT_AUTO_WITHDRAW_MAX_USDT` | `100` | Gross requested USDT; above → admin queue |
+| `MASTER_PRIVATE_KEY` | required for send | Never commit real keys |
+
+BEP20 / bank USDT withdrawals always require admin (no auto hot-wallet send).
 
 ## Admin balance check
 
@@ -28,6 +39,8 @@ The admin Deposits/Withdrawals tab has a **Check Master Wallet Balance** button 
 | `USDT_TRC20_CONTRACT` | no | defaults to mainnet USDT |
 | `TRON_FULL_HOST` | no | default `https://api.trongrid.io` |
 | `TRONGRID_API_KEY` | no | recommended for rate limits |
+| `USDT_AUTO_WITHDRAW_ENABLED` | no | default true |
+| `USDT_AUTO_WITHDRAW_MAX_USDT` | no | default 100 |
 
 ## MMK / balance policy (unchanged)
 
@@ -39,5 +52,6 @@ The admin Deposits/Withdrawals tab has a **Check Master Wallet Balance** button 
 ## Key files
 
 - `backend/src/services/tronMasterWalletService.js` — TronWeb transfer + balance checks
-- `backend/src/services/withdrawalService.js` — `processUsdtTrc20Withdrawal`, `completeUsdtWithdrawal`
+- `backend/src/services/withdrawalService.js` — `maybeAutoProcessUsdtWithdrawal`, `processUsdtTrc20Withdrawal`, `completeUsdtWithdrawal`
+- `backend/src/services/usdtBlockchainService.js` — deposit TxHash verification (TronGrid + Tronscan)
 - `backend/src/services/walletService.js` — MMK debit allow-list
