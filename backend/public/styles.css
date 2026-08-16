@@ -62,10 +62,13 @@
 }
 
 html {
-  scroll-behavior: smooth;
-  min-height: 100%;
-  min-height: var(--app-vh);
-  min-height: -webkit-fill-available;
+  height: 100%;
+  height: var(--app-vh);
+  max-height: var(--app-vh);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -76,14 +79,27 @@ body {
     radial-gradient(ellipse 60% 40% at 100% 0%, rgba(34, 197, 94, 0.06), transparent);
   color: var(--text-primary);
   line-height: 1.55;
-  min-height: 100vh;
-  min-height: var(--app-vh);
-  min-height: -webkit-fill-available;
+  /* Fixed shell: keyboard overlays; page itself does not bounce/resize */
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: var(--app-vh);
+  max-height: var(--app-vh);
+  overflow: hidden;
+  overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
-  /* Standalone PWA / notched devices */
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
-  overscroll-behavior-y: contain;
+  touch-action: manipulation;
+}
+
+/* While an input is focused, freeze any remaining dynamic sizing hints */
+html.kb-open,
+html.kb-open body {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  height: var(--app-vh) !important;
+  max-height: var(--app-vh) !important;
 }
 
 .hidden { display: none !important; }
@@ -131,8 +147,14 @@ h3 { font-size: 0.95rem; font-weight: 600; }
 
 /* Auth */
 .auth-screen {
-  min-height: 100vh;
-  min-height: var(--app-vh);
+  height: 100%;
+  height: var(--app-vh);
+  max-height: var(--app-vh);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -352,14 +374,26 @@ h3 { font-size: 0.95rem; font-weight: 600; }
 .field label { font-size: 0.78rem; color: var(--text-secondary); font-weight: 600; }
 .field input, .field select, .field textarea {
   padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border);
-  background: rgba(15, 23, 42, 0.55); color: var(--text-primary); font-size: 0.9rem;
+  background: rgba(15, 23, 42, 0.55); color: var(--text-primary);
+  /* ≥16px prevents iOS Safari auto-zoom on focus (layout shake source) */
+  font-size: 16px;
+  line-height: 1.35;
   transition: border-color 0.18s, box-shadow 0.18s;
   scroll-margin-top: 5.5rem;
   scroll-margin-bottom: 40vh;
+  touch-action: manipulation;
 }
 .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
 .field textarea { font-family: inherit; resize: vertical; min-height: 80px; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+/* Global form controls — keep ≥16px to block mobile focus-zoom layout loops */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="color"]),
+select,
+textarea {
+  font-size: 16px;
+  touch-action: manipulation;
+}
 
 /* Buttons */
 .btn {
@@ -410,7 +444,7 @@ a.btn { text-decoration: none; }
 .card-selector-label { font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
 .card-nav-buttons { display: flex; align-items: center; gap: 0.65rem; }
 .card-index-label { font-size: 0.8125rem; color: var(--text-secondary); min-width: 3.75rem; text-align: center; font-variant-numeric: tabular-nums; }
-.card-select { width: 100%; padding: 0.7rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: rgba(15,23,42,0.55); color: var(--text-primary); font-size: 0.9rem; margin-bottom: 1rem; }
+.card-select { width: 100%; padding: 0.7rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: rgba(15,23,42,0.55); color: var(--text-primary); font-size: 16px; margin-bottom: 1rem; touch-action: manipulation; }
 .card-thumbnails { display: flex; gap: 0.65rem; overflow-x: auto; padding-bottom: 0.35rem; min-height: 5.75rem; scrollbar-gutter: stable; }
 .card-thumb { flex: 0 0 148px; padding: 0.85rem; border-radius: var(--radius-md); cursor: pointer; background: linear-gradient(135deg, #1e3a8a, #4338ca); border: 2px solid transparent; transition: border-color 0.12s ease; min-height: 88px; display: flex; flex-direction: column; justify-content: space-between; }
 .card-thumb:hover { border-color: rgba(148, 163, 184, 0.45); }
@@ -1234,6 +1268,8 @@ a.btn { text-decoration: none; }
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(15, 23, 42, 0.5);
   color: inherit;
+  font-size: 16px;
+  touch-action: manipulation;
 }
 .p2p-dispute-form {
   margin-top: 0.65rem;
@@ -1499,14 +1535,20 @@ pre.output.hidden { display: none !important; }
 /* ═══ App Shell — Sidebar SPA Layout ═══ */
 #dashboardScreen {
   width: 100%;
-  min-height: 100vh;
-  min-height: var(--app-vh);
+  height: 100%;
+  height: var(--app-vh);
+  max-height: var(--app-vh);
+  min-height: 0;
+  overflow: hidden;
 }
 
 #adminApp {
   width: 100%;
-  min-height: 100vh;
-  min-height: var(--app-vh);
+  height: 100%;
+  height: var(--app-vh);
+  max-height: var(--app-vh);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .app-shell {
@@ -1514,10 +1556,12 @@ pre.output.hidden { display: none !important; }
   flex-direction: row;
   align-items: stretch;
   width: 100%;
-  min-height: 100vh;
-  min-height: var(--app-vh);
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
   position: relative;
   isolation: isolate;
+  overflow: hidden;
 }
 
 .app-sidebar {
@@ -1528,14 +1572,12 @@ pre.output.hidden { display: none !important; }
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 1;
-  /* Stretch with the shell; avoid fixed 100dvh that collapses with the keyboard */
-  align-self: flex-start;
-  height: auto;
-  max-height: var(--app-vh);
-  min-height: var(--app-vh);
+  align-self: stretch;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -1614,11 +1656,10 @@ pre.output.hidden { display: none !important; }
   width: 100%;
   display: flex;
   flex-direction: column;
-  /* min-height only — fixed height + keyboard was causing bounce/overlap */
-  min-height: 100vh;
-  min-height: var(--app-vh);
-  height: auto;
-  overflow: visible;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
   position: relative;
   z-index: 2;
   background: var(--bg-base);
@@ -1626,8 +1667,8 @@ pre.output.hidden { display: none !important; }
 
 .app-main .header {
   flex-shrink: 0;
-  position: sticky;
-  top: 0;
+  position: relative;
+  top: auto;
   z-index: 5;
 }
 
@@ -1642,7 +1683,10 @@ pre.output.hidden { display: none !important; }
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  overflow: visible;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .app-page {
@@ -1712,9 +1756,9 @@ body.sidebar-scroll-lock {
 
 @media (max-width: 900px) {
   .app-shell {
-    min-height: 100vh;
-    min-height: var(--app-vh);
-    height: auto;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
   }
 
   .app-sidebar {
@@ -1723,7 +1767,7 @@ body.sidebar-scroll-lock {
     top: 0;
     right: auto;
     bottom: 0;
-    /* inset anchoring — do not bind height to dvh/visualViewport */
+    /* inset anchoring — never bind to visualViewport/dvh */
     height: auto;
     max-height: none;
     min-height: 0;
@@ -1757,21 +1801,33 @@ body.sidebar-scroll-lock {
   .app-main {
     width: 100%;
     flex: 1 1 100%;
-    height: auto;
-    min-height: 100vh;
-    min-height: var(--app-vh);
-    overflow: visible;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .app-content {
-    overflow: visible;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     min-height: 0;
   }
 
   .app-main .header {
-    /* Avoid sticky + keyboard visualViewport jitter that looked like duplicated text */
     position: relative;
     top: auto;
+  }
+
+  html.kb-open .app-shell,
+  html.kb-open .app-main,
+  html.kb-open #dashboardScreen,
+  html.kb-open #adminApp {
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
   }
 }
 
@@ -1784,25 +1840,6 @@ body.sidebar-scroll-lock {
 
   .app-sidebar {
     transform: none !important;
-  }
-
-  /* Desktop: stable svh shell with internal scroll (not visualViewport/dvh). */
-  .app-main {
-    height: var(--app-vh);
-    max-height: var(--app-vh);
-    overflow: hidden;
-  }
-
-  .app-main .header {
-    position: relative;
-    top: auto;
-  }
-
-  .app-content {
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
   }
 }
 

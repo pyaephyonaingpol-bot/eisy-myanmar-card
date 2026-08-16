@@ -1,76 +1,138 @@
 /**
- * Stable app shell height for mobile keyboards.
+ * Mobile viewport + keyboard lock
  *
- * Modern browsers: CSS maps --app-vh to 100svh (does not shrink with the
- * virtual keyboard). This script is only a fallback for engines without svh.
+ * 1) Freeze --app-vh to a pixel shell height (prefer layout viewport).
+ * 2) Never recalculate that height while an input is focused / keyboard open.
+ * 3) Only refresh on orientation change (or desktop window resize without keyboard).
  *
- * Fallback rules:
- *  - Lock --app-vh to the layout viewport (innerHeight)
- *  - Never shrink it when the keyboard opens (visualViewport shrink)
- *  - Reset on orientation change
+ * Works with CSS: html/body are overflow-hidden + fixed; scrolling happens
+ * inside .app-content / .auth-screen — so the keyboard overlays instead of
+ * resizing the document and causing layout loops.
  */
-(function syncAppViewportHeight() {
+(function lockAppViewport() {
   const root = document.documentElement;
-  const supportsSvh = typeof CSS !== 'undefined'
-    && CSS.supports
-    && CSS.supports('height', '100svh');
+  const mqMobile = window.matchMedia('(max-width: 900px)');
 
-  // CSS @supports (height: 100svh) already keeps the shell stable.
-  if (supportsSvh) return;
-
-  let lockedLayoutPx = 0;
-  let lastOrientation = screen.orientation?.type || window.orientation;
+  let shellPx = 0;
+  let focusDepth = 0;
+  let lastOrientation = screen.orientation?.type || String(window.orientation);
+  let unlockTimer = 0;
 
   function layoutHeight() {
-    return window.innerHeight || document.documentElement.clientHeight || 0;
+    // Prefer the layout viewport. visualViewport shrinks with the keyboard and
+    // must not drive shell height.
+    return Math.round(window.innerHeight || root.clientHeight || 0);
   }
 
   function visualHeight() {
-    if (window.visualViewport && Number.isFinite(window.visualViewport.height)) {
-      return window.visualViewport.height;
-    }
+    const vv = window.visualViewport;
+    if (vv && Number.isFinite(vv.height)) return Math.round(vv.height);
     return layoutHeight();
   }
 
-  function keyboardLikelyOpen() {
+  function keyboardOpen() {
+    if (focusDepth > 0) return true;
     const layout = layoutHeight();
     const visual = visualHeight();
     if (!layout || !visual) return false;
-    // Ignore address-bar chrome (~40–80px); keyboards are typically >120px.
-    return (layout - visual) > 120 || (lockedLayoutPx - visual) > 120;
+    return (layout - visual) > 120 || (shellPx - visual) > 120;
   }
 
-  function apply(force) {
-    const layout = layoutHeight();
-    if (!layout || !Number.isFinite(layout)) return;
+  function applyShellHeight(force) {
+    if (!force && keyboardOpen()) return;
 
-    const orientation = screen.orientation?.type || window.orientation;
-    if (orientation !== lastOrientation) {
-      lastOrientation = orientation;
-      lockedLayoutPx = 0;
+    const next = layoutHeight();
+    if (!next || !Number.isFinite(next)) return;
+
+    // While not focused, allow growth (address bar hide) but never shrink from
+    // a transient visualViewport blip. Forced updates always take the new value.
+    if (force || !shellPx || next >= shellPx - 2) {
+      shellPx = next;
     }
 
-    if (force) lockedLayoutPx = 0;
-
-    // Keep the previous lock while the keyboard is open so the shell does not jump.
-    if (keyboardLikelyOpen() && lockedLayoutPx) return;
-
-    lockedLayoutPx = Math.max(lockedLayoutPx, Math.round(layout));
-    root.style.setProperty('--app-vh', `${lockedLayoutPx}px`);
+    root.style.setProperty('--app-vh', `${shellPx}px`);
+    root.style.setProperty('--app-shell-px', `${shellPx}px`);
   }
 
-  apply(true);
+  function isTextEntry(el) {
+    if (!el || el.disabled) return false;
+    const tag = el.tagName;
+    if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (tag === 'INPUT') {
+      const type = String(el.type || 'text').toLowerCase();
+      return ![
+        'button', 'submit', 'reset', 'checkbox', 'radio',
+        'file', 'image', 'range', 'color', 'hidden',
+      ].includes(type);
+    }
+    return Boolean(el.isContentEditable);
+  }
 
-  window.addEventListener('orientationchange', () => {
-    lockedLayoutPx = 0;
-    setTimeout(() => apply(true), 250);
-  }, { passive: true });
+  function setKeyboardClass(on) {
+    root.classList.toggle('kb-open', on);
+    document.body?.classList.toggle('kb-open', on);
+  }
+
+  function onFocusIn(event) {
+    if (!isTextEntry(event.target)) return;
+    focusDepth += 1;
+    if (focusDepth === 1) {
+      // Snapshot the current shell before the keyboard animates.
+      applyShellHeight(true);
+      setKeyboardClass(true);
+    }
+  }
+
+  function onFocusOut(event) {
+    if (!isTextEntry(event.target)) return;
+    focusDepth = Math.max(0, focusDepth - 1);
+    window.clearTimeout(unlockTimer);
+    unlockTimer = window.setTimeout(() => {
+      if (isTextEntry(document.activeElement)) {
+        focusDepth = Math.max(focusDepth, 1);
+        return;
+      }
+      focusDepth = 0;
+      setKeyboardClass(false);
+      // Keep the pixel lock — do not bounce back to svh mid-session.
+    }, 80);
+  }
+
+  function onOrientationChange() {
+    shellPx = 0;
+    setKeyboardClass(false);
+    focusDepth = 0;
+    window.setTimeout(() => applyShellHeight(true), 280);
+  }
+
+  applyShellHeight(true);
+
+  document.addEventListener('focusin', onFocusIn, true);
+  document.addEventListener('focusout', onFocusOut, true);
+
+  window.addEventListener('orientationchange', onOrientationChange, { passive: true });
+
+  if (screen.orientation && screen.orientation.addEventListener) {
+    screen.orientation.addEventListener('change', onOrientationChange);
+  }
 
   window.addEventListener('resize', () => {
-    if (keyboardLikelyOpen()) return;
-    apply(false);
+    const orientation = screen.orientation?.type || String(window.orientation);
+    if (orientation !== lastOrientation) {
+      lastOrientation = orientation;
+      onOrientationChange();
+      return;
+    }
+    // Ignore keyboard / visualViewport-driven resizes entirely.
+    if (keyboardOpen()) return;
+    // Desktop window resizes may update; on mobile keep the lock unless height grew.
+    if (mqMobile.matches) {
+      const next = layoutHeight();
+      if (next && next > shellPx + 40) applyShellHeight(true);
+      return;
+    }
+    applyShellHeight(true);
   }, { passive: true });
 
-  // Do not listen to visualViewport resize/scroll — those fire on keyboard
-  // open/focus and were the primary cause of layout shake.
+  // Intentionally no visualViewport resize/scroll listeners.
 })();
