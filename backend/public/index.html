@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="192x192" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="512x512" href="/icons/Icon-512.png" />
-  <link rel="stylesheet" href="/styles.css?v=20260816d" />
+  <link rel="stylesheet" href="/styles.css?v=20260816f" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -862,10 +862,14 @@
                 <h2 class="page-heading" data-i18n="nav_my_cards">My Cards</h2>
                 <p class="page-desc" data-i18n="cards_page_desc">View card status, reveal details when needed, and reload your virtual cards.</p>
               </div>
+              <div class="cards-page-actions">
+                <button type="button" id="btnToggleApplyCard" class="btn btn-secondary btn-sm cards-toggle-btn" aria-expanded="false" aria-controls="applyCardPanel" data-i18n="apply_new_card">Apply for New Card</button>
+                <button type="button" id="btnReloadSelectedCard" class="btn btn-primary btn-sm" data-i18n="top_up_reload_card">Top Up / Reload Card</button>
+              </div>
             </div>
 
-            <section class="panel summary-panel">
-              <div id="cardSelectorSection" class="card-selector-section hidden">
+            <section id="cardSelectorPanel" class="panel summary-panel hidden">
+              <div id="cardSelectorSection" class="card-selector-section">
                 <div class="card-selector-header">
                   <label class="card-selector-label" for="cardSelect" data-i18n="your_virtual_cards">Your Virtual Cards</label>
                   <div class="card-nav-buttons">
@@ -879,103 +883,112 @@
               </div>
             </section>
 
-            <div class="grid-2">
-              <section class="panel">
-                <h2 data-i18n="apply_new_card">Apply for New Card</h2>
-                <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_new_card_hint">Pay from your MMK or USDT wallet, or via KBZPay/WavePay manual deposit. Wallet payments are held until an admin issues your card (usually 15–30 mins).</p>
-                <form id="cardRequestForm" class="form">
-                  <div class="field"><label for="cardInitialLoad" data-i18n="initial_card_load">Initial Card Load Amount (USD)</label>
-                    <input id="cardInitialLoad" type="number" step="0.01" min="10" placeholder="10.00" required />
-                    <small id="cardMinDepositHint" class="hint" data-i18n="min_initial_deposit">Minimum initial deposit: $10.00</small>
-                  </div>
-                  <div class="field"><label for="cardPaymentMethod" data-i18n="pay_from">Pay From</label>
-                    <select id="cardPaymentMethod">
-                      <option value="wallet_mmk" data-i18n="pay_mmk_wallet_issuance">MMK Wallet — card issuance (admin processed)</option>
-                      <option value="wallet_usdt" data-i18n="pay_usdt_wallet_issuance">USDT Wallet (1 USDT ≈ 1 USD, admin processed)</option>
-                      <option value="KBZPay" data-i18n="pay_kbzpay">KBZPay (Manual Deposit)</option>
-                      <option value="WavePay" data-i18n="pay_wavepay">WavePay (Manual Deposit)</option>
-                    </select>
-                  </div>
-                  <p id="cardWalletHint" class="wallet-pay-hint ok hidden"></p>
-                  <p id="cardWalletError" class="wallet-pay-hint err hidden"></p>
-                  <div id="cardPricingBreakdown" class="pricing-breakdown">
-                    <div class="pricing-row"><span data-i18n="initial_card_load_row">Initial Card Load</span><strong id="pbInitialLoad">$0.00</strong></div>
-                    <div class="pricing-row"><span data-i18n="card_issuance_fee">+ Card Issuance Fee</span><strong id="pbIssuanceFee">$0.00</strong></div>
-                    <div class="pricing-row pricing-total"><span data-i18n="total_usd_required">= Total USD Required</span><strong id="pbTotalUsd">$0.00</strong></div>
-                    <div class="pricing-row pricing-mmk" id="pbMmkRow"><span data-i18n="total_payable_mmk">Total Payable (MMK)</span><strong id="pbTotalMmk">0 MMK</strong></div>
-                    <div class="pricing-row pricing-usdt hidden" id="pbUsdtRow"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="pbTotalUsdt">$0.00 USDT</strong></div>
-                    <p id="pbRateLabel" class="hint pricing-rate">Today's rate: 1 USD = 4,500 MMK</p>
-                  </div>
-                  <button type="submit" class="btn btn-primary" id="btnRequestCard" data-i18n="submit_card_request">Submit Card Request</button>
-                </form>
-                <div id="cardRequestReceipt" class="pricing-receipt hidden"></div>
-                <details style="margin-top:1rem" class="hint">
-                  <summary>Demo: self-issue card (dev only)</summary>
-                  <form id="issueCardForm" class="form" style="margin-top:0.75rem">
-                    <div class="field"><label>Card Number</label><input id="cardNumber" value="4532 8765 4321 0987" /></div>
-                    <div class="field-row">
-                      <div class="field"><label>Expiry</label><input id="expDate" value="12/28" /></div>
-                      <div class="field"><label>CVV</label><input id="cvv" value="456" /></div>
+            <section class="panel cards-primary-panel">
+              <h2><span data-i18n="virtual_card">Virtual Card</span> <span id="cardDetailsTitle" class="card-details-subtitle"></span></h2>
+              <div id="cardStatusHero" class="card-status-hero">
+                <div class="card-status-hero-main">
+                  <span class="label" data-i18n="status">Status</span>
+                  <span id="cardStatusDisplay" class="card-status-pill">—</span>
+                </div>
+                <div class="card-status-hero-aside">
+                  <div id="cardLast4Display" class="card-status-last4">—</div>
+                  <div id="cardBalanceDisplay" class="card-status-balance">—</div>
+                </div>
+              </div>
+              <div class="card-action-bar">
+                <button type="button" id="btnShowCardDetails" class="btn btn-secondary btn-sm" disabled data-i18n="show_card_details">Show Card Details</button>
+                <button id="btnLoadCard" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
+              </div>
+              <div id="cardStatusAlert" class="card-status-alert hidden" role="alert"></div>
+              <div id="cardVisual" class="card-visual hidden">
+                <div class="card-visual-top">
+                  <span style="font-size:0.7rem;opacity:0.7">EISY MYANMAR</span>
+                  <span id="visCardStatus" class="card-status-pill">active</span>
+                </div>
+                <div class="card-number-row">
+                  <div class="card-visual-number" id="visNumber">**** **** **** ****</div>
+                  <button type="button" class="btn-copy-chip" id="btnCopyCardNumber" data-i18n-title="copy_card_number" title="Copy card number" data-i18n="copy_card_number">Copy Card Number</button>
+                </div>
+                <div class="card-visual-footer">
+                  <div><small>HOLDER</small><div id="visHolder">—</div></div>
+                  <div class="copy-field-group">
+                    <small>EXP</small>
+                    <div class="copy-field-row">
+                      <span id="visExp">—</span>
+                      <button type="button" class="btn-copy-icon" id="btnCopyExp" title="Copy expiry date" aria-label="Copy expiry date">📋</button>
                     </div>
-                    <div class="field"><label>Holder</label><input id="holderName" value="DEMO USER" /></div>
-                    <button type="submit" class="btn btn-secondary">Issue / Update Card (Demo)</button>
-                  </form>
-                </details>
-                <pre class="output hidden" id="issueCardOutput" aria-hidden="true"></pre>
-              </section>
+                  </div>
+                  <div class="copy-field-group">
+                    <small>CVV</small>
+                    <div class="copy-field-row">
+                      <span id="visCvv">—</span>
+                      <button type="button" class="btn-copy-icon" id="btnCopyCvv" title="Copy CVV" aria-label="Copy CVV">📋</button>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-primary btn-copy-all" id="btnCopyAllCard" data-i18n="copy_all_details">Copy All Details</button>
+              </div>
+              <div id="cardPendingNotice" class="card-pending-notice hidden">
+                <p data-i18n="card_pending_notice">This card request is pending admin approval. You'll receive your card number once issued.</p>
+              </div>
+              <pre class="output hidden" id="viewCardOutput" aria-hidden="true"></pre>
+            </section>
 
-              <section class="panel">
-                <h2><span data-i18n="virtual_card">Virtual Card</span> <span id="cardDetailsTitle" class="card-details-subtitle"></span></h2>
-                <div id="cardStatusHero" class="card-status-hero">
-                  <div class="card-status-hero-main">
-                    <span class="label" data-i18n="status">Status</span>
-                    <span id="cardStatusDisplay" class="card-status-pill">—</span>
-                  </div>
-                  <div class="card-status-hero-aside">
-                    <div id="cardLast4Display" class="card-status-last4">—</div>
-                    <div id="cardBalanceDisplay" class="card-status-balance">—</div>
-                  </div>
-                </div>
-                <div class="card-action-bar">
-                  <button type="button" id="btnShowCardDetails" class="btn btn-secondary btn-sm" disabled data-i18n="show_card_details">Show Card Details</button>
-                  <button type="button" id="btnReloadSelectedCard" class="btn btn-primary btn-sm" data-i18n="top_up_reload_card">Top Up / Reload Card</button>
-                  <button id="btnLoadCard" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
-                </div>
-                <div id="cardStatusAlert" class="card-status-alert hidden" role="alert"></div>
-                <div id="cardVisual" class="card-visual hidden">
-                  <div class="card-visual-top">
-                    <span style="font-size:0.7rem;opacity:0.7">EISY MYANMAR</span>
-                    <span id="visCardStatus" class="card-status-pill">active</span>
-                  </div>
-                  <div class="card-number-row">
-                    <div class="card-visual-number" id="visNumber">**** **** **** ****</div>
-                    <button type="button" class="btn-copy-chip" id="btnCopyCardNumber" data-i18n-title="copy_card_number" title="Copy card number" data-i18n="copy_card_number">Copy Card Number</button>
-                  </div>
-                  <div class="card-visual-footer">
-                    <div><small>HOLDER</small><div id="visHolder">—</div></div>
-                    <div class="copy-field-group">
-                      <small>EXP</small>
-                      <div class="copy-field-row">
-                        <span id="visExp">—</span>
-                        <button type="button" class="btn-copy-icon" id="btnCopyExp" title="Copy expiry date" aria-label="Copy expiry date">📋</button>
+            <section class="panel cards-apply-shell" id="applyCardShell">
+              <button type="button" id="btnToggleApplyCardPanel" class="cards-disclosure-trigger" aria-expanded="false" aria-controls="applyCardPanel">
+                <span class="cards-disclosure-copy">
+                  <span class="cards-disclosure-title" data-i18n="apply_new_card">Apply for New Card</span>
+                  <span class="cards-disclosure-hint" data-i18n="apply_new_card_toggle_hint">Open only when you need another virtual card</span>
+                </span>
+                <span class="cards-disclosure-chevron" aria-hidden="true"></span>
+              </button>
+              <div id="applyCardPanel" class="cards-collapsible" data-open="false">
+                <div class="cards-collapsible-inner">
+                  <div class="cards-apply-body">
+                    <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_new_card_hint">Pay from your MMK or USDT wallet, or via KBZPay/WavePay manual deposit. Wallet payments are held until an admin issues your card (usually 15–30 mins).</p>
+                    <form id="cardRequestForm" class="form">
+                      <div class="field"><label for="cardInitialLoad" data-i18n="initial_card_load">Initial Card Load Amount (USD)</label>
+                        <input id="cardInitialLoad" type="number" step="0.01" min="10" placeholder="10.00" required />
+                        <small id="cardMinDepositHint" class="hint" data-i18n="min_initial_deposit">Minimum initial deposit: $10.00</small>
                       </div>
-                    </div>
-                    <div class="copy-field-group">
-                      <small>CVV</small>
-                      <div class="copy-field-row">
-                        <span id="visCvv">—</span>
-                        <button type="button" class="btn-copy-icon" id="btnCopyCvv" title="Copy CVV" aria-label="Copy CVV">📋</button>
+                      <div class="field"><label for="cardPaymentMethod" data-i18n="pay_from">Pay From</label>
+                        <select id="cardPaymentMethod">
+                          <option value="wallet_mmk" data-i18n="pay_mmk_wallet_issuance">MMK Wallet — card issuance (admin processed)</option>
+                          <option value="wallet_usdt" data-i18n="pay_usdt_wallet_issuance">USDT Wallet (1 USDT ≈ 1 USD, admin processed)</option>
+                          <option value="KBZPay" data-i18n="pay_kbzpay">KBZPay (Manual Deposit)</option>
+                          <option value="WavePay" data-i18n="pay_wavepay">WavePay (Manual Deposit)</option>
+                        </select>
                       </div>
-                    </div>
+                      <p id="cardWalletHint" class="wallet-pay-hint ok hidden"></p>
+                      <p id="cardWalletError" class="wallet-pay-hint err hidden"></p>
+                      <div id="cardPricingBreakdown" class="pricing-breakdown">
+                        <div class="pricing-row"><span data-i18n="initial_card_load_row">Initial Card Load</span><strong id="pbInitialLoad">$0.00</strong></div>
+                        <div class="pricing-row"><span data-i18n="card_issuance_fee">+ Card Issuance Fee</span><strong id="pbIssuanceFee">$0.00</strong></div>
+                        <div class="pricing-row pricing-total"><span data-i18n="total_usd_required">= Total USD Required</span><strong id="pbTotalUsd">$0.00</strong></div>
+                        <div class="pricing-row pricing-mmk" id="pbMmkRow"><span data-i18n="total_payable_mmk">Total Payable (MMK)</span><strong id="pbTotalMmk">0 MMK</strong></div>
+                        <div class="pricing-row pricing-usdt hidden" id="pbUsdtRow"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="pbTotalUsdt">$0.00 USDT</strong></div>
+                        <p id="pbRateLabel" class="hint pricing-rate">Today's rate: 1 USD = 4,500 MMK</p>
+                      </div>
+                      <button type="submit" class="btn btn-primary" id="btnRequestCard" data-i18n="submit_card_request">Submit Card Request</button>
+                    </form>
+                    <div id="cardRequestReceipt" class="pricing-receipt hidden"></div>
+                    <details class="hint cards-demo-details">
+                      <summary>Demo: self-issue card (dev only)</summary>
+                      <form id="issueCardForm" class="form" style="margin-top:0.75rem">
+                        <div class="field"><label>Card Number</label><input id="cardNumber" value="4532 8765 4321 0987" /></div>
+                        <div class="field-row">
+                          <div class="field"><label>Expiry</label><input id="expDate" value="12/28" /></div>
+                          <div class="field"><label>CVV</label><input id="cvv" value="456" /></div>
+                        </div>
+                        <div class="field"><label>Holder</label><input id="holderName" value="DEMO USER" /></div>
+                        <button type="submit" class="btn btn-secondary">Issue / Update Card (Demo)</button>
+                      </form>
+                    </details>
+                    <pre class="output hidden" id="issueCardOutput" aria-hidden="true"></pre>
                   </div>
-                  <button type="button" class="btn btn-primary btn-copy-all" id="btnCopyAllCard" data-i18n="copy_all_details">Copy All Details</button>
                 </div>
-                <div id="cardPendingNotice" class="card-pending-notice hidden">
-                  <p data-i18n="card_pending_notice">This card request is pending admin approval. You'll receive your card number once issued.</p>
-                </div>
-                <pre class="output hidden" id="viewCardOutput" aria-hidden="true"></pre>
-              </section>
-            </div>
+              </div>
+            </section>
 
             <section class="panel">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
@@ -1430,10 +1443,10 @@
   <script src="/vendor/browser-image-compression.js?v=20260812a"></script>
   <script type="module" src="/supabaseBridge.js?v=20260811e"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260816c"></script>
+  <script src="/i18n.js?v=20260816f"></script>
   <script src="/auth.js?v=20260812a"></script>
   <script src="/nav.js?v=20260811e"></script>
   <script src="/viewport.js?v=20260816d"></script>
-  <script src="/dashboard.js?v=20260816d"></script>
+  <script src="/dashboard.js?v=20260816f"></script>
 </body>
 </html>
