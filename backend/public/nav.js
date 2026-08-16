@@ -44,8 +44,16 @@ const AppNav = {
       sidebarBackdrop.addEventListener('click', () => this.closeMobileSidebar());
     }
 
-    window.addEventListener('resize', () => this.handleViewportChange());
+    window.addEventListener('resize', () => {
+      // Keyboard open/close often fires resize without a width change.
+      // Ignore those so sidebar/layout logic does not re-run and shake the UI.
+      const width = window.innerWidth;
+      if (width === this._lastViewportWidth) return;
+      this._lastViewportWidth = width;
+      this.handleViewportChange();
+    });
 
+    this._lastViewportWidth = window.innerWidth;
     this.syncFromHash();
     if (!window.location.hash) {
       this.navigate(defaultPage, { pushHash: true, replace: true });
