@@ -1,9 +1,15 @@
 /**
- * Keep --app-vh in sync with the visible viewport on mobile browsers
- * where 100vh includes the URL bar and 100dvh is unavailable.
+ * Keep --app-vh aligned with the visible viewport on browsers without 100dvh
+ * (older mobile Safari/Chrome), so 100vh address-bar bugs don't clip the UI.
  */
 (function syncAppViewportHeight() {
   const root = document.documentElement;
+  const supportsDvh = typeof CSS !== 'undefined'
+    && CSS.supports
+    && CSS.supports('height', '100dvh');
+
+  // Modern browsers: CSS @supports already maps --app-vh to 100dvh.
+  if (supportsDvh) return;
 
   function apply() {
     const height = (window.visualViewport && window.visualViewport.height)
@@ -19,10 +25,5 @@
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', apply, { passive: true });
     window.visualViewport.addEventListener('scroll', apply, { passive: true });
-  }
-
-  // Prefer CSS 100dvh when supported — avoid fighting it on modern browsers.
-  if (typeof CSS !== 'undefined' && CSS.supports && CSS.supports('height', '100dvh')) {
-    root.style.removeProperty('--app-vh');
   }
 })();
