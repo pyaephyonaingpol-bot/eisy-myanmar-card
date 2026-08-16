@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="192x192" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="512x512" href="/icons/Icon-512.png" />
-  <link rel="stylesheet" href="/styles.css?v=20260816f" />
+  <link rel="stylesheet" href="/styles.css?v=20260816g" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -884,53 +884,28 @@
             </section>
 
             <section class="panel cards-primary-panel">
-              <h2><span data-i18n="virtual_card">Virtual Card</span> <span id="cardDetailsTitle" class="card-details-subtitle"></span></h2>
-              <div id="cardStatusHero" class="card-status-hero">
-                <div class="card-status-hero-main">
-                  <span class="label" data-i18n="status">Status</span>
-                  <span id="cardStatusDisplay" class="card-status-pill">—</span>
+              <div class="cards-list-header">
+                <div>
+                  <h2 style="margin:0"><span data-i18n="virtual_card">Virtual Card</span> <span id="cardDetailsTitle" class="card-details-subtitle"></span></h2>
+                  <p class="hint" style="margin-top:0.35rem" data-i18n="card_info_privacy_hint">Card number, expiry, and CVV stay hidden until you open Card Information on that card.</p>
                 </div>
-                <div class="card-status-hero-aside">
-                  <div id="cardLast4Display" class="card-status-last4">—</div>
-                  <div id="cardBalanceDisplay" class="card-status-balance">—</div>
-                </div>
-              </div>
-              <div class="card-action-bar">
-                <button type="button" id="btnShowCardDetails" class="btn btn-secondary btn-sm" disabled data-i18n="show_card_details">Show Card Details</button>
                 <button id="btnLoadCard" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
               </div>
+              <div id="cardsEmptyState" class="cards-empty-state hint hidden" data-i18n="no_cards_yet_hint">No cards yet — apply for a virtual card below.</div>
+              <div id="cardsAccordionList" class="cards-accordion" role="list"></div>
+              <!-- Legacy hooks kept for summary/output wiring -->
               <div id="cardStatusAlert" class="card-status-alert hidden" role="alert"></div>
-              <div id="cardVisual" class="card-visual hidden">
-                <div class="card-visual-top">
-                  <span style="font-size:0.7rem;opacity:0.7">EISY MYANMAR</span>
-                  <span id="visCardStatus" class="card-status-pill">active</span>
-                </div>
-                <div class="card-number-row">
-                  <div class="card-visual-number" id="visNumber">**** **** **** ****</div>
-                  <button type="button" class="btn-copy-chip" id="btnCopyCardNumber" data-i18n-title="copy_card_number" title="Copy card number" data-i18n="copy_card_number">Copy Card Number</button>
-                </div>
-                <div class="card-visual-footer">
-                  <div><small>HOLDER</small><div id="visHolder">—</div></div>
-                  <div class="copy-field-group">
-                    <small>EXP</small>
-                    <div class="copy-field-row">
-                      <span id="visExp">—</span>
-                      <button type="button" class="btn-copy-icon" id="btnCopyExp" title="Copy expiry date" aria-label="Copy expiry date">📋</button>
-                    </div>
-                  </div>
-                  <div class="copy-field-group">
-                    <small>CVV</small>
-                    <div class="copy-field-row">
-                      <span id="visCvv">—</span>
-                      <button type="button" class="btn-copy-icon" id="btnCopyCvv" title="Copy CVV" aria-label="Copy CVV">📋</button>
-                    </div>
-                  </div>
-                </div>
-                <button type="button" class="btn btn-primary btn-copy-all" id="btnCopyAllCard" data-i18n="copy_all_details">Copy All Details</button>
-              </div>
-              <div id="cardPendingNotice" class="card-pending-notice hidden">
-                <p data-i18n="card_pending_notice">This card request is pending admin approval. You'll receive your card number once issued.</p>
-              </div>
+              <div id="cardPendingNotice" class="hidden" aria-hidden="true"></div>
+              <div id="cardVisual" class="hidden" aria-hidden="true"></div>
+              <span id="cardStatusDisplay" class="hidden" aria-hidden="true"></span>
+              <span id="cardLast4Display" class="hidden" aria-hidden="true"></span>
+              <span id="cardBalanceDisplay" class="hidden" aria-hidden="true"></span>
+              <span id="visCardStatus" class="hidden" aria-hidden="true"></span>
+              <span id="visNumber" class="hidden" aria-hidden="true"></span>
+              <span id="visExp" class="hidden" aria-hidden="true"></span>
+              <span id="visCvv" class="hidden" aria-hidden="true"></span>
+              <span id="visHolder" class="hidden" aria-hidden="true"></span>
+              <button type="button" id="btnShowCardDetails" class="hidden" aria-hidden="true" tabindex="-1"></button>
               <pre class="output hidden" id="viewCardOutput" aria-hidden="true"></pre>
             </section>
 
@@ -1443,10 +1418,10 @@
   <script src="/vendor/browser-image-compression.js?v=20260812a"></script>
   <script type="module" src="/supabaseBridge.js?v=20260811e"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260816f"></script>
+  <script src="/i18n.js?v=20260816g"></script>
   <script src="/auth.js?v=20260812a"></script>
   <script src="/nav.js?v=20260811e"></script>
   <script src="/viewport.js?v=20260816d"></script>
-  <script src="/dashboard.js?v=20260816f"></script>
+  <script src="/dashboard.js?v=20260816g"></script>
 </body>
 </html>

@@ -3087,53 +3087,92 @@ const Dashboard = {
   },
 
   bindCardCopyButtons() {
-    $('btnCopyCardNumber').onclick = async () => {
-      if (!this.currentCard) return;
-      const raw = String(this.currentCard.card_number).replace(/\s/g, '');
-      await this.copyToClipboard(raw);
-      this.copyToast('Copied to clipboard!');
-      this.log('Card number copied', 'ok');
-    };
+    const list = $('cardsAccordionList');
+    if (!list || list.dataset.copyBound === '1') return;
+    list.dataset.copyBound = '1';
 
-    $('btnCopyExp').onclick = async () => {
-      if (!this.currentCard) return;
-      await this.copyToClipboard(this.currentCard.exp_date);
-      this.copyToast('Copied to clipboard!');
-      this.log('Expiry date copied', 'ok');
-    };
+    list.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-copy-card]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
 
-    $('btnCopyCvv').onclick = async () => {
-      if (!this.currentCard) return;
-      await this.copyToClipboard(this.currentCard.cvv);
-      this.copyToast('Copied to clipboard!');
-      this.log('CVV copied', 'ok');
-    };
+      const cardId = parseInt(btn.getAttribute('data-card-id'), 10);
+      const card = this.allCards.find((c) => c.id === cardId);
+      if (!card || !this.isCardDetailsRevealed(cardId)) return;
 
-    $('btnCopyAllCard').onclick = async () => {
-      if (!this.currentCard) return;
-      await this.copyToClipboard(this.formatAllCardDetails(this.currentCard));
-      this.copyToast('Copied to clipboard!');
-      this.log('All card details copied', 'ok');
-    };
+      const kind = btn.getAttribute('data-copy-card');
+      try {
+        if (kind === 'number') {
+          await this.copyToClipboard(String(card.card_number).replace(/\s/g, ''));
+          this.log('Card number copied', 'ok');
+        } else if (kind === 'exp') {
+          await this.copyToClipboard(card.exp_date);
+          this.log('Expiry date copied', 'ok');
+        } else if (kind === 'cvv') {
+          await this.copyToClipboard(card.cvv);
+          this.log('CVV copied', 'ok');
+        } else if (kind === 'all') {
+          await this.copyToClipboard(this.formatAllCardDetails(card));
+          this.log('All card details copied', 'ok');
+        } else {
+          return;
+        }
+        this.copyToast('Copied to clipboard!');
+      } catch (err) {
+        this.toast(err.message || 'Copy failed', 'error');
+      }
+    });
   },
 
   bindCardSelector() {
-    $('cardSelect').onchange = () => {
-      const idx = parseInt($('cardSelect').value, 10);
-      if (!Number.isNaN(idx)) this.selectCard(idx);
-    };
+    const select = $('cardSelect');
+    if (select) {
+      select.onchange = () => {
+        const idx = parseInt(select.value, 10);
+        if (!Number.isNaN(idx)) this.selectCard(idx);
+      };
+    }
 
-    $('btnPrevCard').onclick = () => {
-      if (!this.allCards.length) return;
-      const next = (this.activeCardIndex - 1 + this.allCards.length) % this.allCards.length;
-      this.selectCard(next);
-    };
+    const prev = $('btnPrevCard');
+    if (prev) {
+      prev.onclick = () => {
+        if (!this.allCards.length) return;
+        const next = (this.activeCardIndex - 1 + this.allCards.length) % this.allCards.length;
+        this.selectCard(next);
+      };
+    }
 
-    $('btnNextCard').onclick = () => {
-      if (!this.allCards.length) return;
-      const next = (this.activeCardIndex + 1) % this.allCards.length;
-      this.selectCard(next);
-    };
+    const nextBtn = $('btnNextCard');
+    if (nextBtn) {
+      nextBtn.onclick = () => {
+        if (!this.allCards.length) return;
+        const next = (this.activeCardIndex + 1) % this.allCards.length;
+        this.selectCard(next);
+      };
+    }
+
+    const list = $('cardsAccordionList');
+    if (list && list.dataset.accordionBound !== '1') {
+      list.dataset.accordionBound = '1';
+      list.addEventListener('click', (e) => {
+        const toggleBtn = e.target.closest('[data-toggle-card-info]');
+        if (toggleBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const cardId = parseInt(toggleBtn.getAttribute('data-toggle-card-info'), 10);
+          this.toggleCardDetailsById(cardId);
+          return;
+        }
+
+        const selectBtn = e.target.closest('[data-select-card-index]');
+        if (selectBtn) {
+          e.preventDefault();
+          const idx = parseInt(selectBtn.getAttribute('data-select-card-index'), 10);
+          if (!Number.isNaN(idx)) this.selectCard(idx);
+        }
+      });
+    }
   },
 
   cardThumbLabel(card) {
@@ -3154,12 +3193,253 @@ const Dashboard = {
   },
 
   cardDetailsRevealed: false,
+  cardDetailsRevealedById: Object.create(null),
+
+  isCardDetailsRevealed(cardId) {
+    return Boolean(this.cardDetailsRevealedById[cardId]);
+  },
+
+  setCardDetailsRevealed(cardId, open) {
+    if (cardId == null || Number.isNaN(Number(cardId))) return;
+    if (open) this.cardDetailsRevealedById[cardId] = true;
+    else delete this.cardDetailsRevealedById[cardId];
+  },
+
+  pruneCardDetailsRevealState() {
+    const ids = new Set(this.allCards.map((c) => c.id));
+    Object.keys(this.cardDetailsRevealedById).forEach((key) => {
+      const id = parseInt(key, 10);
+      if (!ids.has(id)) delete this.cardDetailsRevealedById[id];
+    });
+  },
 
   toggleCardDetails() {
     const card = this.allCards[this.activeCardIndex];
-    if (!card || !this.isCardActive(card)) return;
-    this.cardDetailsRevealed = !this.cardDetailsRevealed;
-    this.renderActiveCard(card);
+    if (!card) return;
+    this.toggleCardDetailsById(card.id);
+  },
+
+  toggleCardDetailsById(cardId) {
+    const card = this.allCards.find((c) => c.id === cardId);
+    if (!card) return;
+
+    const pending = this.isCardPending(card);
+    const canReveal = this.isCardActive(card) && Boolean(card.card_number);
+    if (!pending && !canReveal) {
+      this.toast('Card details are unavailable for this card status', 'error');
+      return;
+    }
+
+    const next = !this.isCardDetailsRevealed(cardId);
+    this.setCardDetailsRevealed(cardId, next);
+    if (cardId === this.allCards[this.activeCardIndex]?.id) {
+      this.cardDetailsRevealed = next;
+    }
+
+    // Prefer in-place update so the expand/collapse transition can play.
+    const item = $('cardsAccordionList')?.querySelector(`[data-card-id="${cardId}"]`);
+    if (item) {
+      this.updateCardAccordionItem(item, card, this.allCards.findIndex((c) => c.id === cardId));
+    } else {
+      this.renderCardsAccordion();
+    }
+    this.renderActiveCard(this.allCards[this.activeCardIndex], { skipAccordion: true });
+  },
+
+  buildCardAccordionBodyHtml(card, open) {
+    const pending = this.isCardPending(card);
+    const active = this.isCardActive(card);
+    const restricted = this.isCardRestricted(card);
+    const terminated = this.isCardTerminated(card);
+    const pillCls = this.cardStatusPillClass(card);
+    const canReveal = active && Boolean(card.card_number);
+    const pendingNotice = typeof t === 'function'
+      ? t('card_pending_notice')
+      : 'This card request is pending admin approval. You\'ll receive your card number once issued.';
+    const copyNumber = typeof t === 'function' ? t('copy_card_number') : 'Copy Card Number';
+    const copyAll = typeof t === 'function' ? t('copy_all_details') : 'Copy All Details';
+    const alertMsg = this.cardStatusAlertMessage(card);
+    const alertText = alertMsg
+      ? this.escapeHtml(card.status_reason ? `${alertMsg} (${card.status_reason})` : alertMsg)
+      : '';
+
+    if (!open) {
+      return alertText
+        ? `<div class="card-status-alert card-accordion-alert ${this.escapeHtml(pillCls)}">${alertText}</div>`
+        : '';
+    }
+
+    let bodyHtml = '';
+    if (pending) {
+      bodyHtml = `<div class="card-pending-notice"><p>${this.escapeHtml(pendingNotice)}</p></div>`;
+    } else if (canReveal) {
+      const visualCls = [
+        'card-visual',
+        pillCls,
+        terminated ? 'card-visual-terminated' : '',
+        restricted ? 'card-visual-restricted' : '',
+      ].filter(Boolean).join(' ');
+      bodyHtml = `
+          <div class="${visualCls}">
+            <div class="card-visual-top">
+              <span style="font-size:0.7rem;opacity:0.7">EISY MYANMAR</span>
+              <span class="card-status-pill ${this.escapeHtml(pillCls)}">${this.escapeHtml(this.cardStatusLabel(card))}</span>
+            </div>
+            <div class="card-number-row">
+              <div class="card-visual-number">${this.escapeHtml(this.formatCardNumber(card.card_number))}</div>
+              <button type="button" class="btn-copy-chip" data-copy-card="number" data-card-id="${card.id}" title="${this.escapeHtml(copyNumber)}">${this.escapeHtml(copyNumber)}</button>
+            </div>
+            <div class="card-visual-footer">
+              <div><small>HOLDER</small><div>${this.escapeHtml(card.card_holder_name || '—')}</div></div>
+              <div class="copy-field-group">
+                <small>EXP</small>
+                <div class="copy-field-row">
+                  <span>${this.escapeHtml(card.exp_date || '—')}</span>
+                  <button type="button" class="btn-copy-icon" data-copy-card="exp" data-card-id="${card.id}" title="Copy expiry date" aria-label="Copy expiry date">📋</button>
+                </div>
+              </div>
+              <div class="copy-field-group">
+                <small>CVV</small>
+                <div class="copy-field-row">
+                  <span>${this.escapeHtml(card.cvv || '—')}</span>
+                  <button type="button" class="btn-copy-icon" data-copy-card="cvv" data-card-id="${card.id}" title="Copy CVV" aria-label="Copy CVV">📋</button>
+                </div>
+              </div>
+            </div>
+            <button type="button" class="btn btn-primary btn-copy-all" data-copy-card="all" data-card-id="${card.id}">${this.escapeHtml(copyAll)}</button>
+          </div>`;
+    } else {
+      bodyHtml = `<p class="hint">${this.escapeHtml(alertMsg || 'Sensitive details are unavailable for this card.')}</p>`;
+    }
+
+    return `${alertText ? `<div class="card-status-alert card-accordion-alert ${this.escapeHtml(pillCls)}">${alertText}</div>` : ''}${bodyHtml}`;
+  },
+
+  updateCardAccordionItem(item, card, index) {
+    if (!item || !card) return;
+    const pending = this.isCardPending(card);
+    const canReveal = this.isCardActive(card) && Boolean(card.card_number);
+    const open = this.isCardDetailsRevealed(card.id);
+    const selected = index === this.activeCardIndex;
+    const showLabel = typeof t === 'function' ? t('card_information') : 'Card Information';
+    const hideLabel = typeof t === 'function' ? t('hide_card_information') : 'Hide Card Information';
+
+    const panel = item.querySelector('.card-accordion-body');
+    const inner = item.querySelector('.card-accordion-body-inner');
+    const toggle = item.querySelector('[data-toggle-card-info]');
+
+    item.classList.toggle('is-selected', selected);
+
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.disabled = !pending && !canReveal && !open;
+      const label = toggle.querySelector('span:not(.cards-disclosure-chevron)');
+      if (label) label.textContent = open ? hideLabel : showLabel;
+    }
+
+    if (!panel || !inner) return;
+
+    if (open) {
+      // Populate first, then open on next frame so height animates smoothly.
+      inner.innerHTML = this.buildCardAccordionBodyHtml(card, true);
+      panel.setAttribute('data-open', 'false');
+      item.classList.remove('is-open');
+      requestAnimationFrame(() => {
+        panel.setAttribute('data-open', 'true');
+        item.classList.add('is-open');
+      });
+      return;
+    }
+
+    panel.setAttribute('data-open', 'false');
+    item.classList.remove('is-open');
+    window.setTimeout(() => {
+      if (!this.isCardDetailsRevealed(card.id) && inner.isConnected) {
+        inner.innerHTML = this.buildCardAccordionBodyHtml(card, false);
+      }
+    }, 340);
+  },
+
+  cardBalanceLabel(card) {
+    if (!card || this.isCardPending(card)) {
+      return typeof t === 'function' ? t('balance_pending') : 'Balance pending';
+    }
+    if (card.balance_usd != null && Number.isFinite(Number(card.balance_usd))) {
+      return `$${Number(card.balance_usd).toFixed(2)} USD`;
+    }
+    return '$0.00 USD';
+  },
+
+  escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  },
+
+  renderCardsAccordion() {
+    const list = $('cardsAccordionList');
+    const empty = $('cardsEmptyState');
+    if (!list) return;
+
+    this.pruneCardDetailsRevealState();
+
+    if (!this.allCards.length) {
+      list.innerHTML = '';
+      empty?.classList.remove('hidden');
+      return;
+    }
+
+    empty?.classList.add('hidden');
+
+    list.innerHTML = this.allCards.map((card, index) => {
+      const pending = this.isCardPending(card);
+      const canReveal = this.isCardActive(card) && Boolean(card.card_number);
+      const open = this.isCardDetailsRevealed(card.id);
+      const selected = index === this.activeCardIndex;
+      const pillCls = this.cardStatusPillClass(card);
+      const last4 = pending
+        ? (typeof t === 'function' ? t('awaiting_issuance') : 'Awaiting issuance')
+        : `•••• ${card.last4 || '????'}`;
+      const showLabel = typeof t === 'function' ? t('card_information') : 'Card Information';
+      const hideLabel = typeof t === 'function' ? t('hide_card_information') : 'Hide Card Information';
+      const toggleDisabled = !pending && !canReveal && !open;
+      const toggleText = open ? hideLabel : showLabel;
+      const bodyHtml = this.buildCardAccordionBodyHtml(card, open);
+
+      return `
+        <article class="card-accordion-item ${selected ? 'is-selected' : ''} ${open ? 'is-open' : ''}" data-card-id="${card.id}" role="listitem">
+          <div class="card-accordion-summary">
+            <button type="button" class="card-accordion-main" data-select-card-index="${index}" aria-current="${selected ? 'true' : 'false'}">
+              <span class="card-accordion-label">${this.escapeHtml(card.label || `Card ${index + 1}`)}</span>
+              <span class="card-accordion-meta">
+                <span class="card-status-pill ${this.escapeHtml(pillCls)}">${this.escapeHtml(this.cardStatusLabel(card))}</span>
+                <span>${this.escapeHtml(last4)}</span>
+                <span class="card-accordion-balance">${this.escapeHtml(this.cardBalanceLabel(card))}</span>
+              </span>
+            </button>
+            <div class="card-accordion-actions">
+              <button type="button"
+                class="btn btn-secondary btn-sm card-info-toggle"
+                data-toggle-card-info="${card.id}"
+                aria-expanded="${open ? 'true' : 'false'}"
+                ${toggleDisabled ? 'disabled' : ''}>
+                <span>${this.escapeHtml(toggleText)}</span>
+                <span class="cards-disclosure-chevron" aria-hidden="true"></span>
+              </button>
+            </div>
+          </div>
+          <div class="cards-collapsible card-accordion-body" data-open="${open ? 'true' : 'false'}">
+            <div class="cards-collapsible-inner">
+              <div class="card-accordion-body-inner">
+                ${bodyHtml}
+              </div>
+            </div>
+          </div>
+        </article>`;
+        }).join('');
   },
 
   renderCardSelector() {
@@ -3172,23 +3452,29 @@ const Dashboard = {
       panel?.classList.add('hidden');
       section?.classList.add('hidden');
       this.syncApplyCardPanelUi(true);
+      this.renderCardsAccordion();
       return;
     }
 
     panel?.classList.remove('hidden');
     section?.classList.remove('hidden');
     this.syncApplyCardPanelUi(true);
-    $('cardIndexLabel').textContent = `${this.activeCardIndex + 1} / ${this.allCards.length}`;
+    if ($('cardIndexLabel')) {
+      $('cardIndexLabel').textContent = `${this.activeCardIndex + 1} / ${this.allCards.length}`;
+    }
 
-    select.innerHTML = this.allCards.map((c, i) =>
-      `<option value="${i}" ${i === this.activeCardIndex ? 'selected' : ''}>${c.label}</option>`
-    ).join('');
+    if (select) {
+      select.innerHTML = this.allCards.map((c, i) =>
+        `<option value="${i}" ${i === this.activeCardIndex ? 'selected' : ''}>${c.label}</option>`
+      ).join('');
+    }
 
-    thumbs.innerHTML = this.allCards.map((c, i) => {
-      const pending = this.isCardPending(c);
-      const active = this.isCardActive(c);
-      const pillCls = this.cardStatusPillClass(c);
-      return `
+    if (thumbs) {
+      thumbs.innerHTML = this.allCards.map((c, i) => {
+        const pending = this.isCardPending(c);
+        const active = this.isCardActive(c);
+        const pillCls = this.cardStatusPillClass(c);
+        return `
       <button type="button" class="card-thumb ${pending ? 'pending' : ''} ${active ? 'is-live' : ''} ${pillCls ? `status-${pillCls}` : ''} ${i === this.activeCardIndex ? 'active' : ''}"
         data-index="${i}" role="tab" aria-selected="${i === this.activeCardIndex}">
         <span class="card-thumb-brand">EISY MYANMAR</span>
@@ -3197,23 +3483,29 @@ const Dashboard = {
           <span class="card-status-pill ${pillCls}">${this.cardStatusLabel(c)}</span>
         </span>
       </button>`;
-    }).join('');
+      }).join('');
 
-    thumbs.querySelectorAll('.card-thumb').forEach((btn) => {
-      btn.onclick = () => this.selectCard(parseInt(btn.dataset.index, 10));
-    });
+      thumbs.querySelectorAll('.card-thumb').forEach((btn) => {
+        btn.onclick = () => this.selectCard(parseInt(btn.dataset.index, 10));
+      });
+    }
 
-    $('btnPrevCard').disabled = this.allCards.length <= 1;
-    $('btnNextCard').disabled = this.allCards.length <= 1;
+    if ($('btnPrevCard')) $('btnPrevCard').disabled = this.allCards.length <= 1;
+    if ($('btnNextCard')) $('btnNextCard').disabled = this.allCards.length <= 1;
+    this.renderCardsAccordion();
   },
 
   selectCard(index, { forceRevealReset = false } = {}) {
     if (!this.allCards.length || index < 0 || index >= this.allCards.length) return;
-    const changed = index !== this.activeCardIndex;
     this.activeCardIndex = index;
-    if (changed || forceRevealReset) this.cardDetailsRevealed = false;
+    // Per-card reveal state is independent — never clear other cards.
+    if (forceRevealReset) {
+      const card = this.allCards[index];
+      if (card) this.setCardDetailsRevealed(card.id, false);
+    }
+    this.cardDetailsRevealed = this.isCardDetailsRevealed(this.allCards[index]?.id);
     this.renderCardSelector();
-    this.renderActiveCard(this.allCards[index]);
+    this.renderActiveCard(this.allCards[index], { skipAccordion: true });
   },
 
   updateCardStatusSummary(card) {
@@ -3230,20 +3522,23 @@ const Dashboard = {
     statusEl.className = `value card-status-pill ${pillCls}`;
   },
 
-  renderActiveCard(card) {
+  renderActiveCard(card, { skipAccordion = false } = {}) {
     const pending = this.isCardPending(card);
     const active = this.isCardActive(card);
-    const restricted = this.isCardRestricted(card);
-    const terminated = this.isCardTerminated(card);
     this.currentCard = pending ? null : card;
 
     const pillCls = this.cardStatusPillClass(card);
     const canRevealDetails = active && Boolean(card?.card_number);
-    const showDetails = canRevealDetails && this.cardDetailsRevealed;
+    const showDetails = canRevealDetails && this.isCardDetailsRevealed(card?.id);
+    this.cardDetailsRevealed = showDetails;
 
-    $('cardDetailsTitle').textContent = card ? `— ${card.label}` : '';
-    $('visCardStatus').textContent = this.cardStatusLabel(card);
-    $('visCardStatus').className = `card-status-pill ${pillCls}`;
+    if ($('cardDetailsTitle')) {
+      $('cardDetailsTitle').textContent = card ? `— ${card.label}` : '';
+    }
+    if ($('visCardStatus')) {
+      $('visCardStatus').textContent = this.cardStatusLabel(card);
+      $('visCardStatus').className = `card-status-pill ${pillCls}`;
+    }
 
     const statusDisplay = $('cardStatusDisplay');
     if (statusDisplay) {
@@ -3259,19 +3554,15 @@ const Dashboard = {
 
     const balanceDisplay = $('cardBalanceDisplay');
     if (balanceDisplay) {
-      if (!card || pending) {
-        balanceDisplay.textContent = pending ? 'Balance pending' : '—';
-      } else if (card.balance_usd != null && Number.isFinite(Number(card.balance_usd))) {
-        balanceDisplay.textContent = `$${Number(card.balance_usd).toFixed(2)} USD`;
-      } else {
-        balanceDisplay.textContent = '$0.00 USD';
-      }
+      balanceDisplay.textContent = card ? this.cardBalanceLabel(card) : '—';
     }
 
     const showBtn = $('btnShowCardDetails');
     if (showBtn) {
-      showBtn.disabled = !canRevealDetails;
-      showBtn.textContent = showDetails ? 'Hide Card Details' : 'Show Card Details';
+      showBtn.disabled = !(canRevealDetails || pending);
+      showBtn.textContent = showDetails
+        ? (typeof t === 'function' ? t('hide_card_information') : 'Hide Card Information')
+        : (typeof t === 'function' ? t('card_information') : 'Card Information');
     }
 
     const reloadBtn = $('btnReloadSelectedCard');
@@ -3281,12 +3572,9 @@ const Dashboard = {
     const alertMsg = card ? this.cardStatusAlertMessage(card) : '';
     if (alertEl) {
       if (alertMsg) {
-        alertEl.textContent = alertMsg;
+        alertEl.textContent = card.status_reason ? `${alertMsg} (${card.status_reason})` : alertMsg;
         alertEl.className = `card-status-alert ${pillCls}`;
         alertEl.classList.remove('hidden');
-        if (card.status_reason) {
-          alertEl.textContent = `${alertMsg} (${card.status_reason})`;
-        }
       } else {
         alertEl.textContent = '';
         alertEl.classList.add('hidden');
@@ -3294,46 +3582,29 @@ const Dashboard = {
     }
 
     if (!card) {
-      $('cardVisual').classList.add('hidden');
-      $('cardPendingNotice').classList.add('hidden');
-      $('sumCard').textContent = '—';
+      $('cardVisual')?.classList.add('hidden');
+      $('cardPendingNotice')?.classList.add('hidden');
+      if ($('sumCard')) $('sumCard').textContent = '—';
       this.updateCardStatusSummary(null);
+      if (!skipAccordion) this.renderCardsAccordion();
       return;
     }
 
-    $('sumCard').textContent = pending ? 'Pending approval' : `•••• ${card.last4 || '????'}`;
+    if ($('sumCard')) {
+      $('sumCard').textContent = pending ? 'Pending approval' : `•••• ${card.last4 || '????'}`;
+    }
     this.updateCardStatusSummary(card);
 
-    if (pending) {
-      $('cardVisual').classList.add('hidden');
-      $('cardPendingNotice').classList.remove('hidden');
-      $('visHolder').textContent = card.card_holder_name || '—';
-      return;
+    if ($('visHolder')) $('visHolder').textContent = card.card_holder_name || '—';
+    if ($('visNumber')) {
+      $('visNumber').textContent = showDetails
+        ? this.formatCardNumber(card.card_number)
+        : `**** **** **** ${card.last4 || '****'}`;
     }
+    if ($('visExp')) $('visExp').textContent = showDetails ? (card.exp_date || '—') : '**/**';
+    if ($('visCvv')) $('visCvv').textContent = showDetails ? (card.cvv || '—') : '***';
 
-    $('cardPendingNotice').classList.add('hidden');
-    const visual = $('cardVisual');
-    if (visual) {
-      visual.classList.remove('hidden');
-      visual.className = `card-visual ${pillCls}${terminated ? ' card-visual-terminated' : ''}${restricted ? ' card-visual-restricted' : ''}`;
-    }
-
-    if (showDetails) {
-      $('visNumber').textContent = this.formatCardNumber(card.card_number);
-      $('visExp').textContent = card.exp_date;
-      $('visCvv').textContent = card.cvv;
-    } else {
-      $('visNumber').textContent = `**** **** **** ${card.last4 || '****'}`;
-      $('visExp').textContent = '**/**';
-      $('visCvv').textContent = '***';
-    }
-    $('visHolder').textContent = card.card_holder_name || '—';
-
-    const copyDisabled = !showDetails;
-    ['btnCopyCardNumber', 'btnCopyExp', 'btnCopyCvv', 'btnCopyAllCard'].forEach((id) => {
-      const el = $(id);
-      if (el) el.disabled = copyDisabled;
-    });
+    if (!skipAccordion) this.renderCardsAccordion();
   },
 
   setInlineError(id, message) {
@@ -5504,12 +5775,16 @@ const Dashboard = {
       if (!this.allCards.length) {
         this.currentCard = null;
         this.cardDetailsRevealed = false;
+        this.cardDetailsRevealedById = Object.create(null);
+        $('cardSelectorPanel')?.classList.add('hidden');
         $('cardSelectorSection')?.classList.add('hidden');
         $('cardVisual')?.classList.add('hidden');
         $('cardPendingNotice')?.classList.add('hidden');
         if ($('cardBalanceDisplay')) $('cardBalanceDisplay').textContent = '—';
         if ($('sumCard')) $('sumCard').textContent = 'No card';
         this.updateCardStatusSummary(null);
+        this.renderCardsAccordion();
+        this.syncApplyCardPanelUi(true);
         if (!silent) {
           showOutput('viewCardOutput', { message: 'No cards yet — request a virtual card below.' });
         }
@@ -5542,11 +5817,16 @@ const Dashboard = {
         if (err.message?.includes('404') || err.message?.includes('No cards')) {
           this.allCards = [];
           this.currentCard = null;
+          this.cardDetailsRevealed = false;
+          this.cardDetailsRevealedById = Object.create(null);
           this.clearCardsCache();
+          $('cardSelectorPanel')?.classList.add('hidden');
           $('cardSelectorSection')?.classList.add('hidden');
           $('cardVisual')?.classList.add('hidden');
           if ($('sumCard')) $('sumCard').textContent = 'No card';
           this.updateCardStatusSummary(null);
+          this.renderCardsAccordion();
+          this.syncApplyCardPanelUi(true);
         }
         showOutput('viewCardOutput', err.message, true);
       } else {
