@@ -60,6 +60,9 @@ app.use(express.static(PUBLIC_DIR, {
   setHeaders(res, filePath) {
     if (/\.(html)$/i.test(filePath)) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    } else if (/\.(webmanifest|json)$/i.test(filePath) && /manifest/i.test(filePath)) {
+      res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     } else if (/\.(js|css)$/i.test(filePath)) {
       // Versioned via ?v= query in HTML — always revalidate so deploys apply quickly
       res.setHeader('Cache-Control', 'no-cache, must-revalidate');
