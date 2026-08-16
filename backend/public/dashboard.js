@@ -7,6 +7,7 @@ const Dashboard = {
   currentCard: null,
   allCards: [],
   activeCardIndex: 0,
+  _applyPanelUserToggled: false,
   cardPricing: null,
   walletMmk: null,
   walletUsdt: null,
@@ -27,6 +28,7 @@ const Dashboard = {
       this.bindCardsAutoRefresh();
       this.bindProofLightbox();
       this.bindReloadCard();
+      this.bindApplyCardPanel();
       this.bindWithdrawUsdt();
       this.bindWithdrawMmk();
       this.bindUsdtWalletPage();
@@ -3161,16 +3163,21 @@ const Dashboard = {
   },
 
   renderCardSelector() {
+    const panel = $('cardSelectorPanel');
     const section = $('cardSelectorSection');
     const thumbs = $('cardThumbnails');
     const select = $('cardSelect');
 
     if (!this.allCards.length) {
-      section.classList.add('hidden');
+      panel?.classList.add('hidden');
+      section?.classList.add('hidden');
+      this.syncApplyCardPanelUi(true);
       return;
     }
 
-    section.classList.remove('hidden');
+    panel?.classList.remove('hidden');
+    section?.classList.remove('hidden');
+    this.syncApplyCardPanelUi(true);
     $('cardIndexLabel').textContent = `${this.activeCardIndex + 1} / ${this.allCards.length}`;
 
     select.innerHTML = this.allCards.map((c, i) =>
@@ -4801,6 +4808,61 @@ const Dashboard = {
         }
       }
     });
+  },
+
+  bindApplyCardPanel() {
+    const toggle = () => {
+      this._applyPanelUserToggled = true;
+      this.setApplyCardPanelOpen(!this.isApplyCardPanelOpen());
+    };
+    $('btnToggleApplyCard')?.addEventListener('click', toggle);
+    $('btnToggleApplyCardPanel')?.addEventListener('click', toggle);
+    this.syncApplyCardPanelUi(false);
+  },
+
+  isApplyCardPanelOpen() {
+    return $('applyCardPanel')?.getAttribute('data-open') === 'true';
+  },
+
+  setApplyCardPanelOpen(open, { scrollIntoView = true } = {}) {
+    const panel = $('applyCardPanel');
+    const shell = $('applyCardShell');
+    if (!panel || !shell) return;
+
+    const next = Boolean(open);
+    panel.setAttribute('data-open', next ? 'true' : 'false');
+    shell.classList.toggle('is-open', next);
+
+    [$('btnToggleApplyCard'), $('btnToggleApplyCardPanel')].forEach((btn) => {
+      if (!btn) return;
+      btn.setAttribute('aria-expanded', next ? 'true' : 'false');
+      btn.classList.toggle('is-active', next && btn.id === 'btnToggleApplyCard');
+    });
+
+    if (next && scrollIntoView) {
+      requestAnimationFrame(() => {
+        try {
+          shell.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        } catch (_) {
+          shell.scrollIntoView(false);
+        }
+        const amount = $('cardInitialLoad');
+        if (amount && !this.allCards.length) {
+          window.setTimeout(() => amount.focus(), 280);
+        }
+      });
+    }
+  },
+
+  syncApplyCardPanelUi(preferOpenWhenEmpty = true) {
+    const hasCards = Array.isArray(this.allCards) && this.allCards.length > 0;
+    if (!hasCards && preferOpenWhenEmpty) {
+      this.setApplyCardPanelOpen(true, { scrollIntoView: false });
+      return;
+    }
+    if (hasCards && !this._applyPanelUserToggled) {
+      this.setApplyCardPanelOpen(false, { scrollIntoView: false });
+    }
   },
 
   bindReloadCard() {
