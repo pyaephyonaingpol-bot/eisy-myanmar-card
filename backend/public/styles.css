@@ -1575,6 +1575,28 @@ body.sidebar-scroll-lock {
 
 @media (max-width: 480px) {
   .app-content { padding: 1rem; }
+
+  .wallet-hero-card {
+    padding: 1.15rem 1.1rem 1.2rem;
+  }
+
+  .wallet-hero-value {
+    font-size: 1.65rem;
+    margin: 0.4rem 0 0.55rem;
+  }
+
+  .wallet-balance-subtext,
+  .wallet-hero-hint {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin: 0 0 1.1rem;
+    padding: 0.2rem 0 0.15rem;
+    max-width: none;
+  }
+
+  .wallet-hero-actions {
+    gap: 0.55rem;
+  }
 }
 
 .rates-hero {
