@@ -9,6 +9,8 @@ const {
   createUsdtWithdrawalRequest,
   createMmkBankWithdrawalRequest,
   assertMmkToUsdtForbidden,
+  getUsdtAutoWithdrawMaxUsdt,
+  isUsdtAutoWithdrawEnabled,
 } = require('../services/withdrawalService');
 const UsdtWithdrawal = require('../models/UsdtWithdrawal');
 const MmkWithdrawal = require('../models/MmkWithdrawal');
@@ -110,6 +112,12 @@ router.get('/fees', requireAuth, async (_req, res) => {
       payment_service_fee_percent: settings.payment_service_fee_percent ?? 2,
       payment_service_fee_minimum_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
       mmk_to_usd_rate: settings.mmk_to_usd_rate,
+      auto_withdraw: {
+        enabled: isUsdtAutoWithdrawEnabled(),
+        max_usdt: getUsdtAutoWithdrawMaxUsdt(),
+        network: 'TRC20',
+        note: 'TRC20 withdrawals at or below max_usdt are paid automatically from the hot wallet; larger amounts require admin approval.',
+      },
     });
   } catch (err) {
     console.error('[withdrawal/fees GET]', err);
@@ -174,6 +182,12 @@ router.post('/usdt', requireAuth, requireSensitive, async (req, res) => {
       withdrawal: mapUsdtWithdrawal(result.withdrawal),
       breakdown: result.breakdown,
       message: result.message,
+      auto_payout: result.auto_payout || null,
+      auto_withdraw_policy: {
+        enabled: isUsdtAutoWithdrawEnabled(),
+        max_usdt: getUsdtAutoWithdrawMaxUsdt(),
+        network: 'TRC20',
+      },
       wallet: walletPayload(user),
     });
   } catch (err) {

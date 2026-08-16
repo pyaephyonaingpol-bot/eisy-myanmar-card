@@ -7,7 +7,10 @@ post-deposit “sweep.” Withdrawals pay **from** the same master wallet.
 ## Guarantees (after hardening)
 
 1. **On-chain verification required** for USDT auto-approve  
-   `BYPASS_USDT_TX_VERIFICATION` defaults off and is **refused in production**.
+   `BYPASS_USDT_TX_VERIFICATION` defaults off and is **refused in production**.  
+   TRC20 verification uses **TronGrid first**, then Tronscan fallback. On submit
+   (`submitAndAutoVerifyUsdtDeposit`) and status poll (`retryVerifySubmittedUsdtDeposit`),
+   a matching confirmed TxHash auto-credits net USDT and marks the deposit `VERIFIED`.
 
 2. **No fake / reused TxHashes**  
    - Application check (`assertTxHashAvailable`) before credit — blocks reuse on

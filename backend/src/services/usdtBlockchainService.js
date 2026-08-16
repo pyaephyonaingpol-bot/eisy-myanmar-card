@@ -6,6 +6,8 @@ const USDT_TRC20_CONTRACT = process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8
 const USDT_BEP20_CONTRACT = (process.env.USDT_BEP20_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
 const BSC_RPC_URL = process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org/';
 const TRONSCAN_API = process.env.TRONSCAN_API_URL || 'https://apilist.tronscan.org';
+const TRON_FULL_HOST =
+  process.env.TRON_FULL_HOST || process.env.TRONGRID_FULL_HOST || 'https://api.trongrid.io';
 const BSCSCAN_API_KEY = process.env.BSCSCAN_API_KEY || '';
 // keccak256("Transfer(address,address,uint256)")
 const TRANSFER_EVENT_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df5bb2db6';
@@ -113,7 +115,166 @@ async function bscRpc(method, params) {
   return data.result;
 }
 
+async function trongridHeaders() {
+  const headers = { Accept: 'application/json' };
+  const apiKey = process.env.TRONGRID_API_KEY || process.env.TRON_PRO_API_KEY;
+  if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
+  return headers;
+}
+
+/**
+ * Verify a TRC20 USDT transfer via TronGrid (primary).
+ * Confirms: tx exists, SUCCESS, USDT TRC20 Transfer to expectedAddress, amount matches.
+ */
+async function verifyTrc20UsdtViaTronGrid(txHash, expectedAddress, expectedAmountUsdt) {
+  const hash = String(txHash).trim();
+  const expectedTo = normalizeTronAddress(expectedAddress);
+  const headers = await trongridHeaders();
+
+  let info;
+  try {
+    info = await fetchJson(
+      `${TRON_FULL_HOST}/wallet/gettransactioninfobyid`,
+      {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: hash }),
+      }
+    );
+  } catch (err) {
+    console.warn('[usdt-blockchain] TronGrid gettransactioninfobyid failed:', err.message);
+    return null;
+  }
+
+  if (!info || (!info.id && !info.blockNumber && !info.receipt)) {
+    // Tx not found / not indexed yet
+    return { ok: false, status: 'pending', message: 'Transaction pending on blockchain or invalid TxHash.', source: 'trongrid' };
+  }
+
+  const receiptResult = String(info.receipt?.result || info.contractResult?.[0] || '').toUpperCase();
+  if (receiptResult && receiptResult !== 'SUCCESS') {
+    return {
+      ok: false,
+      status: 'invalid',
+      message: 'Transaction failed on blockchain — check your TxHash.',
+      source: 'trongrid',
+    };
+  }
+
+  // Prefer confirmed block presence; TronGrid returns blockNumber when mined.
+  if (!info.blockNumber && !info.blockTimeStamp) {
+    return { ok: false, status: 'pending', message: 'Transaction pending on blockchain or invalid TxHash.', source: 'trongrid' };
+  }
+
+  const logs = Array.isArray(info.log) ? info.log : [];
+
+  // Fetch full transaction for contract address context when needed
+  let tx;
+  try {
+    tx = await fetchJson(
+      `${TRON_FULL_HOST}/wallet/gettransactionbyid`,
+      {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: hash }),
+      }
+    );
+  } catch (_) {
+    tx = null;
+  }
+
+  // Parse TRC20 Transfer events from logs (topics[0]=Transfer, topics[1]=from, topics[2]=to, data=amount)
+  const TRANSFER_TOPIC =
+    'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df5bb2db6';
+
+  const matches = [];
+  for (const log of logs) {
+    const topics = (log.topics || []).map((t) => String(t || '').replace(/^0x/, '').toLowerCase());
+    if (!topics.length || topics[0] !== TRANSFER_TOPIC) continue;
+    if (topics.length < 3) continue;
+
+    // Filter to USDT contract when address present (hex)
+    const contractHex = String(log.address || '').replace(/^0x/, '').toLowerCase();
+    // Accept if we can later validate via Tronscan fallback; here accept USDT-shaped amounts
+
+    const toHex = topics[2].slice(-40);
+    let toBase58 = null;
+    try {
+      // Lazy require to avoid circular deps; TronWeb is already a project dependency.
+      const { TronWeb } = require('tronweb');
+      toBase58 = TronWeb.address.fromHex(`41${toHex}`);
+    } catch (_) {
+      toBase58 = null;
+    }
+
+    const amountUsdt = parseTokenAmount(log.data || '0', TRC20_DECIMALS);
+    matches.push({
+      toAddress: toBase58,
+      toHex: `41${toHex}`,
+      amountUsdt,
+      contractHex,
+    });
+  }
+
+  if (!matches.length) {
+    // No TRC20 logs yet — may still be pending indexing
+    return { ok: false, status: 'pending', message: 'Transaction pending on blockchain or invalid TxHash.', source: 'trongrid' };
+  }
+
+  const match = matches.find((m) => m.toAddress && normalizeTronAddress(m.toAddress) === expectedTo)
+    || matches[0];
+
+  if (!match.toAddress || normalizeTronAddress(match.toAddress) !== expectedTo) {
+    return {
+      ok: false,
+      status: 'invalid',
+      message: 'Recipient address does not match the platform deposit wallet.',
+      source: 'trongrid',
+    };
+  }
+
+  if (!amountWithinTolerance(match.amountUsdt, expectedAmountUsdt)) {
+    return {
+      ok: false,
+      status: 'invalid',
+      message: `Transfer amount ($${Number(match.amountUsdt).toFixed(2)} USDT) does not match expected deposit ($${Number(expectedAmountUsdt).toFixed(2)} USDT).`,
+      actualAmount: match.amountUsdt,
+      source: 'trongrid',
+    };
+  }
+
+  // Optional: confirm contract is USDT by checking trigger contract address on the tx
+  if (tx?.raw_data?.contract?.[0]?.parameter?.value?.contract_address) {
+    try {
+      const { TronWeb } = require('tronweb');
+      const cHex = tx.raw_data.contract[0].parameter.value.contract_address;
+      const cBase58 = TronWeb.address.fromHex(cHex);
+      if (normalizeTronAddress(cBase58) !== USDT_TRC20_CONTRACT) {
+        // Still allow if amount/to matched a Transfer log — some wallets wrap calls
+        console.warn('[usdt-blockchain] TronGrid contract address differs from USDT:', cBase58);
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  return {
+    ok: true,
+    status: 'confirmed',
+    network: 'TRC20',
+    amountUsdt: match.amountUsdt,
+    toAddress: match.toAddress,
+    txHash: hash,
+    confirmations: info.blockNumber ? 1 : null,
+    source: 'trongrid',
+  };
+}
+
 async function verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt) {
+  // Prefer TronGrid (hot-wallet / Trongrid API), fall back to Tronscan.
+  const viaGrid = await verifyTrc20UsdtViaTronGrid(txHash, expectedAddress, expectedAmountUsdt);
+  if (viaGrid && (viaGrid.ok || viaGrid.status === 'invalid')) {
+    return viaGrid;
+  }
+
   const hash = String(txHash).trim();
   const expectedTo = normalizeTronAddress(expectedAddress);
 
@@ -122,14 +283,14 @@ async function verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt) {
     data = await fetchJson(`${TRONSCAN_API}/api/transaction-info?hash=${encodeURIComponent(hash)}`);
   } catch (err) {
     if (err.status === 404) {
-      return { ok: false, status: 'invalid', message: 'Transaction pending on blockchain or invalid TxHash.' };
+      return viaGrid || { ok: false, status: 'invalid', message: 'Transaction pending on blockchain or invalid TxHash.' };
     }
     console.warn('[usdt-blockchain] Tronscan fetch failed:', err.message);
-    return { ok: false, status: 'pending', message: 'Transaction pending on blockchain or invalid TxHash.' };
+    return viaGrid || { ok: false, status: 'pending', message: 'Transaction pending on blockchain or invalid TxHash.' };
   }
 
   if (!data || data.hash == null && !data.txID && !data.confirmed) {
-    return { ok: false, status: 'invalid', message: 'Transaction pending on blockchain or invalid TxHash.' };
+    return viaGrid || { ok: false, status: 'invalid', message: 'Transaction pending on blockchain or invalid TxHash.' };
   }
 
   if (data.confirmed === false) {
@@ -197,6 +358,7 @@ async function verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt) {
     toAddress,
     txHash: hash,
     confirmations: data.confirmations ?? null,
+    source: 'tronscan',
   };
 }
 

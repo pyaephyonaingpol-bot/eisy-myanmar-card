@@ -13,6 +13,7 @@ const {
   createDepositRequest,
   createUsdtDepositRequest,
   submitAndAutoVerifyUsdtDeposit,
+  retryVerifySubmittedUsdtDeposit,
   verifyByListener,
   getExchangeRate,
 } = require('../services/depositService');
@@ -481,12 +482,38 @@ router.post('/verify', requireListenerOrAdmin, async (req, res) => {
 
 router.get('/status/:ref_code', requireAuth, async (req, res) => {
   try {
-    const deposit = await DepositRequest.findByRefCode(req.params.ref_code);
+    let deposit = await DepositRequest.findByRefCode(req.params.ref_code);
     if (!deposit) return res.status(404).json({ error: 'Deposit not found' });
     if (deposit.user_id !== req.user.id) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    res.json({ deposit: enrichDeposit(deposit) });
+
+    let autoVerify = null;
+    const isUsdt = deposit.purpose === 'usdt_topup' || deposit.deposit_currency === 'USDT';
+    const hash = String(deposit.tx_hash || deposit.txn_id || deposit.kpay_transaction_id || '').trim();
+    if (
+      isUsdt
+      && hash
+      && ['SUBMITTED', 'UNDER_REVIEW', 'PENDING'].includes(deposit.status)
+    ) {
+      try {
+        autoVerify = await retryVerifySubmittedUsdtDeposit(deposit.id, { userId: req.user.id });
+        deposit = autoVerify.deposit || await DepositRequest.findById(deposit.id);
+      } catch (err) {
+        console.warn('[deposit/status] re-verify skipped:', err.message);
+      }
+    }
+
+    res.json({
+      deposit: enrichDeposit(deposit),
+      auto_verify: autoVerify
+        ? {
+            auto_verified: Boolean(autoVerify.autoVerified),
+            pending: Boolean(autoVerify.pending),
+            message: autoVerify.message || null,
+          }
+        : null,
+    });
   } catch (err) {
     console.error('[deposit/status]', err);
     res.status(500).json({ error: 'Internal server error' });

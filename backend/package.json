@@ -10,7 +10,8 @@
     "seed": "node src/seed.js",
     "migrate": "node src/migrate.js",
     "db:test": "node scripts/test-database.js",
-    "test:deposit-security": "node scripts/test-deposit-security.js"
+    "test:deposit-security": "node scripts/test-deposit-security.js",
+    "test:usdt-auto-flow": "node scripts/test-usdt-auto-flow.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",

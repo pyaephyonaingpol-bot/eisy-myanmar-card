@@ -999,11 +999,42 @@ async function verifyByListener({ ref_code, amount, txn_id, sender_phone }) {
   });
 }
 
+/**
+ * Re-run on-chain verification for a submitted USDT deposit that is still pending.
+ * Used by status polling so deposits auto-credit once the chain confirms.
+ */
+async function retryVerifySubmittedUsdtDeposit(depositId, { userId } = {}) {
+  const deposit = await DepositRequest.findById(depositId);
+  if (!deposit) throw new Error('Deposit not found');
+  if (userId && deposit.user_id !== userId) throw new Error('Access denied');
+  if (deposit.purpose !== 'usdt_topup' && deposit.deposit_currency !== 'USDT') {
+    return { autoVerified: false, pending: false, deposit, message: 'Not a USDT deposit' };
+  }
+  if (deposit.status === 'VERIFIED') {
+    return { autoVerified: true, alreadyVerified: true, deposit, message: 'Already verified' };
+  }
+  if (!['SUBMITTED', 'UNDER_REVIEW', 'PENDING', 'AWAITING_SCREENSHOT'].includes(deposit.status)) {
+    return { autoVerified: false, pending: false, deposit, message: `Cannot verify status: ${deposit.status}` };
+  }
+
+  const hash = String(deposit.tx_hash || deposit.txn_id || deposit.kpay_transaction_id || '').trim();
+  if (!hash) {
+    return { autoVerified: false, pending: true, deposit, message: 'TxHash not yet submitted' };
+  }
+
+  return submitAndAutoVerifyUsdtDeposit(depositId, {
+    txHash: hash,
+    userNote: null,
+    userId: deposit.user_id,
+  });
+}
+
 module.exports = {
   getExchangeRate,
   createDepositRequest,
   createUsdtDepositRequest,
   submitAndAutoVerifyUsdtDeposit,
+  retryVerifySubmittedUsdtDeposit,
   creditDepositAndVerify,
   verifyByListener,
   findVerifiedDepositByTxHash,

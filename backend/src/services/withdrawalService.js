@@ -19,6 +19,140 @@ const {
 const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { transferUsdtTrc20 } = require('./tronMasterWalletService');
 
+/** Auto-payout is on by default when MASTER_PRIVATE_KEY is configured. */
+function isUsdtAutoWithdrawEnabled() {
+  const raw = String(process.env.USDT_AUTO_WITHDRAW_ENABLED || 'true').trim().toLowerCase();
+  return raw !== '0' && raw !== 'false' && raw !== 'off' && raw !== 'no';
+}
+
+/**
+ * Withdrawals with requested gross USDT above this threshold stay pending for admin.
+ * Default $100. Set USDT_AUTO_WITHDRAW_MAX_USDT=0 to require manual approval for all.
+ */
+function getUsdtAutoWithdrawMaxUsdt() {
+  const parsed = parseFloat(process.env.USDT_AUTO_WITHDRAW_MAX_USDT);
+  if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  return 100;
+}
+
+function evaluateAutoWithdrawEligibility(row) {
+  const network = normalizeNetwork(row.network);
+  const payoutMethod = normalizePayoutMethod(row.payout_method || 'crypto');
+  const amount = Number(row.amount_usdt);
+  const maxAuto = getUsdtAutoWithdrawMaxUsdt();
+
+  if (!isUsdtAutoWithdrawEnabled()) {
+    return {
+      eligible: false,
+      reason: 'auto_disabled',
+      message: 'Automatic withdrawals are disabled — awaiting admin approval.',
+      max_auto_usdt: maxAuto,
+    };
+  }
+  if (payoutMethod !== 'crypto' || network !== 'TRC20') {
+    return {
+      eligible: false,
+      reason: 'network_manual',
+      message: 'Only TRC20 crypto withdrawals can be auto-paid. Flagged for admin.',
+      max_auto_usdt: maxAuto,
+    };
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { eligible: false, reason: 'invalid_amount', message: 'Invalid withdrawal amount.', max_auto_usdt: maxAuto };
+  }
+  if (maxAuto <= 0 || amount > maxAuto) {
+    return {
+      eligible: false,
+      reason: 'above_threshold',
+      message: `Amount ${formatUsdt(amount)} exceeds auto-payout safety limit (${formatUsdt(maxAuto)}) — flagged for admin approval.`,
+      max_auto_usdt: maxAuto,
+      amount_usdt: amount,
+    };
+  }
+  return {
+    eligible: true,
+    reason: 'within_threshold',
+    message: `Auto-payout eligible (≤ ${formatUsdt(maxAuto)}).`,
+    max_auto_usdt: maxAuto,
+    amount_usdt: amount,
+  };
+}
+
+/**
+ * Attempt on-chain TRC20 payout for a pending withdrawal when under the safety threshold.
+ * Large / non-TRC20 / bank withdrawals remain pending for manual admin completion.
+ */
+async function maybeAutoProcessUsdtWithdrawal(withdrawalId) {
+  const row = await UsdtWithdrawal.findById(withdrawalId);
+  if (!row) {
+    return { autoPaid: false, pending: false, message: 'Withdrawal not found' };
+  }
+  if (!['pending', 'processing'].includes(row.status)) {
+    return {
+      autoPaid: row.status === 'completed',
+      pending: false,
+      withdrawal: row,
+      message: `Withdrawal already ${row.status}`,
+    };
+  }
+
+  const eligibility = evaluateAutoWithdrawEligibility(row);
+  if (!eligibility.eligible) {
+    if (eligibility.reason === 'above_threshold' || eligibility.reason === 'network_manual') {
+      await UsdtWithdrawal.updateStatus(row.id, {
+        status: 'pending',
+        adminNote: eligibility.message,
+      });
+      const updated = await UsdtWithdrawal.findById(row.id);
+      return {
+        autoPaid: false,
+        pending: true,
+        requires_admin: true,
+        eligibility,
+        withdrawal: updated,
+        message: eligibility.message,
+      };
+    }
+    return {
+      autoPaid: false,
+      pending: true,
+      requires_admin: true,
+      eligibility,
+      withdrawal: row,
+      message: eligibility.message,
+    };
+  }
+
+  try {
+    const completed = await completeUsdtWithdrawal(row.id, {
+      adminNote: `Auto-paid on-chain (≤ ${formatUsdt(eligibility.max_auto_usdt)} safety limit)`,
+      adminId: null,
+      skipOnChain: false,
+    });
+    return {
+      autoPaid: true,
+      pending: false,
+      requires_admin: false,
+      eligibility,
+      withdrawal: completed,
+      message: `Withdrawal ${row.ref_code} auto-paid on TRC20. Tx: ${completed.tx_hash || '—'}`,
+    };
+  } catch (err) {
+    console.error('[withdrawal] auto-payout failed:', err.message, err.code || '');
+    const updated = await UsdtWithdrawal.findById(row.id);
+    return {
+      autoPaid: false,
+      pending: true,
+      requires_admin: true,
+      eligibility,
+      withdrawal: updated,
+      error: err.message,
+      code: err.code || 'AUTO_PAYOUT_FAILED',
+      message: `Auto-payout failed — flagged for admin: ${err.message}`,
+    };
+  }
+}
+
 function generateRefCode(prefix = 'WD') {
   const num = Math.floor(1000 + Math.random() * 9000);
   return `${prefix}-${num}`;
@@ -194,10 +328,29 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     });
   }
 
+  // Auto-payout TRC20 withdrawals under the safety threshold; larger ones stay pending.
+  const autoResult = await maybeAutoProcessUsdtWithdrawal(withdrawal.id);
+  const finalWithdrawal = autoResult.withdrawal || await UsdtWithdrawal.findById(withdrawal.id);
+
+  let message = `Withdrawal ${refCode} submitted. ${formatUsdt(breakdown.net_usdt)} will be sent to your ${normalizedNetwork} address after processing.`;
+  if (autoResult.autoPaid) {
+    message = `Withdrawal ${refCode} completed. ${formatUsdt(breakdown.net_usdt)} sent to your ${normalizedNetwork} wallet.`;
+  } else if (autoResult.requires_admin) {
+    message = autoResult.message
+      || `Withdrawal ${refCode} submitted and queued for admin review.`;
+  }
+
   return {
-    withdrawal,
+    withdrawal: finalWithdrawal,
     breakdown,
-    message: `Withdrawal ${refCode} submitted. ${formatUsdt(breakdown.net_usdt)} will be sent to your ${normalizedNetwork} address after processing.`,
+    auto_payout: {
+      attempted: Boolean(autoResult.eligibility?.eligible),
+      auto_paid: Boolean(autoResult.autoPaid),
+      requires_admin: Boolean(autoResult.requires_admin),
+      eligibility: autoResult.eligibility || null,
+      error: autoResult.error || null,
+    },
+    message,
   };
 }
 
@@ -538,6 +691,10 @@ module.exports = {
   completeMmkWithdrawal,
   rejectMmkWithdrawal,
   assertMmkToUsdtForbidden,
+  maybeAutoProcessUsdtWithdrawal,
+  evaluateAutoWithdrawEligibility,
+  isUsdtAutoWithdrawEnabled,
+  getUsdtAutoWithdrawMaxUsdt,
   normalizeNetwork,
   normalizePayoutMethod,
   validateWalletAddress,
