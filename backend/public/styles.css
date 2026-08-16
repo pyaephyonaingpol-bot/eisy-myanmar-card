@@ -770,8 +770,67 @@ a.btn { text-decoration: none; }
 .card-status-hero-aside { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
 .card-status-last4 { font-family: var(--font-mono); font-size: 1rem; letter-spacing: 0.08em; color: var(--text); }
 .card-status-balance { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.95rem; color: #86efac; }
-.card-action-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; min-height: 2.25rem; align-items: center; }
-.card-action-bar .btn { flex: 0 1 auto; }
+.card-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  min-height: 2.25rem;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.card-action-bar .btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Reusable toolbars / button groups (page + panel headers) */
+.section-toolbar,
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.section-toolbar {
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.section-toolbar > h2,
+.section-toolbar > .page-heading,
+.section-toolbar > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.action-row .btn,
+.section-toolbar .btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.header-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 auto;
+}
+.header-brand-row > div {
+  min-width: 0;
+  max-width: 100%;
+}
 .reload-preview-row.reload-preview-sub { font-size: 0.8rem; opacity: 0.85; margin-top: 0.35rem; }
 .summary-item .card-status-pill { display: inline-block; font-size: 0.62rem; }
 .card-pending-notice { margin-top: 1rem; padding: 1rem; border-radius: var(--radius-md); background: var(--warning-bg); border: 1px solid var(--warning-border); color: #fde68a; font-size: 0.875rem; min-height: 3.75rem; }
@@ -1786,7 +1845,22 @@ a.btn { text-decoration: none; }
   border-color: rgba(239, 68, 68, 0.35);
 }
 
-.panel-header-row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; margin-bottom: 0.35rem; flex-wrap: wrap; }
+.panel-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+  flex-wrap: wrap;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.panel-header-row > * {
+  min-width: 0;
+  max-width: 100%;
+}
 
 .deposit-history-row-pending { background: rgba(251, 191, 36, 0.04); }
 .deposit-amount-cell strong { display: block; font-weight: 600; }
@@ -2683,25 +2757,17 @@ html.app-hydrating .wallet-hero-actions-row {
   }
 
   .app-content p,
-  .app-content span,
-  .app-content small,
   .app-content label,
   .app-content li,
   .app-content h1,
   .app-content h2,
   .app-content h3,
   .app-content h4,
-  .app-content strong,
-  .app-content em,
   .modal-box p,
-  .modal-box span,
-  .modal-box small,
   .modal-box label,
   .modal-box h3,
   .modal-box h4,
-  .modal-box strong,
   .auth-card p,
-  .auth-card small,
   .auth-card label,
   .hint,
   .page-desc,
@@ -2718,7 +2784,16 @@ html.app-hydrating .wallet-hero-actions-row {
   .kyc-photo-status,
   .card-status-alert,
   .msg,
-  .msg p {
+  .msg p,
+  .summary-item .value,
+  .summary-item .label,
+  .field label,
+  .pricing-row > span,
+  .pricing-row > strong,
+  .reload-preview-row > span,
+  .reload-preview-row > strong,
+  .p2p-pay-account-row > span,
+  .p2p-pay-account-row > strong {
     max-width: 100% !important;
     min-width: 0 !important;
     overflow-wrap: anywhere !important;
@@ -2837,6 +2912,117 @@ html.app-hydrating .wallet-hero-actions-row {
   .data-table-wrap {
     max-width: 100% !important;
     overflow-x: auto !important;
+  }
+
+  /* Global page / card / section wrappers */
+  .app-content,
+  .app-page,
+  .page-header,
+  .grid-2,
+  .wallet-dual-grid,
+  .usdt-balance-split,
+  .summary-grid,
+  .panel,
+  .summary-panel,
+  .card-visual,
+  .card-status-hero,
+  .card-pending-notice,
+  .card-txn-panel,
+  .card-selector-section,
+  .section-toolbar,
+  .action-row,
+  .card-action-bar,
+  .panel-header-row,
+  .header-brand-row {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden;
+  }
+
+  .app-content {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .panel,
+  .summary-panel,
+  .card-visual,
+  .card-status-hero,
+  .card-pending-notice,
+  .card-txn-panel,
+  .usdt-address-box,
+  .wallet-hero-card {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  /* Button groups: wrap and allow text to wrap instead of clipping */
+  .card-action-bar,
+  .action-row,
+  .section-toolbar,
+  .panel-header-row,
+  .wallet-hero-actions-row,
+  .page-header .action-row,
+  .header-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+    max-width: 100% !important;
+  }
+
+  .card-action-bar .btn,
+  .action-row .btn,
+  .section-toolbar .btn,
+  .panel-header-row .btn,
+  .wallet-hero-actions-row .btn,
+  .page-header .btn {
+    flex: 1 1 auto !important;
+    min-width: min(100%, 9.5rem) !important;
+    max-width: 100% !important;
+    white-space: normal !important;
+    height: auto !important;
+    line-height: 1.35 !important;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .card-action-bar .btn,
+  .action-row .btn,
+  .section-toolbar .btn,
+  .wallet-hero-actions-row .btn {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+  }
+
+  .card-status-hero {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+
+  .card-status-hero-aside {
+    align-items: flex-start !important;
+    width: 100%;
+  }
+
+  .card-visual {
+    padding: 1rem !important;
+  }
+
+  .card-visual-number {
+    font-size: 1rem !important;
+    letter-spacing: 0.06em !important;
+  }
+
+  .section-toolbar {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .section-toolbar .btn {
+    width: 100%;
   }
 }
 
