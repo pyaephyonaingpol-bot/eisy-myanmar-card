@@ -3613,6 +3613,47 @@ const Dashboard = {
     $('unlockBtnSettings')?.addEventListener('click', () => $('pinUnlockModal')?.classList.remove('hidden'));
     $('registerBioBtnSettings')?.addEventListener('click', () => $('registerBioBtn')?.click());
     $('logoutBtnSettings')?.addEventListener('click', () => $('logoutBtn')?.click());
+
+    this.bindAccountMenu();
+  },
+
+  bindAccountMenu() {
+    const menu = $('accountMenu');
+    const toggle = $('accountMenuToggle');
+    const panel = $('accountMenuPanel');
+    if (!menu || !toggle || !panel || menu.dataset.bound === '1') return;
+    menu.dataset.bound = '1';
+
+    const setOpen = (open) => {
+      menu.classList.toggle('is-open', open);
+      panel.classList.toggle('hidden', !open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setOpen(!menu.classList.contains('is-open'));
+    });
+
+    panel.addEventListener('click', (e) => {
+      const item = e.target.closest('.account-menu-item');
+      if (!item) return;
+      // Close after choosing an account/security action
+      setOpen(false);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!menu.classList.contains('is-open')) return;
+      if (menu.contains(e.target)) return;
+      setOpen(false);
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && menu.classList.contains('is-open')) {
+        setOpen(false);
+        toggle.focus();
+      }
+    });
   },
 
   validatePasswordClient(newPassword, confirmPassword, currentPassword, hasPassword) {

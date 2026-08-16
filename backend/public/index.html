@@ -729,9 +729,32 @@
             </div>
             <div class="header-actions">
               <div id="langSwitcher"></div>
-              <button id="unlockBtn" class="btn btn-secondary btn-sm" data-i18n="btn_unlock_pin">Unlock PIN</button>
-              <button id="registerBioBtn" class="btn btn-secondary btn-sm" data-i18n="btn_register_bio">Register Biometrics</button>
-              <button id="logoutBtn" class="btn btn-secondary btn-sm" data-i18n="btn_logout">Logout</button>
+              <div class="account-menu" id="accountMenu">
+                <button
+                  type="button"
+                  class="account-menu-toggle"
+                  id="accountMenuToggle"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                  aria-controls="accountMenuPanel"
+                  data-i18n-aria-label="account_menu"
+                  aria-label="Account &amp; security"
+                >
+                  <span class="account-menu-toggle-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 19.5c1.6-3.2 4.2-4.8 6.5-4.8s4.9 1.6 6.5 4.8"/></svg>
+                  </span>
+                  <span class="account-menu-toggle-label" data-i18n="account_menu">Account</span>
+                  <span class="account-menu-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="account-menu-panel hidden" id="accountMenuPanel" role="menu" aria-labelledby="accountMenuToggle">
+                  <p class="account-menu-heading" data-i18n="account_security_heading">Account &amp; security</p>
+                  <button type="button" role="menuitem" id="unlockBtn" class="account-menu-item" data-i18n="btn_unlock_pin">Unlock PIN</button>
+                  <button type="button" role="menuitem" id="registerBioBtn" class="account-menu-item" data-i18n="btn_register_bio">Register Biometrics</button>
+                  <button type="button" role="menuitem" class="account-menu-item" data-goto="settings" data-i18n="nav_settings">Settings &amp; Security</button>
+                  <div class="account-menu-divider" role="separator"></div>
+                  <button type="button" role="menuitem" id="logoutBtn" class="account-menu-item danger" data-i18n="btn_logout">Logout</button>
+                </div>
+              </div>
             </div>
           </div>
         </header>
@@ -755,21 +778,27 @@
                   <div class="wallet-hero-label" data-i18n="header_mmk_wallet">MMK Wallet</div>
                   <div class="wallet-hero-value" id="sumBalanceMmk">—</div>
                   <p class="wallet-balance-subtext" data-i18n="header_mmk_wallet_hint">Cards, reloads &amp; bank withdrawal · no MMK→USDT convert</p>
-                  <div class="wallet-hero-actions">
-                    <button type="button" class="btn btn-primary btn-sm" data-goto="cards" data-i18n="issue_card">Issue Card</button>
-                    <button type="button" class="btn btn-secondary btn-sm" data-open-reload data-i18n="reload_card_action">Reload Card</button>
-                    <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawMmk" data-i18n="btn_withdraw_mmk">Withdraw to Bank</button>
+                  <div class="wallet-hero-actions" role="group" aria-label="MMK wallet actions">
+                    <span class="wallet-actions-label" data-i18n="wallet_actions_label">Wallet actions</span>
+                    <div class="wallet-hero-actions-row">
+                      <button type="button" class="btn btn-primary btn-sm" data-goto="cards" data-i18n="issue_card">Issue Card</button>
+                      <button type="button" class="btn btn-secondary btn-sm" data-open-reload data-i18n="reload_card_action">Reload Card</button>
+                      <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawMmk" data-i18n="btn_withdraw_mmk">Withdraw to Bank</button>
+                    </div>
                   </div>
                 </div>
                 <div class="wallet-hero-card usdt" id="walletHeroUsdt">
                   <div class="wallet-hero-label" data-i18n="header_usdt_wallet">USDT Wallet</div>
                   <div class="wallet-hero-value" id="sumBalanceUsdt">—</div>
                   <p class="wallet-hero-hint" data-i18n="usdt_wallet_hint">TRC20 / BEP20 deposit · 1 USDT ≈ 1 USD to card (after fee)</p>
-                  <div class="wallet-hero-actions">
-                    <button type="button" class="btn btn-secondary btn-sm" data-goto="usdt-wallet" data-i18n="btn_manage_usdt_wallet">Manage Wallet</button>
-                    <button type="button" class="btn btn-secondary btn-sm" data-goto="deposits" data-deposit-tab="usdt" data-i18n="btn_top_up_usdt">Top Up USDT</button>
-                    <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdt" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
-                    <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawUsdt" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
+                  <div class="wallet-hero-actions" role="group" aria-label="USDT wallet actions">
+                    <span class="wallet-actions-label" data-i18n="wallet_actions_label">Wallet actions</span>
+                    <div class="wallet-hero-actions-row">
+                      <button type="button" class="btn btn-secondary btn-sm" data-goto="usdt-wallet" data-i18n="btn_manage_usdt_wallet">Manage Wallet</button>
+                      <button type="button" class="btn btn-secondary btn-sm" data-goto="deposits" data-deposit-tab="usdt" data-i18n="btn_top_up_usdt">Top Up USDT</button>
+                      <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdt" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
+                      <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawUsdt" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
+                    </div>
                   </div>
                 </div>
               </div>
