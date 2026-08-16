@@ -358,11 +358,7 @@ const Dashboard = {
       usdtText += ` (${data?.usdt_locked_formatted || this.formatUsdt(usdtLocked)} locked)`;
     }
 
-    const headerBar = $('headerWalletsBar');
-    if ($('headerWalletMmk')) $('headerWalletMmk').textContent = mmkText;
-    if ($('headerWalletUsdt')) $('headerWalletUsdt').textContent = usdtText;
-    if (headerBar) headerBar.classList.remove('hidden');
-
+    // Balances live only in Wallet Overview (not duplicated in the header).
     if ($('sumBalanceMmk')) $('sumBalanceMmk').textContent = mmkText;
     if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = usdtText;
 
@@ -5324,7 +5320,7 @@ const Dashboard = {
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
         if ($('sumBalanceMmk')) $('sumBalanceMmk').textContent = '🔒 Locked';
-        $('headerWalletCard')?.classList.add('hidden');
+        if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = '🔒 Locked';
       }
     }
   },
