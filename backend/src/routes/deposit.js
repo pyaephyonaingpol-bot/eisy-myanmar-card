@@ -24,7 +24,7 @@ const { enrichDeposit } = require('../services/depositEnrichment');
 const { walletPayload } = require('../services/walletService');
 const { getUsdtDepositSettings } = require('../services/settingsService');
 const { createBinancePayDeposit } = require('../services/binanceDepositService');
-const { listPaymentMethods, getPaymentMethod } = require('../services/depositPaymentMethodService');
+const { listPaymentMethods, resolveActivePaymentMethod } = require('../services/depositPaymentMethodService');
 const { getMasterWalletAddress } = require('../services/tronMasterWalletService');
 
 const router = express.Router();
@@ -156,21 +156,14 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
       return res.status(400).json({ error: 'Positive amount_mmk is required' });
     }
 
-    let methodRow = null;
-    if (payment_method_id) {
-      methodRow = await getPaymentMethod(parseInt(payment_method_id, 10));
-      if (!methodRow || !methodRow.is_active) {
-        return res.status(400).json({ error: 'Selected bank payment method is not available' });
-      }
-    } else {
-      const active = await listPaymentMethods({ activeOnly: true });
-      methodRow = active.find((m) => m.bank_name === payment_method) || active[0] || null;
-    }
-
-    if (!methodRow) {
-      return res.status(400).json({
-        error: 'No active bank payment methods configured. Please contact support.',
+    let methodRow;
+    try {
+      methodRow = await resolveActivePaymentMethod({
+        paymentMethodId: payment_method_id,
+        paymentMethod: payment_method,
       });
+    } catch (resolveErr) {
+      return res.status(400).json({ error: resolveErr.message || 'Payment method unavailable' });
     }
 
     const method = methodRow.bank_name;
@@ -184,6 +177,7 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
         bank_name: methodRow.bank_name,
         account_name: methodRow.account_name,
         account_number: methodRow.account_number,
+        method_type: methodRow.method_type,
         qr_code_image_url: methodRow.qr_code_image_url,
       },
     });
@@ -204,6 +198,7 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
         bank_name: methodRow.bank_name,
         account_name: methodRow.account_name,
         account_number: methodRow.account_number,
+        method_type: methodRow.method_type,
         qr_code_image_url: methodRow.qr_code_image_url,
         qr_code_url: methodRow.qr_code_image_url
           || `/api/qr?size=200&data=${encodeURIComponent(methodRow.account_number)}`,

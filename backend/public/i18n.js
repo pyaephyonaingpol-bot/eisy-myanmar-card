@@ -29,6 +29,7 @@
 
       // Navigation — admin
       nav_admin_deposits: 'Deposits',
+      nav_admin_payment_methods: 'Payment Methods',
       nav_admin_cards: 'Cards',
       nav_admin_users: 'Users',
       nav_admin_transactions: 'Transactions',
@@ -318,6 +319,7 @@
       nav_user_app: 'User App',
 
       nav_admin_deposits: 'ငွေသွင်းမှုများ',
+      nav_admin_payment_methods: 'ငွေပေးချေမှုနည်းလမ်းများ',
       nav_admin_cards: 'ကဒ်များ',
       nav_admin_users: 'အသုံးပြုသူများ',
       nav_admin_transactions: 'ငွေလွှဲမှုများ',
@@ -667,12 +669,24 @@
 
   function initLanguageSwitcher(mountEl) {
     if (!mountEl) return;
-    mountEl.innerHTML =
-      '<div class="lang-switcher" role="group" aria-label="' + t('lang_switcher_label') + '">' +
-        '<button type="button" class="lang-btn" data-lang="my" aria-pressed="false">' + t('lang_my') + '</button>' +
-        '<button type="button" class="lang-btn" data-lang="en" aria-pressed="false">' + t('lang_en') + '</button>' +
-      '</div>';
+    // Prefer static markup (reserves header width); only inject when empty.
+    if (!mountEl.querySelector('.lang-switcher')) {
+      mountEl.innerHTML =
+        '<div class="lang-switcher" role="group" aria-label="' + t('lang_switcher_label') + '">' +
+          '<button type="button" class="lang-btn" data-lang="my" aria-pressed="false">' + t('lang_my') + '</button>' +
+          '<button type="button" class="lang-btn" data-lang="en" aria-pressed="false">' + t('lang_en') + '</button>' +
+        '</div>';
+    } else {
+      const group = mountEl.querySelector('.lang-switcher');
+      if (group) group.setAttribute('aria-label', t('lang_switcher_label'));
+      mountEl.querySelectorAll('[data-lang]').forEach((btn) => {
+        const key = btn.dataset.lang === 'my' ? 'lang_my' : 'lang_en';
+        btn.textContent = t(key);
+      });
+    }
     mountEl.querySelectorAll('[data-lang]').forEach((btn) => {
+      if (btn.dataset.bound === '1') return;
+      btn.dataset.bound = '1';
       btn.addEventListener('click', () => {
         if (btn.dataset.lang !== currentLang) setLang(btn.dataset.lang);
       });

@@ -35,10 +35,36 @@ const Dashboard = {
         .finally(() => {
           Auth.initLoginPanel();
           this.refreshAuthUI();
+          this.markAppReady();
         });
     } catch (err) {
       console.error('[Dashboard] init failed:', err);
+      this.markAppReady();
     }
+  },
+
+  markAppReady() {
+    document.documentElement.classList.add('app-ready');
+    const splash = $('appBootSplash');
+    if (splash) {
+      splash.hidden = true;
+      splash.setAttribute('aria-busy', 'false');
+    }
+  },
+
+  setHydrating(on) {
+    document.documentElement.classList.toggle('app-hydrating', Boolean(on));
+  },
+
+  beginHydration() {
+    this._hydrationToken = (this._hydrationToken || 0) + 1;
+    this.setHydrating(true);
+    return this._hydrationToken;
+  },
+
+  endHydration(token) {
+    if (token != null && token !== this._hydrationToken) return;
+    this.setHydrating(false);
   },
 
   initNavigationIfNeeded() {
@@ -892,21 +918,25 @@ const Dashboard = {
 
   async loadDepositPaymentMethods() {
     const select = $('paymentMethod');
-    if (!select) return;
     try {
       const data = await Auth.api('GET', '/api/deposit/payment-methods');
       this._depositPaymentMethods = Array.isArray(data.payment_methods) ? data.payment_methods : [];
       this._usdtMasterDeposit = data.usdt || null;
 
-      if (!this._depositPaymentMethods.length) {
-        select.innerHTML = '<option value="">No bank accounts configured — contact support</option>';
-        this.renderMmkPaymentDetails(null);
-      } else {
-        select.innerHTML = this._depositPaymentMethods.map((m) =>
-          `<option value="${m.id}">${this.esc(m.bank_name)} — ${this.esc(m.account_name)}</option>`
-        ).join('');
-        this.renderMmkPaymentDetails(this._depositPaymentMethods[0]);
+      if (select) {
+        if (!this._depositPaymentMethods.length) {
+          select.innerHTML = '<option value="">No bank accounts configured — contact support</option>';
+          this.renderMmkPaymentDetails(null);
+        } else {
+          select.innerHTML = this._depositPaymentMethods.map((m) =>
+            `<option value="${m.id}">${this.esc(m.bank_name)} — ${this.esc(m.account_name)}</option>`
+          ).join('');
+          this.renderMmkPaymentDetails(this._depositPaymentMethods[0]);
+        }
       }
+
+      this.populateCardPaymentMethodOptions();
+      this.populateReloadPaymentMethodOptions();
 
       // Prefill TRC20 master wallet address for USDT deposits
       if (this._usdtMasterDeposit?.address && ($('usdtNetwork')?.value || 'TRC20') === 'TRC20') {
@@ -917,13 +947,143 @@ const Dashboard = {
         }
       }
     } catch (err) {
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED' || err.status === 401) {
-        select.innerHTML = '<option value="">Sign in to load payment methods</option>';
-        return;
+      if (select) {
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED' || err.status === 401) {
+          select.innerHTML = '<option value="">Sign in to load payment methods</option>';
+          return;
+        }
+        select.innerHTML = '<option value="">Failed to load payment methods</option>';
       }
-      select.innerHTML = '<option value="">Failed to load payment methods</option>';
       console.warn('[deposit] payment-methods', err.message);
     }
+  },
+
+  paymentMethodOptionValue(id) {
+    return `pm:${id}`;
+  },
+
+  parseSelectedPaymentMethod(value) {
+    const raw = String(value || '');
+    if (raw === 'wallet_mmk' || raw === 'wallet_usdt') {
+      return { kind: 'wallet', walletType: raw === 'wallet_usdt' ? 'usdt' : 'mmk' };
+    }
+    if (raw.startsWith('pm:')) {
+      const id = parseInt(raw.slice(3), 10);
+      const method = (this._depositPaymentMethods || []).find((m) => Number(m.id) === id) || null;
+      return { kind: 'bank', paymentMethodId: id, method };
+    }
+    // Legacy hardcoded names
+    if (raw) {
+      const method = (this._depositPaymentMethods || []).find(
+        (m) => String(m.bank_name).toLowerCase() === raw.toLowerCase()
+      ) || null;
+      return {
+        kind: 'bank',
+        paymentMethodId: method?.id || null,
+        paymentMethodName: raw,
+        method,
+      };
+    }
+    return { kind: 'unknown' };
+  },
+
+  populateCardPaymentMethodOptions() {
+    const select = $('cardPaymentMethod');
+    if (!select) return;
+    const prev = select.value;
+    const walletOpts = [
+      `<option value="wallet_mmk">${this.esc(typeof t === 'function' ? t('pay_mmk_wallet_issuance') : 'MMK Wallet — card issuance (admin processed)')}</option>`,
+      `<option value="wallet_usdt">${this.esc(typeof t === 'function' ? t('pay_usdt_wallet_issuance') : 'USDT Wallet (1 USDT ≈ 1 USD, admin processed)')}</option>`,
+    ];
+    const bankOpts = (this._depositPaymentMethods || []).map((m) =>
+      `<option value="${this.paymentMethodOptionValue(m.id)}">${this.esc(m.bank_name)} — ${this.esc(m.account_name)} (Manual)</option>`
+    );
+    select.innerHTML = walletOpts.concat(bankOpts).join('')
+      || '<option value="">No payment methods available</option>';
+    if (prev && [...select.options].some((o) => o.value === prev)) {
+      select.value = prev;
+    }
+    this.updateCardManualPaymentDetails();
+  },
+
+  populateReloadPaymentMethodOptions() {
+    const select = $('reloadPaymentMethod');
+    if (!select) return;
+    const prev = select.value;
+    const walletOpts = [
+      `<option value="wallet_mmk">${this.esc(typeof t === 'function' ? t('pay_mmk_wallet_reload') : 'MMK Wallet — card reloads only (instant)')}</option>`,
+      `<option value="wallet_usdt">${this.esc(typeof t === 'function' ? t('pay_usdt_wallet_reload') : 'USDT Wallet (Instant — 1:1 USD)')}</option>`,
+    ];
+    const bankOpts = (this._depositPaymentMethods || []).map((m) =>
+      `<option value="${this.paymentMethodOptionValue(m.id)}">${this.esc(m.bank_name)} — ${this.esc(m.account_name)} (Manual)</option>`
+    );
+    select.innerHTML = walletOpts.concat(bankOpts).join('');
+    if (prev && [...select.options].some((o) => o.value === prev)) {
+      select.value = prev;
+    }
+    this.updateReloadManualPaymentDetails();
+  },
+
+  renderPaymentAccountDetails(method, {
+    boxId,
+    bankId,
+    nameId,
+    numberId,
+    qrId,
+  } = {}) {
+    const box = boxId ? $(boxId) : null;
+    if (!box) return;
+    if (!method) {
+      box.classList.add('hidden');
+      return;
+    }
+    box.classList.remove('hidden');
+    if (bankId && $(bankId)) $(bankId).textContent = method.bank_name || '—';
+    if (nameId && $(nameId)) $(nameId).textContent = method.account_name || '—';
+    if (numberId && $(numberId)) $(numberId).textContent = method.account_number || '—';
+    if (qrId && $(qrId)) {
+      const qr = $(qrId);
+      const qrUrl = method.qr_code_image_url
+        || method.qr_code_url
+        || (method.account_number
+          ? `/api/qr?size=180&data=${encodeURIComponent(method.account_number)}`
+          : '');
+      if (qrUrl) {
+        qr.src = qrUrl;
+        qr.classList.remove('hidden');
+        qr.onerror = () => {
+          if (method.account_number) {
+            qr.src = `/api/qr?size=180&data=${encodeURIComponent(method.account_number)}`;
+          } else {
+            qr.classList.add('hidden');
+          }
+        };
+      } else {
+        qr.classList.add('hidden');
+        qr.removeAttribute('src');
+      }
+    }
+  },
+
+  updateCardManualPaymentDetails() {
+    const selected = this.parseSelectedPaymentMethod($('cardPaymentMethod')?.value);
+    this.renderPaymentAccountDetails(selected.kind === 'bank' ? selected.method : null, {
+      boxId: 'cardPaymentMethodDetails',
+      bankId: 'cardPayBankName',
+      nameId: 'cardPayAccountName',
+      numberId: 'cardPayAccountNumber',
+      qrId: 'cardPayQrImg',
+    });
+  },
+
+  updateReloadManualPaymentDetails() {
+    const selected = this.parseSelectedPaymentMethod($('reloadPaymentMethod')?.value);
+    this.renderPaymentAccountDetails(selected.kind === 'bank' ? selected.method : null, {
+      boxId: 'reloadPaymentMethodDetails',
+      bankId: 'reloadPayBankName',
+      nameId: 'reloadPayAccountName',
+      numberId: 'reloadPayAccountNumber',
+    });
   },
 
   renderMmkPaymentDetails(method) {
@@ -3772,6 +3932,7 @@ const Dashboard = {
     $('cardPaymentMethod')?.addEventListener('change', () => {
       this.updateCardPricingBreakdown();
       this.updateCardWalletHint();
+      this.updateCardManualPaymentDetails();
     });
 
     const cardRequestForm = $('cardRequestForm');
@@ -3781,8 +3942,9 @@ const Dashboard = {
         try {
           const initialLoad = parseFloat($('cardInitialLoad').value);
           const method = $('cardPaymentMethod').value;
-          const payFromWallet = this.isWalletPaymentMethod(method);
-          const walletType = this.getWalletTypeFromMethod(method);
+          const selected = this.parseSelectedPaymentMethod(method);
+          const payFromWallet = selected.kind === 'wallet';
+          const walletType = selected.walletType;
 
           if (payFromWallet && walletType === 'mmk') {
             const required = this.cardPricing?.total_mmk ?? 0;
@@ -3801,13 +3963,23 @@ const Dashboard = {
             }
           }
 
+          if (!payFromWallet && !selected.paymentMethodId && !selected.paymentMethodName) {
+            this.toast('Select a payment method', 'error');
+            return;
+          }
+
           const body = {
             card_holder_name: $('holderName').value.trim() || undefined,
             initial_load_usd: initialLoad,
             pay_from_wallet: payFromWallet,
           };
           if (payFromWallet) body.wallet_type = walletType;
-          if (!payFromWallet) body.payment_method = method;
+          if (!payFromWallet) {
+            if (selected.paymentMethodId) body.payment_method_id = selected.paymentMethodId;
+            if (selected.method?.bank_name || selected.paymentMethodName) {
+              body.payment_method = selected.method?.bank_name || selected.paymentMethodName;
+            }
+          }
 
           const data = await Auth.api('POST', '/api/user/card/request', body, { sensitive: true });
 
@@ -4023,12 +4195,14 @@ const Dashboard = {
     const authScreen = $('authScreen');
     const dashboardScreen = $('dashboardScreen');
 
+    document.documentElement.classList.toggle('has-session', loggedIn);
     if (authScreen) authScreen.classList.toggle('hidden', loggedIn);
     if (dashboardScreen) dashboardScreen.classList.toggle('hidden', !loggedIn);
 
     if (!loggedIn) {
       this.clearCardsCache();
       this.allCards = [];
+      this.endHydration();
       if (window.location.hash && !window.location.hash.startsWith('#admin')) {
         history.replaceState(null, '', window.location.pathname + window.location.search);
       }
@@ -4036,6 +4210,7 @@ const Dashboard = {
     }
 
     this.initNavigationIfNeeded();
+    const hydrateToken = this.beginHydration();
 
     if (Auth.user) {
       if ($('headerUser')) $('headerUser').textContent = Auth.user.name || Auth.user.email;
@@ -4052,15 +4227,25 @@ const Dashboard = {
         this.applyCachedCardsIfAvailable();
         this.loadAllCards({ preserveSelection: true, silent: true });
       }
-      this.loadWallet();
-      this.loadTransactions();
-      this.loadDepositHistory();
-      this.loadCardPricing();
-      this.loadWithdrawalFees();
-      this.loadDepositPaymentMethods();
+
+      const pending = [
+        this.loadWallet(),
+        this.loadTransactions(),
+        this.loadDepositHistory(),
+        this.loadCardPricing(),
+        this.loadWithdrawalFees(),
+        this.loadDepositPaymentMethods(),
+        this.loadKycStatus(),
+      ];
+
+      const settle = Promise.allSettled(pending);
+      const timeout = new Promise((resolve) => setTimeout(resolve, 3500));
+      Promise.race([settle, timeout]).finally(() => {
+        this.endHydration(hydrateToken);
+      });
+
       this.updateHomeRateSummary();
       this.populateReloadCardSelect();
-      this.loadKycStatus();
       this.updateChangePasswordUI();
       this.bindSupabaseUserRealtime();
 
@@ -4068,6 +4253,8 @@ const Dashboard = {
         const hashPage = AppNav.pageFromHash?.();
         AppNav.navigate(hashPage || 'home', { pushHash: !hashPage, replace: true });
       }
+    } else {
+      this.endHydration(hydrateToken);
     }
   },
 
@@ -4380,6 +4567,9 @@ const Dashboard = {
 
   openReloadModal(preselectedCardId) {
     this.populateReloadCardSelect(preselectedCardId);
+    this.populateReloadPaymentMethodOptions();
+    this.toggleReloadAmountFields();
+    this.updateReloadManualPaymentDetails();
     $('reloadCardForm')?.classList.remove('hidden');
     $('reloadRefBox')?.classList.add('hidden');
     $('reloadProofForm')?.classList.add('hidden');
@@ -4828,14 +5018,16 @@ const Dashboard = {
     $('reloadPaymentMethod')?.addEventListener('change', () => {
       this.toggleReloadAmountFields();
       this.updateReloadWalletHint();
+      this.updateReloadManualPaymentDetails();
     });
 
     $('reloadCardForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const cardId = parseInt($('reloadCardSelect').value, 10);
       const method = $('reloadPaymentMethod').value;
-      const payFromWallet = this.isWalletPaymentMethod(method);
-      const walletType = this.getWalletTypeFromMethod(method);
+      const selected = this.parseSelectedPaymentMethod(method);
+      const payFromWallet = selected.kind === 'wallet';
+      const walletType = selected.walletType;
       const isUsdt = walletType === 'usdt';
       const preview = isUsdt
         ? this.calculateReloadPreviewUsdtClient(parseFloat($('reloadAmountUsdt')?.value))
@@ -4870,7 +5062,10 @@ const Dashboard = {
           else body.amount_mmk = preview.top_up_mmk;
         } else {
           body.amount_mmk = preview.top_up_mmk;
-          body.payment_method = method;
+          if (selected.paymentMethodId) body.payment_method_id = selected.paymentMethodId;
+          if (selected.method?.bank_name || selected.paymentMethodName) {
+            body.payment_method = selected.method?.bank_name || selected.paymentMethodName;
+          }
         }
 
         const data = await Auth.api('POST', '/api/user/card/reload', body, { sensitive: true });

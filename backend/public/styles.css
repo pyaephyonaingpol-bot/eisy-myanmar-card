@@ -39,22 +39,35 @@
   --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Code', monospace;
   --container-max: 1180px;
-  /* Prefer dynamic viewport height on mobile browsers (address bar show/hide). */
+  /*
+   * Shell height: prefer 100svh so the layout does not jump when the browser
+   * chrome / soft keyboard changes after mount (100dvh thrash). --app-dvh is
+   * available for overlays that intentionally track the visible area.
+   */
   --app-vh: 100vh;
+  --app-dvh: 100vh;
+  --sidebar-width: 248px;
+  --header-min-height: 4.5rem;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
 }
 
+@supports (height: 100svh) {
+  :root { --app-vh: 100svh; }
+}
+
 @supports (height: 100dvh) {
-  :root { --app-vh: 100dvh; }
+  :root { --app-dvh: 100dvh; }
 }
 
 html {
   scroll-behavior: smooth;
   height: 100%;
   height: -webkit-fill-available;
+  min-height: 100%;
+  min-height: var(--app-vh);
 }
 
 body {
@@ -66,15 +79,91 @@ body {
   color: var(--text-primary);
   line-height: 1.55;
   min-height: 100vh;
-  min-height: var(--app-vh);
   min-height: -webkit-fill-available;
+  min-height: var(--app-vh);
   -webkit-font-smoothing: antialiased;
   /* Standalone PWA / notched devices */
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
 }
 
+/* While the soft keyboard is open, avoid viewport-tied height thrashing (mobile). */
+@media (max-width: 900px) {
+  body.keyboard-open .app-main,
+  body.keyboard-open .app-shell {
+    min-height: 0;
+    height: auto;
+  }
+}
+
 .hidden { display: none !important; }
+
+/* ── Boot / session paint lock (prevents auth↔dashboard flash) ── */
+#appBootSplash,
+#adminBootSplash {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  min-height: 100vh;
+  min-height: var(--app-vh);
+  min-width: 100%;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59, 130, 246, 0.14), transparent),
+    var(--bg-base);
+  color: var(--text-secondary);
+  transition: opacity 0.22s ease, visibility 0.22s ease;
+}
+#appBootSplash[hidden],
+#adminBootSplash[hidden],
+html.app-ready #appBootSplash,
+html.app-ready #adminBootSplash {
+  display: none !important;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.boot-splash-brand {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.boot-splash-spinner {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  border: 2px solid rgba(148, 163, 184, 0.25);
+  border-top-color: var(--accent);
+  animation: bootSpin 0.7s linear infinite;
+}
+.boot-splash-hint {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+@keyframes bootSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Prefer dashboard shell when a stored session exists (set by early head script). */
+html.has-session #authScreen,
+html.has-session #adminLogin {
+  display: none !important;
+}
+html.has-session #dashboardScreen.hidden,
+html.has-session #adminApp.hidden {
+  display: flex !important;
+  flex-direction: column;
+}
+html.has-session #dashboardScreen,
+html.has-session #adminApp {
+  min-height: 100vh;
+  min-height: var(--app-vh);
+}
 
 h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; }
 h2 { font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
@@ -121,6 +210,7 @@ h3 { font-size: 0.95rem; font-weight: 600; }
 .auth-screen {
   min-height: 100vh;
   min-height: var(--app-vh);
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -131,7 +221,8 @@ h3 { font-size: 0.95rem; font-weight: 600; }
 .auth-card {
   background: var(--bg-glass-strong); backdrop-filter: blur(16px);
   border: 1px solid var(--border-subtle); border-radius: var(--radius-xl);
-  padding: 2rem; width: 100%; max-width: 440px; box-shadow: var(--shadow-lg), var(--ring);
+  padding: 2rem; width: 100%; max-width: 440px; min-width: min(100%, 280px);
+  box-shadow: var(--shadow-lg), var(--ring);
 }
 .auth-card h1 { font-size: 1.75rem; margin-bottom: 0.25rem; }
 .tabs { display: flex; gap: 0.65rem; margin-bottom: 1rem; }
@@ -157,9 +248,33 @@ h3 { font-size: 0.95rem; font-weight: 600; }
   padding: 0.85rem 1.5rem;
   padding-top: max(0.85rem, var(--safe-top));
   box-shadow: var(--shadow-sm);
+  min-height: var(--header-min-height);
 }
-.header-inner { max-width: var(--container-max); margin: 0 auto; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; }
-.header-actions { display: flex; gap: 0.65rem; flex-wrap: wrap; align-items: center; }
+.header-inner {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  min-height: 2.75rem;
+  width: 100%;
+}
+.header-actions {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  align-items: center;
+  min-height: 2.25rem;
+}
+.header .subtitle {
+  min-height: 1.2em;
+  max-width: 36ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .account-menu {
   position: relative;
@@ -264,8 +379,19 @@ h3 { font-size: 0.95rem; font-weight: 600; }
   .account-menu-panel { min-width: 12.5rem; }
 }
 
+#langSwitcher,
+#langSwitcherAdmin {
+  display: inline-flex;
+  align-items: center;
+  min-width: 5.75rem;
+  min-height: 2rem;
+  flex-shrink: 0;
+}
 .lang-switcher {
   display: inline-flex;
+  align-items: stretch;
+  min-width: 5.75rem;
+  min-height: 2rem;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   background: rgba(15, 23, 42, 0.55);
@@ -280,6 +406,7 @@ h3 { font-size: 0.95rem; font-weight: 600; }
   padding: 0.35rem 0.65rem;
   cursor: pointer;
   line-height: 1.2;
+  min-width: 2.75rem;
   transition: background 0.15s, color 0.15s;
 }
 .lang-btn:hover { color: var(--text, #f1f5f9); background: rgba(148, 163, 184, 0.12); }
@@ -301,12 +428,32 @@ h3 { font-size: 0.95rem; font-weight: 600; }
 .summary-panel { background: linear-gradient(145deg, rgba(30, 58, 95, 0.55) 0%, var(--bg-glass) 55%); border-color: rgba(59, 130, 246, 0.18); }
 .badge-secure { font-size: 0.68rem; background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning-border); padding: 0.18rem 0.55rem; border-radius: var(--radius-pill); font-weight: 600; margin-left: 0.35rem; }
 
-.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-top: 0.65rem; }
-.summary-item { background: rgba(15, 23, 42, 0.45); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem; transition: border-color 0.15s ease; }
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-top: 0.65rem;
+  min-height: 5.25rem;
+}
+.summary-item {
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  min-height: 5rem;
+  transition: border-color 0.15s ease;
+}
 .summary-item:hover { border-color: var(--border); }
 .summary-item .label { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; }
-.summary-item .value { font-size: 1.15rem; font-weight: 700; margin-top: 0.35rem; display: block; font-variant-numeric: tabular-nums; }
-.summary-item.highlight .value { color: var(--success); font-size: 1.65rem; }
+.summary-item .value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-top: 0.35rem;
+  display: block;
+  min-height: 1.4em;
+  font-variant-numeric: tabular-nums;
+}
+.summary-item.highlight .value { color: var(--success); font-size: 1.65rem; min-height: 1.6em; }
 
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 1.5rem; align-items: start; }
 
@@ -575,7 +722,32 @@ a.btn { text-decoration: none; }
 .thread-item:hover { border-color: var(--border); background: rgba(148,163,184,0.06); }
 .thread-item.active { border-color: var(--accent); background: rgba(59,130,246,0.08); }
 .thread-item small { display: block; color: var(--text-muted); margin-top: 0.25rem; font-size: 0.75rem; }
-.support-messages { max-height: 300px; overflow-y: auto; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.65rem; }
+.support-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(420px, calc(var(--app-dvh) * 0.55));
+  overflow: hidden;
+}
+.support-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-bottom: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  -webkit-overflow-scrolling: touch;
+}
+.support-compose {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-elevated);
+  padding-bottom: max(0.25rem, var(--safe-bottom));
+}
 .msg { padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.875rem; border: 1px solid var(--border-subtle); }
 .msg-user { background: rgba(15,23,42,0.5); align-self: flex-start; max-width: 90%; }
 .msg-admin { background: rgba(59,130,246,0.1); align-self: flex-end; max-width: 90%; border-color: rgba(59,130,246,0.2); }
@@ -1230,13 +1402,21 @@ a.btn { text-decoration: none; }
 pre.output.hidden { display: none !important; }
 
 .wallet-dual-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1rem; margin-bottom: 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  min-height: 12.5rem;
+  align-items: stretch;
 }
 .wallet-hero-card {
-  padding: 1.25rem 1.35rem; border-radius: var(--radius-xl);
+  padding: 1.25rem 1.35rem;
+  border-radius: var(--radius-xl);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: var(--shadow-lg);
+  min-height: 12.5rem;
+  display: flex;
+  flex-direction: column;
 }
 .wallet-hero-card.mmk {
   background: linear-gradient(135deg, #1e3a8a, #4338ca, #6366f1);
@@ -1245,7 +1425,14 @@ pre.output.hidden { display: none !important; }
   background: linear-gradient(135deg, #064e3b, #047857, #10b981);
 }
 .wallet-hero-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.75; }
-.wallet-hero-value { font-size: 1.85rem; font-weight: 700; margin: 0.35rem 0 0.5rem; font-variant-numeric: tabular-nums; }
+.wallet-hero-value {
+  font-size: 1.85rem;
+  font-weight: 700;
+  margin: 0.35rem 0 0.5rem;
+  min-height: 2.25rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
 .wallet-balance-subtext {
   display: block;
   font-size: 0.875rem;
@@ -1461,14 +1648,20 @@ pre.output.hidden { display: none !important; }
 /* ═══ App Shell — Sidebar SPA Layout ═══ */
 #dashboardScreen {
   width: 100%;
+  min-width: 0;
   min-height: 100vh;
   min-height: var(--app-vh);
+  display: flex;
+  flex-direction: column;
 }
 
 #adminApp {
   width: 100%;
+  min-width: 0;
   min-height: 100vh;
   min-height: var(--app-vh);
+  display: flex;
+  flex-direction: column;
 }
 
 .app-shell {
@@ -1476,15 +1669,18 @@ pre.output.hidden { display: none !important; }
   flex-direction: row;
   align-items: stretch;
   width: 100%;
+  min-width: 0;
   min-height: 100vh;
   min-height: var(--app-vh);
+  flex: 1 1 auto;
   position: relative;
   isolation: isolate;
 }
 
 .app-sidebar {
-  width: 248px;
-  flex: 0 0 248px;
+  width: var(--sidebar-width);
+  flex: 0 0 var(--sidebar-width);
+  min-width: var(--sidebar-width);
   background: rgba(15, 23, 42, 0.98);
   backdrop-filter: blur(14px);
   border-right: 1px solid var(--border-subtle);
@@ -1494,6 +1690,7 @@ pre.output.hidden { display: none !important; }
   z-index: 1;
   height: 100vh;
   height: var(--app-vh);
+  max-height: var(--app-vh);
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -1573,6 +1770,7 @@ pre.output.hidden { display: none !important; }
   flex-direction: column;
   min-height: 100vh;
   min-height: var(--app-vh);
+  /* Desktop: lock to stable viewport; mobile overrides to auto below */
   height: 100vh;
   height: var(--app-vh);
   overflow: hidden;
@@ -1682,9 +1880,11 @@ body.sidebar-scroll-lock {
     bottom: 0;
     height: 100vh;
     height: var(--app-vh);
+    max-height: var(--app-vh);
     padding-top: var(--safe-top);
     padding-bottom: var(--safe-bottom);
     width: min(280px, 88vw);
+    min-width: min(280px, 88vw);
     flex: none;
     z-index: 90;
     transform: translateX(-105%);
@@ -1712,6 +1912,7 @@ body.sidebar-scroll-lock {
   .app-main {
     width: 100%;
     flex: 1 1 100%;
+    /* Flex + auto height: keyboard must not force a sudden viewport shrink */
     height: auto;
     min-height: 100vh;
     min-height: var(--app-vh);
@@ -1825,4 +2026,53 @@ body.sidebar-scroll-lock {
 
 
 @media (max-width: 480px) { .summary-grid { grid-template-columns: 1fr; } h1 { font-size: 1.25rem; } }
+
+/* ── Post-login hydration skeletons (prevent content reflow) ── */
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.85; }
+}
+
+html.app-hydrating .wallet-hero-value,
+html.app-hydrating .summary-item .value,
+html.app-hydrating #headerUser,
+html.app-hydrating #headerEmail {
+  color: transparent !important;
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+html.app-hydrating .wallet-hero-value::after,
+html.app-hydrating .summary-item .value::after,
+html.app-hydrating #headerUser::after,
+html.app-hydrating #headerEmail::after {
+  content: '';
+  position: absolute;
+  inset: 0.15em 0;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.14) 0%,
+    rgba(148, 163, 184, 0.28) 50%,
+    rgba(148, 163, 184, 0.14) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeletonPulse 1.1s ease-in-out infinite;
+}
+
+html.app-hydrating .wallet-hero-actions,
+html.app-hydrating .wallet-hero-actions-row {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* Prevent iOS input-focus zoom (font < 16px) which looks like layout shake */
+@media (max-width: 900px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
 
