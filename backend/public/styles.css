@@ -775,7 +775,7 @@ a.btn { text-decoration: none; }
 .admin-tab-panel.is-active { display: block; }
 
 /* Tables */
-.data-table-wrap { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); background: rgba(15,23,42,0.35); -webkit-overflow-scrolling: touch; }
+.data-table-wrap { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); background: rgba(15,23,42,0.35); -webkit-overflow-scrolling: touch; max-width: 100%; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; min-width: 720px; }
 .data-table thead { background: rgba(15,23,42,0.75); position: sticky; top: 0; z-index: 1; }
 .data-table th { color: var(--text-muted); font-weight: 700; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; padding: 0.85rem 0.9rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -1947,6 +1947,22 @@ pre.output.hidden { display: none !important; }
   box-sizing: border-box;
 }
 .app-page.is-active { display: flex; }
+
+.app-content img,
+.app-content video,
+.app-content svg,
+.app-content canvas,
+.app-content iframe {
+  max-width: 100%;
+  height: auto;
+}
+
+.app-content pre,
+.app-content code {
+  max-width: 100%;
+  overflow-x: auto;
+  word-break: break-word;
+}
 
 .page-header {
   display: flex;
