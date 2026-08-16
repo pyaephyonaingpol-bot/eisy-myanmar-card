@@ -33,14 +33,27 @@
         this.initSupabase().catch((err) => console.warn('[Admin] Supabase init:', err.message));
 
         if (this.token) {
-          this.restoreSession();
+          document.documentElement.classList.add('has-session', 'app-hydrating');
+          this.restoreSession().finally(() => this.markAppReady());
         } else {
           this.showLogin();
           this.maybeShowBootstrap();
+          this.markAppReady();
         }
       } catch (err) {
         console.error('[Admin] init failed:', err);
         this.showBootError(err);
+        this.markAppReady();
+      }
+    },
+
+    markAppReady() {
+      document.documentElement.classList.add('app-ready');
+      document.documentElement.classList.remove('app-hydrating');
+      const splash = $('adminBootSplash');
+      if (splash) {
+        splash.hidden = true;
+        splash.setAttribute('aria-busy', 'false');
       }
     },
 
@@ -51,6 +64,7 @@
     showLogin() {
       const app = $('adminApp');
       const login = $('adminLogin');
+      document.documentElement.classList.remove('has-session', 'app-hydrating');
       if (app) {
         app.classList.add('hidden');
         app.style.display = '';
@@ -64,13 +78,14 @@
     showApp() {
       const app = $('adminApp');
       const login = $('adminLogin');
+      document.documentElement.classList.add('has-session');
       if (login) {
         login.classList.add('hidden');
         login.setAttribute('aria-hidden', 'true');
       }
       if (app) {
         app.classList.remove('hidden');
-        app.style.display = 'block';
+        app.style.display = '';
       }
     },
 
@@ -207,15 +222,18 @@
 
     async restoreSession() {
       try {
+        document.documentElement.classList.add('app-hydrating');
         const data = await this.api('GET', '/api/admin/auth/me');
         this.applySession(data);
         this.showApp();
-        this.loadAll();
+        await Promise.resolve(this.loadAll());
       } catch (err) {
         console.warn('[Admin] session restore failed:', err.message);
         this.clearSession();
         this.showLogin();
         this.maybeShowBootstrap();
+      } finally {
+        document.documentElement.classList.remove('app-hydrating');
       }
     },
 

@@ -35,10 +35,36 @@ const Dashboard = {
         .finally(() => {
           Auth.initLoginPanel();
           this.refreshAuthUI();
+          this.markAppReady();
         });
     } catch (err) {
       console.error('[Dashboard] init failed:', err);
+      this.markAppReady();
     }
+  },
+
+  markAppReady() {
+    document.documentElement.classList.add('app-ready');
+    const splash = $('appBootSplash');
+    if (splash) {
+      splash.hidden = true;
+      splash.setAttribute('aria-busy', 'false');
+    }
+  },
+
+  setHydrating(on) {
+    document.documentElement.classList.toggle('app-hydrating', Boolean(on));
+  },
+
+  beginHydration() {
+    this._hydrationToken = (this._hydrationToken || 0) + 1;
+    this.setHydrating(true);
+    return this._hydrationToken;
+  },
+
+  endHydration(token) {
+    if (token != null && token !== this._hydrationToken) return;
+    this.setHydrating(false);
   },
 
   initNavigationIfNeeded() {
@@ -4023,12 +4049,14 @@ const Dashboard = {
     const authScreen = $('authScreen');
     const dashboardScreen = $('dashboardScreen');
 
+    document.documentElement.classList.toggle('has-session', loggedIn);
     if (authScreen) authScreen.classList.toggle('hidden', loggedIn);
     if (dashboardScreen) dashboardScreen.classList.toggle('hidden', !loggedIn);
 
     if (!loggedIn) {
       this.clearCardsCache();
       this.allCards = [];
+      this.endHydration();
       if (window.location.hash && !window.location.hash.startsWith('#admin')) {
         history.replaceState(null, '', window.location.pathname + window.location.search);
       }
@@ -4036,6 +4064,7 @@ const Dashboard = {
     }
 
     this.initNavigationIfNeeded();
+    const hydrateToken = this.beginHydration();
 
     if (Auth.user) {
       if ($('headerUser')) $('headerUser').textContent = Auth.user.name || Auth.user.email;
@@ -4052,15 +4081,25 @@ const Dashboard = {
         this.applyCachedCardsIfAvailable();
         this.loadAllCards({ preserveSelection: true, silent: true });
       }
-      this.loadWallet();
-      this.loadTransactions();
-      this.loadDepositHistory();
-      this.loadCardPricing();
-      this.loadWithdrawalFees();
-      this.loadDepositPaymentMethods();
+
+      const pending = [
+        this.loadWallet(),
+        this.loadTransactions(),
+        this.loadDepositHistory(),
+        this.loadCardPricing(),
+        this.loadWithdrawalFees(),
+        this.loadDepositPaymentMethods(),
+        this.loadKycStatus(),
+      ];
+
+      const settle = Promise.allSettled(pending);
+      const timeout = new Promise((resolve) => setTimeout(resolve, 3500));
+      Promise.race([settle, timeout]).finally(() => {
+        this.endHydration(hydrateToken);
+      });
+
       this.updateHomeRateSummary();
       this.populateReloadCardSelect();
-      this.loadKycStatus();
       this.updateChangePasswordUI();
       this.bindSupabaseUserRealtime();
 
@@ -4068,6 +4107,8 @@ const Dashboard = {
         const hashPage = AppNav.pageFromHash?.();
         AppNav.navigate(hashPage || 'home', { pushHash: !hashPage, replace: true });
       }
+    } else {
+      this.endHydration(hydrateToken);
     }
   },
 
