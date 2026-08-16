@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="192x192" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="512x512" href="/icons/Icon-512.png" />
-  <link rel="stylesheet" href="/styles.css?v=20260816kb2" />
+  <link rel="stylesheet" href="/styles.css?v=20260816kb6" />
   <script>
     /* Early paint lock: avoid auth↔dashboard flash before JS mounts */
     (function () {
@@ -393,7 +393,7 @@
   </div>
 
   <div id="p2pReleaseConfirmModal" class="modal hidden" role="dialog" aria-labelledby="p2pReleaseConfirmTitle" aria-modal="true">
-    <div class="modal-box" style="max-width:440px">
+    <div class="modal-box" style="max-width:min(440px,100%)">
       <h3 id="p2pReleaseConfirmTitle" style="margin-top:0">Confirm USDT Release</h3>
       <p class="hint" style="margin:0.75rem 0 1rem">Have you checked your actual KPay/Bank account and confirmed the money has arrived?</p>
       <div class="p2p-release-confirm-actions">
@@ -404,7 +404,7 @@
   </div>
 
   <div id="p2pSellerDisputeModal" class="modal hidden" role="dialog" aria-labelledby="p2pSellerDisputeTitle" aria-modal="true">
-    <div class="modal-box" style="max-width:480px">
+    <div class="modal-box" style="max-width:min(480px,100%)">
       <div class="modal-header-row">
         <h3 id="p2pSellerDisputeTitle" style="margin:0">Open Dispute / Appeal</h3>
         <button type="button" id="p2pSellerDisputeClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
@@ -623,7 +623,7 @@
 
   <!-- ═══ KYC Required Gate Modal ═══ -->
   <div id="kycGateModal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modal-box" style="max-width:420px;text-align:center">
+    <div class="modal-box" style="max-width:min(420px,100%);text-align:center">
       <div style="font-size:2.5rem;margin-bottom:0.5rem" aria-hidden="true">🛡️</div>
       <h3 style="margin:0 0 0.5rem">KYC Verification Required to Trade P2P</h3>
       <p class="hint" id="kycGateMessage" style="margin-bottom:1.25rem">Complete identity verification before posting ads or placing P2P orders.</p>
@@ -939,7 +939,7 @@
                       <div class="summary-item"><span class="label">Account Name</span><span class="value" id="cardPayAccountName">—</span></div>
                       <div class="summary-item"><span class="label">Account / Phone</span><span class="value" id="cardPayAccountNumber">—</span></div>
                     </div>
-                    <img id="cardPayQrImg" class="hidden" alt="Payment QR code" style="margin-top:0.75rem;max-width:180px;border-radius:8px" />
+                    <img id="cardPayQrImg" class="hidden" alt="Payment QR code" style="margin-top:0.75rem;max-width:min(180px,100%);border-radius:8px" />
                   </div>
                   <p id="cardWalletHint" class="wallet-pay-hint ok hidden"></p>
                   <p id="cardWalletError" class="wallet-pay-hint err hidden"></p>

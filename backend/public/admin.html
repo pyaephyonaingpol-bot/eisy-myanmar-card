@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/favicon.png" type="image/png" />
   <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
-  <link rel="stylesheet" href="/styles.css?v=20260816kb2" />
+  <link rel="stylesheet" href="/styles.css?v=20260816kb6" />
   <script>
     /* Early paint lock: prefer admin shell when a session token exists */
     (function () {
@@ -29,9 +29,9 @@
   <style>
     /* Critical fallback — keeps dashboard visible even if styles.css fails */
     body { margin: 0; background: #0B1220; color: #E8EEF7; font-family: 'DM Sans', 'IBM Plex Sans', system-ui, sans-serif; }
-    #adminApp { height: 100%; height: 100svh; max-height: 100svh; overflow: hidden; }
-    html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
-    body { position: fixed; inset: 0; width: 100%; }
+    #adminApp { height: 100%; height: 100svh; max-height: 100svh; max-width: 100%; overflow: hidden; overflow-x: hidden; }
+    html, body { height: 100%; max-width: 100%; overflow: hidden; overflow-x: hidden; overscroll-behavior: none; }
+    body { position: fixed; inset: 0; width: auto; max-width: 100%; }
     #adminApp.hidden, #adminLogin.hidden { display: none !important; }
     html.has-session #adminLogin { display: none !important; }
     html.has-session #adminApp.hidden { display: flex !important; flex-direction: column; }
@@ -822,7 +822,7 @@
           Core exchange rate and product fees. Withdrawal fee / minimums are managed on
           <strong>Overview</strong>. Saves are logged to Exchange Rate History.
         </p>
-        <form id="adminSettingsForm" class="form sa-rates-form" style="max-width:640px">
+        <form id="adminSettingsForm" class="form sa-rates-form" style="max-width:min(640px,100%)">
           <p class="sa-section-label">Exchange rate</p>
           <div class="field">
             <label for="settingExchangeRate">USD / MMK rate</label>
@@ -914,7 +914,7 @@
           <strong>Apply for New Card</strong>, card reload, and Deposit flows.
         </p>
 
-        <form id="adminPaymentMethodForm" class="form grid-admin-form" style="max-width:760px;margin-bottom:1rem">
+        <form id="adminPaymentMethodForm" class="form grid-admin-form" style="max-width:min(760px,100%);margin-bottom:1rem">
           <input type="hidden" id="pmEditId" value="" />
           <div class="field">
             <label for="pmMethodType">Payment Type</label>
@@ -970,7 +970,7 @@
         <h2>Admin Accounts</h2>
         <p class="hint" style="margin-bottom:1rem">Super Admins can add, edit, or remove admin accounts and assign roles.</p>
 
-        <form id="adminCreateForm" class="form grid-admin-form" style="max-width:720px;margin-bottom:1.25rem">
+        <form id="adminCreateForm" class="form grid-admin-form" style="max-width:min(720px,100%);margin-bottom:1.25rem">
           <div class="field">
             <label for="newAdminName">Name</label>
             <input id="newAdminName" type="text" placeholder="Optional display name" />
@@ -1005,7 +1005,7 @@
 
   <div id="p2pDisputeReviewModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="p2pDisputeReviewTitle" aria-modal="true">
     <div class="proof-lightbox-backdrop p2p-dispute-review-backdrop"></div>
-    <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:720px">
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:min(720px,100%)">
       <button type="button" id="p2pDisputeReviewClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
       <h3 id="p2pDisputeReviewTitle" class="kyc-doc-viewer-title">P2P Dispute Review</h3>
       <div id="p2pDisputeReviewMeta" class="hint" style="margin-bottom:0.75rem"></div>
@@ -1033,7 +1033,7 @@
 
   <div id="issueCardModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="issueCardModalTitle" aria-modal="true">
     <div class="proof-lightbox-backdrop issue-card-modal-backdrop"></div>
-    <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:520px;width:96vw">
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:min(520px,100%);width:96vw">
       <button type="button" id="issueCardModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
       <h3 id="issueCardModalTitle" class="kyc-doc-viewer-title">Issue Virtual Card</h3>
       <p id="issueCardModalMeta" class="hint" style="margin-bottom:1rem;text-align:left"></p>
@@ -1056,7 +1056,7 @@
 
   <div id="depositReceiptReviewModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="depositReceiptReviewTitle" aria-modal="true">
     <div class="proof-lightbox-backdrop deposit-receipt-review-backdrop"></div>
-    <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:760px">
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:min(760px,100%)">
       <button type="button" id="depositReceiptReviewClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
       <h3 id="depositReceiptReviewTitle" class="kyc-doc-viewer-title">Deposit Receipt Review</h3>
       <div id="depositReceiptMeta" class="deposit-receipt-meta"></div>
