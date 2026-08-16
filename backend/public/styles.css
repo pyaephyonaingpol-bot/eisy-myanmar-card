@@ -1717,10 +1717,6 @@ body.sidebar-scroll-lock {
   .wallet-hero-actions {
     gap: 0.55rem;
   }
-
-  .account-menu-toggle-label { display: none; }
-  .account-menu-toggle { padding: 0.4rem 0.55rem; }
-  .account-menu-panel { min-width: 12.5rem; }
 }
 
 .rates-hero {
