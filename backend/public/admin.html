@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=overlays-content" />
   <title>Eisy Myanmar — Admin</title>
   <meta name="theme-color" content="#0F172A" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -12,15 +12,27 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/favicon.png" type="image/png" />
   <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
-  <link rel="stylesheet" href="/styles.css?v=20260816d" />
+  <link rel="stylesheet" href="/styles.css?v=20260816f" />
+  <script>
+    /* Early paint lock: prefer admin shell when a session token exists */
+    (function () {
+      try {
+        if (localStorage.getItem('eisy_admin_token')) {
+          document.documentElement.classList.add('has-session', 'app-hydrating');
+        }
+      } catch (_) { /* ignore */ }
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     /* Critical fallback — keeps dashboard visible even if styles.css fails */
     body { margin: 0; background: #0B1220; color: #E8EEF7; font-family: 'DM Sans', 'IBM Plex Sans', system-ui, sans-serif; }
-    #adminApp { min-height: 100vh; min-height: 100dvh; }
+    #adminApp { min-height: 100vh; min-height: 100svh; min-height: 100dvh; }
     #adminApp.hidden, #adminLogin.hidden { display: none !important; }
+    html.has-session #adminLogin { display: none !important; }
+    html.has-session #adminApp.hidden { display: flex !important; flex-direction: column; }
     #adminLogin .auth-card { max-width: 420px; width: 100%; }
     #adminLogin .auth-hint { color: #94a3b8; font-size: 0.85rem; margin-top: 0.75rem; line-height: 1.45; }
     #adminLogin .bootstrap-box {
@@ -329,11 +341,24 @@
 <body>
 
   <noscript>
-    <div style="padding:2rem;color:#e8edf4;background:#0f1419;min-height:100vh">
+    <div style="padding:2rem;color:#e8edf4;background:#0f1419;min-height:100vh;min-height:100svh">
       <h1>Eisy Myanmar Admin</h1>
       <p>JavaScript is required for the admin dashboard. Please enable JavaScript and reload.</p>
     </div>
   </noscript>
+
+  <div id="adminBootSplash" role="status" aria-live="polite" aria-busy="true">
+    <div class="boot-splash-brand">Eisy Admin</div>
+    <div class="boot-splash-spinner" aria-hidden="true"></div>
+    <div class="boot-splash-hint">Loading…</div>
+  </div>
+  <script>
+    setTimeout(function () {
+      document.documentElement.classList.add('app-ready');
+      var splash = document.getElementById('adminBootSplash');
+      if (splash) { splash.hidden = true; splash.setAttribute('aria-busy', 'false'); }
+    }, 8000);
+  </script>
 
   <div id="adminBootError" role="alert"></div>
 
@@ -446,7 +471,12 @@
               </div>
             </div>
             <div class="header-actions">
-              <div id="langSwitcherAdmin"></div>
+              <div id="langSwitcherAdmin">
+                <div class="lang-switcher" role="group" aria-label="Language">
+                  <button type="button" class="lang-btn" data-lang="my" aria-pressed="false">MY</button>
+                  <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
+                </div>
+              </div>
               <span id="adminCurrentRateBadge" class="badge badge-rate" data-i18n="current_rate_loading">Current Rate: loading…</span>
               <span id="adminStatusBadge" class="badge badge-ok">Signed out</span>
               <button type="button" id="adminRefreshBtn" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
@@ -1029,19 +1059,32 @@
   </div>
 
   <script>
-    /* Keep both shells hidden until admin.js decides login vs dashboard */
+    /* Prefer session shell when token exists; otherwise keep login visible */
     (function () {
       var app = document.getElementById('adminApp');
       var login = document.getElementById('adminLogin');
-      if (app) app.classList.add('hidden');
-      if (login) login.classList.remove('hidden');
+      var hasSession = false;
+      try { hasSession = Boolean(localStorage.getItem('eisy_admin_token')); } catch (_) {}
+      if (hasSession) {
+        if (login) {
+          login.classList.add('hidden');
+          login.setAttribute('aria-hidden', 'true');
+        }
+        if (app) app.classList.remove('hidden');
+      } else {
+        if (app) app.classList.add('hidden');
+        if (login) {
+          login.classList.remove('hidden');
+          login.setAttribute('aria-hidden', 'false');
+        }
+      }
     })();
   </script>
   <script src="/api-config.js?v=20260811b"></script>
   <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
-  <script src="/viewport.js?v=20260816d"></script>
-  <script src="/i18n.js?v=20260811b"></script>
+  <script src="/viewport.js?v=20260816f"></script>
+  <script src="/i18n.js?v=20260816f"></script>
   <script src="/nav.js?v=20260811b"></script>
-  <script src="/admin.js?v=20260812d" defer></script>
+  <script src="/admin.js?v=20260816f" defer></script>
 </body>
 </html>
