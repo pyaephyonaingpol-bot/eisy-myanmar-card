@@ -39,16 +39,25 @@
   --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Code', monospace;
   --container-max: 1180px;
-  /* Prefer dynamic viewport height on mobile browsers (address bar show/hide). */
+  /*
+   * Shell height: prefer 100svh so the soft keyboard does not shrink the layout
+   * (100dvh / visualViewport tracking causes mobile input focus jitter).
+   * --app-dvh tracks the visible area for overlays/modals that need it.
+   */
   --app-vh: 100vh;
+  --app-dvh: 100vh;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
 }
 
+@supports (height: 100svh) {
+  :root { --app-vh: 100svh; }
+}
+
 @supports (height: 100dvh) {
-  :root { --app-vh: 100dvh; }
+  :root { --app-dvh: 100dvh; }
 }
 
 html {
@@ -66,12 +75,21 @@ body {
   color: var(--text-primary);
   line-height: 1.55;
   min-height: 100vh;
-  min-height: var(--app-vh);
   min-height: -webkit-fill-available;
+  min-height: var(--app-vh);
   -webkit-font-smoothing: antialiased;
   /* Standalone PWA / notched devices */
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
+}
+
+/* While the soft keyboard is open, avoid viewport-tied height thrashing (mobile). */
+@media (max-width: 900px) {
+  body.keyboard-open .app-main,
+  body.keyboard-open .app-shell {
+    min-height: 0;
+    height: auto;
+  }
 }
 
 .hidden { display: none !important; }
@@ -575,7 +593,32 @@ a.btn { text-decoration: none; }
 .thread-item:hover { border-color: var(--border); background: rgba(148,163,184,0.06); }
 .thread-item.active { border-color: var(--accent); background: rgba(59,130,246,0.08); }
 .thread-item small { display: block; color: var(--text-muted); margin-top: 0.25rem; font-size: 0.75rem; }
-.support-messages { max-height: 300px; overflow-y: auto; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.65rem; }
+.support-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(420px, calc(var(--app-dvh) * 0.55));
+  overflow: hidden;
+}
+.support-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-bottom: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  -webkit-overflow-scrolling: touch;
+}
+.support-compose {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-elevated);
+  padding-bottom: max(0.25rem, var(--safe-bottom));
+}
 .msg { padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.875rem; border: 1px solid var(--border-subtle); }
 .msg-user { background: rgba(15,23,42,0.5); align-self: flex-start; max-width: 90%; }
 .msg-admin { background: rgba(59,130,246,0.1); align-self: flex-end; max-width: 90%; border-color: rgba(59,130,246,0.2); }
@@ -609,7 +652,7 @@ a.btn { text-decoration: none; }
   .actions-cell { flex-wrap: wrap; min-width: 0; }
   .badge-rate { max-width: 100%; }
 }
-.modal-box-wide { max-width: 520px; width: 100%; max-height: 92vh; overflow-y: auto; }
+.modal-box-wide { max-width: 520px; width: 100%; max-height: 92vh; max-height: calc(var(--app-dvh) * 0.92); overflow-y: auto; }
 .modal-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; }
 
 .reload-preview-box {
@@ -1145,8 +1188,14 @@ a.btn { text-decoration: none; }
   border-radius: 8px;
   overflow: hidden;
   background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Cap with stable + dynamic units so keyboard open does not thrash the shell */
+  max-height: min(280px, calc(var(--app-vh) * 0.42));
 }
 .p2p-trade-chat-header {
+  flex-shrink: 0;
   padding: 0.45rem 0.65rem;
   font-size: 0.78rem;
   font-weight: 600;
@@ -1156,13 +1205,17 @@ a.btn { text-decoration: none; }
   border-bottom: 1px solid rgba(148, 163, 184, 0.12);
 }
 .p2p-trade-chat-messages {
-  max-height: 160px;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0.55rem 0.65rem;
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
   font-size: 0.85rem;
+  -webkit-overflow-scrolling: touch;
 }
 .p2p-chat-msg {
   padding: 0.4rem 0.55rem;
@@ -1187,6 +1240,11 @@ a.btn { text-decoration: none; }
   gap: 0.35rem;
   padding: 0.45rem;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(8px);
 }
 .p2p-trade-chat-form input[type="text"] {
   flex: 1;
@@ -1196,6 +1254,7 @@ a.btn { text-decoration: none; }
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(15, 23, 42, 0.5);
   color: inherit;
+  font-size: 16px; /* Prevents iOS focus zoom that contributes to layout jump */
 }
 .p2p-dispute-form {
   margin-top: 0.65rem;
@@ -1573,6 +1632,7 @@ pre.output.hidden { display: none !important; }
   flex-direction: column;
   min-height: 100vh;
   min-height: var(--app-vh);
+  /* Desktop: lock to stable viewport; mobile overrides to auto below */
   height: 100vh;
   height: var(--app-vh);
   overflow: hidden;
@@ -1682,6 +1742,7 @@ body.sidebar-scroll-lock {
     bottom: 0;
     height: 100vh;
     height: var(--app-vh);
+    max-height: var(--app-vh);
     padding-top: var(--safe-top);
     padding-bottom: var(--safe-bottom);
     width: min(280px, 88vw);
@@ -1712,6 +1773,7 @@ body.sidebar-scroll-lock {
   .app-main {
     width: 100%;
     flex: 1 1 100%;
+    /* Flex + auto height: keyboard must not force a sudden 100dvh shrink */
     height: auto;
     min-height: 100vh;
     min-height: var(--app-vh);
@@ -1721,6 +1783,21 @@ body.sidebar-scroll-lock {
   .app-content {
     overflow: visible;
     min-height: 0;
+  }
+
+  /* Prevent iOS input-focus zoom (font < 16px) which looks like layout shake */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  .p2p-trade-chat {
+    max-height: min(240px, calc(var(--app-vh) * 0.38));
+  }
+
+  body.keyboard-open .p2p-trade-chat {
+    max-height: min(200px, 36vh);
   }
 }
 

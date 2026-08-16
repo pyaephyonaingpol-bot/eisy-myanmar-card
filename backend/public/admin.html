@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=overlays-content" />
   <title>Eisy Myanmar — Admin</title>
   <meta name="theme-color" content="#0F172A" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -12,14 +12,14 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/favicon.png" type="image/png" />
   <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
-  <link rel="stylesheet" href="/styles.css?v=20260816d" />
+  <link rel="stylesheet" href="/styles.css?v=20260816e" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     /* Critical fallback — keeps dashboard visible even if styles.css fails */
     body { margin: 0; background: #0B1220; color: #E8EEF7; font-family: 'DM Sans', 'IBM Plex Sans', system-ui, sans-serif; }
-    #adminApp { min-height: 100vh; min-height: 100dvh; }
+    #adminApp { min-height: 100vh; min-height: 100svh; }
     #adminApp.hidden, #adminLogin.hidden { display: none !important; }
     #adminLogin .auth-card { max-width: 420px; width: 100%; }
     #adminLogin .auth-hint { color: #94a3b8; font-size: 0.85rem; margin-top: 0.75rem; line-height: 1.45; }
@@ -329,7 +329,7 @@
 <body>
 
   <noscript>
-    <div style="padding:2rem;color:#e8edf4;background:#0f1419;min-height:100vh">
+    <div style="padding:2rem;color:#e8edf4;background:#0f1419;min-height:100vh;min-height:100svh">
       <h1>Eisy Myanmar Admin</h1>
       <p>JavaScript is required for the admin dashboard. Please enable JavaScript and reload.</p>
     </div>
@@ -733,12 +733,14 @@
           </div>
           <div>
             <h2 id="supportThreadTitle">Select a thread</h2>
-            <div id="supportMessages" class="support-messages"></div>
-            <form id="supportReplyForm" class="form hidden">
-              <div class="field"><label for="supportReplyText">Reply</label><textarea id="supportReplyText" rows="3"></textarea></div>
-              <button type="submit" class="btn btn-primary">Send Reply</button>
-              <button type="button" id="supportCloseBtn" class="btn btn-secondary">Close Thread</button>
-            </form>
+            <div class="support-chat">
+              <div id="supportMessages" class="support-messages"></div>
+              <form id="supportReplyForm" class="form support-compose hidden">
+                <div class="field"><label for="supportReplyText">Reply</label><textarea id="supportReplyText" rows="3"></textarea></div>
+                <button type="submit" class="btn btn-primary">Send Reply</button>
+                <button type="button" id="supportCloseBtn" class="btn btn-secondary">Close Thread</button>
+              </form>
+            </div>
           </div>
         </div>
       </section>
@@ -1039,7 +1041,7 @@
   </script>
   <script src="/api-config.js?v=20260811b"></script>
   <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
-  <script src="/viewport.js?v=20260816d"></script>
+  <script src="/viewport.js?v=20260816e"></script>
   <script src="/i18n.js?v=20260811b"></script>
   <script src="/nav.js?v=20260811b"></script>
   <script src="/admin.js?v=20260812d" defer></script>
