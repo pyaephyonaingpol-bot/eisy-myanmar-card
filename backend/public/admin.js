@@ -33,14 +33,27 @@
         this.initSupabase().catch((err) => console.warn('[Admin] Supabase init:', err.message));
 
         if (this.token) {
-          this.restoreSession();
+          document.documentElement.classList.add('has-session', 'app-hydrating');
+          this.restoreSession().finally(() => this.markAppReady());
         } else {
           this.showLogin();
           this.maybeShowBootstrap();
+          this.markAppReady();
         }
       } catch (err) {
         console.error('[Admin] init failed:', err);
         this.showBootError(err);
+        this.markAppReady();
+      }
+    },
+
+    markAppReady() {
+      document.documentElement.classList.add('app-ready');
+      document.documentElement.classList.remove('app-hydrating');
+      const splash = $('adminBootSplash');
+      if (splash) {
+        splash.hidden = true;
+        splash.setAttribute('aria-busy', 'false');
       }
     },
 
@@ -51,6 +64,7 @@
     showLogin() {
       const app = $('adminApp');
       const login = $('adminLogin');
+      document.documentElement.classList.remove('has-session', 'app-hydrating');
       if (app) {
         app.classList.add('hidden');
         app.style.display = '';
@@ -64,13 +78,14 @@
     showApp() {
       const app = $('adminApp');
       const login = $('adminLogin');
+      document.documentElement.classList.add('has-session');
       if (login) {
         login.classList.add('hidden');
         login.setAttribute('aria-hidden', 'true');
       }
       if (app) {
         app.classList.remove('hidden');
-        app.style.display = 'block';
+        app.style.display = '';
       }
     },
 
@@ -207,15 +222,18 @@
 
     async restoreSession() {
       try {
+        document.documentElement.classList.add('app-hydrating');
         const data = await this.api('GET', '/api/admin/auth/me');
         this.applySession(data);
         this.showApp();
-        this.loadAll();
+        await Promise.resolve(this.loadAll());
       } catch (err) {
         console.warn('[Admin] session restore failed:', err.message);
         this.clearSession();
         this.showLogin();
         this.maybeShowBootstrap();
+      } finally {
+        document.documentElement.classList.remove('app-hydrating');
       }
     },
 
@@ -375,7 +393,9 @@
       if (name === 'settings') {
         this.loadSettings();
         this.loadExchangeRateHistory();
-        if (this.hasPermission('payment_methods')) this.loadPaymentMethods();
+      }
+      if (name === 'payment-methods') {
+        this.loadPaymentMethods();
       }
       if (name === 'kyc-requests') {
         this.loadKycRequests();
@@ -454,13 +474,24 @@
       $('adminPaymentMethodsTable')?.addEventListener('click', (e) => {
         const editBtn = e.target.closest('[data-action="edit-payment-method"]');
         const delBtn = e.target.closest('[data-action="delete-payment-method"]');
+        const toggleBtn = e.target.closest('[data-action="toggle-payment-method"]');
         if (editBtn) {
           this.editPaymentMethod(parseInt(editBtn.dataset.id, 10));
+          return;
+        }
+        if (toggleBtn) {
+          this.togglePaymentMethod(
+            parseInt(toggleBtn.dataset.id, 10),
+            toggleBtn.dataset.active !== '1'
+          );
           return;
         }
         if (delBtn) {
           this.deletePaymentMethod(parseInt(delBtn.dataset.id, 10));
         }
+      });
+      document.querySelectorAll('[data-goto="payment-methods"]').forEach((btn) => {
+        btn.addEventListener('click', () => this.switchTab('payment-methods'));
       });
 
       const usdtWdTable = $('usdtWithdrawalsTable');
@@ -2699,68 +2730,81 @@
         this._paymentMethods = Array.isArray(data.payment_methods) ? data.payment_methods : [];
         const rows = this._paymentMethods;
         if (!rows.length) {
-          table.innerHTML = '<p class="hint">No bank accounts yet. Add one above.</p>';
+          table.innerHTML = '<p class="hint">No payment methods yet. Add a bank / KBZPay / WavePay account above.</p>';
           return;
         }
+        const typeLabel = (t) => ({
+          kbzpay: 'KBZPay',
+          wavepay: 'WavePay',
+          bank_transfer: 'Bank Transfer',
+          other: 'Other',
+        }[t] || t || 'Bank Transfer');
         table.innerHTML =
           '<table class="data-table"><thead><tr>' +
-            '<th>ID</th><th>Bank</th><th>Account Name</th><th>Account Number</th><th>QR</th><th>Status</th><th>Order</th><th>Actions</th>' +
+            '<th>ID</th><th>Type</th><th>Display Name</th><th>Account Name</th><th>Account / Phone</th><th>Status</th><th>Order</th><th>Actions</th>' +
           '</tr></thead><tbody>' +
           rows.map((m) => {
-            const qr = m.qr_code_image_url
-              ? '<a href="' + this.esc(m.qr_code_image_url) + '" target="_blank" rel="noopener">View</a>'
-              : '—';
+            const active = Boolean(m.is_active);
             return '<tr>' +
               '<td>' + m.id + '</td>' +
+              '<td>' + this.esc(typeLabel(m.method_type)) + '</td>' +
               '<td>' + this.esc(m.bank_name) + '</td>' +
               '<td>' + this.esc(m.account_name) + '</td>' +
               '<td><code>' + this.esc(m.account_number) + '</code></td>' +
-              '<td>' + qr + '</td>' +
-              '<td>' + (m.is_active ? this.statusBadge('active') : this.statusBadge('hidden')) + '</td>' +
+              '<td>' + (active ? this.statusBadge('active') : this.statusBadge('hidden')) + '</td>' +
               '<td>' + (m.sort_order ?? 0) + '</td>' +
               '<td class="actions-cell">' +
                 '<button type="button" class="btn btn-sm btn-secondary" data-action="edit-payment-method" data-id="' + m.id + '">Edit</button>' +
+                '<button type="button" class="btn btn-sm ' + (active ? 'btn-secondary' : 'btn-primary') + '" data-action="toggle-payment-method" data-id="' + m.id + '" data-active="' + (active ? '1' : '0') + '">' +
+                  (active ? 'Deactivate' : 'Activate') +
+                '</button>' +
                 '<button type="button" class="btn btn-sm btn-reject" data-action="delete-payment-method" data-id="' + m.id + '">Delete</button>' +
               '</td></tr>';
           }).join('') +
           '</tbody></table>';
       } catch (err) {
-        table.innerHTML = '<p class="hint" style="color:#ef4444">Failed to load bank accounts: ' + this.esc(err.message) + '</p>';
+        table.innerHTML = '<p class="hint" style="color:#ef4444">Failed to load payment methods: ' + this.esc(err.message) + '</p>';
       }
     },
 
     resetPaymentMethodForm() {
       if ($('pmEditId')) $('pmEditId').value = '';
+      if ($('pmMethodType')) $('pmMethodType').value = 'bank_transfer';
       if ($('pmBankName')) $('pmBankName').value = '';
       if ($('pmAccountName')) $('pmAccountName').value = '';
       if ($('pmAccountNumber')) $('pmAccountNumber').value = '';
       if ($('pmQrUrl')) $('pmQrUrl').value = '';
+      if ($('pmNotes')) $('pmNotes').value = '';
       if ($('pmSortOrder')) $('pmSortOrder').value = '0';
       if ($('pmActive')) $('pmActive').value = '1';
-      if ($('pmSubmitBtn')) $('pmSubmitBtn').textContent = 'Add Bank Account';
+      if ($('pmSubmitBtn')) $('pmSubmitBtn').textContent = 'Add Payment Method';
     },
 
     editPaymentMethod(id) {
       const row = (this._paymentMethods || []).find((m) => Number(m.id) === Number(id));
       if (!row) return;
       if ($('pmEditId')) $('pmEditId').value = String(row.id);
+      if ($('pmMethodType')) $('pmMethodType').value = row.method_type || 'bank_transfer';
       if ($('pmBankName')) $('pmBankName').value = row.bank_name || '';
       if ($('pmAccountName')) $('pmAccountName').value = row.account_name || '';
       if ($('pmAccountNumber')) $('pmAccountNumber').value = row.account_number || '';
       if ($('pmQrUrl')) $('pmQrUrl').value = row.qr_code_image_url || '';
+      if ($('pmNotes')) $('pmNotes').value = row.notes || '';
       if ($('pmSortOrder')) $('pmSortOrder').value = String(row.sort_order ?? 0);
       if ($('pmActive')) $('pmActive').value = row.is_active ? '1' : '0';
-      if ($('pmSubmitBtn')) $('pmSubmitBtn').textContent = 'Update Bank Account';
+      if ($('pmSubmitBtn')) $('pmSubmitBtn').textContent = 'Update Payment Method';
       $('adminPaymentMethodForm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
 
     async savePaymentMethod() {
       const id = ($('pmEditId')?.value || '').trim();
       const body = {
+        method_type: $('pmMethodType')?.value || 'bank_transfer',
         bank_name: $('pmBankName')?.value?.trim(),
         account_name: $('pmAccountName')?.value?.trim(),
         account_number: $('pmAccountNumber')?.value?.trim(),
         qr_code_image_url: $('pmQrUrl')?.value?.trim() || null,
+        notes: $('pmNotes')?.value?.trim() || null,
         sort_order: parseInt($('pmSortOrder')?.value || '0', 10) || 0,
         is_active: ($('pmActive')?.value || '1') === '1',
       };
@@ -2772,21 +2816,35 @@
         }
         this.resetPaymentMethodForm();
         await this.loadPaymentMethods();
-        alert(id ? 'Bank account updated' : 'Bank account added');
+        this.showAdminToast(id ? 'Payment method updated' : 'Payment method added', 'ok');
       } catch (err) {
-        alert(err.message || 'Failed to save bank account');
+        alert(err.message || 'Failed to save payment method');
+      }
+    },
+
+    async togglePaymentMethod(id, makeActive) {
+      if (!id) return;
+      try {
+        await this.api('PATCH', '/api/admin/payment-methods/' + encodeURIComponent(id) + '/active', {
+          is_active: Boolean(makeActive),
+        });
+        await this.loadPaymentMethods();
+        this.showAdminToast(makeActive ? 'Payment method activated' : 'Payment method deactivated', 'ok');
+      } catch (err) {
+        alert(err.message || 'Failed to update status');
       }
     },
 
     async deletePaymentMethod(id) {
       if (!id) return;
-      if (!confirm('Delete this bank account from the deposit page?')) return;
+      if (!confirm('Delete this payment method? Users will no longer see it for card applications or deposits.')) return;
       try {
         await this.api('DELETE', '/api/admin/payment-methods/' + encodeURIComponent(id));
         if (String($('pmEditId')?.value || '') === String(id)) this.resetPaymentMethodForm();
         await this.loadPaymentMethods();
+        this.showAdminToast('Payment method deleted', 'ok');
       } catch (err) {
-        alert(err.message || 'Failed to delete bank account');
+        alert(err.message || 'Failed to delete payment method');
       }
     },
 

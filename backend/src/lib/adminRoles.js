@@ -21,7 +21,7 @@ const ROLE_LABELS = {
 const PERMISSIONS = {
   manage_admins: [ROLES.SUPER_ADMIN],
   settings_write: [ROLES.SUPER_ADMIN],
-  payment_methods: [ROLES.SUPER_ADMIN],
+  payment_methods: [ROLES.SUPER_ADMIN, ROLES.FINANCE_ADMIN],
   master_wallet: [ROLES.SUPER_ADMIN],
   /** Super + Finance can view/update withdrawal exchange rate & service fees */
   withdrawal_rates_read: [ROLES.SUPER_ADMIN, ROLES.FINANCE_ADMIN],
@@ -55,6 +55,7 @@ const PAGE_PERMISSIONS = {
   support: 'support',
   'kyc-requests': 'kyc',
   settings: 'settings_read',
+  'payment-methods': 'payment_methods',
   'withdrawal-rates': 'withdrawal_rates_read',
   admins: 'manage_admins',
 };

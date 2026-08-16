@@ -1,7 +1,10 @@
 const { getDb } = require('../db');
 
+const METHOD_TYPES = ['kbzpay', 'wavepay', 'bank_transfer', 'other'];
+
 const DepositPaymentMethod = {
   TABLE: 'deposit_payment_methods',
+  METHOD_TYPES,
 
   toPublic(row) {
     if (!row) return null;
@@ -10,11 +13,14 @@ const DepositPaymentMethod = {
       bank_name: row.bank_name,
       account_name: row.account_name,
       account_number: row.account_number,
+      method_type: row.method_type || 'bank_transfer',
+      notes: row.notes || null,
       qr_code_image_url: row.qr_code_image_url || null,
       is_active: Number(row.is_active) === 1,
       sort_order: Number(row.sort_order) || 0,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      label: `${row.bank_name} — ${row.account_name}`,
     };
   },
 
@@ -42,6 +48,8 @@ const DepositPaymentMethod = {
     bankName,
     accountName,
     accountNumber,
+    methodType = 'bank_transfer',
+    notes = null,
     qrCodeImageUrl = null,
     isActive = true,
     sortOrder = 0,
@@ -49,11 +57,13 @@ const DepositPaymentMethod = {
     const db = getDb();
     const result = await db.run(
       `INSERT INTO ${this.TABLE}
-        (bank_name, account_name, account_number, qr_code_image_url, is_active, sort_order, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+        (bank_name, account_name, account_number, method_type, notes, qr_code_image_url, is_active, sort_order, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       bankName,
       accountName,
       accountNumber,
+      methodType || 'bank_transfer',
+      notes || null,
       qrCodeImageUrl || null,
       isActive ? 1 : 0,
       Number(sortOrder) || 0
@@ -68,6 +78,8 @@ const DepositPaymentMethod = {
     const bankName = fields.bankName ?? fields.bank_name ?? existing.bank_name;
     const accountName = fields.accountName ?? fields.account_name ?? existing.account_name;
     const accountNumber = fields.accountNumber ?? fields.account_number ?? existing.account_number;
+    const methodType = fields.methodType ?? fields.method_type ?? existing.method_type ?? 'bank_transfer';
+    const notes = fields.notes !== undefined ? fields.notes : existing.notes;
     const qrCodeImageUrl = fields.qrCodeImageUrl !== undefined
       ? fields.qrCodeImageUrl
       : (fields.qr_code_image_url !== undefined ? fields.qr_code_image_url : existing.qr_code_image_url);
@@ -82,6 +94,8 @@ const DepositPaymentMethod = {
        SET bank_name = ?,
            account_name = ?,
            account_number = ?,
+           method_type = ?,
+           notes = ?,
            qr_code_image_url = ?,
            is_active = ?,
            sort_order = ?,
@@ -90,6 +104,8 @@ const DepositPaymentMethod = {
       bankName,
       accountName,
       accountNumber,
+      methodType || 'bank_transfer',
+      notes || null,
       qrCodeImageUrl || null,
       isActive ? 1 : 0,
       Number(sortOrder) || 0,

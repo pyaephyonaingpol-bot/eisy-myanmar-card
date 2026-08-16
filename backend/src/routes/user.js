@@ -28,6 +28,7 @@ const {
   purchaseCardFromUsdtWallet,
   reloadCardFromUsdtWallet,
 } = require('../services/cardWalletService');
+const { resolveActivePaymentMethod } = require('../services/depositPaymentMethodService');
 const {
   isPendingCardRecord,
   normalizeCardStatus,
@@ -289,11 +290,17 @@ router.post('/card/request', requireAuth, requireSensitive, async (req, res) => 
 
     const settings = await getCardPricingSettings();
     const initialLoadUsd = parseFloat(req.body.initial_load_usd);
-    const paymentMethod = req.body.payment_method || 'KBZPay';
 
-    if (!['KBZPay', 'WavePay', 'KPay', 'Other', 'USDT'].includes(paymentMethod)) {
-      return res.status(400).json({ error: 'Invalid payment_method' });
+    let methodRow;
+    try {
+      methodRow = await resolveActivePaymentMethod({
+        paymentMethodId: req.body.payment_method_id,
+        paymentMethod: req.body.payment_method,
+      });
+    } catch (resolveErr) {
+      return res.status(400).json({ error: resolveErr.message || 'Payment method unavailable' });
     }
+    const paymentMethod = methodRow.bank_name;
 
     const pricing = calculateCardRequestPricing(initialLoadUsd, settings);
     const rateSnapshot = await buildRateSnapshot();
@@ -301,6 +308,13 @@ router.post('/card/request', requireAuth, requireSensitive, async (req, res) => 
     const cardMetadata = {
       pricing,
       payment_method: paymentMethod,
+      payment_method_id: methodRow.id,
+      bank_account: {
+        bank_name: methodRow.bank_name,
+        account_name: methodRow.account_name,
+        account_number: methodRow.account_number,
+        method_type: methodRow.method_type,
+      },
       requested_at: new Date().toISOString(),
       rate_snapshot: rateSnapshot,
     };
@@ -317,6 +331,12 @@ router.post('/card/request', requireAuth, requireSensitive, async (req, res) => 
       card_request_id: card.id,
       pricing,
       rate_snapshot: rateSnapshot,
+      payment_method_id: methodRow.id,
+      bank_name: methodRow.bank_name,
+      account_name: methodRow.account_name,
+      account_number: methodRow.account_number,
+      method_type: methodRow.method_type,
+      qr_code_image_url: methodRow.qr_code_image_url,
     };
 
     const deposit = await createDepositRequest(req.user.id, {
@@ -345,7 +365,7 @@ router.post('/card/request', requireAuth, requireSensitive, async (req, res) => 
       referenceId: card.id,
       description: `New card request — load $${pricing.initial_load_usd.toFixed(2)} + fee $${pricing.issuance_fee_usd.toFixed(2)}`,
       createdBy: 'user',
-      metadata: { pricing, deposit_id: deposit.id, deposit_ref: deposit.ref_code },
+      metadata: { pricing, deposit_id: deposit.id, deposit_ref: deposit.ref_code, payment_method_id: methodRow.id },
     });
 
     res.json({
@@ -361,10 +381,18 @@ router.post('/card/request', requireAuth, requireSensitive, async (req, res) => 
         mmk_to_usd_rate: pricing.mmk_to_usd_rate,
         payment_method: paymentMethod,
       },
+      payment_method: methodRow,
       payment_instructions: {
         ref_code: deposit.ref_code,
         amount_mmk: pricing.total_mmk,
         message: `Send exactly ${pricing.total_mmk.toLocaleString()} MMK via ${paymentMethod}`,
+        bank_name: methodRow.bank_name,
+        account_name: methodRow.account_name,
+        account_number: methodRow.account_number,
+        method_type: methodRow.method_type,
+        qr_code_image_url: methodRow.qr_code_image_url,
+        qr_code_url: methodRow.qr_code_image_url
+          || `/api/qr?size=200&data=${encodeURIComponent(methodRow.account_number)}`,
       },
     });
   } catch (err) {
@@ -433,14 +461,23 @@ router.post('/card/reload', requireAuth, requireSensitive, async (req, res) => {
       });
     }
 
-    const paymentMethod = req.body.payment_method || 'KBZPay';
+    const paymentMethodRaw = req.body.payment_method || null;
+    const paymentMethodId = req.body.payment_method_id || null;
 
     if (!cardId) {
       return res.status(400).json({ error: 'card_id is required — select a card to reload' });
     }
-    if (!['KBZPay', 'WavePay', 'KPay', 'Other', 'USDT'].includes(paymentMethod)) {
-      return res.status(400).json({ error: 'Invalid payment_method' });
+
+    let methodRow;
+    try {
+      methodRow = await resolveActivePaymentMethod({
+        paymentMethodId,
+        paymentMethod: paymentMethodRaw,
+      });
+    } catch (resolveErr) {
+      return res.status(400).json({ error: resolveErr.message || 'Payment method unavailable' });
     }
+    const paymentMethod = methodRow.bank_name;
 
     const card = await Card.findById(cardId);
     if (!card || card.user_id !== req.user.id) {
@@ -462,6 +499,12 @@ router.post('/card/reload', requireAuth, requireSensitive, async (req, res) => {
       card_label: cardLabel,
       card_last4: mapped.last4,
       payment_method: paymentMethod,
+      payment_method_id: methodRow.id,
+      bank_name: methodRow.bank_name,
+      account_name: methodRow.account_name,
+      account_number: methodRow.account_number,
+      method_type: methodRow.method_type,
+      qr_code_image_url: methodRow.qr_code_image_url,
       purpose: 'card_reload',
       pricing: {
         ...pricing,
@@ -507,11 +550,19 @@ router.post('/card/reload', requireAuth, requireSensitive, async (req, res) => {
         card_label: cardLabel,
         payment_method: paymentMethod,
       },
+      payment_method: methodRow,
       payment_instructions: {
         ref_code: deposit.ref_code,
         amount_mmk: pricing.deposit_mmk,
         message: `Send exactly ${pricing.deposit_mmk.toLocaleString()} MMK via ${paymentMethod}`,
         note: `Card reload — $${pricing.net_usd_to_card.toFixed(2)} USD top-up + $${pricing.reload_fee_usd.toFixed(2)} service fee (${pricing.deposit_mmk.toLocaleString()} MMK total)`,
+        bank_name: methodRow.bank_name,
+        account_name: methodRow.account_name,
+        account_number: methodRow.account_number,
+        method_type: methodRow.method_type,
+        qr_code_image_url: methodRow.qr_code_image_url,
+        qr_code_url: methodRow.qr_code_image_url
+          || `/api/qr?size=200&data=${encodeURIComponent(methodRow.account_number)}`,
       },
     });
   } catch (err) {
