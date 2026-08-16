@@ -42,6 +42,101 @@ function isUsdtVerificationBypassEnabled() {
   return true;
 }
 
+/** Seconds to treat identical USDT deposit creates/submits as spam. Default 90. Set 0 to disable. */
+function getUsdtDepositDuplicateWindowSec() {
+  const parsed = parseInt(process.env.USDT_DEPOSIT_DUPLICATE_WINDOW_SEC || '90', 10);
+  if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  return 90;
+}
+
+const OPEN_USDT_DEPOSIT_STATUSES = new Set([
+  'PENDING',
+  'AWAITING_SCREENSHOT',
+  'SUBMITTED',
+  'UNDER_REVIEW',
+]);
+
+function amountsMatchUsdt(a, b, epsilon = 0.005) {
+  const left = Number(a);
+  const right = Number(b);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  return Math.abs(left - right) <= epsilon;
+}
+
+/**
+ * Reject rapid duplicate USDT deposit creates / TxID submits from the same user
+ * so double-clicks and spam do not flood the admin queue.
+ */
+async function assertNoRapidDuplicateUsdtDeposit(userId, {
+  amountUsdt = null,
+  txHash = null,
+  excludeDepositId = null,
+  network = null,
+} = {}) {
+  const windowSec = getUsdtDepositDuplicateWindowSec();
+  if (windowSec <= 0) return null;
+
+  const hash = String(txHash || '').trim();
+  const amount = amountUsdt == null ? null : Number(amountUsdt);
+  if (!hash && !Number.isFinite(amount)) return null;
+
+  const db = getDb();
+  const rows = await db.all(`
+    SELECT id, ref_code, status, amount_usd, usdt_network, payment_method,
+           tx_hash, txn_id, kpay_transaction_id, created_at, updated_at, submitted_at
+    FROM deposit_requests_v2
+    WHERE user_id = ?
+      AND (purpose = 'usdt_topup' OR deposit_currency = 'USDT')
+      AND (
+        created_at >= datetime('now', ?)
+        OR updated_at >= datetime('now', ?)
+        OR submitted_at >= datetime('now', ?)
+      )
+    ORDER BY id DESC
+    LIMIT 40
+  `, userId, `-${windowSec} seconds`, `-${windowSec} seconds`, `-${windowSec} seconds`);
+
+  const net = network ? String(network).toUpperCase() : null;
+
+  for (const row of rows || []) {
+    if (excludeDepositId != null && Number(row.id) === Number(excludeDepositId)) continue;
+
+    if (hash) {
+      const existingHash = String(row.tx_hash || row.txn_id || row.kpay_transaction_id || '').trim();
+      if (existingHash && existingHash.toLowerCase() === hash.toLowerCase()) {
+        const err = new Error(
+          `Duplicate deposit blocked — TxHash already submitted recently (${row.ref_code}).`
+        );
+        err.code = 'DUPLICATE_DEPOSIT_REQUEST';
+        err.status = 409;
+        err.existing = { id: row.id, ref_code: row.ref_code, status: row.status };
+        throw err;
+      }
+    }
+
+    if (
+      Number.isFinite(amount)
+      && OPEN_USDT_DEPOSIT_STATUSES.has(String(row.status || '').toUpperCase())
+      && amountsMatchUsdt(row.amount_usd, amount)
+    ) {
+      if (net) {
+        const rowNet = String(row.usdt_network || '').toUpperCase()
+          || (String(row.payment_method || '').toUpperCase().includes('BEP20') ? 'BEP20' : 'TRC20');
+        if (rowNet && rowNet !== net) continue;
+      }
+      const err = new Error(
+        `Duplicate deposit blocked — you already have an open ${formatUsdt(amount)} request (${row.ref_code}). Wait or use the existing request.`
+      );
+      err.code = 'DUPLICATE_DEPOSIT_REQUEST';
+      err.status = 409;
+      err.existing = { id: row.id, ref_code: row.ref_code, status: row.status };
+      throw err;
+    }
+  }
+
+  return null;
+}
+
 function generateRefCode() {
   // 8 hex chars (~4B space) — harder to guess than 4 digits for listener attacks
   return `REF-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -183,6 +278,11 @@ async function createUsdtDepositRequest(userId, {
   if (!depositAddress) {
     throw new Error('USDT deposit address is not configured');
   }
+
+  await assertNoRapidDuplicateUsdtDeposit(userId, {
+    amountUsdt: amount,
+    network: net,
+  });
 
   const refCode = await uniqueRefCode();
   const grossAmount = feeBreakdown.amount_usdt;
@@ -342,6 +442,11 @@ async function submitAndAutoVerifyUsdtDeposit(depositId, {
   }
 
   await assertTxHashAvailable(hash, depositId);
+  // Block reusing a TxID that was already attached to another recent deposit.
+  await assertNoRapidDuplicateUsdtDeposit(userId, {
+    txHash: hash,
+    excludeDepositId: depositId,
+  });
 
   if (deposit.status === 'VERIFIED') {
     const user = await User.findById(userId);
@@ -1009,6 +1114,9 @@ module.exports = {
   findVerifiedDepositByTxHash,
   findDepositByTxHash,
   assertTxHashAvailable,
+  assertNoRapidDuplicateUsdtDeposit,
+  getUsdtDepositDuplicateWindowSec,
+  amountsMatchUsdt,
   isUsdtVerificationBypassEnabled,
   uniqueRefCode,
 };

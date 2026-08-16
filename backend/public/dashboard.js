@@ -546,6 +546,10 @@ const Dashboard = {
   },
 
   resetUsdtDepositForm() {
+    this._usdtDepositRequestInFlight = false;
+    this._usdtDepositSubmitInFlight = false;
+    this.setSubmitBusy($('btnSubmitUsdtDeposit'), false, { idleLabel: 'Generate Deposit Request' });
+    this.setSubmitBusy($('btnSubmitUsdtProof'), false, { idleLabel: 'Submit USDT Deposit' });
     $('usdtDepositForm')?.reset();
     $('usdtDepositSubmitForm')?.reset();
     $('usdtAddressBox')?.classList.add('hidden');
@@ -556,6 +560,27 @@ const Dashboard = {
       $('usdtQrCode').removeAttribute('src');
     }
     this._usdtDepositAddress = '';
+  },
+
+  /** Disable a submit button and show an inline spinner while a request is in flight. */
+  setSubmitBusy(btn, busy, { loadingLabel, idleLabel } = {}) {
+    if (!btn) return;
+    if (busy) {
+      if (!btn.dataset.idleLabel) {
+        btn.dataset.idleLabel = (btn.textContent || '').trim();
+      }
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+      btn.classList.add('is-busy');
+      const label = loadingLabel || 'Submitting…';
+      btn.innerHTML = `<span class="btn-spinner" aria-hidden="true"></span><span>${label}</span>`;
+      return;
+    }
+    btn.disabled = false;
+    btn.removeAttribute('aria-busy');
+    btn.classList.remove('is-busy');
+    btn.textContent = idleLabel || btn.dataset.idleLabel || btn.textContent;
+    delete btn.dataset.idleLabel;
   },
 
   switchDepositTab(tab) {
@@ -3057,6 +3082,12 @@ const Dashboard = {
         $('btnCreateBinancePay')?.click();
         return;
       }
+      if (this._usdtDepositRequestInFlight) return;
+
+      const btn = $('btnSubmitUsdtDeposit');
+      this._usdtDepositRequestInFlight = true;
+      this.setSubmitBusy(btn, true, { loadingLabel: 'Creating…' });
+
       try {
         const network = $('usdtNetwork').value;
         const amountUsdt = parseFloat($('usdtAmount').value);
@@ -3085,11 +3116,16 @@ const Dashboard = {
       } catch (err) {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
         this.toast(err.message || 'USDT deposit request failed', 'error');
+      } finally {
+        this._usdtDepositRequestInFlight = false;
+        this.setSubmitBusy(btn, false, { idleLabel: 'Generate Deposit Request' });
       }
     });
 
     $('usdtDepositSubmitForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (this._usdtDepositSubmitInFlight) return;
+
       const hash = $('usdtTxnHash')?.value?.trim();
       if (!hash) {
         this.toast('Please enter your TxHash / Transaction ID', 'error');
@@ -3100,6 +3136,11 @@ const Dashboard = {
         this.toast('Generate a deposit request first', 'error');
         return;
       }
+
+      const btn = $('btnSubmitUsdtProof');
+      this._usdtDepositSubmitInFlight = true;
+      this.setSubmitBusy(btn, true, { loadingLabel: 'Submitting…' });
+
       try {
         const body = {
           deposit_id: parseInt($('usdtActiveDepositId').value, 10),
@@ -3147,6 +3188,14 @@ const Dashboard = {
       } catch (err) {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
         this.toast(err.message || 'Failed to submit USDT proof', 'error');
+      } finally {
+        // resetUsdtDepositForm clears the busy state; only restore if form still visible
+        if (this._usdtDepositSubmitInFlight) {
+          this._usdtDepositSubmitInFlight = false;
+          if (!$('usdtDepositSubmitForm')?.classList.contains('hidden')) {
+            this.setSubmitBusy(btn, false, { idleLabel: 'Submit USDT Deposit' });
+          }
+        }
       }
     });
 
