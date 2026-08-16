@@ -67,7 +67,9 @@ html {
   height: 100%;
   height: var(--app-vh);
   max-height: var(--app-vh);
+  max-width: 100%;
   overflow: hidden;
+  overflow-x: hidden;
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -81,13 +83,16 @@ body {
     radial-gradient(ellipse 60% 40% at 100% 0%, rgba(34, 197, 94, 0.06), transparent);
   color: var(--text-primary);
   line-height: 1.55;
-  /* Fixed shell: keyboard overlays; page itself does not bounce/resize */
+  /* Fixed shell: keyboard overlays; page itself does not bounce/resize.
+     Use inset alone (no width:100%) so safe-area padding cannot force overflow. */
   position: fixed;
   inset: 0;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: var(--app-vh);
   max-height: var(--app-vh);
   overflow: hidden;
+  overflow-x: hidden;
   overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
   padding-left: var(--safe-left);
@@ -234,6 +239,8 @@ h3 { font-size: 0.95rem; font-weight: 600; }
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -244,7 +251,11 @@ h3 { font-size: 0.95rem; font-weight: 600; }
 .auth-card {
   background: var(--bg-glass-strong); backdrop-filter: blur(16px);
   border: 1px solid var(--border-subtle); border-radius: var(--radius-xl);
-  padding: 2rem; width: 100%; max-width: 440px; min-width: min(100%, 280px);
+  padding: 2rem;
+  width: 100%;
+  max-width: min(440px, 100%);
+  min-width: 0;
+  box-sizing: border-box;
   box-shadow: var(--shadow-lg), var(--ring);
 }
 .auth-card h1 { font-size: 1.75rem; margin-bottom: 0.25rem; }
@@ -463,12 +474,16 @@ h3 { font-size: 0.95rem; font-weight: 600; }
 }
 .lang-btn:focus-visible { outline: 2px solid #4ade80; outline-offset: 1px; }
 
-.container { max-width: var(--container-max); margin: 0 auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; }
+.container { max-width: var(--container-max); margin: 0 auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; width: 100%; box-sizing: border-box; min-width: 0; }
 
 .panel {
   background: var(--bg-glass); backdrop-filter: blur(12px);
   border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
-  padding: 1.5rem; box-shadow: var(--shadow-md), var(--ring);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md), var(--ring);
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .panel h2 { margin-bottom: 1rem; padding-bottom: 0.65rem; border-bottom: 1px solid var(--border-subtle); }
 
@@ -477,10 +492,12 @@ h3 { font-size: 0.95rem; font-weight: 600; }
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
   gap: 1rem;
   margin-top: 0.65rem;
   min-height: 5.25rem;
+  min-width: 0;
+  max-width: 100%;
 }
 .summary-item {
   background: rgba(15, 23, 42, 0.45);
@@ -488,6 +505,9 @@ h3 { font-size: 0.95rem; font-weight: 600; }
   border-radius: var(--radius-md);
   padding: 1rem;
   min-height: 5rem;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   transition: border-color 0.15s ease;
 }
 .summary-item:hover { border-color: var(--border); }
@@ -502,7 +522,7 @@ h3 { font-size: 0.95rem; font-weight: 600; }
 }
 .summary-item.highlight .value { color: var(--success); font-size: 1.65rem; min-height: 1.6em; }
 
-.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 1.5rem; align-items: start; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 1.5rem; align-items: start; min-width: 0; max-width: 100%; }
 
 /* Forms */
 .form { display: flex; flex-direction: column; gap: 1rem; }
@@ -562,7 +582,7 @@ a.btn { text-decoration: none; }
 /* Card visual */
 .card-visual { margin-top: 1rem; padding: 1.5rem; border-radius: var(--radius-xl); background: linear-gradient(135deg, #1e3a8a, #4338ca, #6366f1); box-shadow: var(--shadow-lg); border: 1px solid rgba(255,255,255,0.12); min-height: 11.5rem; }
 .card-number-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; margin: 1rem 0; }
-.card-visual-number { font-size: 1.35rem; letter-spacing: 0.12em; font-family: var(--font-mono); flex: 1; min-width: 180px; font-variant-numeric: tabular-nums; }
+.card-visual-number { font-size: 1.35rem; letter-spacing: 0.12em; font-family: var(--font-mono); flex: 1 1 auto; min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .card-visual-footer { display: flex; justify-content: space-between; font-size: 0.85rem; gap: 1rem; flex-wrap: wrap; }
 .card-visual-footer small { display: block; font-size: 0.62rem; opacity: 0.65; text-transform: uppercase; }
 .copy-field-group { min-width: 72px; }
@@ -708,8 +728,10 @@ a.btn { text-decoration: none; }
 }
 .master-wallet-balance-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
   gap: 0.65rem;
+  min-width: 0;
+  max-width: 100%;
 }
 .master-wallet-stat {
   padding: 0.65rem 0.75rem;
@@ -748,7 +770,7 @@ a.btn { text-decoration: none; }
   font-family: var(--font-mono);
   color: #93c5fd;
 }
-.grid-admin-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; align-items: end; }
+.grid-admin-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 1rem; align-items: end; min-width: 0; max-width: 100%; }
 .admin-tab-panel { display: none; }
 .admin-tab-panel.is-active { display: block; }
 
@@ -841,6 +863,26 @@ a.btn { text-decoration: none; }
   .admin-tabs .tab { flex: 1 1 calc(50% - 0.4rem); text-align: center; }
   .actions-cell { flex-wrap: wrap; min-width: 0; }
   .badge-rate { max-width: 100%; }
+  .wallet-dual-grid,
+  .ledger-summary-grid,
+  .rates-hero,
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .header-inner {
+    gap: 0.65rem;
+  }
+  .card-visual {
+    padding: 1.15rem;
+  }
+  .card-visual-number {
+    font-size: 1.1rem;
+    letter-spacing: 0.08em;
+  }
+  .reload-preview-row {
+    flex-wrap: wrap;
+    gap: 0.35rem 0.75rem;
+  }
 }
 .modal-box-wide { max-width: 520px; width: 100%; max-height: none; overflow-y: visible; }
 .modal-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; }
@@ -1221,9 +1263,11 @@ a.btn { text-decoration: none; }
 }
 .ledger-summary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 1rem;
   margin-bottom: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
 }
 .ledger-summary-card {
   border-radius: var(--radius-md);
@@ -1466,11 +1510,14 @@ pre.output.hidden { display: none !important; }
 
 .wallet-dual-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 1rem;
   margin-bottom: 1.25rem;
   min-height: 12.5rem;
   align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
 }
 .wallet-hero-card {
   padding: 1.25rem 1.35rem;
@@ -1480,6 +1527,9 @@ pre.output.hidden { display: none !important; }
   min-height: 12.5rem;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .wallet-hero-card.mmk {
   background: linear-gradient(135deg, #1e3a8a, #4338ca, #6366f1);
@@ -1676,9 +1726,11 @@ pre.output.hidden { display: none !important; }
 }
 .usdt-balance-split {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
   gap: 0.75rem;
   margin-bottom: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
 }
 .wallet-hero-card.usdt.locked {
   background: linear-gradient(135deg, rgba(120, 53, 15, 0.35), rgba(69, 26, 3, 0.5));
@@ -1706,29 +1758,31 @@ pre.output.hidden { display: none !important; }
 .usdt-escrow-card strong { color: #fcd34d; }
 .pricing-row.pricing-usdt strong { color: #6ee7b7; }
 
-@media (max-width: 480px) { .summary-grid { grid-template-columns: 1fr; } h1 { font-size: 1.25rem; } }
-
 /* ═══ App Shell — Sidebar SPA Layout ═══ */
 #dashboardScreen {
   width: 100%;
+  max-width: 100%;
   height: 100%;
   height: var(--app-vh);
   max-height: var(--app-vh);
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
 }
 
 #adminApp {
   width: 100%;
+  max-width: 100%;
   height: 100%;
   height: var(--app-vh);
   max-height: var(--app-vh);
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -1738,6 +1792,7 @@ pre.output.hidden { display: none !important; }
   flex-direction: row;
   align-items: stretch;
   width: 100%;
+  max-width: 100%;
   height: 100%;
   max-height: 100%;
   min-height: 0;
@@ -1746,6 +1801,7 @@ pre.output.hidden { display: none !important; }
   position: relative;
   isolation: isolate;
   overflow: hidden;
+  overflow-x: hidden;
 }
 
 .app-sidebar {
@@ -1839,12 +1895,14 @@ pre.output.hidden { display: none !important; }
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   height: 100%;
   max-height: 100%;
   min-height: 0;
   overflow: hidden;
+  overflow-x: hidden;
   position: relative;
   z-index: 2;
   background: var(--bg-base);
@@ -1855,12 +1913,16 @@ pre.output.hidden { display: none !important; }
   position: relative;
   top: auto;
   z-index: 5;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .app-content {
   flex: 1 1 auto;
   min-height: 0;
-  max-width: var(--container-max);
+  min-width: 0;
+  max-width: min(var(--container-max), 100%);
   width: 100%;
   margin: 0 auto;
   padding: 1.5rem;
@@ -1872,12 +1934,17 @@ pre.output.hidden { display: none !important; }
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  box-sizing: border-box;
 }
 
 .app-page {
   display: none;
   flex-direction: column;
   gap: 1.5rem;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
 }
 .app-page.is-active { display: flex; }
 
@@ -1944,6 +2011,9 @@ body.sidebar-scroll-lock {
     height: 100%;
     max-height: 100%;
     min-height: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   .app-sidebar {
@@ -1959,8 +2029,11 @@ body.sidebar-scroll-lock {
     padding-top: var(--safe-top);
     padding-bottom: var(--safe-bottom);
     width: min(280px, 88vw);
-    min-width: min(280px, 88vw);
-    flex: none;
+    max-width: min(280px, 88vw);
+    /* Fixed drawer must not reserve flex row space (causes mobile overflow) */
+    min-width: 0;
+    flex: 0 0 0;
+    margin: 0;
     z-index: 90;
     transform: translateX(-105%);
     transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1986,11 +2059,14 @@ body.sidebar-scroll-lock {
 
   .app-main {
     width: 100%;
-    flex: 1 1 100%;
+    max-width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
     height: 100%;
     max-height: 100%;
     min-height: 0;
     overflow: hidden;
+    overflow-x: hidden;
   }
 
   .app-content {
@@ -1999,6 +2075,53 @@ body.sidebar-scroll-lock {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     min-height: 0;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .header {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .header-inner,
+  .header-actions,
+  .page-header {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .panel,
+  .form,
+  .field,
+  .card-visual,
+  .wallet-hero-card,
+  .modal-box,
+  .reload-preview-box {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .field input,
+  .field select,
+  .field textarea,
+  .card-select {
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .btn {
+    max-width: 100%;
+  }
+
+  .wallet-hero-actions-row .btn {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .app-main .header {
@@ -2013,7 +2136,9 @@ body.sidebar-scroll-lock {
     height: 100% !important;
     max-height: 100% !important;
     min-height: 0 !important;
+    max-width: 100% !important;
     overflow: hidden !important;
+    overflow-x: hidden !important;
   }
 }
 
@@ -2032,6 +2157,15 @@ body.sidebar-scroll-lock {
 @media (max-width: 480px) {
   .app-content { padding: 1rem; }
 
+  .auth-card {
+    padding: 1.35rem 1.15rem;
+  }
+
+  .auth-screen {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
   .wallet-hero-card {
     padding: 1.15rem 1.1rem 1.2rem;
   }
@@ -2039,6 +2173,7 @@ body.sidebar-scroll-lock {
   .wallet-hero-value {
     font-size: 1.65rem;
     margin: 0.4rem 0 0.55rem;
+    overflow-wrap: anywhere;
   }
 
   .wallet-balance-subtext,
@@ -2053,12 +2188,26 @@ body.sidebar-scroll-lock {
   .wallet-hero-actions {
     gap: 0.55rem;
   }
+
+  .wallet-hero-actions-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wallet-hero-actions-row .btn {
+    width: 100%;
+  }
+
+  .summary-grid { grid-template-columns: 1fr; }
+  h1 { font-size: 1.25rem; }
 }
 
 .rates-hero {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
   gap: 1rem;
+  min-width: 0;
+  max-width: 100%;
 }
 .rates-card {
   background: rgba(15, 23, 42, 0.45);
@@ -2116,8 +2265,6 @@ body.sidebar-scroll-lock {
   line-height: 1.45;
 }
 
-
-@media (max-width: 480px) { .summary-grid { grid-template-columns: 1fr; } h1 { font-size: 1.25rem; } }
 
 /* ── Post-login hydration skeletons (prevent content reflow) ── */
 @keyframes skeletonPulse {
