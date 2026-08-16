@@ -55,6 +55,7 @@ const PAGE_PERMISSIONS = {
   support: 'support',
   'kyc-requests': 'kyc',
   settings: 'settings_read',
+  'payment-methods': 'payment_methods',
   'withdrawal-rates': 'withdrawal_rates_read',
   admins: 'manage_admins',
 };

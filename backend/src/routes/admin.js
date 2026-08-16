@@ -464,11 +464,11 @@ router.get('/withdrawal-rates/preview', requirePermission('withdrawal_rates_read
   }
 });
 
-// ─── Deposit payment methods (MMK / bank accounts) ───
 const {
   listPaymentMethods,
   createPaymentMethod,
   updatePaymentMethod,
+  setPaymentMethodActive,
   deletePaymentMethod,
 } = require('../services/depositPaymentMethodService');
 
@@ -502,6 +502,21 @@ router.put('/payment-methods/:id', requirePermission('payment_methods'), async (
     console.error('[admin/payment-methods PUT]', err);
     const status = err.code === 'NOT_FOUND' ? 404 : 400;
     res.status(status).json({ error: err.message || 'Failed to update payment method' });
+  }
+});
+
+router.patch('/payment-methods/:id/active', requirePermission('payment_methods'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const isActive = req.body?.is_active !== undefined
+      ? Boolean(req.body.is_active)
+      : Boolean(req.body?.isActive);
+    const method = await setPaymentMethodActive(id, isActive);
+    res.json({ success: true, payment_method: method });
+  } catch (err) {
+    console.error('[admin/payment-methods PATCH active]', err);
+    const status = err.code === 'NOT_FOUND' ? 404 : 400;
+    res.status(status).json({ error: err.message || 'Failed to update payment method status' });
   }
 });
 

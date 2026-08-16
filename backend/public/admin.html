@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=overlays-content" />
   <title>Eisy Myanmar — Admin</title>
   <meta name="theme-color" content="#0F172A" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -12,15 +12,27 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/favicon.png" type="image/png" />
   <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
-  <link rel="stylesheet" href="/styles.css?v=20260816d" />
+  <link rel="stylesheet" href="/styles.css?v=20260816h" />
+  <script>
+    /* Early paint lock: prefer admin shell when a session token exists */
+    (function () {
+      try {
+        if (localStorage.getItem('eisy_admin_token')) {
+          document.documentElement.classList.add('has-session', 'app-hydrating');
+        }
+      } catch (_) { /* ignore */ }
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     /* Critical fallback — keeps dashboard visible even if styles.css fails */
     body { margin: 0; background: #0B1220; color: #E8EEF7; font-family: 'DM Sans', 'IBM Plex Sans', system-ui, sans-serif; }
-    #adminApp { min-height: 100vh; min-height: 100dvh; }
+    #adminApp { min-height: 100vh; min-height: 100svh; min-height: 100dvh; }
     #adminApp.hidden, #adminLogin.hidden { display: none !important; }
+    html.has-session #adminLogin { display: none !important; }
+    html.has-session #adminApp.hidden { display: flex !important; flex-direction: column; }
     #adminLogin .auth-card { max-width: 420px; width: 100%; }
     #adminLogin .auth-hint { color: #94a3b8; font-size: 0.85rem; margin-top: 0.75rem; line-height: 1.45; }
     #adminLogin .bootstrap-box {
@@ -329,11 +341,24 @@
 <body>
 
   <noscript>
-    <div style="padding:2rem;color:#e8edf4;background:#0f1419;min-height:100vh">
+    <div style="padding:2rem;color:#e8edf4;background:#0f1419;min-height:100vh;min-height:100svh">
       <h1>Eisy Myanmar Admin</h1>
       <p>JavaScript is required for the admin dashboard. Please enable JavaScript and reload.</p>
     </div>
   </noscript>
+
+  <div id="adminBootSplash" role="status" aria-live="polite" aria-busy="true">
+    <div class="boot-splash-brand">Eisy Admin</div>
+    <div class="boot-splash-spinner" aria-hidden="true"></div>
+    <div class="boot-splash-hint">Loading…</div>
+  </div>
+  <script>
+    setTimeout(function () {
+      document.documentElement.classList.add('app-ready');
+      var splash = document.getElementById('adminBootSplash');
+      if (splash) { splash.hidden = true; splash.setAttribute('aria-busy', 'false'); }
+    }, 8000);
+  </script>
 
   <div id="adminBootError" role="alert"></div>
 
@@ -416,6 +441,10 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 5 5-9"/></svg>
             <span data-i18n="nav_admin_settings">Rates &amp; Fees</span>
           </button>
+          <button type="button" class="nav-item" data-page="payment-methods" data-admin-perm="payment_methods">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h2"/></svg>
+            <span>Payment Methods</span>
+          </button>
           <button type="button" class="nav-item" data-page="admins" data-admin-perm="manage_admins">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
             <span>Admins</span>
@@ -446,7 +475,12 @@
               </div>
             </div>
             <div class="header-actions">
-              <div id="langSwitcherAdmin"></div>
+              <div id="langSwitcherAdmin">
+                <div class="lang-switcher" role="group" aria-label="Language">
+                  <button type="button" class="lang-btn" data-lang="my" aria-pressed="false">MY</button>
+                  <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
+                </div>
+              </div>
               <span id="adminCurrentRateBadge" class="badge badge-rate" data-i18n="current_rate_loading">Current Rate: loading…</span>
               <span id="adminStatusBadge" class="badge badge-ok">Signed out</span>
               <button type="button" id="adminRefreshBtn" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
@@ -464,6 +498,7 @@
           <span class="hidden" data-page-title="support" data-i18n="nav_admin_support">Support</span>
           <span class="hidden" data-page-title="kyc-requests" data-i18n="nav_admin_kyc">KYC Requests</span>
           <span class="hidden" data-page-title="settings" data-i18n="nav_admin_settings">Rates &amp; Fees</span>
+          <span class="hidden" data-page-title="payment-methods">Payment Methods</span>
           <span class="hidden" data-page-title="admins">Admins</span>
 
       <section id="tabOverview" class="panel app-page" data-page="overview">
@@ -859,13 +894,37 @@
         </form>
         <pre class="output hidden" id="adminSettingsOut" aria-hidden="true"></pre>
 
-        <div id="adminPaymentMethodsSection" data-admin-perm="payment_methods">
-        <h2 style="margin-top:2rem">Deposit Bank Accounts (MMK)</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Manage bank / KPay / WavePay accounts shown on the user Deposit page. Changes appear immediately for users. Super Admin only.</p>
-        <form id="adminPaymentMethodForm" class="form grid-admin-form" style="max-width:720px;margin-bottom:1rem">
+        <div data-admin-perm="payment_methods" class="panel" style="margin-top:1.5rem;padding:1rem 1.15rem">
+          <h3 style="margin:0 0 0.35rem">MMK Payment Methods</h3>
+          <p class="hint" style="margin:0 0 0.75rem">Bank / KBZPay / WavePay accounts for card applications and deposits are managed on the Payment Methods page.</p>
+          <button type="button" class="btn btn-secondary btn-sm" data-goto="payment-methods">Open Payment Methods</button>
+        </div>
+
+        <h2 style="margin-top:2rem">Exchange Rate History</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Historical log of all rate and fee updates. Deposits store the rate active at request time.</p>
+        <div id="exchangeRateHistoryTable" class="data-table-wrap"><p class="hint">Loading history…</p></div>
+      </section>
+
+      <section id="tabPaymentMethods" class="panel app-page" data-page="payment-methods" data-admin-perm="payment_methods">
+        <h2>Payment Methods / Bank Settings</h2>
+        <p class="hint" style="margin-bottom:0.85rem">
+          Manage MMK receiving accounts (Bank Transfer, KBZPay, WavePay). Active methods appear automatically in the user
+          <strong>Apply for New Card</strong>, card reload, and Deposit flows.
+        </p>
+
+        <form id="adminPaymentMethodForm" class="form grid-admin-form" style="max-width:760px;margin-bottom:1rem">
           <input type="hidden" id="pmEditId" value="" />
           <div class="field">
-            <label for="pmBankName">Bank Name</label>
+            <label for="pmMethodType">Payment Type</label>
+            <select id="pmMethodType" required>
+              <option value="kbzpay">KBZPay</option>
+              <option value="wavepay">WavePay</option>
+              <option value="bank_transfer" selected>Bank Transfer</option>
+              <option value="other">Other Wallet</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="pmBankName">Display Name</label>
             <input id="pmBankName" type="text" placeholder="KBZPay / WavePay / AYA Bank" required />
           </div>
           <div class="field">
@@ -873,36 +932,35 @@
             <input id="pmAccountName" type="text" placeholder="Eisy Myanmar" required />
           </div>
           <div class="field">
-            <label for="pmAccountNumber">Account Number</label>
-            <input id="pmAccountNumber" type="text" placeholder="09xxxxxxxx" required />
+            <label for="pmAccountNumber">Account Number / Phone</label>
+            <input id="pmAccountNumber" type="text" placeholder="09xxxxxxxx or bank account #" required />
           </div>
           <div class="field" style="grid-column:1/-1">
             <label for="pmQrUrl">QR Code Image URL</label>
             <input id="pmQrUrl" type="url" placeholder="https://…/qr.png or /assets/qr/kbz.png" />
-            <small class="hint">Optional. If empty, the deposit page generates a QR from the account number.</small>
+            <small class="hint">Optional. If empty, the app generates a QR from the account number.</small>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label for="pmNotes">Internal Notes</label>
+            <input id="pmNotes" type="text" placeholder="Optional note for admins only" />
           </div>
           <div class="field">
             <label for="pmSortOrder">Sort Order</label>
             <input id="pmSortOrder" type="number" step="1" value="0" />
           </div>
           <div class="field">
-            <label for="pmActive">Active</label>
+            <label for="pmActive">Status</label>
             <select id="pmActive">
               <option value="1" selected>Active</option>
-              <option value="0">Hidden</option>
+              <option value="0">Inactive</option>
             </select>
           </div>
-          <div class="field" style="display:flex;gap:0.5rem;align-items:end">
-            <button type="submit" class="btn btn-primary" id="pmSubmitBtn">Add Bank Account</button>
+          <div class="field" style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap">
+            <button type="submit" class="btn btn-primary" id="pmSubmitBtn">Add Payment Method</button>
             <button type="button" class="btn btn-secondary" id="pmResetBtn">Clear</button>
           </div>
         </form>
-        <div id="adminPaymentMethodsTable" class="data-table-wrap"><p class="hint">Loading bank accounts…</p></div>
-        </div>
-
-        <h2 style="margin-top:2rem">Exchange Rate History</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Historical log of all rate and fee updates. Deposits store the rate active at request time.</p>
-        <div id="exchangeRateHistoryTable" class="data-table-wrap"><p class="hint">Loading history…</p></div>
+        <div id="adminPaymentMethodsTable" class="data-table-wrap"><p class="hint">Loading payment methods…</p></div>
       </section>
 
 
@@ -1029,19 +1087,32 @@
   </div>
 
   <script>
-    /* Keep both shells hidden until admin.js decides login vs dashboard */
+    /* Prefer session shell when token exists; otherwise keep login visible */
     (function () {
       var app = document.getElementById('adminApp');
       var login = document.getElementById('adminLogin');
-      if (app) app.classList.add('hidden');
-      if (login) login.classList.remove('hidden');
+      var hasSession = false;
+      try { hasSession = Boolean(localStorage.getItem('eisy_admin_token')); } catch (_) {}
+      if (hasSession) {
+        if (login) {
+          login.classList.add('hidden');
+          login.setAttribute('aria-hidden', 'true');
+        }
+        if (app) app.classList.remove('hidden');
+      } else {
+        if (app) app.classList.add('hidden');
+        if (login) {
+          login.classList.remove('hidden');
+          login.setAttribute('aria-hidden', 'false');
+        }
+      }
     })();
   </script>
   <script src="/api-config.js?v=20260811b"></script>
   <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
-  <script src="/viewport.js?v=20260816d"></script>
-  <script src="/i18n.js?v=20260811b"></script>
+  <script src="/viewport.js?v=20260816h"></script>
+  <script src="/i18n.js?v=20260816f"></script>
   <script src="/nav.js?v=20260811b"></script>
-  <script src="/admin.js?v=20260812d" defer></script>
+  <script src="/admin.js?v=20260816h" defer></script>
 </body>
 </html>
