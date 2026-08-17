@@ -1,5 +1,5 @@
 /* Eisy Myanmar — Dashboard logic (requires auth.js) */
-const CARD_CACHE_KEY = 'eisy_user_cards';
+const CARD_CACHE_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.USER_CARDS) || 'eisy_user_cards';
 
 const Dashboard = {
   pollTimer: null,
@@ -337,6 +337,9 @@ const Dashboard = {
   },
 
   toast(message, type = 'ok', otpCode = null) {
+    if (window.EisyComponents?.toast?.showToast) {
+      return window.EisyComponents.toast.showToast(message, type, otpCode);
+    }
     const el = $('authToast');
     if (!el) return;
     if (otpCode) {
@@ -352,6 +355,9 @@ const Dashboard = {
   },
 
   copyToast(message = 'Copied to clipboard!') {
+    if (window.EisyComponents?.toast?.showCopyToast) {
+      return window.EisyComponents.toast.showCopyToast(message);
+    }
     const el = $('copyToast');
     if (!el) return;
     el.textContent = message;
@@ -546,6 +552,10 @@ const Dashboard = {
   },
 
   resetUsdtDepositForm() {
+    this._usdtDepositRequestInFlight = false;
+    this._usdtDepositSubmitInFlight = false;
+    this.setSubmitBusy($('btnSubmitUsdtDeposit'), false, { idleLabel: 'Generate Deposit Request' });
+    this.setSubmitBusy($('btnSubmitUsdtProof'), false, { idleLabel: 'Submit USDT Deposit' });
     $('usdtDepositForm')?.reset();
     $('usdtDepositSubmitForm')?.reset();
     $('usdtAddressBox')?.classList.add('hidden');
@@ -558,7 +568,34 @@ const Dashboard = {
     this._usdtDepositAddress = '';
   },
 
+  /** Disable a submit button and show an inline spinner while a request is in flight. */
+  setSubmitBusy(btn, busy, opts = {}) {
+    if (window.EisyHooks?.submitBusy?.setSubmitBusy) {
+      return window.EisyHooks.submitBusy.setSubmitBusy(btn, busy, opts);
+    }
+    if (!btn) return;
+    if (busy) {
+      if (!btn.dataset.idleLabel) {
+        btn.dataset.idleLabel = (btn.textContent || '').trim();
+      }
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+      btn.classList.add('is-busy');
+      const label = opts.loadingLabel || 'Submitting…';
+      btn.innerHTML = `<span class="btn-spinner" aria-hidden="true"></span><span>${label}</span>`;
+      return;
+    }
+    btn.disabled = false;
+    btn.removeAttribute('aria-busy');
+    btn.classList.remove('is-busy');
+    btn.textContent = opts.idleLabel || btn.dataset.idleLabel || btn.textContent;
+    delete btn.dataset.idleLabel;
+  },
+
   switchDepositTab(tab) {
+    if (window.EisyComponents?.usdtAddressBox?.switchDepositTab) {
+      return window.EisyComponents.usdtAddressBox.switchDepositTab(tab);
+    }
     const t = tab === 'usdt' ? 'usdt' : 'mmk';
     document.querySelectorAll('.deposit-tab').forEach((btn) => {
       btn.classList.toggle('is-active', btn.dataset.depositTab === t);
@@ -584,7 +621,9 @@ const Dashboard = {
   async loadUsdtAddresses() {
     if (!Auth.isLoggedIn()) return;
     try {
-      const data = await Auth.api('GET', '/api/deposit/usdt-addresses');
+      const data = window.EisyServices?.deposit
+        ? await window.EisyServices.deposit.getUsdtAddresses()
+        : await Auth.api('GET', '/api/deposit/usdt-addresses');
       this.usdtAddresses = data;
     } catch (err) {
       console.warn('[usdt addresses]', err.message);
@@ -697,7 +736,9 @@ const Dashboard = {
     }
 
     try {
-      const data = await Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true });
+      const data = await (window.EisyServices?.usdtWallet?.getOverview
+        ? window.EisyServices.usdtWallet.getOverview()
+        : Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true }));
       this._usdtWalletCache = data;
       this.walletUsdt = data.balance_usdt;
       this.renderUsdtWalletPage(data);
@@ -873,7 +914,9 @@ const Dashboard = {
     if (!el) return;
 
     try {
-      const { transactions } = await Auth.api('GET', '/api/user/usdt-wallet/transactions', null, { sensitive: true });
+      const { transactions } = await (window.EisyServices?.usdtWallet?.getTransactions
+        ? window.EisyServices.usdtWallet.getTransactions()
+        : Auth.api('GET', '/api/user/usdt-wallet/transactions', null, { sensitive: true }));
       el.innerHTML = transactions?.length ? `
         <table class="data-table">
           <thead><tr><th>Time</th><th>Type</th><th>Network</th><th>Amount</th><th>Balance</th><th>Details</th></tr></thead>
@@ -896,6 +939,12 @@ const Dashboard = {
   },
 
   showUsdtDepositAddress(network, address) {
+    if (window.EisyComponents?.usdtAddressBox?.showUsdtDepositAddress) {
+      window.EisyComponents.usdtAddressBox.showUsdtDepositAddress(network, address, {
+        onAddressSet: (addr) => { this._usdtDepositAddress = addr; },
+      });
+      return;
+    }
     if ($('usdtNetworkLabel')) $('usdtNetworkLabel').textContent = network;
     $('usdtMerchantName')?.classList.add('hidden');
     if ($('usdtDepositAddress')) {
@@ -905,7 +954,6 @@ const Dashboard = {
     this._usdtDepositAddress = address || '';
     const qr = $('usdtQrCode');
     if (qr && address) {
-      // Local API QR — works on Vercel without third-party image hosts
       qr.src = `/api/qr?size=180&data=${encodeURIComponent(address)}`;
       qr.alt = `${network} deposit QR for ${address}`;
       qr.classList.remove('hidden');
@@ -919,7 +967,9 @@ const Dashboard = {
   async loadDepositPaymentMethods() {
     const select = $('paymentMethod');
     try {
-      const data = await Auth.api('GET', '/api/deposit/payment-methods');
+      const data = window.EisyServices?.deposit
+        ? await window.EisyServices.deposit.getPaymentMethods()
+        : await Auth.api('GET', '/api/deposit/payment-methods');
       this._depositPaymentMethods = Array.isArray(data.payment_methods) ? data.payment_methods : [];
       this._usdtMasterDeposit = data.usdt || null;
 
@@ -2872,10 +2922,14 @@ const Dashboard = {
 
   calculateUsdtDepositFeePreviewClient(amountUsdt) {
     const fees = this.withdrawalFees || this.pricingSettings || {};
+    if (window.EisyHooks?.depositFees?.calculateUsdtDepositFeePreview) {
+      return window.EisyHooks.depositFees.calculateUsdtDepositFeePreview(amountUsdt, fees);
+    }
+    const cfg = (window.Eisy && window.Eisy.config) || {};
     const amount = Math.round((Number(amountUsdt) || 0) * 100) / 100;
     if (!(amount > 0)) return null;
-    const feePercent = Number(fees.payment_service_fee_percent ?? 2);
-    const minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? 1);
+    const feePercent = Number(fees.payment_service_fee_percent ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
+    const minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1);
     const percentFee = Math.round(amount * feePercent) / 100;
     const fee = Math.round(Math.max(percentFee, minimumFee) * 100) / 100;
     const net = Math.round((amount - fee) * 100) / 100;
@@ -2892,11 +2946,18 @@ const Dashboard = {
 
   calculateMmkDepositFeePreviewClient(amountMmk) {
     const fees = this.withdrawalFees || this.pricingSettings || {};
+    if (window.EisyHooks?.depositFees?.calculateMmkDepositFeePreview) {
+      return window.EisyHooks.depositFees.calculateMmkDepositFeePreview(amountMmk, {
+        ...fees,
+        mmk_to_usd_rate: fees.mmk_to_usd_rate || this.pricingSettings?.mmk_to_usd_rate || 4500,
+      });
+    }
+    const cfg = (window.Eisy && window.Eisy.config) || {};
     const amount = Math.round(Number(amountMmk) || 0);
     if (!(amount > 0)) return null;
-    const feePercent = Number(fees.payment_service_fee_percent ?? 2);
+    const feePercent = Number(fees.payment_service_fee_percent ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
     const rate = Number(fees.mmk_to_usd_rate || this.pricingSettings?.mmk_to_usd_rate || 4500);
-    const minimumFee = Math.round(Number(fees.payment_service_fee_minimum_usdt ?? 1) * rate);
+    const minimumFee = Math.round(Number(fees.payment_service_fee_minimum_usdt ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1) * rate);
     const percentFee = Math.round(amount * feePercent / 100);
     const fee = Math.max(percentFee, minimumFee);
     const net = amount - fee;
@@ -2914,6 +2975,10 @@ const Dashboard = {
   updateUsdtDepositFeePreview() {
     const amount = parseFloat($('usdtAmount')?.value);
     const preview = this.calculateUsdtDepositFeePreviewClient(amount);
+    if (window.EisyComponents?.depositFeePreview?.renderUsdtDepositFeePreview) {
+      window.EisyComponents.depositFeePreview.renderUsdtDepositFeePreview(preview);
+      return;
+    }
     if ($('usdtDepositPreviewGross')) {
       $('usdtDepositPreviewGross').textContent = preview ? `$${preview.amount_usdt.toFixed(2)}` : '—';
     }
@@ -2930,6 +2995,10 @@ const Dashboard = {
   updateMmkDepositFeePreview() {
     const amount = parseFloat($('amountMmk')?.value);
     const preview = this.calculateMmkDepositFeePreviewClient(amount);
+    if (window.EisyComponents?.depositFeePreview?.renderMmkDepositFeePreview) {
+      window.EisyComponents.depositFeePreview.renderMmkDepositFeePreview(preview);
+      return;
+    }
     if ($('mmkDepositPreviewGross')) {
       $('mmkDepositPreviewGross').textContent = preview ? `${preview.amount_mmk.toLocaleString()} MMK` : '—';
     }
@@ -2974,6 +3043,7 @@ const Dashboard = {
     setUsdtDepositMode('direct');
 
     $('btnCreateBinancePay')?.addEventListener('click', async () => {
+      if (this._binancePayCreateInFlight) return;
       try {
         const amountUsdt = parseFloat($('usdtAmount')?.value);
         if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) {
@@ -2981,15 +3051,17 @@ const Dashboard = {
           return;
         }
         const btn = $('btnCreateBinancePay');
-        const prev = btn?.textContent;
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = 'Creating…';
-        }
-        const data = await Auth.api('POST', '/api/deposit/create', {
-          amount_usdt: amountUsdt,
-          terminalType: 'WEB',
-        }, { sensitive: true });
+        this._binancePayCreateInFlight = true;
+        this.setSubmitBusy(btn, true, { loadingLabel: 'Creating…' });
+        const data = await (window.EisyServices?.deposit?.createBinancePay
+          ? window.EisyServices.deposit.createBinancePay({
+            amount_usdt: amountUsdt,
+            terminalType: 'WEB',
+          })
+          : Auth.api('POST', '/api/deposit/create', {
+            amount_usdt: amountUsdt,
+            terminalType: 'WEB',
+          }, { sensitive: true }));
 
         $('binancePayBox')?.classList.remove('hidden');
         if ($('binancePayRef')) {
@@ -3036,18 +3108,12 @@ const Dashboard = {
         }
         this.toast('Binance Pay order created', 'ok');
         this.loadDepositHistory();
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = prev || 'Pay with Binance Pay';
-        }
       } catch (err) {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
         this.toast(err.message || 'Binance Pay create failed', 'error');
-        const btn = $('btnCreateBinancePay');
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'Pay with Binance Pay';
-        }
+      } finally {
+        this._binancePayCreateInFlight = false;
+        this.setSubmitBusy($('btnCreateBinancePay'), false, { idleLabel: 'Pay with Binance Pay' });
       }
     });
 
@@ -3057,6 +3123,12 @@ const Dashboard = {
         $('btnCreateBinancePay')?.click();
         return;
       }
+      if (this._usdtDepositRequestInFlight) return;
+
+      const btn = $('btnSubmitUsdtDeposit');
+      this._usdtDepositRequestInFlight = true;
+      this.setSubmitBusy(btn, true, { loadingLabel: 'Creating…' });
+
       try {
         const network = $('usdtNetwork').value;
         const amountUsdt = parseFloat($('usdtAmount').value);
@@ -3067,7 +3139,9 @@ const Dashboard = {
           deposit_channel: 'platform_direct',
         };
 
-        const data = await Auth.api('POST', '/api/deposit/request', body, { sensitive: true });
+        const data = await (window.EisyServices?.deposit?.createRequest
+          ? window.EisyServices.deposit.createRequest(body)
+          : Auth.api('POST', '/api/deposit/request', body, { sensitive: true }));
 
         const addr = data.payment_instructions?.deposit_address;
         this.showUsdtDepositAddress(network, addr);
@@ -3085,11 +3159,16 @@ const Dashboard = {
       } catch (err) {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
         this.toast(err.message || 'USDT deposit request failed', 'error');
+      } finally {
+        this._usdtDepositRequestInFlight = false;
+        this.setSubmitBusy(btn, false, { idleLabel: 'Generate Deposit Request' });
       }
     });
 
     $('usdtDepositSubmitForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (this._usdtDepositSubmitInFlight) return;
+
       const hash = $('usdtTxnHash')?.value?.trim();
       if (!hash) {
         this.toast('Please enter your TxHash / Transaction ID', 'error');
@@ -3100,6 +3179,11 @@ const Dashboard = {
         this.toast('Generate a deposit request first', 'error');
         return;
       }
+
+      const btn = $('btnSubmitUsdtProof');
+      this._usdtDepositSubmitInFlight = true;
+      this.setSubmitBusy(btn, true, { loadingLabel: 'Submitting…' });
+
       try {
         const body = {
           deposit_id: parseInt($('usdtActiveDepositId').value, 10),
@@ -3110,7 +3194,9 @@ const Dashboard = {
           body.user_note = $('usdtDepositNote').value.trim();
         }
 
-        const data = await Auth.api('POST', '/api/deposit/submit', body, { sensitive: true });
+        const data = await (window.EisyServices?.deposit?.submitProof
+          ? window.EisyServices.deposit.submitProof(body)
+          : Auth.api('POST', '/api/deposit/submit', body, { sensitive: true }));
 
         if (data.pending_p2p || (data.pending && data.deposit?.is_p2p)) {
           this.resetUsdtDepositForm();
@@ -3147,6 +3233,14 @@ const Dashboard = {
       } catch (err) {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
         this.toast(err.message || 'Failed to submit USDT proof', 'error');
+      } finally {
+        // resetUsdtDepositForm clears the busy state; only restore if form still visible
+        if (this._usdtDepositSubmitInFlight) {
+          this._usdtDepositSubmitInFlight = false;
+          if (!$('usdtDepositSubmitForm')?.classList.contains('hidden')) {
+            this.setSubmitBusy(btn, false, { idleLabel: 'Submit USDT Deposit' });
+          }
+        }
       }
     });
 
@@ -3179,6 +3273,10 @@ const Dashboard = {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
+    }
+    if (typeof this._pollStop === 'function') {
+      this._pollStop();
+      this._pollStop = null;
     }
   },
 
@@ -4590,7 +4688,9 @@ const Dashboard = {
   async loadWithdrawalFees() {
     if (!Auth.isLoggedIn()) return;
     try {
-      const data = await Auth.api('GET', '/api/withdrawal/fees');
+      const data = await (window.EisyServices?.withdrawal?.getFees
+        ? window.EisyServices.withdrawal.getFees()
+        : Auth.api('GET', '/api/withdrawal/fees'));
       this.withdrawalFees = data.fees || data;
       if (data.mmk_to_usd_rate != null) {
         this.withdrawalFees.mmk_to_usd_rate = data.mmk_to_usd_rate;
@@ -4875,7 +4975,9 @@ const Dashboard = {
             amount_usdt: preview.amount_usdt,
           };
 
-        const data = await Auth.api('POST', '/api/withdrawal/usdt', payload, { sensitive: true });
+        const data = await (window.EisyServices?.withdrawal?.createUsdt
+          ? window.EisyServices.withdrawal.createUsdt(payload)
+          : Auth.api('POST', '/api/withdrawal/usdt', payload, { sensitive: true }));
 
         if (data.wallet) {
           this.walletUsdt = data.wallet.balance_usdt;
@@ -5702,7 +5804,13 @@ const Dashboard = {
   },
 
   clearStaleDepositDrafts() {
-    ['eisy_pending_deposit', 'eisy_deposit_drafts', 'eisy_test_deposits', 'eisy_deposit_receipt'].forEach((key) => {
+    const keys = (window.Eisy && window.Eisy.storageKeys) || {};
+    [
+      keys.PENDING_DEPOSIT || 'eisy_pending_deposit',
+      keys.DEPOSIT_DRAFTS || 'eisy_deposit_drafts',
+      keys.TEST_DEPOSITS || 'eisy_test_deposits',
+      keys.DEPOSIT_RECEIPT || 'eisy_deposit_receipt',
+    ].forEach((key) => {
       try { localStorage.removeItem(key); } catch (_) { /* ignore */ }
     });
   },
@@ -5884,6 +5992,32 @@ const Dashboard = {
 
   startPolling(ref) {
     if (this.pollTimer) clearInterval(this.pollTimer);
+    if (typeof this._pollStop === 'function') {
+      this._pollStop();
+      this._pollStop = null;
+    }
+    if (window.EisyHooks?.depositPolling?.startDepositStatusPolling && window.EisyServices?.deposit) {
+      const handle = window.EisyHooks.depositPolling.startDepositStatusPolling({
+        refCode: ref,
+        getStatus: (code) => window.EisyServices.deposit.getStatus(code),
+        onVerified: () => {
+          if ($('depositStatus')) {
+            $('depositStatus').textContent = 'Payment Verified!';
+            $('depositStatus').className = 'status-line ok';
+          }
+          this.loadWallet();
+          this.loadTransactions();
+          this.loadDepositHistory();
+        },
+        onReview: () => {
+          if ($('depositStatus')) $('depositStatus').textContent = 'Under admin review…';
+          this.loadDepositHistory();
+        },
+      });
+      this.pollTimer = handle.timerRef?.() || null;
+      this._pollStop = handle.stop;
+      return;
+    }
     this.pollTimer = setInterval(async () => {
       try {
         const { deposit } = await Auth.api('GET', `/api/deposit/status/${ref}`);
@@ -5903,6 +6037,9 @@ const Dashboard = {
   },
 
   log(msg, type) {
+    if (window.EisyComponents?.activityLog?.log) {
+      return window.EisyComponents.activityLog.log(msg, type);
+    }
     const logEl = $('activityLog');
     if (!logEl) {
       console.log(`[Activity] ${msg}`);

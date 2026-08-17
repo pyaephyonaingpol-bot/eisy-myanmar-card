@@ -3,8 +3,8 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
-  const TOKEN_KEY = 'eisy_admin_token';
-  const LEGACY_KEY = 'eisy_admin_key';
+  const TOKEN_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.ADMIN_TOKEN) || 'eisy_admin_token';
+  const LEGACY_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.ADMIN_KEY_LEGACY) || 'eisy_admin_key';
 
   const Admin = {
     token: null,

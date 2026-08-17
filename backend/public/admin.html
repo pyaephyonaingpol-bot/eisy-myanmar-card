@@ -13,11 +13,13 @@
   <link rel="icon" href="/favicon.png" type="image/png" />
   <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
   <link rel="stylesheet" href="/styles.css?v=20260816kb6" />
+  <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
     /* Early paint lock: prefer admin shell when a session token exists */
     (function () {
       try {
-        if (localStorage.getItem('eisy_admin_token')) {
+        var keys = (window.Eisy && window.Eisy.storageKeys) || {};
+        if (localStorage.getItem(keys.ADMIN_TOKEN || 'eisy_admin_token')) {
           document.documentElement.classList.add('has-session', 'app-hydrating');
         }
       } catch (_) { /* ignore */ }
@@ -1094,7 +1096,8 @@
       var app = document.getElementById('adminApp');
       var login = document.getElementById('adminLogin');
       var hasSession = false;
-      try { hasSession = Boolean(localStorage.getItem('eisy_admin_token')); } catch (_) {}
+      var keys = (window.Eisy && window.Eisy.storageKeys) || {};
+      try { hasSession = Boolean(localStorage.getItem(keys.ADMIN_TOKEN || 'eisy_admin_token')); } catch (_) {}
       if (hasSession) {
         if (login) {
           login.classList.add('hidden');
@@ -1110,11 +1113,20 @@
       }
     })();
   </script>
-  <script src="/api-config.js?v=20260811b"></script>
-  <script type="module" src="/supabaseBridge.js?v=20260811b"></script>
+  <script src="/src/lib/config.js?v=20260817m2"></script>
+  <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
+  <script src="/src/lib/constants.js?v=20260817m2"></script>
+  <script src="/src/lib/helpers.js?v=20260817m2"></script>
+  <script src="/src/lib/apiConfig.js?v=20260817m2"></script>
+  <script src="/src/lib/index.js?v=20260817m2"></script>
+  <script src="/src/types/runtime.js?v=20260817m2"></script>
+  <script src="/api-config.js?v=20260817m2"></script>
+  <script type="module" src="/supabaseBridge.js?v=20260817m2"></script>
+  <script src="/src/components/toast.js?v=20260817m2"></script>
+  <script src="/src/components/index.js?v=20260817m2"></script>
   <script src="/viewport.js?v=20260816kb2"></script>
-  <script src="/i18n.js?v=20260816i"></script>
+  <script src="/i18n.js?v=20260817m2"></script>
   <script src="/nav.js?v=20260816kb2"></script>
-  <script src="/admin.js?v=20260816i" defer></script>
+  <script src="/admin.js?v=20260817m2" defer></script>
 </body>
 </html>
