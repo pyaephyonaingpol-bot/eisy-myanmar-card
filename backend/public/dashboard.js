@@ -2999,6 +2999,7 @@ const Dashboard = {
     setUsdtDepositMode('direct');
 
     $('btnCreateBinancePay')?.addEventListener('click', async () => {
+      if (this._binancePayCreateInFlight) return;
       try {
         const amountUsdt = parseFloat($('usdtAmount')?.value);
         if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) {
@@ -3006,11 +3007,8 @@ const Dashboard = {
           return;
         }
         const btn = $('btnCreateBinancePay');
-        const prev = btn?.textContent;
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = 'Creating…';
-        }
+        this._binancePayCreateInFlight = true;
+        this.setSubmitBusy(btn, true, { loadingLabel: 'Creating…' });
         const data = await Auth.api('POST', '/api/deposit/create', {
           amount_usdt: amountUsdt,
           terminalType: 'WEB',
@@ -3061,18 +3059,12 @@ const Dashboard = {
         }
         this.toast('Binance Pay order created', 'ok');
         this.loadDepositHistory();
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = prev || 'Pay with Binance Pay';
-        }
       } catch (err) {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
         this.toast(err.message || 'Binance Pay create failed', 'error');
-        const btn = $('btnCreateBinancePay');
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'Pay with Binance Pay';
-        }
+      } finally {
+        this._binancePayCreateInFlight = false;
+        this.setSubmitBusy($('btnCreateBinancePay'), false, { idleLabel: 'Pay with Binance Pay' });
       }
     });
 
