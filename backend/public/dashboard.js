@@ -3274,6 +3274,10 @@ const Dashboard = {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
+    if (typeof this._pollStop === 'function') {
+      this._pollStop();
+      this._pollStop = null;
+    }
   },
 
   resetReloadModalForm() {
@@ -5988,6 +5992,10 @@ const Dashboard = {
 
   startPolling(ref) {
     if (this.pollTimer) clearInterval(this.pollTimer);
+    if (typeof this._pollStop === 'function') {
+      this._pollStop();
+      this._pollStop = null;
+    }
     if (window.EisyHooks?.depositPolling?.startDepositStatusPolling && window.EisyServices?.deposit) {
       const handle = window.EisyHooks.depositPolling.startDepositStatusPolling({
         refCode: ref,
