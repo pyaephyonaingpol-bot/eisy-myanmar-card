@@ -15,6 +15,7 @@ const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
 const supportRoutes = require('./routes/support');
+const { requireAuth, requireSensitive } = require('./middleware/auth');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -92,7 +93,9 @@ app.use('/api/qr', require('./routes/qr'));
 app.use('/api/auth', authRoutes);
 app.use('/api/deposit', depositRoutes);
 app.use('/api/webhook', require('./routes/webhook'));
-app.use('/api/nowpayments', require('../../server/routes/nowpayments'));
+const nowPaymentsRoutes = require('../../server/routes/nowpayments');
+app.use('/api/nowpayments', nowPaymentsRoutes);
+app.post('/api/create-payment', requireAuth, requireSensitive, nowPaymentsRoutes.createPaymentHandler);
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/support', supportRoutes);
