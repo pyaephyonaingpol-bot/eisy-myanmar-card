@@ -28,8 +28,14 @@ app.options('*', cors(createCorsOptions()));
 app.use(express.json({
   limit: '55mb',
   verify: (req, res, buf) => {
-    // Preserve raw body for Binance Pay webhook signature verification
-    if (req.originalUrl && req.originalUrl.startsWith('/api/webhook/')) {
+    // Preserve raw body for webhook signature verification
+    if (
+      req.originalUrl
+      && (
+        req.originalUrl.startsWith('/api/webhook/')
+        || req.originalUrl.startsWith('/api/nowpayments/')
+      )
+    ) {
       req.rawBody = buf.toString('utf8');
     }
   },
@@ -86,6 +92,7 @@ app.use('/api/qr', require('./routes/qr'));
 app.use('/api/auth', authRoutes);
 app.use('/api/deposit', depositRoutes);
 app.use('/api/webhook', require('./routes/webhook'));
+app.use('/api/nowpayments', require('../../server/routes/nowpayments'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/support', supportRoutes);

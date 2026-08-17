@@ -20,6 +20,12 @@
       ]
     },
     {
+      "source": "/api/nowpayments/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
       "source": "/assets/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=86400" }
@@ -36,7 +42,7 @@
     "api/index.js": {
       "memory": 1024,
       "maxDuration": 60,
-      "includeFiles": "backend/**",
+      "includeFiles": "{backend/**,server/**}",
       "excludeFiles": "{**/node_modules/sqlite3/**,**/node_modules/sqlite/**,backend/node_modules/sqlite3/**,backend/node_modules/sqlite/**,backend/data/**,backend/uploads/**}"
     }
   }
