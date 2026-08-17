@@ -1,8 +1,14 @@
 /* Eisy Myanmar — Auth client & session store */
 const Auth = {
-  STORAGE_KEY: 'eisy_auth',
-  BIO_KEY: 'eisy_bio_token',
-  DEVICE_KEY: 'eisy_device',
+  get STORAGE_KEY() {
+    return (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.AUTH) || 'eisy_auth';
+  },
+  get BIO_KEY() {
+    return (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.BIO_TOKEN) || 'eisy_bio_token';
+  },
+  get DEVICE_KEY() {
+    return (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.DEVICE) || 'eisy_device';
+  },
 
   load() {
     try {

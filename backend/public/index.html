@@ -19,11 +19,13 @@
   <link rel="apple-touch-icon" sizes="192x192" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="512x512" href="/icons/Icon-512.png" />
   <link rel="stylesheet" href="/styles.css?v=20260816dup1" />
+  <script src="/src/lib/storageKeys.js?v=20260817m1"></script>
   <script>
     /* Early paint lock: avoid auth↔dashboard flash before JS mounts */
     (function () {
       try {
-        var raw = localStorage.getItem('eisy_auth');
+        var keys = (window.Eisy && window.Eisy.storageKeys) || {};
+        var raw = localStorage.getItem(keys.AUTH || 'eisy_auth');
         if (!raw) return;
         var data = JSON.parse(raw);
         if (data && data.sessionToken) {
@@ -1471,14 +1473,21 @@
     </div>
   </div>
 
-  <script src="/api-config.js?v=20260811e"></script>
+  <script src="/src/lib/config.js?v=20260817m1"></script>
+  <script src="/src/lib/storageKeys.js?v=20260817m1"></script>
+  <script src="/src/lib/constants.js?v=20260817m1"></script>
+  <script src="/src/lib/helpers.js?v=20260817m1"></script>
+  <script src="/src/lib/apiConfig.js?v=20260817m1"></script>
+  <script src="/src/lib/index.js?v=20260817m1"></script>
+  <script src="/src/types/runtime.js?v=20260817m1"></script>
+  <script src="/api-config.js?v=20260817m1"></script>
   <script src="/vendor/browser-image-compression.js?v=20260812a"></script>
   <script type="module" src="/supabaseBridge.js?v=20260811e"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260816f"></script>
-  <script src="/auth.js?v=20260816f"></script>
+  <script src="/i18n.js?v=20260817m1"></script>
+  <script src="/auth.js?v=20260817m1"></script>
   <script src="/nav.js?v=20260816kb2"></script>
   <script src="/viewport.js?v=20260816kb2"></script>
-  <script src="/dashboard.js?v=20260816dup1"></script>
+  <script src="/dashboard.js?v=20260817m1"></script>
 </body>
 </html>

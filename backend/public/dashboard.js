@@ -1,5 +1,5 @@
 /* Eisy Myanmar — Dashboard logic (requires auth.js) */
-const CARD_CACHE_KEY = 'eisy_user_cards';
+const CARD_CACHE_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.USER_CARDS) || 'eisy_user_cards';
 
 const Dashboard = {
   pollTimer: null,
@@ -2897,10 +2897,11 @@ const Dashboard = {
 
   calculateUsdtDepositFeePreviewClient(amountUsdt) {
     const fees = this.withdrawalFees || this.pricingSettings || {};
+    const cfg = (window.Eisy && window.Eisy.config) || {};
     const amount = Math.round((Number(amountUsdt) || 0) * 100) / 100;
     if (!(amount > 0)) return null;
-    const feePercent = Number(fees.payment_service_fee_percent ?? 2);
-    const minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? 1);
+    const feePercent = Number(fees.payment_service_fee_percent ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
+    const minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1);
     const percentFee = Math.round(amount * feePercent) / 100;
     const fee = Math.round(Math.max(percentFee, minimumFee) * 100) / 100;
     const net = Math.round((amount - fee) * 100) / 100;
@@ -2917,11 +2918,12 @@ const Dashboard = {
 
   calculateMmkDepositFeePreviewClient(amountMmk) {
     const fees = this.withdrawalFees || this.pricingSettings || {};
+    const cfg = (window.Eisy && window.Eisy.config) || {};
     const amount = Math.round(Number(amountMmk) || 0);
     if (!(amount > 0)) return null;
-    const feePercent = Number(fees.payment_service_fee_percent ?? 2);
+    const feePercent = Number(fees.payment_service_fee_percent ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
     const rate = Number(fees.mmk_to_usd_rate || this.pricingSettings?.mmk_to_usd_rate || 4500);
-    const minimumFee = Math.round(Number(fees.payment_service_fee_minimum_usdt ?? 1) * rate);
+    const minimumFee = Math.round(Number(fees.payment_service_fee_minimum_usdt ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1) * rate);
     const percentFee = Math.round(amount * feePercent / 100);
     const fee = Math.max(percentFee, minimumFee);
     const net = amount - fee;
@@ -5743,7 +5745,13 @@ const Dashboard = {
   },
 
   clearStaleDepositDrafts() {
-    ['eisy_pending_deposit', 'eisy_deposit_drafts', 'eisy_test_deposits', 'eisy_deposit_receipt'].forEach((key) => {
+    const keys = (window.Eisy && window.Eisy.storageKeys) || {};
+    [
+      keys.PENDING_DEPOSIT || 'eisy_pending_deposit',
+      keys.DEPOSIT_DRAFTS || 'eisy_deposit_drafts',
+      keys.TEST_DEPOSITS || 'eisy_test_deposits',
+      keys.DEPOSIT_RECEIPT || 'eisy_deposit_receipt',
+    ].forEach((key) => {
       try { localStorage.removeItem(key); } catch (_) { /* ignore */ }
     });
   },

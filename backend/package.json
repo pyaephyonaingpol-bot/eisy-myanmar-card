@@ -11,7 +11,8 @@
     "migrate": "node src/migrate.js",
     "db:test": "node scripts/test-database.js",
     "test:deposit-security": "node scripts/test-deposit-security.js",
-    "test:usdt-deposit-duplicate": "node scripts/test-usdt-deposit-duplicate.js"
+    "test:usdt-deposit-duplicate": "node scripts/test-usdt-deposit-duplicate.js",
+    "test:frontend-lib": "node scripts/test-frontend-lib-modules.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
