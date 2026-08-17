@@ -6,14 +6,20 @@ Served statically from `backend/public/src` → browser path `/src/...`.
 
 | Folder | Purpose | Status |
 |--------|---------|--------|
-| `lib/` | Config, storage keys, shared constants | **Step 1–2 (now)** |
-| `types/` | Shared type definitions (JSDoc / `.d.ts`) | **Step 1–2 (now)** |
-| `services/` | API / Supabase clients extracted from UI | Step 3 |
-| `hooks/` | Complex state / business logic helpers | Step 4 |
-| `components/` | Reusable UI pieces | Step 5 |
+| `lib/` | Config, storage keys, shared constants | Step 1–2 ✅ |
+| `types/` | Shared type definitions (JSDoc / `.d.ts`) | Step 1–2 ✅ |
+| `services/` | API clients + Supabase bridge | Step 3 ✅ |
+| `hooks/` | Fee math, busy guards, polling | Step 4 ✅ |
+| `components/` | Toast, fee preview, address box, log | Step 5 ✅ |
 
-## Runtime note
+## Runtime
 
-There is no bundler yet. Lib modules load as classic scripts and attach to
-`window.Eisy` so existing `auth.js` / `dashboard.js` / `admin.js` keep working.
-Later steps can switch consumers to ES `import` without changing paths.
+Classic scripts attach to:
+
+- `window.Eisy` — config / storageKeys / constants
+- `window.EisyServices` — domain APIs
+- `window.EisyHooks` — business helpers
+- `window.EisyComponents` — UI helpers
+- `window.SupabaseBridge` — from `src/services/supabaseService.js`
+
+`dashboard.js` / `admin.js` remain orchestrators and progressively delegate into these modules.

@@ -1,3 +1,11 @@
-# Reserved for Step 4 — custom hooks / state helpers
+# Frontend hooks (Step 4)
 
-Move deposit polling, form busy-state, wallet refresh orchestration here.
+Business-logic helpers (not React hooks — vanilla SPA). Attached to `window.EisyHooks`.
+
+| Module | Role |
+|--------|------|
+| `submitBusy.js` | Button spinner / in-flight guards |
+| `depositFees.js` | Client fee preview math |
+| `depositPolling.js` | Deposit status polling |
+
+Dashboard methods should delegate here instead of owning the logic inline.
