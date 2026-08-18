@@ -8,7 +8,9 @@ NOWPAYMENTS_IPN_SECRET=your_ipn_secret    # Dashboard → Store → IPN / Instan
 PUBLIC_BASE_URL=https://YOUR_DOMAIN       # Required for IPN + redirect URLs
 ```
 
-Supabase is **not required**. Checkout and IPN credit the local LibSQL / Turso
+Keys are read from `process.env` at request time (not cached at `require()`).
+Local/PM2 loads `<repo>/.env`, `backend/.env`, then `.env.local` overlays. Non-empty
+platform/Vercel env vars always win. Supabase is **not required**.
 `deposit_requests_v2` row (same path as Binance Pay). If Supabase is configured
 (`SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL`, plus `SUPABASE_SERVICE_ROLE_KEY`
 or a full anon key), the server also dual-writes to `transactions` — run

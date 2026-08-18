@@ -1,3 +1,4 @@
+require('../lib/loadEnv');
 const crypto = require('crypto');
 const { getSupabase, isSupabaseEnabled } = require('../lib/supabase');
 const { creditUsdt, formatUsdt } = require('./walletService');
@@ -14,9 +15,14 @@ const {
 const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require('./depositService');
 
 const FINISHED_STATUS = 'finished';
-const NOWPAYMENTS_API_BASE = (
-  process.env.NOWPAYMENTS_API_BASE_URL || 'https://api.nowpayments.io/v1'
-).replace(/\/$/, '');
+const DEFAULT_NOWPAYMENTS_API_BASE = 'https://api.nowpayments.io/v1';
+
+function getNowPaymentsApiBase() {
+  return (
+    String(process.env.NOWPAYMENTS_API_BASE_URL || DEFAULT_NOWPAYMENTS_API_BASE).trim()
+    || DEFAULT_NOWPAYMENTS_API_BASE
+  ).replace(/\/$/, '');
+}
 
 /**
  * Recursively sort object keys (NOWPayments IPN requirement).
@@ -85,7 +91,7 @@ async function nowPaymentsApiRequest(path, body) {
     throw err;
   }
 
-  const url = `${NOWPAYMENTS_API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+  const url = `${getNowPaymentsApiBase()}${path.startsWith('/') ? path : `/${path}`}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -802,6 +808,7 @@ module.exports = {
   sortObjectDeep,
   verifyNowPaymentsSignature,
   getNowPaymentsApiKey,
+  getNowPaymentsApiBase,
   createNowPaymentsPayment,
   createNowPaymentsInvoice,
   handleNowPaymentsWebhook,
