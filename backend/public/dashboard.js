@@ -3062,47 +3062,6 @@ const Dashboard = {
       e.preventDefault();
       $('btnCreateNowPayments')?.click();
     });
-      if (this._usdtDepositRequestInFlight) return;
-
-      const btn = $('btnSubmitUsdtDeposit');
-      this._usdtDepositRequestInFlight = true;
-      this.setSubmitBusy(btn, true, { loadingLabel: 'Creating…' });
-
-      try {
-        const network = $('usdtNetwork').value;
-        const amountUsdt = parseFloat($('usdtAmount').value);
-        const body = {
-          deposit_type: 'usdt',
-          amount_usdt: amountUsdt,
-          network,
-          deposit_channel: 'platform_direct',
-        };
-
-        const data = await (window.EisyServices?.deposit?.createRequest
-          ? window.EisyServices.deposit.createRequest(body)
-          : Auth.api('POST', '/api/deposit/request', body, { sensitive: true }));
-
-        const addr = data.payment_instructions?.deposit_address;
-        this.showUsdtDepositAddress(network, addr);
-        if ($('usdtRefCodeDisplay')) $('usdtRefCodeDisplay').textContent = data.deposit.ref_code;
-        if ($('usdtActiveDepositId')) $('usdtActiveDepositId').value = data.deposit.id;
-        if ($('usdtDepositStatus')) {
-          const feeNote = data.fee_breakdown
-            ? ` Fee $${Number(data.fee_breakdown.fee_usdt).toFixed(2)} → net $${Number(data.fee_breakdown.net_usdt).toFixed(2)} credited after approval.`
-            : '';
-          $('usdtDepositStatus').textContent = (data.payment_instructions?.message || 'Send USDT, then submit TxHash below.') + feeNote;
-        }
-        $('usdtDepositSubmitForm')?.classList.remove('hidden');
-        this.toast(data.message || `USDT deposit request: ${data.deposit.ref_code}`, 'ok');
-        this.loadDepositHistory();
-      } catch (err) {
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
-        this.toast(err.message || 'USDT deposit request failed', 'error');
-      } finally {
-        this._usdtDepositRequestInFlight = false;
-        this.setSubmitBusy(btn, false, { idleLabel: 'Generate Deposit Request' });
-      }
-    });
 
     $('usdtDepositSubmitForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
