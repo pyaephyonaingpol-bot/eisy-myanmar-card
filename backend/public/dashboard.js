@@ -3029,18 +3029,32 @@ const Dashboard = {
     this.updateMmkDepositFeePreview();
 
     const setUsdtDepositMode = (mode) => {
-      this._usdtDepositMode = mode === 'binance' ? 'binance' : 'direct';
+      if (mode === 'nowpayments') {
+        this._usdtDepositMode = 'nowpayments';
+      } else if (mode === 'binance') {
+        this._usdtDepositMode = 'binance';
+      } else {
+        this._usdtDepositMode = 'direct';
+      }
+      const direct = this._usdtDepositMode === 'direct';
       const binance = this._usdtDepositMode === 'binance';
-      $('btnUsdtDepositDirect')?.classList.toggle('is-active', !binance);
+      const nowpayments = this._usdtDepositMode === 'nowpayments';
+
+      $('btnUsdtDepositDirect')?.classList.toggle('is-active', direct);
       $('btnUsdtDepositBinance')?.classList.toggle('is-active', binance);
-      $('usdtNetwork')?.closest('.field')?.classList.toggle('hidden', binance);
-      $('btnSubmitUsdtDeposit')?.classList.toggle('hidden', binance);
+      $('btnUsdtDepositNowPayments')?.classList.toggle('is-active', nowpayments);
+
+      $('usdtNetwork')?.closest('.field')?.classList.toggle('hidden', !direct);
+      $('btnSubmitUsdtDeposit')?.classList.toggle('hidden', !direct);
       $('btnCreateBinancePay')?.classList.toggle('hidden', !binance);
+      $('btnCreateNowPayments')?.classList.toggle('hidden', !nowpayments);
+
       if (!binance) $('binancePayBox')?.classList.add('hidden');
     };
     $('btnUsdtDepositDirect')?.addEventListener('click', () => setUsdtDepositMode('direct'));
     $('btnUsdtDepositBinance')?.addEventListener('click', () => setUsdtDepositMode('binance'));
-    setUsdtDepositMode('direct');
+    $('btnUsdtDepositNowPayments')?.addEventListener('click', () => setUsdtDepositMode('nowpayments'));
+    setUsdtDepositMode('nowpayments');
 
     $('btnCreateBinancePay')?.addEventListener('click', async () => {
       if (this._binancePayCreateInFlight) return;
@@ -3117,8 +3131,44 @@ const Dashboard = {
       }
     });
 
+    $('btnCreateNowPayments')?.addEventListener('click', async () => {
+      if (this._nowPaymentsCreateInFlight) return;
+      try {
+        const amountUsdt = parseFloat($('usdtAmount')?.value);
+        if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) {
+          this.toast('Enter a valid USDT amount', 'error');
+          return;
+        }
+        const btn = $('btnCreateNowPayments');
+        this._nowPaymentsCreateInFlight = true;
+        this.setSubmitBusy(btn, true, { loadingLabel: 'Redirecting to checkout…' });
+
+        const data = await (window.EisyServices?.deposit?.createNowPayments
+          ? window.EisyServices.deposit.createNowPayments({ amount_usdt: amountUsdt })
+          : Auth.api('POST', '/api/create-payment', { amount_usdt: amountUsdt }, { sensitive: true }));
+
+        const checkoutUrl = data?.checkout_url || data?.invoice_url;
+        if (!checkoutUrl) {
+          throw new Error('No checkout URL returned from server');
+        }
+
+        this.toast('Redirecting to NowPayments checkout…', 'ok');
+        window.location.href = checkoutUrl;
+      } catch (err) {
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+        this.toast(err.message || 'NowPayments checkout failed', 'error');
+      } finally {
+        this._nowPaymentsCreateInFlight = false;
+        this.setSubmitBusy($('btnCreateNowPayments'), false, { idleLabel: 'Deposit with NowPayments' });
+      }
+    });
+
     $('usdtDepositForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (this._usdtDepositMode === 'nowpayments') {
+        $('btnCreateNowPayments')?.click();
+        return;
+      }
       if (this._usdtDepositMode === 'binance') {
         $('btnCreateBinancePay')?.click();
         return;

@@ -1221,10 +1221,11 @@
                 </div>
 
                 <div id="depositUsdtPanel" class="deposit-tab-panel hidden">
-                <p class="hint" style="margin-bottom:0.75rem">Top up your USDT wallet via platform direct deposit or Binance Pay.</p>
+                <p class="hint" style="margin-bottom:0.75rem">Top up your USDT wallet via platform direct deposit, Binance Pay, or NOWPayments.</p>
                 <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem">
                   <button type="button" class="btn btn-secondary btn-sm is-active" id="btnUsdtDepositDirect">Direct (TRC20/BEP20)</button>
-                  <button type="button" class="btn btn-primary btn-sm" id="btnUsdtDepositBinance">Binance Pay</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btnUsdtDepositBinance">Binance Pay</button>
+                  <button type="button" class="btn btn-primary btn-sm" id="btnUsdtDepositNowPayments">NOWPayments</button>
                 </div>
                 <form id="usdtDepositForm" class="form">
                   <div class="field">
@@ -1248,6 +1249,7 @@
                   </div>
                   <button type="submit" class="btn btn-primary" id="btnSubmitUsdtDeposit">Generate Deposit Request</button>
                   <button type="button" class="btn btn-primary hidden" id="btnCreateBinancePay">Pay with Binance Pay</button>
+                  <button type="button" class="btn btn-primary hidden" id="btnCreateNowPayments">Deposit with NowPayments</button>
                 </form>
                 <div id="binancePayBox" class="usdt-address-box hidden">
                   <p class="usdt-network-label">Binance Pay checkout</p>
