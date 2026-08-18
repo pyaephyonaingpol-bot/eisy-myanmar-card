@@ -3098,9 +3098,12 @@ const Dashboard = {
           body.user_note = $('usdtDepositNote').value.trim();
         }
 
-        const data = await (window.EisyServices?.deposit?.submitProof
-          ? window.EisyServices.deposit.submitProof(body)
-          : Auth.api('POST', '/api/deposit/submit', body, { sensitive: true }));
+        let data;
+        if (window.EisysServices?.deposit?.submitProof) {
+            data = await window.EisysServices.deposit.submitProof(body);
+        } else {
+            data = await Auth.api('POST', '/api/deposit/submit', body, { sensitive: true });
+        }
 
         if (data.pending_p2p || (data.pending && data.deposit?.is_p2p)) {
           this.resetUsdtDepositForm();
