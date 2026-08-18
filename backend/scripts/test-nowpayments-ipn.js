@@ -88,6 +88,42 @@ async function main() {
   assert.ok(!verifyNowPaymentsSignature(payload, null), 'missing signature must fail');
   console.log('ok');
 
+  section('process.env is read at call time');
+  const {
+    getNowPaymentsApiBase,
+    getNowPaymentsApiKey,
+  } = require('../src/services/nowPaymentsService');
+  const { loadEnv, resetLoadEnvForTests } = require('../src/lib/loadEnv');
+
+  const prevBase = process.env.NOWPAYMENTS_API_BASE_URL;
+  const prevKey = process.env.NOWPAYMENTS_API_KEY;
+  process.env.NOWPAYMENTS_API_BASE_URL = 'https://sandbox.nowpayments.io/v1/';
+  process.env.NOWPAYMENTS_API_KEY = 'live-from-process-env';
+  assert.strictEqual(getNowPaymentsApiBase(), 'https://sandbox.nowpayments.io/v1');
+  assert.strictEqual(getNowPaymentsApiKey(), 'live-from-process-env');
+
+  resetLoadEnvForTests();
+  loadEnv({ force: true });
+  assert.strictEqual(
+    process.env.NOWPAYMENTS_API_KEY,
+    'live-from-process-env',
+    'loadEnv must not clobber non-empty process.env values'
+  );
+
+  if (prevBase === undefined) {
+    delete process.env.NOWPAYMENTS_API_BASE_URL;
+    assert.strictEqual(getNowPaymentsApiBase(), 'https://api.nowpayments.io/v1');
+  } else {
+    process.env.NOWPAYMENTS_API_BASE_URL = prevBase;
+    assert.strictEqual(
+      getNowPaymentsApiBase(),
+      String(prevBase).trim().replace(/\/$/, '') || 'https://api.nowpayments.io/v1'
+    );
+  }
+  if (prevKey === undefined) delete process.env.NOWPAYMENTS_API_KEY;
+  else process.env.NOWPAYMENTS_API_KEY = prevKey;
+  console.log('ok');
+
   section('Server-side Supabase enablement');
   const supabaseSnap = snapshotEnv(SUPABASE_ENV_KEYS);
   const {

@@ -1,3 +1,4 @@
+require('./loadEnv');
 const { createClient } = require('@supabase/supabase-js');
 
 let client = null;
