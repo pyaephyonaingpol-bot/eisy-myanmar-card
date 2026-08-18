@@ -17,10 +17,13 @@ const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require
 const FINISHED_STATUS = 'finished';
 const DEFAULT_NOWPAYMENTS_API_BASE = 'https://api.nowpayments.io/v1';
 /**
- * NOWPayments invoice `pay_currency` for USDT checkout.
- * Do not send `usdt_network`, `udst_network`, or `network` — those keys are rejected.
+ * NOWPayments ticker for USDT on Tron (TRC20).
+ * GET /v1/currencies includes `usdttrc20`, not a generic `usdt`.
+ * Dashboard "USDT" enabled ≠ API `pay_currency: "usdt"` (that yields
+ * "Currency USDT is currently unavailable"). Do not send `usdt_network`
+ * or `network` — those keys are rejected.
  */
-const DEFAULT_PAY_CURRENCY = 'usdt';
+const DEFAULT_PAY_CURRENCY = 'usdttrc20';
 const INVOICE_ALLOWED_FIELDS = [
   'price_amount',
   'price_currency',
@@ -36,23 +39,16 @@ const INVOICE_ALLOWED_FIELDS = [
 ];
 
 /**
- * Normalize to the NOWPayments invoice ticker `usdt`.
- * Network-specific aliases (usdttrc20, trx, TRC20) must not become extra API fields.
+ * Map app aliases (`usdt`, `trx`, `TRC20`) to the NOWPayments ticker `usdttrc20`.
+ * Network is encoded in the ticker; it is not a separate invoice field.
  */
 function normalizeNowPaymentsPayCurrency(payCurrency) {
   const compact = String(payCurrency || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   if (!compact) return DEFAULT_PAY_CURRENCY;
-  if (
-    compact === 'usdt'
-    || compact.startsWith('usdt')
-    || compact === 'trc20'
-    || compact === 'trx'
-    || compact === 'erc20'
-    || compact === 'bep20'
-    || compact === 'bsc'
-  ) {
-    return DEFAULT_PAY_CURRENCY;
-  }
+
+  const usdtTronAliases = new Set(['usdt', 'usdttrc20', 'usdttrc', 'trc20', 'trx']);
+  if (usdtTronAliases.has(compact)) return DEFAULT_PAY_CURRENCY;
+
   return compact;
 }
 

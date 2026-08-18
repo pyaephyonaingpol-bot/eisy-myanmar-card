@@ -36,7 +36,22 @@ Content-Type: application/json
 }
 ```
 
-The NOWPayments `/v1/invoice` body uses `pay_currency: "usdt"`. Do **not** send `usdt_network`, `udst_network`, `network`, or `trx` — NOWPayments rejects unknown keys (`usdt_network is not allowed`). Local deposits still record `usdt_network: TRC20` for our own bookkeeping only.
+Server maps that to the NOWPayments `/v1/invoice` body:
+
+```json
+{
+  "price_amount": 50,
+  "price_currency": "usd",
+  "pay_currency": "usdttrc20",
+  "order_id": "NP…",
+  "order_description": "…",
+  "ipn_callback_url": "…",
+  "success_url": "…",
+  "cancel_url": "…"
+}
+```
+
+The NOWPayments `/v1/invoice` body must use the Tron USDT ticker `usdttrc20`. Dashboard "USDT" is a display name; generic `pay_currency: "usdt"` returns **Currency USDT is currently unavailable**. Network is encoded in the ticker — do **not** send `usdt_network`, `network`, or `pay_amount` on the invoice (invoice prices in fiat via `price_amount` + `price_currency: "usd"`). Local deposits still record `usdt_network: TRC20` for our own bookkeeping only.
 
 Response includes `checkout_url` (hosted NOWPayments page), `payment_id`, `order_id`, and `fee_breakdown`.
 

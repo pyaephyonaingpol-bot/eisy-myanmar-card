@@ -18,7 +18,8 @@ const router = express.Router();
  * Create NOWPayments invoice, save pending local deposit, return checkout URL.
  * Supabase dual-write is optional and is not required for checkout.
  * Body: { amount_usdt | amount, pay_currency?, success_url?, cancel_url?, order_description? }
- * Invoice pay_currency is `usdt`. Do not forward usdt_network / network to NOWPayments.
+ * Invoice pay_currency sent to NOWPayments is `usdttrc20` (USDT on Tron).
+ * App may pass `usdt`; do not forward usdt_network / network / pay_amount.
  */
 async function createPaymentHandler(req, res) {
   try {
