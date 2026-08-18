@@ -39,6 +39,7 @@ const Dashboard = {
         });
     } catch (err) {
       console.error('[Dashboard] init failed:', err);
+      this.endHydration();
       this.markAppReady();
     }
   },

@@ -1,6 +1,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env.local') });
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
+require('dotenv').config({ path: path.join(__dirname, '..', '.env.local') });
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 require('dotenv').config();
 const express = require('express');
@@ -70,9 +71,13 @@ app.use(express.static(PUBLIC_DIR, {
     } else if (/\.(webmanifest|json)$/i.test(filePath) && /manifest/i.test(filePath)) {
       res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
       res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      res.setHeader('Access-Control-Allow-Origin', '*');
     } else if (/\.(js|css)$/i.test(filePath)) {
       // Versioned via ?v= query in HTML — always revalidate so deploys apply quickly
       res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    } else if (/\.(png|jpg|jpeg|svg|webp|ico|woff2?)$/i.test(filePath)) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
     }
   },
 }));

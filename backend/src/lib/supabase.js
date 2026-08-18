@@ -4,15 +4,31 @@ let client = null;
 
 function getSupabaseConfig() {
   return {
-    url: process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '',
-    anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '',
-    serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    url: (
+      process.env.NEXT_PUBLIC_SUPABASE_URL
+      || process.env.SUPABASE_URL
+      || process.env.PUBLIC_SUPABASE_URL
+      || ''
+    ).trim(),
+    anonKey: (
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      || process.env.SUPABASE_ANON_KEY
+      || process.env.PUBLIC_SUPABASE_ANON_KEY
+      || process.env.SUPABASE_KEY
+      || ''
+    ).trim(),
+    serviceKey: (
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+      || process.env.SUPABASE_SERVICE_KEY
+      || ''
+    ).trim(),
   };
 }
 
 function isSupabaseEnabled() {
   const { url, anonKey } = getSupabaseConfig();
   if (!url || !anonKey) return false;
+  if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
   if (anonKey.includes('...')) {
     console.warn('[supabase] Anon key appears truncated — set the full NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local');
     return false;

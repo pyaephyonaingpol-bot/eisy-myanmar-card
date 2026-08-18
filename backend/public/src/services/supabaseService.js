@@ -17,9 +17,13 @@ const SupabaseBridge = {
     this._initPromise = (async () => {
       try {
         const res = await fetch('/api/config/supabase');
+        if (!res.ok) {
+          this.enabled = false;
+          return false;
+        }
         const cfg = await res.json();
         if (!cfg.enabled || !cfg.url || !cfg.anonKey) {
-          console.info('[SupabaseBridge] Disabled — check .env.local credentials');
+          console.info('[SupabaseBridge] Disabled — real-time Supabase sync optional (configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to enable)');
           this.enabled = false;
           return false;
         }
