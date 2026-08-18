@@ -32,11 +32,11 @@ Content-Type: application/json
 
 {
   "amount_usdt": 50,
-  "pay_currency": "usdt"
+  "pay_currency": "usdttrc20"
 }
 ```
 
-Server maps that to the NOWPayments `/v1/invoice` body:
+Server always sends this NOWPayments `/v1/invoice` body (`pay_currency` is hardcoded to `usdttrc20`):
 
 ```json
 {

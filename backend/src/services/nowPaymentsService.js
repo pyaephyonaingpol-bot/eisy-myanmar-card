@@ -295,7 +295,6 @@ async function syncLocalDepositPaymentId(deposit, paymentId) {
 async function createNowPaymentsPayment(userId, {
   amount_usdt,
   amount,
-  pay_currency = DEFAULT_PAY_CURRENCY,
   success_url: successUrl,
   cancel_url: cancelUrl,
   order_description: orderDescription,
@@ -332,7 +331,10 @@ async function createNowPaymentsPayment(userId, {
     throw err;
   }
 
-  const payCurrency = normalizeNowPaymentsPayCurrency(pay_currency);
+  // NOWPayments has no generic `usdt` ticker. USDT on Tron is always `usdttrc20`.
+  // Do not forward client pay_currency/network — those caused "Currency USDT is
+  // currently unavailable" and "usdt_network is not allowed".
+  const payCurrency = DEFAULT_PAY_CURRENCY;
 
   const refCode = await uniqueRefCode();
   const metadata = {
@@ -407,7 +409,7 @@ async function createNowPaymentsPayment(userId, {
   const invoicePayload = pickNowPaymentsInvoicePayload({
     price_amount: feeBreakdown.amount_usdt,
     price_currency: 'usd',
-    pay_currency: payCurrency,
+    pay_currency: 'usdttrc20',
     order_id: orderId,
     order_description: orderDescription || `Eisy USDT deposit ${orderId}`,
     ipn_callback_url: ipnCallbackUrl,
