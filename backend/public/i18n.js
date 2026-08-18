@@ -5,8 +5,8 @@
 (function (global) {
   'use strict';
 
-  const STORAGE_KEY = 'eisy_lang';
-  const DEFAULT_LANG = 'en';
+  const DEFAULT_LANG = (window.Eisy && window.Eisy.config && window.Eisy.config.DEFAULT_LANG) || 'en';
+  const STORAGE_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.LANG) || 'eisy_lang';
   const SUPPORTED = ['en', 'my'];
 
   const messages = {

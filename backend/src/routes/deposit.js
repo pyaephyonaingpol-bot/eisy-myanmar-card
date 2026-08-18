@@ -208,6 +208,14 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
   } catch (err) {
     console.error('[deposit/request]', err);
     const msg = err.message || 'Internal server error';
+    if (err.code === 'DUPLICATE_DEPOSIT_REQUEST') {
+      return res.status(err.status || 409).json({
+        success: false,
+        error: msg,
+        code: err.code,
+        existing: err.existing || null,
+      });
+    }
     if (
       msg.includes('Minimum')
       || msg.includes('Positive')
@@ -222,6 +230,7 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
         error: msg.includes('SQLITE_CONSTRAINT')
           ? 'Invalid deposit data — please check amount and network'
           : msg,
+        code: err.code || undefined,
       });
     }
     res.status(500).json({ success: false, error: msg });
@@ -365,8 +374,16 @@ router.post('/submit', requireAuth, requireSensitive, (req, res, next) => {
     if (req.file) fs.unlink(req.file.path, () => {});
     console.error('[deposit/submit]', err);
     const msg = err.message || 'Internal server error';
+    if (err.code === 'DUPLICATE_DEPOSIT_REQUEST' || err.code === 'TX_HASH_REUSED') {
+      return res.status(err.status || 409).json({
+        success: false,
+        error: msg,
+        code: err.code,
+        existing: err.existing || null,
+      });
+    }
     if (msg.includes('already been used') || msg.includes('Access denied') || msg.includes('Cannot submit')) {
-      return res.status(400).json({ success: false, error: msg });
+      return res.status(400).json({ success: false, error: msg, code: err.code || undefined });
     }
     res.status(500).json({ success: false, error: msg });
   }

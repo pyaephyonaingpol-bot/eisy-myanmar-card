@@ -19,11 +19,13 @@
   <link rel="apple-touch-icon" sizes="192x192" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="512x512" href="/icons/Icon-512.png" />
   <link rel="stylesheet" href="/styles.css?v=20260816kb7" />
+  <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
     /* Early paint lock: avoid auth↔dashboard flash before JS mounts */
     (function () {
       try {
-        var raw = localStorage.getItem('eisy_auth');
+        var keys = (window.Eisy && window.Eisy.storageKeys) || {};
+        var raw = localStorage.getItem(keys.AUTH || 'eisy_auth');
         if (!raw) return;
         var data = JSON.parse(raw);
         if (data && data.sessionToken) {
@@ -1278,7 +1280,7 @@
                     <label for="usdtDepositNote">Note (optional)</label>
                     <input id="usdtDepositNote" type="text" placeholder="Sent 50 USDT at 3pm" />
                   </div>
-                  <button type="submit" class="btn btn-primary">Submit USDT Deposit</button>
+                  <button type="submit" class="btn btn-primary" id="btnSubmitUsdtProof">Submit USDT Deposit</button>
                 </form>
                 </div>
 
@@ -1471,14 +1473,38 @@
     </div>
   </div>
 
-  <script src="/api-config.js?v=20260811e"></script>
+  <script src="/src/lib/config.js?v=20260817m2"></script>
+  <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
+  <script src="/src/lib/constants.js?v=20260817m2"></script>
+  <script src="/src/lib/helpers.js?v=20260817m2"></script>
+  <script src="/src/lib/apiConfig.js?v=20260817m2"></script>
+  <script src="/src/lib/index.js?v=20260817m2"></script>
+  <script src="/src/types/runtime.js?v=20260817m2"></script>
+  <script src="/api-config.js?v=20260817m2"></script>
   <script src="/vendor/browser-image-compression.js?v=20260812a"></script>
-  <script type="module" src="/supabaseBridge.js?v=20260811e"></script>
+  <script type="module" src="/supabaseBridge.js?v=20260817m2"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260816f"></script>
-  <script src="/auth.js?v=20260816f"></script>
+  <script src="/i18n.js?v=20260817m2"></script>
+  <script src="/auth.js?v=20260817m2"></script>
+  <script src="/src/services/apiClient.js?v=20260817m2"></script>
+  <script src="/src/services/depositApi.js?v=20260817m2"></script>
+  <script src="/src/services/usdtWalletApi.js?v=20260817m2"></script>
+  <script src="/src/services/withdrawalApi.js?v=20260817m2"></script>
+  <script src="/src/services/cardsApi.js?v=20260817m2"></script>
+  <script src="/src/services/accountApi.js?v=20260817m2"></script>
+  <script src="/src/services/p2pApi.js?v=20260817m2"></script>
+  <script src="/src/services/index.js?v=20260817m2"></script>
+  <script src="/src/hooks/submitBusy.js?v=20260817m2"></script>
+  <script src="/src/hooks/depositFees.js?v=20260817m2"></script>
+  <script src="/src/hooks/depositPolling.js?v=20260817m2"></script>
+  <script src="/src/hooks/index.js?v=20260817m2"></script>
+  <script src="/src/components/toast.js?v=20260817m2"></script>
+  <script src="/src/components/depositFeePreview.js?v=20260817m2"></script>
+  <script src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
+  <script src="/src/components/activityLog.js?v=20260817m2"></script>
+  <script src="/src/components/index.js?v=20260817m2"></script>
   <script src="/nav.js?v=20260816kb2"></script>
   <script src="/viewport.js?v=20260816kb2"></script>
-  <script src="/dashboard.js?v=20260816h"></script>
+  <script src="/dashboard.js?v=20260817m2"></script>
 </body>
 </html>

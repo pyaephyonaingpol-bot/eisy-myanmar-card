@@ -16,6 +16,12 @@ post-deposit “sweep.” Withdrawals pay **from** the same master wallet.
      `kpay_transaction_id`  
    - Admin USDT approve re-verifies on-chain (unless non-prod `force_approve`)
 
+2b. **Rapid duplicate request rejection**  
+   `assertNoRapidDuplicateUsdtDeposit` rejects same-user USDT creates with the
+   same open amount (and network) within `USDT_DEPOSIT_DUPLICATE_WINDOW_SEC`
+   (default 90s), and rejects TxID submits already attached to another recent
+   deposit. Prevents double-click spam from flooding the admin queue.
+
 3. **Idempotent credit**  
    `DepositRequest.claimForCredit` only transitions non-terminal → `VERIFIED`  
    (`WHERE status NOT IN ('VERIFIED','REJECTED','FAILED')`). Concurrent credits
