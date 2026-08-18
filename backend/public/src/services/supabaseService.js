@@ -19,7 +19,7 @@ const SupabaseBridge = {
         const res = await fetch('/api/config/supabase');
         const cfg = await res.json();
         if (!cfg.enabled || !cfg.url || !cfg.anonKey) {
-          console.info('[SupabaseBridge] Disabled — check .env.local credentials');
+          console.info('[SupabaseBridge] Disabled — optional cloud sync is off; using the local database');
           this.enabled = false;
           return false;
         }

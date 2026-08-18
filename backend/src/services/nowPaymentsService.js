@@ -1,13 +1,17 @@
 const crypto = require('crypto');
 const { getSupabase, isSupabaseEnabled } = require('../lib/supabase');
-const { creditUsdt } = require('./walletService');
+const { creditUsdt, formatUsdt } = require('./walletService');
 const User = require('../models/User');
+const DepositRequest = require('../models/DepositRequest');
+const TransactionLog = require('../models/TransactionLog');
+const { getDb } = require('../db');
 const { joinPublicUrl } = require('../lib/publicUrl');
+const { getCardPricingSettings, parseRecordMetadata } = require('./settingsService');
 const {
   calculateUsdtPaymentFeeBreakdown,
   assertValidPaymentAmount,
 } = require('./paymentFeeService');
-const { getCardPricingSettings } = require('./settingsService');
+const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require('./depositService');
 
 const FINISHED_STATUS = 'finished';
 const NOWPAYMENTS_API_BASE = (
@@ -127,9 +131,7 @@ async function insertPendingSupabaseTransaction({
   metadata = {},
 }) {
   const sb = getSupabase();
-  if (!sb) {
-    throw new Error('Supabase is not configured');
-  }
+  if (!sb) return null;
 
   const row = {
     user_id: String(userId),
@@ -150,10 +152,8 @@ async function insertPendingSupabaseTransaction({
     .single();
 
   if (error) {
-    console.error('[nowpayments] Supabase insert failed:', error.message);
-    const err = new Error(`Supabase transaction insert failed: ${error.message}`);
-    err.code = 'NOWPAYMENTS_SUPABASE_INSERT_FAILED';
-    throw err;
+    console.warn('[nowpayments] Optional Supabase insert skipped:', error.message);
+    return null;
   }
 
   return data;
@@ -170,8 +170,8 @@ async function findSupabaseTransactionByOrderId(orderId) {
     .maybeSingle();
 
   if (error) {
-    console.error('[nowpayments] Supabase order lookup failed:', error.message);
-    throw new Error(`Supabase transaction lookup failed: ${error.message}`);
+    console.warn('[nowpayments] Optional Supabase order lookup skipped:', error.message);
+    return null;
   }
   return data;
 }
@@ -191,14 +191,55 @@ async function syncSupabaseTransactionPaymentId(transactionId, paymentId) {
     .maybeSingle();
 
   if (error) {
-    console.error('[nowpayments] Supabase payment_id sync failed:', error.message);
-    throw new Error(`Supabase payment_id sync failed: ${error.message}`);
+    console.warn('[nowpayments] Optional Supabase payment_id sync skipped:', error.message);
+    return null;
   }
   return data;
 }
 
+async function findDepositByNowPaymentsIds({ orderId, paymentId, invoiceId } = {}) {
+  const db = getDb();
+  const candidates = [orderId, paymentId, invoiceId]
+    .map((value) => (value == null || value === '' ? null : String(value)))
+    .filter(Boolean);
+
+  for (const id of candidates) {
+    const row = await db.get(`
+      SELECT * FROM deposit_requests_v2
+      WHERE json_extract(metadata, '$.nowpayments_order_id') = ?
+         OR json_extract(metadata, '$.nowpayments_invoice_id') = ?
+         OR json_extract(metadata, '$.nowpayments_payment_id') = ?
+         OR json_extract(metadata, '$.order_id') = ?
+         OR ref_code = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `, id, id, id, id, id);
+    if (row) return row;
+  }
+  return null;
+}
+
+async function syncLocalDepositPaymentId(deposit, paymentId) {
+  if (!deposit || !paymentId) return deposit;
+  const meta = parseRecordMetadata(deposit.metadata);
+  if (String(meta.nowpayments_payment_id || '') === String(paymentId)) {
+    return deposit;
+  }
+  const nextMeta = { ...meta, nowpayments_payment_id: String(paymentId) };
+  const db = getDb();
+  await db.run(
+    `UPDATE deposit_requests_v2 SET metadata = ?, updated_at = datetime('now') WHERE id = ?`,
+    JSON.stringify(nextMeta),
+    deposit.id
+  );
+  return DepositRequest.findById(deposit.id);
+}
+
 /**
- * Create NOWPayments checkout invoice, persist pending Supabase transaction, return checkout URL.
+ * Create NOWPayments checkout invoice, persist a local pending deposit
+ * (LibSQL / Turso), optionally dual-write to Supabase, and return checkout URL.
+ *
+ * Supabase is not required for NOWPayments transactions.
  */
 async function createNowPaymentsPayment(userId, {
   amount_usdt,
@@ -221,12 +262,6 @@ async function createNowPaymentsPayment(userId, {
     throw err;
   }
 
-  if (!isSupabaseEnabled()) {
-    const err = new Error('Supabase is required for NOWPayments transactions');
-    err.code = 'SUPABASE_NOT_CONFIGURED';
-    throw err;
-  }
-
   const settings = await getCardPricingSettings();
   const minUsdt = settings.minimum_usdt_deposit ?? 5;
   if (gross < minUsdt) {
@@ -246,10 +281,81 @@ async function createNowPaymentsPayment(userId, {
     throw err;
   }
 
+  const refCode = await uniqueRefCode();
+  const metadata = {
+    deposit_currency: 'USDT',
+    deposit_channel: 'nowpayments',
+    payment_provider: 'nowpayments',
+    nowpayments_order_id: orderId,
+    order_id: orderId,
+    pay_currency: String(pay_currency || 'usdttrc20').toLowerCase(),
+    usdt_network: 'TRC20',
+    amount_usdt: feeBreakdown.amount_usdt,
+    gross_usdt: feeBreakdown.amount_usdt,
+    fee_usdt: feeBreakdown.fee_usdt,
+    net_usdt: feeBreakdown.net_usdt,
+    payment_fee: {
+      operation: 'deposit',
+      currency: 'USDT',
+      provider: 'nowpayments',
+      gross_usdt: feeBreakdown.amount_usdt,
+      fee_usdt: feeBreakdown.fee_usdt,
+      net_usdt: feeBreakdown.net_usdt,
+      fee_percent: feeBreakdown.fee_percent,
+      minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
+      used_minimum_fee: feeBreakdown.used_minimum_fee,
+      fee_rule: feeBreakdown.fee_rule,
+      fee_label: feeBreakdown.fee_label,
+    },
+    pricing: {
+      amount_usdt: feeBreakdown.amount_usdt,
+      fee_usdt: feeBreakdown.fee_usdt,
+      net_usdt: feeBreakdown.net_usdt,
+      fee_percent: feeBreakdown.fee_percent,
+      minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
+      used_minimum_fee: feeBreakdown.used_minimum_fee,
+      fee_label: feeBreakdown.fee_label,
+      is_usdt_topup: true,
+      deposit_channel: 'nowpayments',
+    },
+  };
+
+  const deposit = await DepositRequest.create({
+    userId,
+    amountMmk: 0,
+    amountUsd: feeBreakdown.amount_usdt,
+    refCode,
+    paymentMethod: 'NOWPAYMENTS',
+    purpose: 'usdt_topup',
+    depositCurrency: 'USDT',
+    usdtNetwork: 'TRC20',
+    metadata,
+  });
+
+  await TransactionLog.create({
+    userId,
+    type: 'deposit_request',
+    direction: 'neutral',
+    amountUsd: feeBreakdown.amount_usdt,
+    referenceType: 'deposit_requests_v2',
+    referenceId: deposit.id,
+    description: `[usdt_topup] NOWPayments deposit ${refCode} — gross ${formatUsdt(feeBreakdown.amount_usdt)}, fee ${formatUsdt(feeBreakdown.fee_usdt)}, net ${formatUsdt(feeBreakdown.net_usdt)}`,
+    createdBy: 'user',
+    metadata: {
+      purpose: 'usdt_topup',
+      deposit_channel: 'nowpayments',
+      nowpayments_order_id: orderId,
+      payment_fee: metadata.payment_fee,
+    },
+  }).catch((err) => {
+    console.warn('[nowpayments] deposit_request log skipped:', err.message);
+  });
+
   const invoicePayload = {
     price_amount: feeBreakdown.amount_usdt,
     price_currency: 'usd',
     pay_currency: String(pay_currency || 'usdttrc20').toLowerCase(),
+    usdt_network: 'TRC20',
     order_id: orderId,
     order_description: orderDescription || `Eisy USDT deposit ${orderId}`,
     ipn_callback_url: ipnCallbackUrl,
@@ -257,16 +363,47 @@ async function createNowPaymentsPayment(userId, {
     cancel_url: cancelUrl || joinPublicUrl('/#deposits') || undefined,
   };
 
-  const invoice = await createNowPaymentsInvoice(invoicePayload);
+  let invoice;
+  try {
+    invoice = await createNowPaymentsInvoice(invoicePayload);
+  } catch (err) {
+    await DepositRequest.review(deposit.id, {
+      status: 'FAILED',
+      rejectionReason: err.message || 'NOWPayments invoice creation failed',
+      adminNote: 'NOWPayments API error on create',
+    }).catch(() => {});
+    throw err;
+  }
+
   const invoiceId = invoice?.id != null ? String(invoice.id) : null;
   const checkoutUrl = invoice?.invoice_url || invoice?.payment_url || null;
 
   if (!invoiceId || !checkoutUrl) {
+    await DepositRequest.review(deposit.id, {
+      status: 'FAILED',
+      rejectionReason: 'NOWPayments invoice response missing id or checkout URL',
+      adminNote: 'Invalid NOWPayments invoice response',
+    }).catch(() => {});
     const err = new Error('NOWPayments invoice response missing id or checkout URL');
     err.code = 'NOWPAYMENTS_INVALID_RESPONSE';
     err.nowpayments = invoice;
     throw err;
   }
+
+  const nextMeta = {
+    ...metadata,
+    nowpayments_invoice_id: invoiceId,
+    nowpayments_payment_id: invoiceId,
+    nowpayments_invoice_url: checkoutUrl,
+    nowpayments: invoice,
+  };
+  const db = getDb();
+  await db.run(
+    `UPDATE deposit_requests_v2 SET metadata = ?, updated_at = datetime('now') WHERE id = ?`,
+    JSON.stringify(nextMeta),
+    deposit.id
+  );
+  const refreshed = await DepositRequest.findById(deposit.id);
 
   const transaction = await insertPendingSupabaseTransaction({
     userId,
@@ -278,6 +415,8 @@ async function createNowPaymentsPayment(userId, {
       provider: 'nowpayments',
       invoice_id: invoiceId,
       invoice_url: checkoutUrl,
+      deposit_id: refreshed.id,
+      deposit_ref: refCode,
       gross_usdt: feeBreakdown.amount_usdt,
       fee_usdt: feeBreakdown.fee_usdt,
       net_usdt: feeBreakdown.net_usdt,
@@ -294,7 +433,9 @@ async function createNowPaymentsPayment(userId, {
     invoice_url: checkoutUrl,
     payment_id: invoiceId,
     order_id: orderId,
+    ref_code: refCode,
     fee_breakdown: feeBreakdown,
+    deposit: refreshed,
     transaction,
     invoice,
   };
@@ -364,7 +505,7 @@ function resolveCreditAmountUsdt(body) {
 
 async function findSupabaseTransactionByPaymentId(paymentId) {
   const sb = getSupabase();
-  if (!sb) return null;
+  if (!sb || !paymentId) return null;
 
   const { data, error } = await sb
     .from('transactions')
@@ -373,17 +514,15 @@ async function findSupabaseTransactionByPaymentId(paymentId) {
     .maybeSingle();
 
   if (error) {
-    console.error('[nowpayments] Supabase lookup failed:', error.message);
-    throw new Error(`Supabase transaction lookup failed: ${error.message}`);
+    console.warn('[nowpayments] Optional Supabase lookup skipped:', error.message);
+    return null;
   }
   return data;
 }
 
 async function markSupabaseTransactionFinished(paymentId, { paymentStatus, ipnPayload } = {}) {
   const sb = getSupabase();
-  if (!sb) {
-    throw new Error('Supabase is not configured');
-  }
+  if (!sb || !paymentId) return null;
 
   const updatePayload = {
     status: FINISHED_STATUS,
@@ -402,14 +541,15 @@ async function markSupabaseTransactionFinished(paymentId, { paymentStatus, ipnPa
     .maybeSingle();
 
   if (error) {
-    console.error('[nowpayments] Supabase update failed:', error.message);
-    throw new Error(`Supabase transaction update failed: ${error.message}`);
+    console.warn('[nowpayments] Optional Supabase update skipped:', error.message);
+    return null;
   }
   return data;
 }
 
 /**
  * Credit user balance in Supabase user_wallets and local LibSQL wallet when linked.
+ * Used only as a fallback for legacy IPNs that have a Supabase row but no local deposit.
  */
 async function creditUserBalanceFromNowPayment({
   userId,
@@ -476,6 +616,61 @@ async function creditUserBalanceFromNowPayment({
   return { credited: true, amount_usdt: amount, user_id: userId };
 }
 
+async function creditLocalNowPaymentsDeposit(deposit, {
+  paymentId,
+  paymentStatus,
+  body,
+}) {
+  const refreshed = await syncLocalDepositPaymentId(deposit, paymentId);
+  if (String(refreshed.status || '').toUpperCase() === 'VERIFIED') {
+    return {
+      ok: true,
+      alreadyFinished: true,
+      alreadyVerified: true,
+      payment_id: paymentId,
+      user_id: refreshed.user_id,
+      deposit: refreshed,
+      message: 'Transaction already finished',
+    };
+  }
+
+  const txnId = paymentId || refreshed.ref_code;
+  await assertTxHashAvailable(txnId, refreshed.id);
+
+  const result = await creditDepositAndVerify(refreshed, {
+    txnId,
+    createdBy: 'system',
+    adminNote: `NOWPayments ${paymentStatus || FINISHED_STATUS} (${txnId})`,
+  });
+
+  if (isSupabaseEnabled()) {
+    await markSupabaseTransactionFinished(paymentId, {
+      paymentStatus,
+      ipnPayload: body,
+    }).catch((err) => {
+      console.warn('[nowpayments] Optional Supabase finish skipped:', err.message);
+    });
+  }
+
+  return {
+    ok: true,
+    finished: true,
+    alreadyVerified: Boolean(result.alreadyVerified),
+    payment_id: paymentId,
+    user_id: refreshed.user_id,
+    amount_usdt: result.net_usdt,
+    deposit: result.deposit,
+    credit: {
+      credited: !result.alreadyVerified,
+      amount_usdt: result.net_usdt,
+      user_id: refreshed.user_id,
+    },
+    message: result.alreadyVerified
+      ? 'Transaction already finished'
+      : 'Payment finished — local deposit credited',
+  };
+}
+
 /**
  * Handle NOWPayments IPN (Instant Payment Notification) webhook.
  */
@@ -496,13 +691,19 @@ async function handleNowPaymentsWebhook(req) {
   }
 
   const paymentId = parsePaymentId(body);
+  const orderId = body?.order_id != null && body.order_id !== ''
+    ? String(body.order_id)
+    : null;
+  const invoiceId = body?.invoice_id != null && body.invoice_id !== ''
+    ? String(body.invoice_id)
+    : null;
   const paymentStatus = String(body.payment_status || body.status || '').toLowerCase();
 
-  if (!paymentId) {
+  if (!paymentId && !orderId && !invoiceId) {
     return {
       ok: true,
       ignored: true,
-      message: 'IPN missing payment_id',
+      message: 'IPN missing payment_id / order_id',
     };
   }
 
@@ -511,15 +712,33 @@ async function handleNowPaymentsWebhook(req) {
       ok: true,
       ignored: true,
       payment_id: paymentId,
+      order_id: orderId,
       payment_status: paymentStatus,
       message: `Payment status "${paymentStatus}" — no balance update`,
     };
   }
 
+  const localDeposit = await findDepositByNowPaymentsIds({
+    orderId,
+    paymentId,
+    invoiceId,
+  });
+  if (localDeposit) {
+    return creditLocalNowPaymentsDeposit(localDeposit, {
+      paymentId: paymentId || invoiceId || orderId,
+      paymentStatus,
+      body,
+    });
+  }
+
   if (!isSupabaseEnabled()) {
-    const err = new Error('Supabase is required for NOWPayments transaction updates');
-    err.code = 'SUPABASE_NOT_CONFIGURED';
-    throw err;
+    return {
+      ok: true,
+      ignored: true,
+      payment_id: paymentId,
+      order_id: orderId,
+      message: 'No matching local deposit for payment_id or order_id',
+    };
   }
 
   const { transaction: existing, paymentId: resolvedPaymentId } = await resolveSupabaseTransactionForIpn(body);
@@ -530,7 +749,7 @@ async function handleNowPaymentsWebhook(req) {
       ok: true,
       ignored: true,
       payment_id: effectivePaymentId,
-      message: 'No matching Supabase transaction for payment_id or order_id',
+      message: 'No matching local deposit or Supabase transaction for payment_id or order_id',
     };
   }
 
@@ -588,5 +807,6 @@ module.exports = {
   handleNowPaymentsWebhook,
   creditUserBalanceFromNowPayment,
   resolveSupabaseTransactionForIpn,
+  findDepositByNowPaymentsIds,
   FINISHED_STATUS,
 };

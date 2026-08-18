@@ -146,7 +146,7 @@ async function start() {
   if (isSupabaseEnabled()) {
     console.log('Supabase sync: enabled (dual-write to cloud tables)');
   } else {
-    console.log('Supabase sync: disabled — set NEXT_PUBLIC_SUPABASE_* in .env.local');
+    console.log('Supabase sync: disabled — set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (or NEXT_PUBLIC_SUPABASE_*)');
   }
 
   await initDb();
