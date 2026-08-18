@@ -3041,8 +3041,8 @@ const Dashboard = {
 
         console.log('[NOWPayments] Requesting payment invoice for amount:', amountUsdt, 'USDT');
         const data = await (window.EisyServices?.deposit?.createNowPayments
-          ? window.EisyServices.deposit.createNowPayments({ amount_usdt: amountUsdt, pay_currency: 'usdttrc20' })
-          : Auth.api('POST', '/api/create-payment', { amount_usdt: amountUsdt, pay_currency: 'usdttrc20' }, { sensitive: true }));
+          ? window.EisyServices.deposit.createNowPayments({ amount_usdt: amountUsdt, pay_currency: 'usdt' })
+          : Auth.api('POST', '/api/create-payment', { amount_usdt: amountUsdt, pay_currency: 'usdt' }, { sensitive: true }));
 
         console.log('[NOWPayments] Invoice response received:', data);
         const invoiceUrl = data?.invoice_url || data?.checkout_url;

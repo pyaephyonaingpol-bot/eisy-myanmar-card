@@ -16,8 +16,11 @@ const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require
 
 const FINISHED_STATUS = 'finished';
 const DEFAULT_NOWPAYMENTS_API_BASE = 'https://api.nowpayments.io/v1';
-/** NOWPayments ticker for USDT on TRON (TRC20). Not a separate `usdt_network` field. */
-const DEFAULT_PAY_CURRENCY = 'usdttrc20';
+/**
+ * NOWPayments invoice `pay_currency` for USDT checkout.
+ * Do not send `usdt_network`, `udst_network`, or `network` — those keys are rejected.
+ */
+const DEFAULT_PAY_CURRENCY = 'usdt';
 const INVOICE_ALLOWED_FIELDS = [
   'price_amount',
   'price_currency',
@@ -33,43 +36,24 @@ const INVOICE_ALLOWED_FIELDS = [
 ];
 
 /**
- * Map UI / alias values to NOWPayments pay_currency tickers.
- * USDT on TRC20 is `usdttrc20` (see GET /v1/currencies). There is no `usdt_network`
- * invoice parameter — sending it yields "usdt_network is not allowed".
+ * Normalize to the NOWPayments invoice ticker `usdt`.
+ * Network-specific aliases (usdttrc20, trx, TRC20) must not become extra API fields.
  */
-function normalizeNowPaymentsPayCurrency(payCurrency, network) {
-  const raw = String(payCurrency || '').trim().toLowerCase();
-  const compact = raw.replace(/[^a-z0-9]/g, '');
-  const net = String(network || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-  const aliases = {
-    usdttrc20: 'usdttrc20',
-    usdttrc: 'usdttrc20',
-    trc20: 'usdttrc20',
-    trx: 'usdttrc20',
-    usdterc20: 'usdterc20',
-    usdterc: 'usdterc20',
-    erc20: 'usdterc20',
-    usdtbsc: 'usdtbsc',
-    usdtbep20: 'usdtbsc',
-    bep20: 'usdtbsc',
-    bsc: 'usdtbsc',
-  };
-  if (aliases[compact]) return aliases[compact];
-
-  if (compact === 'usdt' || compact === '') {
-    if (net === 'ERC20' || net === 'ETH') return 'usdterc20';
-    if (net === 'BEP20' || net === 'BSC') return 'usdtbsc';
+function normalizeNowPaymentsPayCurrency(payCurrency) {
+  const compact = String(payCurrency || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!compact) return DEFAULT_PAY_CURRENCY;
+  if (
+    compact === 'usdt'
+    || compact.startsWith('usdt')
+    || compact === 'trc20'
+    || compact === 'trx'
+    || compact === 'erc20'
+    || compact === 'bep20'
+    || compact === 'bsc'
+  ) {
     return DEFAULT_PAY_CURRENCY;
   }
-
-  return compact || DEFAULT_PAY_CURRENCY;
-}
-
-function localUsdtNetworkFromPayCurrency(payCurrency) {
-  const ticker = String(payCurrency || DEFAULT_PAY_CURRENCY).toLowerCase();
-  if (ticker.includes('bsc') || ticker.includes('bep20')) return 'BEP20';
-  return 'TRC20';
+  return compact;
 }
 
 function pickNowPaymentsInvoicePayload(payload) {
@@ -316,8 +300,6 @@ async function createNowPaymentsPayment(userId, {
   amount_usdt,
   amount,
   pay_currency = DEFAULT_PAY_CURRENCY,
-  usdt_network,
-  network,
   success_url: successUrl,
   cancel_url: cancelUrl,
   order_description: orderDescription,
@@ -354,11 +336,7 @@ async function createNowPaymentsPayment(userId, {
     throw err;
   }
 
-  const payCurrency = normalizeNowPaymentsPayCurrency(
-    pay_currency,
-    usdt_network || network
-  );
-  const localNetwork = localUsdtNetworkFromPayCurrency(payCurrency);
+  const payCurrency = normalizeNowPaymentsPayCurrency(pay_currency);
 
   const refCode = await uniqueRefCode();
   const metadata = {
@@ -368,7 +346,7 @@ async function createNowPaymentsPayment(userId, {
     nowpayments_order_id: orderId,
     order_id: orderId,
     pay_currency: payCurrency,
-    usdt_network: localNetwork,
+    usdt_network: 'TRC20',
     amount_usdt: feeBreakdown.amount_usdt,
     gross_usdt: feeBreakdown.amount_usdt,
     fee_usdt: feeBreakdown.fee_usdt,
@@ -407,7 +385,7 @@ async function createNowPaymentsPayment(userId, {
     paymentMethod: 'NOWPAYMENTS',
     purpose: 'usdt_topup',
     depositCurrency: 'USDT',
-    usdtNetwork: localNetwork,
+    usdtNetwork: 'TRC20',
     metadata,
   });
 

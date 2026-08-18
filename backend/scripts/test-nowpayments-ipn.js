@@ -177,24 +177,25 @@ async function main() {
     pickNowPaymentsInvoicePayload,
     DEFAULT_PAY_CURRENCY,
   } = require('../src/services/nowPaymentsService');
-  assert.strictEqual(DEFAULT_PAY_CURRENCY, 'usdttrc20');
-  assert.strictEqual(normalizeNowPaymentsPayCurrency('usdttrc20'), 'usdttrc20');
-  assert.strictEqual(normalizeNowPaymentsPayCurrency('USDTTRC20'), 'usdttrc20');
-  assert.strictEqual(normalizeNowPaymentsPayCurrency('usdt_trc20'), 'usdttrc20');
-  assert.strictEqual(normalizeNowPaymentsPayCurrency('usdt', 'TRC20'), 'usdttrc20');
-  assert.strictEqual(normalizeNowPaymentsPayCurrency('usdt', 'trx'), 'usdttrc20');
-  assert.strictEqual(normalizeNowPaymentsPayCurrency('trx'), 'usdttrc20');
-  assert.strictEqual(normalizeNowPaymentsPayCurrency(''), 'usdttrc20');
+  assert.strictEqual(DEFAULT_PAY_CURRENCY, 'usdt');
+  assert.strictEqual(normalizeNowPaymentsPayCurrency('usdt'), 'usdt');
+  assert.strictEqual(normalizeNowPaymentsPayCurrency('USDT'), 'usdt');
+  assert.strictEqual(normalizeNowPaymentsPayCurrency('usdttrc20'), 'usdt');
+  assert.strictEqual(normalizeNowPaymentsPayCurrency('usdt_trc20'), 'usdt');
+  assert.strictEqual(normalizeNowPaymentsPayCurrency('trx'), 'usdt');
+  assert.strictEqual(normalizeNowPaymentsPayCurrency(''), 'usdt');
   const stripped = pickNowPaymentsInvoicePayload({
     price_amount: 25,
     price_currency: 'usd',
-    pay_currency: 'usdttrc20',
+    pay_currency: 'usdt',
     usdt_network: 'TRC20',
+    udst_network: 'TRC20',
     network: 'trx',
     order_id: 'NP1',
   });
-  assert.strictEqual(stripped.pay_currency, 'usdttrc20');
+  assert.strictEqual(stripped.pay_currency, 'usdt');
   assert.strictEqual('usdt_network' in stripped, false, 'usdt_network must not be sent to NOWPayments');
+  assert.strictEqual('udst_network' in stripped, false, 'udst_network must not be sent to NOWPayments');
   assert.strictEqual('network' in stripped, false, 'network must not be sent to NOWPayments');
   assert.deepStrictEqual(Object.keys(stripped).sort(), ['order_id', 'pay_currency', 'price_amount', 'price_currency']);
   console.log('ok');
@@ -262,13 +263,18 @@ async function main() {
   assert.ok(invoiceRequest, 'NOWPayments /invoice must be called');
   assert.ok(String(invoiceRequest.url).endsWith('/invoice'), 'must POST /v1/invoice');
   const sentBody = JSON.parse(invoiceRequest.options.body);
-  assert.strictEqual(sentBody.pay_currency, 'usdttrc20', 'NOWPayments ticker for USDT TRC20 is usdttrc20');
+  assert.strictEqual(sentBody.pay_currency, 'usdt', 'NOWPayments invoice pay_currency must be usdt');
   assert.strictEqual(sentBody.price_currency, 'usd');
   assert.strictEqual(sentBody.price_amount, 25);
   assert.strictEqual(
     Object.prototype.hasOwnProperty.call(sentBody, 'usdt_network'),
     false,
     'usdt_network is not a NOWPayments invoice field'
+  );
+  assert.strictEqual(
+    Object.prototype.hasOwnProperty.call(sentBody, 'udst_network'),
+    false,
+    'udst_network is not a NOWPayments invoice field'
   );
   assert.strictEqual(
     Object.prototype.hasOwnProperty.call(sentBody, 'network'),
@@ -288,7 +294,7 @@ async function main() {
     invoice_id: 555001,
     payment_status: 'finished',
     pay_amount: 25,
-    pay_currency: 'usdttrc20',
+    pay_currency: 'usdt',
     order_id: created.order_id,
     price_amount: 25,
   };
