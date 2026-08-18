@@ -32,9 +32,11 @@ Content-Type: application/json
 
 {
   "amount_usdt": 50,
-  "pay_currency": "usdttrc20"
+  "pay_currency": "usdt"
 }
 ```
+
+The NOWPayments `/v1/invoice` body uses `pay_currency: "usdt"`. Do **not** send `usdt_network`, `udst_network`, `network`, or `trx` — NOWPayments rejects unknown keys (`usdt_network is not allowed`). Local deposits still record `usdt_network: TRC20` for our own bookkeeping only.
 
 Response includes `checkout_url` (hosted NOWPayments page), `payment_id`, `order_id`, and `fee_breakdown`.
 

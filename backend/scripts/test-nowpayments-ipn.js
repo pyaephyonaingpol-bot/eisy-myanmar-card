@@ -171,6 +171,35 @@ async function main() {
   resetSupabaseClientForTests();
   console.log('ok');
 
+  section('pay_currency aliases map to NOWPayments tickers');
+  const {
+    normalizeNowPaymentsPayCurrency,
+    pickNowPaymentsInvoicePayload,
+    DEFAULT_PAY_CURRENCY,
+  } = require('../src/services/nowPaymentsService');
+  assert.strictEqual(DEFAULT_PAY_CURRENCY, 'usdt');
+  assert.strictEqual(normalizeNowPaymentsPayCurrency('usdt'), 'usdt');
+  assert.strictEqual(normalizeNowPaymentsPayCurrency('USDT'), 'usdt');
+  assert.strictEqual(normalizeNowPaymentsPayCurrency('usdttrc20'), 'usdt');
+  assert.strictEqual(normalizeNowPaymentsPayCurrency('usdt_trc20'), 'usdt');
+  assert.strictEqual(normalizeNowPaymentsPayCurrency('trx'), 'usdt');
+  assert.strictEqual(normalizeNowPaymentsPayCurrency(''), 'usdt');
+  const stripped = pickNowPaymentsInvoicePayload({
+    price_amount: 25,
+    price_currency: 'usd',
+    pay_currency: 'usdt',
+    usdt_network: 'TRC20',
+    udst_network: 'TRC20',
+    network: 'trx',
+    order_id: 'NP1',
+  });
+  assert.strictEqual(stripped.pay_currency, 'usdt');
+  assert.strictEqual('usdt_network' in stripped, false, 'usdt_network must not be sent to NOWPayments');
+  assert.strictEqual('udst_network' in stripped, false, 'udst_network must not be sent to NOWPayments');
+  assert.strictEqual('network' in stripped, false, 'network must not be sent to NOWPayments');
+  assert.deepStrictEqual(Object.keys(stripped).sort(), ['order_id', 'pay_currency', 'price_amount', 'price_currency']);
+  console.log('ok');
+
   section('NOWPayments checkout + IPN without Supabase');
   clearSupabaseEnv();
   resetSupabaseClientForTests();
@@ -196,13 +225,17 @@ async function main() {
   const userId = Number(userIns.lastID);
 
   const originalFetch = global.fetch;
-  global.fetch = async () => ({
-    ok: true,
-    json: async () => ({
-      id: 555001,
-      invoice_url: 'https://nowpayments.io/payment/?iid=555001',
-    }),
-  });
+  let invoiceRequest;
+  global.fetch = async (url, options) => {
+    invoiceRequest = { url, options };
+    return {
+      ok: true,
+      json: async () => ({
+        id: 555001,
+        invoice_url: 'https://nowpayments.io/payment/?iid=555001',
+      }),
+    };
+  };
 
   const {
     createNowPaymentsPayment,
@@ -212,7 +245,11 @@ async function main() {
 
   let created;
   try {
-    created = await createNowPaymentsPayment(userId, { amount_usdt: 25, pay_currency: 'usdttrc20' });
+    created = await createNowPaymentsPayment(userId, {
+      amount_usdt: 25,
+      pay_currency: 'usdt',
+      usdt_network: 'TRC20',
+    });
   } finally {
     global.fetch = originalFetch;
   }
@@ -222,6 +259,28 @@ async function main() {
   assert.ok(created.order_id, 'order_id is required');
   assert.ok(created.deposit?.id, 'local deposit row is required');
   assert.strictEqual(created.transaction, null, 'supabase transaction must be skipped when disabled');
+
+  assert.ok(invoiceRequest, 'NOWPayments /invoice must be called');
+  assert.ok(String(invoiceRequest.url).endsWith('/invoice'), 'must POST /v1/invoice');
+  const sentBody = JSON.parse(invoiceRequest.options.body);
+  assert.strictEqual(sentBody.pay_currency, 'usdt', 'NOWPayments invoice pay_currency must be usdt');
+  assert.strictEqual(sentBody.price_currency, 'usd');
+  assert.strictEqual(sentBody.price_amount, 25);
+  assert.strictEqual(
+    Object.prototype.hasOwnProperty.call(sentBody, 'usdt_network'),
+    false,
+    'usdt_network is not a NOWPayments invoice field'
+  );
+  assert.strictEqual(
+    Object.prototype.hasOwnProperty.call(sentBody, 'udst_network'),
+    false,
+    'udst_network is not a NOWPayments invoice field'
+  );
+  assert.strictEqual(
+    Object.prototype.hasOwnProperty.call(sentBody, 'network'),
+    false,
+    'network is not a NOWPayments invoice field'
+  );
 
   const pending = await findDepositByNowPaymentsIds({
     orderId: created.order_id,
@@ -235,7 +294,7 @@ async function main() {
     invoice_id: 555001,
     payment_status: 'finished',
     pay_amount: 25,
-    pay_currency: 'usdttrc20',
+    pay_currency: 'usdt',
     order_id: created.order_id,
     price_amount: 25,
   };

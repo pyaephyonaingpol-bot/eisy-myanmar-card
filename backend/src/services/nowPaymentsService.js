@@ -16,6 +16,55 @@ const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require
 
 const FINISHED_STATUS = 'finished';
 const DEFAULT_NOWPAYMENTS_API_BASE = 'https://api.nowpayments.io/v1';
+/**
+ * NOWPayments invoice `pay_currency` for USDT checkout.
+ * Do not send `usdt_network`, `udst_network`, or `network` — those keys are rejected.
+ */
+const DEFAULT_PAY_CURRENCY = 'usdt';
+const INVOICE_ALLOWED_FIELDS = [
+  'price_amount',
+  'price_currency',
+  'pay_currency',
+  'ipn_callback_url',
+  'order_id',
+  'order_description',
+  'success_url',
+  'cancel_url',
+  'partially_paid_url',
+  'is_fixed_rate',
+  'is_fee_paid_by_user',
+];
+
+/**
+ * Normalize to the NOWPayments invoice ticker `usdt`.
+ * Network-specific aliases (usdttrc20, trx, TRC20) must not become extra API fields.
+ */
+function normalizeNowPaymentsPayCurrency(payCurrency) {
+  const compact = String(payCurrency || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!compact) return DEFAULT_PAY_CURRENCY;
+  if (
+    compact === 'usdt'
+    || compact.startsWith('usdt')
+    || compact === 'trc20'
+    || compact === 'trx'
+    || compact === 'erc20'
+    || compact === 'bep20'
+    || compact === 'bsc'
+  ) {
+    return DEFAULT_PAY_CURRENCY;
+  }
+  return compact;
+}
+
+function pickNowPaymentsInvoicePayload(payload) {
+  const body = {};
+  for (const key of INVOICE_ALLOWED_FIELDS) {
+    const value = payload?.[key];
+    if (value === undefined || value === null || value === '') continue;
+    body[key] = value;
+  }
+  return body;
+}
 
 function getNowPaymentsApiBase() {
   return (
@@ -125,7 +174,7 @@ async function nowPaymentsApiRequest(path, body) {
  * @see POST /v1/invoice
  */
 async function createNowPaymentsInvoice(payload) {
-  return nowPaymentsApiRequest('/invoice', payload);
+  return nowPaymentsApiRequest('/invoice', pickNowPaymentsInvoicePayload(payload));
 }
 
 async function insertPendingSupabaseTransaction({
@@ -250,7 +299,7 @@ async function syncLocalDepositPaymentId(deposit, paymentId) {
 async function createNowPaymentsPayment(userId, {
   amount_usdt,
   amount,
-  pay_currency = 'usdttrc20',
+  pay_currency = DEFAULT_PAY_CURRENCY,
   success_url: successUrl,
   cancel_url: cancelUrl,
   order_description: orderDescription,
@@ -287,6 +336,8 @@ async function createNowPaymentsPayment(userId, {
     throw err;
   }
 
+  const payCurrency = normalizeNowPaymentsPayCurrency(pay_currency);
+
   const refCode = await uniqueRefCode();
   const metadata = {
     deposit_currency: 'USDT',
@@ -294,7 +345,7 @@ async function createNowPaymentsPayment(userId, {
     payment_provider: 'nowpayments',
     nowpayments_order_id: orderId,
     order_id: orderId,
-    pay_currency: String(pay_currency || 'usdttrc20').toLowerCase(),
+    pay_currency: payCurrency,
     usdt_network: 'TRC20',
     amount_usdt: feeBreakdown.amount_usdt,
     gross_usdt: feeBreakdown.amount_usdt,
@@ -357,17 +408,16 @@ async function createNowPaymentsPayment(userId, {
     console.warn('[nowpayments] deposit_request log skipped:', err.message);
   });
 
-  const invoicePayload = {
+  const invoicePayload = pickNowPaymentsInvoicePayload({
     price_amount: feeBreakdown.amount_usdt,
     price_currency: 'usd',
-    pay_currency: String(pay_currency || 'usdttrc20').toLowerCase(),
-    usdt_network: 'TRC20',
+    pay_currency: payCurrency,
     order_id: orderId,
     order_description: orderDescription || `Eisy USDT deposit ${orderId}`,
     ipn_callback_url: ipnCallbackUrl,
     success_url: successUrl || joinPublicUrl('/#deposits') || undefined,
     cancel_url: cancelUrl || joinPublicUrl('/#deposits') || undefined,
-  };
+  });
 
   let invoice;
   try {
@@ -809,11 +859,14 @@ module.exports = {
   verifyNowPaymentsSignature,
   getNowPaymentsApiKey,
   getNowPaymentsApiBase,
+  normalizeNowPaymentsPayCurrency,
+  pickNowPaymentsInvoicePayload,
   createNowPaymentsPayment,
   createNowPaymentsInvoice,
   handleNowPaymentsWebhook,
   creditUserBalanceFromNowPayment,
   resolveSupabaseTransactionForIpn,
   findDepositByNowPaymentsIds,
+  DEFAULT_PAY_CURRENCY,
   FINISHED_STATUS,
 };
