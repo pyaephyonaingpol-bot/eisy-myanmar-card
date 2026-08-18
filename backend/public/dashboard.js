@@ -3031,6 +3031,7 @@ const Dashboard = {
       try {
         const amountUsdt = parseFloat($('usdtAmount')?.value);
         if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) {
+          console.warn('[NOWPayments] Invalid deposit amount entered:', $('usdtAmount')?.value);
           this.toast('Enter a valid USDT amount', 'error');
           return;
         }
@@ -3038,18 +3039,23 @@ const Dashboard = {
         this._nowPaymentsCreateInFlight = true;
         this.setSubmitBusy(btn, true, { loadingLabel: 'Redirecting to checkout…' });
 
+        console.log('[NOWPayments] Requesting payment invoice for amount:', amountUsdt, 'USDT');
         const data = await (window.EisyServices?.deposit?.createNowPayments
           ? window.EisyServices.deposit.createNowPayments({ amount_usdt: amountUsdt, pay_currency: 'usdttrc20' })
           : Auth.api('POST', '/api/create-payment', { amount_usdt: amountUsdt, pay_currency: 'usdttrc20' }, { sensitive: true }));
 
-        const checkoutUrl = data?.checkout_url || data?.invoice_url;
-        if (!checkoutUrl) {
+        console.log('[NOWPayments] Invoice response received:', data);
+        const invoiceUrl = data?.invoice_url || data?.checkout_url;
+        if (!invoiceUrl) {
+          console.error('[NOWPayments] Missing invoice_url in response:', data);
           throw new Error('No checkout URL returned from server');
         }
 
+        console.log('[NOWPayments] Redirecting to invoice URL:', invoiceUrl);
         this.toast('Redirecting to NowPayments checkout…', 'ok');
-        window.location.href = checkoutUrl;
+        window.location.href = invoiceUrl;
       } catch (err) {
+        console.error('[NOWPayments] Payment creation failed:', err);
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
         this.toast(err.message || 'NowPayments checkout failed', 'error');
       } finally {
