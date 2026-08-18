@@ -15,7 +15,8 @@ const router = express.Router();
 
 /**
  * POST /api/create-payment (mounted in backend/src/index.js)
- * Create NOWPayments invoice, save pending Supabase transaction, return checkout URL.
+ * Create NOWPayments invoice, save pending local deposit, return checkout URL.
+ * Supabase dual-write is optional and is not required for checkout.
  * Body: { amount_usdt | amount, pay_currency?, success_url?, cancel_url?, order_description? }
  */
 async function createPaymentHandler(req, res) {
@@ -35,9 +36,10 @@ async function createPaymentHandler(req, res) {
       invoice_url: result.invoice_url,
       payment_id: result.payment_id,
       order_id: result.order_id,
+      ref_code: result.ref_code,
       fee_breakdown: result.fee_breakdown,
       fee_rule: 'Math.max(amount * 0.02, 1)',
-      transaction: result.transaction,
+      transaction: result.transaction || null,
     });
   } catch (err) {
     console.error('[create-payment] Error creating payment:', err.message, err.code || '', err.nowpayments || '');
@@ -55,7 +57,8 @@ async function createPaymentHandler(req, res) {
 
 /**
  * NOWPayments IPN webhook.
- * Verifies x-nowpayments-sig, updates Supabase transactions, credits user balance.
+ * Verifies x-nowpayments-sig, credits the matching local deposit, and
+ * optionally updates a Supabase transactions row when configured.
  */
 router.post('/webhook', async (req, res) => {
   try {
