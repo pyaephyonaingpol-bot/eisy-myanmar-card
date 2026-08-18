@@ -20,7 +20,13 @@ const router = express.Router();
  */
 async function createPaymentHandler(req, res) {
   try {
+    console.log('[create-payment] Received request from user:', req.user?.id, req.body);
     const result = await createNowPaymentsPayment(req.user.id, req.body || {});
+    console.log('[create-payment] Invoice created successfully:', {
+      payment_id: result.payment_id,
+      order_id: result.order_id,
+      invoice_url: result.invoice_url,
+    });
     return res.status(201).json({
       success: true,
       provider: result.provider,
@@ -34,7 +40,7 @@ async function createPaymentHandler(req, res) {
       transaction: result.transaction,
     });
   } catch (err) {
-    console.error('[create-payment]', err.message, err.code || '');
+    console.error('[create-payment] Error creating payment:', err.message, err.code || '', err.nowpayments || '');
     const status = err.code === 'NOWPAYMENTS_NOT_CONFIGURED' || err.code === 'SUPABASE_NOT_CONFIGURED'
       ? 503
       : (err.code === 'NOWPAYMENTS_AMOUNT_TOO_LOW' || err.code === 'PAYMENT_FEE_EXCEEDS_AMOUNT' ? 400 : 400);

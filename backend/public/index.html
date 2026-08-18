@@ -1161,7 +1161,7 @@
               <section class="panel panel-wide">
                 <h2 data-i18n="top_up_wallet">Top Up Wallet</h2>
                 <div class="deposit-type-tabs" role="tablist">
-                  <button type="button" class="deposit-tab is-active" data-deposit-tab="mmk" role="tab" data-i18n="deposit_tab_mmk">Manual Deposit (MMK/Local)</button>
+                  <button type="button" class="deposit-tab is-active" data-deposit-tab="mmk" role="tab" data-i18n="deposit_tab_mmk">MMK (Manual - KPay / WavePay)</button>
                   <button type="button" class="deposit-tab" data-deposit-tab="usdt" role="tab" data-i18n="deposit_tab_usdt">NOWPayments (USDT TRC20)</button>
                 </div>
 
@@ -1223,17 +1223,12 @@
                 <div id="depositUsdtPanel" class="deposit-tab-panel hidden">
                 <p class="hint" style="margin-bottom:0.75rem">Top up your USDT wallet via NOWPayments (USDT TRC20 network).</p>
                 <form id="usdtDepositForm" class="form">
-                  <div class="field hidden">
-                    <label for="usdtNetwork">Network</label>
-                    <select id="usdtNetwork">
-                      <option value="TRC20" selected>TRC20 (Tron)</option>
-                    </select>
-                  </div>
+                  <input type="hidden" id="usdtNetwork" value="TRC20" />
                   <div class="field">
                     <label for="usdtAmount">Amount (USDT)</label>
                     <input id="usdtAmount" type="number" step="0.01" min="5" placeholder="50.00" required />
                     <small id="usdtMinHint" class="hint">Minimum deposit: $5.00 USDT</small>
-                    <small id="usdtFeeHint" class="hint">Service fee: max(2%, $1) — net credited after approval</small>
+                    <small id="usdtFeeHint" class="hint">Service fee: max(2%, $1) — net credited automatically after confirmation</small>
                   </div>
                   <div id="usdtDepositFeePreview" class="reload-preview-box" style="margin-bottom:0.75rem">
                     <h4>Deposit Fee Preview</h4>
@@ -1242,39 +1237,6 @@
                     <div class="reload-preview-row reload-preview-highlight"><span>Net Credited</span><strong id="usdtDepositPreviewNet">—</strong></div>
                   </div>
                   <button type="submit" class="btn btn-primary" id="btnCreateNowPayments">Deposit with NowPayments</button>
-                </form>
-                <div id="binancePayBox" class="usdt-address-box hidden">
-                  <p class="usdt-network-label">Binance Pay checkout</p>
-                  <p class="hint" id="binancePayStatus">Complete payment in Binance. Your wallet is credited automatically on PAY_SUCCESS.</p>
-                  <img id="binancePayQrImg" class="usdt-qr hidden" alt="Binance Pay QR code" width="200" height="200" />
-                  <div class="ref-code" id="binancePayRef">—</div>
-                  <a id="binancePayCheckoutLink" class="btn btn-primary btn-sm" href="#" target="_blank" rel="noopener">Open Binance Pay</a>
-                  <a id="binancePayQrLink" class="btn btn-secondary btn-sm hidden" href="#" target="_blank" rel="noopener">Open QR / Deeplink</a>
-                </div>
-                <div id="usdtAddressBox" class="usdt-address-box hidden">
-                  <p class="usdt-network-label">Deposit via <strong id="usdtNetworkLabel">TRC20</strong></p>
-                  <p id="usdtMerchantName" class="usdt-merchant-name hidden"></p>
-                  <img id="usdtQrCode" class="usdt-qr hidden" alt="USDT deposit QR code" width="180" height="180" />
-                  <div class="usdt-address-display">
-                    <span class="usdt-address-label">Deposit Wallet Address</span>
-                    <code id="usdtDepositAddress" class="usdt-address-code" title="">—</code>
-                    <button type="button" id="btnCopyUsdtAddress" class="btn btn-secondary btn-sm usdt-copy-btn">Copy Address</button>
-                  </div>
-                  <div class="ref-code" id="usdtRefCodeDisplay">REF-0000</div>
-                  <p class="status-line" id="usdtDepositStatus">Send USDT, then submit TxHash below.</p>
-                </div>
-                <form id="usdtDepositSubmitForm" class="form hidden" style="margin-top:1rem" novalidate>
-                  <input type="hidden" id="usdtActiveDepositId" />
-                  <div class="field">
-                    <label for="usdtTxnHash">TxHash / Transaction ID</label>
-                    <input id="usdtTxnHash" type="text" placeholder="0x... or Tron tx hash" autocomplete="off" inputmode="text" />
-                    <small class="hint">Required — paste the blockchain transaction hash from your wallet</small>
-                  </div>
-                  <div class="field">
-                    <label for="usdtDepositNote">Note (optional)</label>
-                    <input id="usdtDepositNote" type="text" placeholder="Sent 50 USDT at 3pm" />
-                  </div>
-                  <button type="submit" class="btn btn-primary" id="btnSubmitUsdtProof">Submit USDT Deposit</button>
                 </form>
                 </div>
 
