@@ -16,6 +16,71 @@ const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require
 
 const FINISHED_STATUS = 'finished';
 const DEFAULT_NOWPAYMENTS_API_BASE = 'https://api.nowpayments.io/v1';
+/** NOWPayments ticker for USDT on TRON (TRC20). Not a separate `usdt_network` field. */
+const DEFAULT_PAY_CURRENCY = 'usdttrc20';
+const INVOICE_ALLOWED_FIELDS = [
+  'price_amount',
+  'price_currency',
+  'pay_currency',
+  'ipn_callback_url',
+  'order_id',
+  'order_description',
+  'success_url',
+  'cancel_url',
+  'partially_paid_url',
+  'is_fixed_rate',
+  'is_fee_paid_by_user',
+];
+
+/**
+ * Map UI / alias values to NOWPayments pay_currency tickers.
+ * USDT on TRC20 is `usdttrc20` (see GET /v1/currencies). There is no `usdt_network`
+ * invoice parameter — sending it yields "usdt_network is not allowed".
+ */
+function normalizeNowPaymentsPayCurrency(payCurrency, network) {
+  const raw = String(payCurrency || '').trim().toLowerCase();
+  const compact = raw.replace(/[^a-z0-9]/g, '');
+  const net = String(network || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  const aliases = {
+    usdttrc20: 'usdttrc20',
+    usdttrc: 'usdttrc20',
+    trc20: 'usdttrc20',
+    trx: 'usdttrc20',
+    usdterc20: 'usdterc20',
+    usdterc: 'usdterc20',
+    erc20: 'usdterc20',
+    usdtbsc: 'usdtbsc',
+    usdtbep20: 'usdtbsc',
+    bep20: 'usdtbsc',
+    bsc: 'usdtbsc',
+  };
+  if (aliases[compact]) return aliases[compact];
+
+  if (compact === 'usdt' || compact === '') {
+    if (net === 'ERC20' || net === 'ETH') return 'usdterc20';
+    if (net === 'BEP20' || net === 'BSC') return 'usdtbsc';
+    return DEFAULT_PAY_CURRENCY;
+  }
+
+  return compact || DEFAULT_PAY_CURRENCY;
+}
+
+function localUsdtNetworkFromPayCurrency(payCurrency) {
+  const ticker = String(payCurrency || DEFAULT_PAY_CURRENCY).toLowerCase();
+  if (ticker.includes('bsc') || ticker.includes('bep20')) return 'BEP20';
+  return 'TRC20';
+}
+
+function pickNowPaymentsInvoicePayload(payload) {
+  const body = {};
+  for (const key of INVOICE_ALLOWED_FIELDS) {
+    const value = payload?.[key];
+    if (value === undefined || value === null || value === '') continue;
+    body[key] = value;
+  }
+  return body;
+}
 
 function getNowPaymentsApiBase() {
   return (
@@ -125,7 +190,7 @@ async function nowPaymentsApiRequest(path, body) {
  * @see POST /v1/invoice
  */
 async function createNowPaymentsInvoice(payload) {
-  return nowPaymentsApiRequest('/invoice', payload);
+  return nowPaymentsApiRequest('/invoice', pickNowPaymentsInvoicePayload(payload));
 }
 
 async function insertPendingSupabaseTransaction({
@@ -250,7 +315,9 @@ async function syncLocalDepositPaymentId(deposit, paymentId) {
 async function createNowPaymentsPayment(userId, {
   amount_usdt,
   amount,
-  pay_currency = 'usdttrc20',
+  pay_currency = DEFAULT_PAY_CURRENCY,
+  usdt_network,
+  network,
   success_url: successUrl,
   cancel_url: cancelUrl,
   order_description: orderDescription,
@@ -287,6 +354,12 @@ async function createNowPaymentsPayment(userId, {
     throw err;
   }
 
+  const payCurrency = normalizeNowPaymentsPayCurrency(
+    pay_currency,
+    usdt_network || network
+  );
+  const localNetwork = localUsdtNetworkFromPayCurrency(payCurrency);
+
   const refCode = await uniqueRefCode();
   const metadata = {
     deposit_currency: 'USDT',
@@ -294,8 +367,8 @@ async function createNowPaymentsPayment(userId, {
     payment_provider: 'nowpayments',
     nowpayments_order_id: orderId,
     order_id: orderId,
-    pay_currency: String(pay_currency || 'usdttrc20').toLowerCase(),
-    usdt_network: 'TRC20',
+    pay_currency: payCurrency,
+    usdt_network: localNetwork,
     amount_usdt: feeBreakdown.amount_usdt,
     gross_usdt: feeBreakdown.amount_usdt,
     fee_usdt: feeBreakdown.fee_usdt,
@@ -334,7 +407,7 @@ async function createNowPaymentsPayment(userId, {
     paymentMethod: 'NOWPAYMENTS',
     purpose: 'usdt_topup',
     depositCurrency: 'USDT',
-    usdtNetwork: 'TRC20',
+    usdtNetwork: localNetwork,
     metadata,
   });
 
@@ -357,17 +430,16 @@ async function createNowPaymentsPayment(userId, {
     console.warn('[nowpayments] deposit_request log skipped:', err.message);
   });
 
-  const invoicePayload = {
+  const invoicePayload = pickNowPaymentsInvoicePayload({
     price_amount: feeBreakdown.amount_usdt,
     price_currency: 'usd',
-    pay_currency: String(pay_currency || 'usdttrc20').toLowerCase(),
-    usdt_network: 'TRC20',
+    pay_currency: payCurrency,
     order_id: orderId,
     order_description: orderDescription || `Eisy USDT deposit ${orderId}`,
     ipn_callback_url: ipnCallbackUrl,
     success_url: successUrl || joinPublicUrl('/#deposits') || undefined,
     cancel_url: cancelUrl || joinPublicUrl('/#deposits') || undefined,
-  };
+  });
 
   let invoice;
   try {
@@ -809,11 +881,14 @@ module.exports = {
   verifyNowPaymentsSignature,
   getNowPaymentsApiKey,
   getNowPaymentsApiBase,
+  normalizeNowPaymentsPayCurrency,
+  pickNowPaymentsInvoicePayload,
   createNowPaymentsPayment,
   createNowPaymentsInvoice,
   handleNowPaymentsWebhook,
   creditUserBalanceFromNowPayment,
   resolveSupabaseTransactionForIpn,
   findDepositByNowPaymentsIds,
+  DEFAULT_PAY_CURRENCY,
   FINISHED_STATUS,
 };

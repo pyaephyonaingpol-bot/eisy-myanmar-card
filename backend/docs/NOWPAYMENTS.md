@@ -36,6 +36,8 @@ Content-Type: application/json
 }
 ```
 
+`pay_currency` must be a NOWPayments ticker (`usdttrc20` for USDT on TRON). Do **not** send `usdt_network`, `network`, or `trx` as extra invoice fields — NOWPayments rejects unknown keys (`usdt_network is not allowed`). Network is encoded in the ticker (`usdttrc20`, `usdterc20`, `usdtbsc`).
+
 Response includes `checkout_url` (hosted NOWPayments page), `payment_id`, `order_id`, and `fee_breakdown`.
 
 Fee rule matches Binance Pay deposits: `Math.max(amount * 0.02, 1)`.
