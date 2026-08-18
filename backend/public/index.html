@@ -1161,8 +1161,8 @@
               <section class="panel panel-wide">
                 <h2 data-i18n="top_up_wallet">Top Up Wallet</h2>
                 <div class="deposit-type-tabs" role="tablist">
-                  <button type="button" class="deposit-tab is-active" data-deposit-tab="mmk" role="tab" data-i18n="deposit_tab_mmk">MMK — KPay / WavePay</button>
-                  <button type="button" class="deposit-tab" data-deposit-tab="usdt" role="tab" data-i18n="deposit_tab_usdt">USDT — TRC20 / BEP20</button>
+                  <button type="button" class="deposit-tab is-active" data-deposit-tab="mmk" role="tab" data-i18n="deposit_tab_mmk">Manual Deposit (MMK/Local)</button>
+                  <button type="button" class="deposit-tab" data-deposit-tab="usdt" role="tab" data-i18n="deposit_tab_usdt">NOWPayments (USDT TRC20)</button>
                 </div>
 
                 <div id="depositMmkPanel" class="deposit-tab-panel">
@@ -1221,18 +1221,12 @@
                 </div>
 
                 <div id="depositUsdtPanel" class="deposit-tab-panel hidden">
-                <p class="hint" style="margin-bottom:0.75rem">Top up your USDT wallet via platform direct deposit, Binance Pay, or NOWPayments.</p>
-                <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem">
-                  <button type="button" class="btn btn-secondary btn-sm is-active" id="btnUsdtDepositDirect">Direct (TRC20/BEP20)</button>
-                  <button type="button" class="btn btn-secondary btn-sm" id="btnUsdtDepositBinance">Binance Pay</button>
-                  <button type="button" class="btn btn-primary btn-sm" id="btnUsdtDepositNowPayments">NOWPayments</button>
-                </div>
+                <p class="hint" style="margin-bottom:0.75rem">Top up your USDT wallet via NOWPayments (USDT TRC20 network).</p>
                 <form id="usdtDepositForm" class="form">
-                  <div class="field">
+                  <div class="field hidden">
                     <label for="usdtNetwork">Network</label>
                     <select id="usdtNetwork">
-                      <option value="TRC20">TRC20 (Tron)</option>
-                      <option value="BEP20">BEP20 (BSC)</option>
+                      <option value="TRC20" selected>TRC20 (Tron)</option>
                     </select>
                   </div>
                   <div class="field">
@@ -1247,9 +1241,7 @@
                     <div class="reload-preview-row"><span>Service Fee</span><strong id="usdtDepositPreviewFee">—</strong></div>
                     <div class="reload-preview-row reload-preview-highlight"><span>Net Credited</span><strong id="usdtDepositPreviewNet">—</strong></div>
                   </div>
-                  <button type="submit" class="btn btn-primary" id="btnSubmitUsdtDeposit">Generate Deposit Request</button>
-                  <button type="button" class="btn btn-primary hidden" id="btnCreateBinancePay">Pay with Binance Pay</button>
-                  <button type="button" class="btn btn-primary hidden" id="btnCreateNowPayments">Deposit with NowPayments</button>
+                  <button type="submit" class="btn btn-primary" id="btnCreateNowPayments">Deposit with NowPayments</button>
                 </form>
                 <div id="binancePayBox" class="usdt-address-box hidden">
                   <p class="usdt-network-label">Binance Pay checkout</p>
