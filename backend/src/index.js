@@ -15,6 +15,7 @@ const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
 const supportRoutes = require('./routes/support');
+const { requireAuth, requireSensitive } = require('./middleware/auth');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -28,8 +29,14 @@ app.options('*', cors(createCorsOptions()));
 app.use(express.json({
   limit: '55mb',
   verify: (req, res, buf) => {
-    // Preserve raw body for Binance Pay webhook signature verification
-    if (req.originalUrl && req.originalUrl.startsWith('/api/webhook/')) {
+    // Preserve raw body for webhook signature verification
+    if (
+      req.originalUrl
+      && (
+        req.originalUrl.startsWith('/api/webhook/')
+        || req.originalUrl.startsWith('/api/nowpayments/')
+      )
+    ) {
       req.rawBody = buf.toString('utf8');
     }
   },
@@ -86,6 +93,9 @@ app.use('/api/qr', require('./routes/qr'));
 app.use('/api/auth', authRoutes);
 app.use('/api/deposit', depositRoutes);
 app.use('/api/webhook', require('./routes/webhook'));
+const nowPaymentsRoutes = require('../../server/routes/nowpayments');
+app.use('/api/nowpayments', nowPaymentsRoutes);
+app.post('/api/create-payment', requireAuth, requireSensitive, nowPaymentsRoutes.createPaymentHandler);
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/support', supportRoutes);
