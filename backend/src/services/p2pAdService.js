@@ -195,6 +195,7 @@ async function cancelP2pAd(userId, adId) {
     amountUsd: escrowRemaining,
     referenceType: 'p2p_ads',
     referenceId: adId,
+    description: `P2P ${ad.side} ad cancelled — ${formatUsdt(escrowRemaining)} escrow refunded`,
     createdBy: 'user',
   });
 
