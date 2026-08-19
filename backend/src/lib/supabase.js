@@ -1,46 +1,69 @@
+require('./loadEnv');
 const { createClient } = require('@supabase/supabase-js');
 
 let client = null;
 
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    const trimmed = String(value || '').trim();
+    if (trimmed) return trimmed;
+  }
+  return '';
+}
+
+function isUsableSecret(value) {
+  const key = String(value || '').trim();
+  return Boolean(key) && !key.includes('...');
+}
+
 function getSupabaseConfig() {
   return {
-    url: (
-      process.env.NEXT_PUBLIC_SUPABASE_URL
-      || process.env.SUPABASE_URL
-      || process.env.PUBLIC_SUPABASE_URL
-      || ''
-    ).trim(),
-    anonKey: (
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      || process.env.SUPABASE_ANON_KEY
-      || process.env.PUBLIC_SUPABASE_ANON_KEY
-      || process.env.SUPABASE_KEY
-      || ''
-    ).trim(),
-    serviceKey: (
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-      || process.env.SUPABASE_SERVICE_KEY
-      || ''
-    ).trim(),
+    url: firstNonEmpty(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_URL,
+      process.env.PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_PROJECT_URL
+    ),
+    anonKey: firstNonEmpty(
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      process.env.SUPABASE_ANON_KEY,
+      process.env.PUBLIC_SUPABASE_ANON_KEY,
+      process.env.SUPABASE_KEY,
+      process.env.SUPABASE_PUBLIC_KEY
+    ),
+    serviceKey: firstNonEmpty(
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      process.env.SUPABASE_SERVICE_KEY,
+      process.env.SUPABASE_SECRET_KEY
+    ),
   };
 }
 
+/**
+ * Server-side client is enabled when a project URL plus either the
+ * service-role key or a full anon key is present. Truncated placeholder
+ * keys (containing "...") are treated as unset.
+ */
 function isSupabaseEnabled() {
-  const { url, anonKey } = getSupabaseConfig();
-  if (!url || !anonKey) return false;
-  if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
-  if (anonKey.includes('...')) {
-    console.warn('[supabase] Anon key appears truncated — set the full NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local');
-    return false;
+  const { url, anonKey, serviceKey } = getSupabaseConfig();
+  if (!url) return false;
+  if (isUsableSecret(serviceKey) || isUsableSecret(anonKey)) return true;
+  if ((anonKey && anonKey.includes('...')) || (serviceKey && serviceKey.includes('...'))) {
+    console.warn('[supabase] Key appears truncated — set the full key in .env.local');
   }
-  return true;
+  return false;
+}
+
+function isPublicSupabaseEnabled() {
+  const { url, anonKey } = getSupabaseConfig();
+  return Boolean(url && isUsableSecret(anonKey));
 }
 
 function getSupabase() {
   if (!isSupabaseEnabled()) return null;
   if (!client) {
     const { url, anonKey, serviceKey } = getSupabaseConfig();
-    const key = serviceKey || anonKey;
+    const key = isUsableSecret(serviceKey) ? serviceKey : anonKey;
     client = createClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -51,15 +74,21 @@ function getSupabase() {
 
 function getPublicSupabaseConfig() {
   const { url, anonKey } = getSupabaseConfig();
-  if (!isSupabaseEnabled()) {
+  if (!isPublicSupabaseEnabled()) {
     return { enabled: false, url: null, anonKey: null };
   }
   return { enabled: true, url, anonKey };
 }
 
+function resetSupabaseClientForTests() {
+  client = null;
+}
+
 module.exports = {
   getSupabase,
   isSupabaseEnabled,
+  isPublicSupabaseEnabled,
   getSupabaseConfig,
   getPublicSupabaseConfig,
+  resetSupabaseClientForTests,
 };

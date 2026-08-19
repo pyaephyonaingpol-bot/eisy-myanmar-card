@@ -1,9 +1,5 @@
+require('./lib/loadEnv');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env.local') });
-require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
-require('dotenv').config({ path: path.join(__dirname, '..', '.env.local') });
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
@@ -71,13 +67,9 @@ app.use(express.static(PUBLIC_DIR, {
     } else if (/\.(webmanifest|json)$/i.test(filePath) && /manifest/i.test(filePath)) {
       res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
       res.setHeader('Cache-Control', 'no-cache, must-revalidate');
-      res.setHeader('Access-Control-Allow-Origin', '*');
     } else if (/\.(js|css)$/i.test(filePath)) {
       // Versioned via ?v= query in HTML — always revalidate so deploys apply quickly
       res.setHeader('Cache-Control', 'no-cache, must-revalidate');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-    } else if (/\.(png|jpg|jpeg|svg|webp|ico|woff2?)$/i.test(filePath)) {
-      res.setHeader('Access-Control-Allow-Origin', '*');
     }
   },
 }));
@@ -151,7 +143,7 @@ async function start() {
   if (isSupabaseEnabled()) {
     console.log('Supabase sync: enabled (dual-write to cloud tables)');
   } else {
-    console.log('Supabase sync: disabled — set NEXT_PUBLIC_SUPABASE_* in .env.local');
+    console.log('Supabase sync: disabled — set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (or NEXT_PUBLIC_SUPABASE_*)');
   }
 
   await initDb();
