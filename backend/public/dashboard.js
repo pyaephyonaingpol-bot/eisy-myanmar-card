@@ -12,6 +12,27 @@ const Dashboard = {
   walletUsdt: null,
   usdtAddresses: null,
   withdrawalFees: null,
+  walletUsdtLocked: null,
+
+  p2pApi() {
+    return window.EisyServices?.p2p || null;
+  },
+
+  refreshP2pWalletState() {
+    this._usdtWalletCache = null;
+    this.loadWallet();
+    if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+      this.loadUsdtWalletPage(true);
+    }
+  },
+
+  formatWithdrawBalanceHint() {
+    const available = Number(this.walletUsdt ?? 0);
+    const locked = Number(this.walletUsdtLocked ?? 0);
+    let text = `Available: $${available.toFixed(2)} USDT`;
+    if (locked > 0.001) text += ` · Locked: $${locked.toFixed(2)} USDT (P2P escrow)`;
+    return text;
+  },
 
   init() {
     console.log('[Dashboard] init');
@@ -1751,17 +1772,26 @@ const Dashboard = {
     const btn = $('p2pSellContinueBtn');
     if (btn) btn.disabled = true;
     try {
-      const data = await Auth.api('POST', '/api/p2p/sell-orders', {
-        ad_id: this._p2pSellListing.id,
-        amount_usdt: amountUsdt,
-        payment_method: paymentMethod,
-        account_name: accountName,
-        account_number: accountNumber,
-        bank_name: bankName || undefined,
-      });
+      const data = await (this.p2pApi()?.createSellOrder
+        ? this.p2pApi().createSellOrder({
+          ad_id: this._p2pSellListing.id,
+          amount_usdt: amountUsdt,
+          payment_method: paymentMethod,
+          account_name: accountName,
+          account_number: accountNumber,
+          bank_name: bankName || undefined,
+        })
+        : Auth.api('POST', '/api/p2p/sell-orders', {
+          ad_id: this._p2pSellListing.id,
+          amount_usdt: amountUsdt,
+          payment_method: paymentMethod,
+          account_name: accountName,
+          account_number: accountNumber,
+          bank_name: bankName || undefined,
+        }, { sensitive: true }));
       this.renderP2pSellWaitingStep(data);
       this.toast(data.message || 'USDT escrowed — waiting for buyer MMK', 'ok');
-      this.loadWallet();
+      this.refreshP2pWalletState();
       this.loadP2pActiveOrders();
     } catch (err) {
       if (this.handleP2pKycError(err)) return;
@@ -1777,7 +1807,9 @@ const Dashboard = {
     const btn = $('p2pSellConfirmMmkBtn');
     if (btn) btn.disabled = true;
     try {
-      const data = await Auth.api('POST', `/api/p2p/sell-orders/${this._p2pSellOrder.id}/confirm-mmk-and-release`);
+      const data = await (this.p2pApi()?.confirmSellMmkAndRelease
+        ? this.p2pApi().confirmSellMmkAndRelease(this._p2pSellOrder.id)
+        : Auth.api('POST', `/api/p2p/sell-orders/${this._p2pSellOrder.id}/confirm-mmk-and-release`, null, { sensitive: true }));
       this.stopP2pTradePolling();
       $('p2pSellStepWaiting')?.classList.add('hidden');
       $('p2pSellStepDone')?.classList.remove('hidden');
@@ -1788,6 +1820,7 @@ const Dashboard = {
       this.toast('Order complete — USDT released', 'ok');
       this.log(`P2P sell order ${data.order?.ref_code} completed`, 'ok');
       this.loadP2pActiveOrders();
+      this.refreshP2pWalletState();
     } catch (err) {
       this.toast(err.message || 'Failed to release escrow', 'error');
     } finally {
@@ -1801,10 +1834,12 @@ const Dashboard = {
     const btn = $('p2pSellCancelBtn');
     if (btn) btn.disabled = true;
     try {
-      const data = await Auth.api('POST', `/api/p2p/sell-orders/${this._p2pSellOrder.id}/cancel`);
+      const data = await (this.p2pApi()?.cancelSellOrder
+        ? this.p2pApi().cancelSellOrder(this._p2pSellOrder.id)
+        : Auth.api('POST', `/api/p2p/sell-orders/${this._p2pSellOrder.id}/cancel`, null, { sensitive: true }));
       this.toast(data.message || 'Order cancelled', 'ok');
       this.closeP2pSellModal();
-      this.loadWallet();
+      this.refreshP2pWalletState();
       this.loadP2pActiveOrders();
     } catch (err) {
       this.toast(err.message || 'Failed to cancel order', 'error');
@@ -1920,20 +1955,24 @@ const Dashboard = {
   },
 
   calcP2pFeeBreakdown(amountUsdt) {
-    const buyerReceives = Math.round((parseFloat(amountUsdt) || 0) * 100) / 100;
+    const grossAmount = Math.round((parseFloat(amountUsdt) || 0) * 100) / 100;
     const feePercent = Number(this._p2pFeeInfo?.p2p_seller_fee_percent ?? 1);
-    const platformFee = Math.round(buyerReceives * feePercent) / 100;
-    const sellerTotalUsdt = Math.round((buyerReceives + platformFee) * 100) / 100;
+    const platformFee = Math.round(grossAmount * feePercent) / 100;
+    const buyerReceives = Math.round((grossAmount - platformFee) * 100) / 100;
     return {
-      amount_usdt: buyerReceives,
+      amount_usdt: grossAmount,
+      gross_amount_usdt: grossAmount,
       buyer_receives_usdt: buyerReceives,
       fee_percent: feePercent,
       platform_fee_usdt: platformFee,
-      seller_total_usdt: sellerTotalUsdt,
+      seller_total_usdt: grossAmount,
       net_usdt_to_buyer: buyerReceives,
-      seller_fee_label: `Platform Fee: ${platformFee.toFixed(2)} USDT (Deducted from seller upon release)`,
+      seller_fee_label: platformFee > 0
+        ? `Platform Fee: ${platformFee.toFixed(2)} USDT (${feePercent}% deducted from seller escrow upon release)`
+        : '0% Platform Fee',
       buyer_fee_label: this._p2pFeeInfo?.buyer_fee_label || '0% Fee for Buyers',
-      buyer_fee_note: this._p2pFeeInfo?.buyer_fee_note || '0% Fee for Buyers. Seller pays platform fee upon release.',
+      buyer_fee_note: this._p2pFeeInfo?.buyer_fee_note
+        || '0% Fee for Buyers. Platform fee (if any) is deducted from seller escrow upon release.',
     };
   },
 
@@ -1950,7 +1989,11 @@ const Dashboard = {
     }
     const fee = this.calcP2pFeeBreakdown(usdt);
     netEl.textContent = `${fee.buyer_receives_usdt.toFixed(2)} USDT`;
-    if (hintEl) hintEl.textContent = feeNote;
+    if (hintEl) {
+      hintEl.textContent = fee.platform_fee_usdt > 0
+        ? `${feeNote} (${fee.platform_fee_usdt.toFixed(2)} USDT platform fee deducted from seller escrow)`
+        : feeNote;
+    }
   },
 
   updateP2pExternalMmkDisplay() {
@@ -2047,11 +2090,17 @@ const Dashboard = {
     const btn = $('p2pBuyContinueBtn');
     if (btn) btn.disabled = true;
     try {
-      const data = await Auth.api('POST', '/api/p2p/buy-orders', {
-        ad_id: this._p2pBuyListing.id,
-        amount_usdt: amountUsdt,
-        payment_method: paymentMethod,
-      });
+      const data = await (this.p2pApi()?.createBuyOrder
+        ? this.p2pApi().createBuyOrder({
+          ad_id: this._p2pBuyListing.id,
+          amount_usdt: amountUsdt,
+          payment_method: paymentMethod,
+        })
+        : Auth.api('POST', '/api/p2p/buy-orders', {
+          ad_id: this._p2pBuyListing.id,
+          amount_usdt: amountUsdt,
+          payment_method: paymentMethod,
+        }, { sensitive: true }));
       this.renderP2pBuyPaymentStep(data);
       this.toast('Order created — pay the seller externally via ' + (paymentMethod || 'KPay/Bank'), 'ok');
       this.loadP2pActiveOrders();
@@ -2190,17 +2239,25 @@ const Dashboard = {
         const formData = new FormData();
         formData.append('proof', file, file.name || 'receipt.jpg');
         if (txRef) formData.append('tx_ref', txRef);
-        data = await Auth.apiForm(
-          `/api/p2p/buy-orders/${this._p2pBuyOrder.id}/confirm-transfer`,
-          formData,
-          { sensitive: true }
-        );
+        data = await (this.p2pApi()?.confirmBuyTransferForm
+          ? this.p2pApi().confirmBuyTransferForm(this._p2pBuyOrder.id, formData)
+          : Auth.apiForm(
+            `/api/p2p/buy-orders/${this._p2pBuyOrder.id}/confirm-transfer`,
+            formData,
+            { sensitive: true }
+          ));
       } else {
-        data = await Auth.api('POST', `/api/p2p/buy-orders/${this._p2pBuyOrder.id}/confirm-transfer`, {
-          proof_base64: base64,
-          proof_filename: file?.name || 'receipt.jpg',
-          tx_ref: txRef || undefined,
-        }, { sensitive: true });
+        data = await (this.p2pApi()?.confirmBuyTransfer
+          ? this.p2pApi().confirmBuyTransfer(this._p2pBuyOrder.id, {
+            proof_base64: base64,
+            proof_filename: file?.name || 'receipt.jpg',
+            tx_ref: txRef || undefined,
+          })
+          : Auth.api('POST', `/api/p2p/buy-orders/${this._p2pBuyOrder.id}/confirm-transfer`, {
+            proof_base64: base64,
+            proof_filename: file?.name || 'receipt.jpg',
+            tx_ref: txRef || undefined,
+          }, { sensitive: true }));
       }
 
       this._p2pBuyOrder = { ...this._p2pBuyOrder, ...(data.order || {}) };
@@ -2209,7 +2266,8 @@ const Dashboard = {
       $('p2pBuyStepPayment')?.classList.add('hidden');
       $('p2pBuyStepDone')?.classList.remove('hidden');
       $('p2pBuyRefCode').textContent = data.order?.ref_code || this._p2pBuyOrder.ref_code;
-      $('p2pBuyDoneMessage').textContent = data.message || 'Pending seller release — USDT will be credited to your USDT wallet after approval.';
+      $('p2pBuyDoneMessage').textContent = data.message
+        || 'Pending seller release — USDT will be credited to your wallet after the seller approves. Use Withdraw USDT when you want an on-chain payout.';
       this.toast(data.message || 'Payment proof submitted — pending seller release', 'ok');
       this.log(`P2P buy order ${data.order?.ref_code} pending seller release`, 'ok');
       this.loadP2pActiveOrders();
@@ -2267,7 +2325,9 @@ const Dashboard = {
     try {
       const qs = new URLSearchParams({ side });
       if (network) qs.set('network', network);
-      const data = await Auth.api('GET', `/api/p2p/market?${qs.toString()}`);
+      const data = await (this.p2pApi()?.getMarket
+        ? this.p2pApi().getMarket({ side, network: network || undefined })
+        : Auth.api('GET', `/api/p2p/market?${qs.toString()}`));
       const listings = data.listings || [];
       this._p2pListings = listings;
       if (data.fee_info) {
@@ -2331,6 +2391,10 @@ const Dashboard = {
     if (this._p2pChatInterval) {
       clearInterval(this._p2pChatInterval);
       this._p2pChatInterval = null;
+    }
+    if (this._p2pStatusPollInterval) {
+      clearInterval(this._p2pStatusPollInterval);
+      this._p2pStatusPollInterval = null;
     }
     this._p2pActiveTrade = null;
   },
@@ -2396,6 +2460,34 @@ const Dashboard = {
     this._p2pChatInterval = setInterval(() => {
       this.loadP2pChatMessages(orderType, order.id, { silent: true });
     }, 8000);
+
+    const shouldPollRelease = orderType === 'buy'
+      && order.status === 'pending_seller_release'
+      && order.role !== 'maker'
+      && !order.maker_can_release;
+    if (shouldPollRelease) {
+      this._p2pStatusPollInterval = setInterval(async () => {
+        try {
+          const data = await (this.p2pApi()?.getActiveOrder
+            ? this.p2pApi().getActiveOrder(orderType, order.id)
+            : Auth.api('GET', `/api/p2p/active-orders/${orderType}/${order.id}`));
+          const fresh = data.order;
+          if (!fresh || fresh.status === 'released' || fresh.status === 'completed_by_admin') {
+            this.stopP2pTradePolling();
+            this._p2pBuyOrder = fresh || order;
+            this.refreshP2pWalletState();
+            $('p2pBuyStepPayment')?.classList.add('hidden');
+            $('p2pBuyStepDone')?.classList.remove('hidden');
+            $('p2pBuyRefCode').textContent = fresh?.ref_code || order.ref_code;
+            $('p2pBuyDoneMessage').textContent = 'USDT credited to your wallet. Submit a withdrawal request when you want an on-chain payout.';
+            this.toast('USDT credited to your wallet', 'ok');
+            await this.loadP2pActiveOrders();
+          }
+        } catch (_) {
+          /* ignore transient poll errors */
+        }
+      }, 12000);
+    }
   },
 
   renderP2pChatMessages(orderType, messages) {
@@ -2427,7 +2519,9 @@ const Dashboard = {
 
   async loadP2pChatMessages(orderType, orderId, { silent = false } = {}) {
     try {
-      const data = await Auth.api('GET', `/api/p2p/orders/${orderType}/${orderId}/messages`);
+      const data = await (this.p2pApi()?.getMessages
+        ? this.p2pApi().getMessages(orderType, orderId)
+        : Auth.api('GET', `/api/p2p/orders/${orderType}/${orderId}/messages`));
       this.renderP2pChatMessages(orderType, data.messages || []);
     } catch (err) {
       if (!silent) console.warn('[p2p chat]', err.message);
@@ -2450,7 +2544,9 @@ const Dashboard = {
       const formData = new FormData();
       if (text) formData.append('message', text);
       if (file) formData.append('attachment', file);
-      await Auth.apiForm(`/api/p2p/orders/${orderType}/${order.id}/messages`, formData, { sensitive: true });
+      await (this.p2pApi()?.postMessageForm
+        ? this.p2pApi().postMessageForm(orderType, order.id, formData)
+        : Auth.apiForm(`/api/p2p/orders/${orderType}/${order.id}/messages`, formData, { sensitive: true }));
       if (input) input.value = '';
       if (fileInput) fileInput.value = '';
       this.updateP2pChatAttachHint(orderType);
@@ -2472,7 +2568,9 @@ const Dashboard = {
     if (txRef) formData.append('tx_ref', txRef);
     if (proofInput?.files?.[0]) formData.append('proof', proofInput.files[0]);
     try {
-      const data = await Auth.apiForm(`/api/p2p/orders/${orderType}/${order.id}/dispute`, formData, { sensitive: true });
+      const data = await (this.p2pApi()?.openDisputeForm
+        ? this.p2pApi().openDisputeForm(orderType, order.id, formData)
+        : Auth.apiForm(`/api/p2p/orders/${orderType}/${order.id}/dispute`, formData, { sensitive: true }));
       this.toast(data.message || 'Dispute submitted', 'ok');
       if (orderType === 'sell') this._p2pSellOrder = { ...order, ...data.order, is_disputed: true };
       else this._p2pBuyOrder = { ...order, ...data.order, is_disputed: true };
@@ -2499,7 +2597,9 @@ const Dashboard = {
     section.classList.remove('hidden');
 
     try {
-      const data = await Auth.api('GET', '/api/p2p/active-orders');
+      const data = await (this.p2pApi()?.getActiveOrders
+        ? this.p2pApi().getActiveOrders()
+        : Auth.api('GET', '/api/p2p/active-orders'));
       this._p2pActiveOrders = data.orders || [];
       if (!this._p2pActiveOrders.length) {
         section.classList.add('hidden');
@@ -2554,7 +2654,9 @@ const Dashboard = {
 
   async resumeP2pOrder(orderType, orderId) {
     try {
-      const data = await Auth.api('GET', `/api/p2p/active-orders/${orderType}/${orderId}`);
+      const data = await (this.p2pApi()?.getActiveOrder
+        ? this.p2pApi().getActiveOrder(orderType, orderId)
+        : Auth.api('GET', `/api/p2p/active-orders/${orderType}/${orderId}`));
       const order = data.order;
       if (!order) {
         this.toast('This order is no longer active', 'error');
@@ -2743,7 +2845,9 @@ const Dashboard = {
     const btn = $('p2pSellerDisputeForm')?.querySelector('button[type="submit"]');
     if (btn) btn.disabled = true;
     try {
-      const data = await Auth.apiForm(`/api/p2p/orders/${orderType}/${orderId}/dispute`, formData, { sensitive: true });
+      const data = await (this.p2pApi()?.openDisputeForm
+        ? this.p2pApi().openDisputeForm(orderType, orderId, formData)
+        : Auth.apiForm(`/api/p2p/orders/${orderType}/${orderId}/dispute`, formData, { sensitive: true }));
       this.toast(data.message || 'Dispute submitted — admin will review', 'ok');
       this.closeP2pSellerDisputeModal();
       if (this._p2pBuyOrder?.id === orderId) {
@@ -2774,7 +2878,9 @@ const Dashboard = {
     cardReleaseBtns.forEach((b) => { b.disabled = true; });
 
     try {
-      const data = await Auth.api('POST', `/api/p2p/buy-orders/${orderId}/release`);
+      const data = await (this.p2pApi()?.releaseBuyOrder
+        ? this.p2pApi().releaseBuyOrder(orderId)
+        : Auth.api('POST', `/api/p2p/buy-orders/${orderId}/release`, null, { sensitive: true }));
       if (this._p2pBuyOrder?.id === orderId) {
         this.stopP2pTradePolling();
         $('p2pBuyStepPayment')?.classList.add('hidden');
@@ -2782,11 +2888,13 @@ const Dashboard = {
         $('p2pBuyReleaseBtn')?.classList.add('hidden');
         $('p2pBuySellerActions')?.classList.add('hidden');
         $('p2pBuyRefCode').textContent = data.order?.ref_code || this._p2pBuyOrder.ref_code;
-        $('p2pBuyDoneMessage').textContent = data.message || 'USDT released to buyer.';
+        $('p2pBuyDoneMessage').textContent = data.message
+          || 'USDT released to buyer wallet. No on-chain transfer — buyer can withdraw explicitly when ready.';
       }
       this.toast('USDT released to buyer', 'ok');
       this.loadP2pActiveOrders();
       this.loadMyP2pAds();
+      this.refreshP2pWalletState();
     } catch (err) {
       this.toast(err.message || 'Failed to release USDT', 'error');
     } finally {
@@ -2863,11 +2971,13 @@ const Dashboard = {
       kbz_account_number: $('p2pAdKbzNumber')?.value?.trim(),
     };
     try {
-      const data = await Auth.api('POST', '/api/p2p/ads', body);
+      const data = await (this.p2pApi()?.createAd
+        ? this.p2pApi().createAd(body)
+        : Auth.api('POST', '/api/p2p/ads', body, { sensitive: true }));
       this.toast(data.message || 'Ad posted', 'ok');
       this.closePostP2pAdModal();
       this.loadP2pPage();
-      this.loadWallet();
+      this.refreshP2pWalletState();
     } catch (err) {
       if ($('p2pPostAdError')) $('p2pPostAdError').textContent = err.message || 'Failed to post ad';
       if (this.handleP2pKycError(err)) return;
@@ -2882,7 +2992,9 @@ const Dashboard = {
       return;
     }
     try {
-      const data = await Auth.api('GET', '/api/p2p/ads');
+      const data = await (this.p2pApi()?.listAds
+        ? this.p2pApi().listAds()
+        : Auth.api('GET', '/api/p2p/ads'));
       const ads = (data.ads || []).filter((a) => a.status === 'active' || a.status === 'paused');
       if (!ads.length) {
         section.classList.add('hidden');
@@ -2912,10 +3024,12 @@ const Dashboard = {
   async cancelP2pAd(adId) {
     if (!confirm('Cancel this ad? Remaining USDT escrow will be refunded for sell ads.')) return;
     try {
-      const data = await Auth.api('POST', `/api/p2p/ads/${adId}/cancel`);
+      const data = await (this.p2pApi()?.cancelAd
+        ? this.p2pApi().cancelAd(adId)
+        : Auth.api('POST', `/api/p2p/ads/${adId}/cancel`, null, { sensitive: true }));
       this.toast(data.message || 'Ad cancelled', 'ok');
       this.loadP2pPage();
-      this.loadWallet();
+      this.refreshP2pWalletState();
     } catch (err) {
       this.toast(err.message || 'Failed to cancel ad', 'error');
     }
@@ -4736,11 +4850,14 @@ const Dashboard = {
     }
     const balHint = $('withdrawBalanceHint');
     if (balHint) {
-      balHint.textContent = `Available: $${Number(this.walletUsdt ?? 0).toFixed(2)} USDT`;
+      balHint.textContent = this.formatWithdrawBalanceHint();
     }
     this.syncWithdrawPayoutFields();
     $('withdrawUsdtModal')?.classList.remove('hidden');
     this.updateWithdrawPreview();
+    if (Auth.isLoggedIn() && !Auth.needsPinUnlock()) {
+      this.loadUsdtWalletPage(true).catch(() => {});
+    }
   },
 
   closeWithdrawModal() {
