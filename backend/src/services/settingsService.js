@@ -401,22 +401,25 @@ function calculateDepositFeeBreakdown(amount, { currency = 'USDT', settings = {}
 }
 
 function calculateP2pFeeBreakdown(amountUsdt, settings) {
-  const buyerReceives = Math.round((parseFloat(amountUsdt) || 0) * 100) / 100;
-  const feePercent = Math.round((parseFloat(settings?.p2p_seller_fee_percent) || 0) * 100) / 100;
-  const platformFee = Math.round(buyerReceives * feePercent) / 100;
-  const sellerTotalUsdt = Math.round((buyerReceives + platformFee) * 100) / 100;
+  const grossAmount = Math.round((parseFloat(amountUsdt) || 0) * 100) / 100;
+  const feePercent = Math.max(0, Math.round((parseFloat(settings?.p2p_seller_fee_percent) || 0) * 100) / 100);
+  const platformFee = Math.round(grossAmount * (feePercent / 100) * 100) / 100;
+  const buyerReceives = Math.round((grossAmount - platformFee) * 100) / 100;
 
   return {
-    amount_usdt: buyerReceives,
+    amount_usdt: grossAmount,
+    gross_amount_usdt: grossAmount,
     buyer_receives_usdt: buyerReceives,
     fee_percent: feePercent,
     buyer_fee_percent: 0,
     platform_fee_usdt: platformFee,
-    seller_total_usdt: sellerTotalUsdt,
+    seller_total_usdt: grossAmount,
     net_usdt_to_buyer: buyerReceives,
-    seller_fee_label: `Platform Fee: ${platformFee.toFixed(2)} USDT (Deducted from seller upon release)`,
+    seller_fee_label: platformFee > 0
+      ? `Platform Fee: ${platformFee.toFixed(2)} USDT (${feePercent}% deducted from seller upon release)`
+      : '0% Platform Fee',
     buyer_fee_label: '0% Fee for Buyers',
-    buyer_fee_note: '0% Fee for Buyers. Seller pays platform fee upon release.',
+    buyer_fee_note: '0% Fee for Buyers. Platform fee (if any) is deducted from seller escrow upon release.',
   };
 }
 
