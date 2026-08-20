@@ -103,29 +103,37 @@ async function createP2pAd(userId, body) {
 
   const roundedVolume = Math.round(totalVolume * 100) / 100;
 
-  const ad = await P2PAd.create({
-    userId,
-    side,
-    network,
-    priceMmkPerUsdt: priceMmk,
-    totalVolumeUsdt: roundedVolume,
-    availableVolumeUsdt: roundedVolume,
-    minOrderUsdt: minOrder,
-    maxOrderUsdt: maxOrder,
-    paymentMethods,
-    paymentAccounts,
-    escrowLockedUsdt: side === 'sell' ? roundedVolume : 0,
-  });
-
-  if (side === 'sell') {
-    await lockUsdtForEscrow(userId, roundedVolume, {
-      holdType: 'p2p_ad',
-      referenceType: 'p2p_ads',
-      referenceId: ad.id,
-      description: `P2P sell ad escrow — ${formatUsdt(roundedVolume)} locked for marketplace listing`,
-      createdBy: 'user',
-      metadata: { side: 'sell', total_volume_usdt: roundedVolume },
+  let ad;
+  try {
+    ad = await P2PAd.create({
+      userId,
+      side,
+      network,
+      priceMmkPerUsdt: priceMmk,
+      totalVolumeUsdt: roundedVolume,
+      availableVolumeUsdt: roundedVolume,
+      minOrderUsdt: minOrder,
+      maxOrderUsdt: maxOrder,
+      paymentMethods,
+      paymentAccounts,
+      escrowLockedUsdt: side === 'sell' ? roundedVolume : 0,
     });
+
+    if (side === 'sell') {
+      await lockUsdtForEscrow(userId, roundedVolume, {
+        holdType: 'p2p_ad',
+        referenceType: 'p2p_ads',
+        referenceId: ad.id,
+        description: `P2P sell ad escrow — ${formatUsdt(roundedVolume)} locked for marketplace listing`,
+        createdBy: 'user',
+        metadata: { side: 'sell', total_volume_usdt: roundedVolume },
+      });
+    }
+  } catch (err) {
+    if (ad?.id && side === 'sell') {
+      await P2PAd.updateStatus(ad.id, 'cancelled').catch(() => {});
+    }
+    throw err;
   }
 
   await TransactionLog.create({

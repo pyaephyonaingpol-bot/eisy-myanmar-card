@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { getDb } = require('../db');
+const { runInTransaction } = require('../lib/dbTransaction');
 const User = require('../models/User');
 const TransactionLog = require('../models/TransactionLog');
 const UsdtInternalTransfer = require('../models/UsdtInternalTransfer');
@@ -14,17 +15,8 @@ function generateJournalId(prefix = 'USDT') {
   return `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 }
 
-async function runInTransaction(fn) {
-  const db = getDb();
-  await db.run('BEGIN');
-  try {
-    const result = await fn(db);
-    await db.run('COMMIT');
-    return result;
-  } catch (err) {
-    await db.run('ROLLBACK');
-    throw err;
-  }
+async function withDbTransaction(fn) {
+  return runInTransaction(getDb(), fn);
 }
 
 async function fetchBalances(userId, db) {
@@ -186,7 +178,7 @@ async function creditAvailable(userId, amountUsdt, {
   const amount = roundUsdt(amountUsdt);
   if (amount <= 0) throw new Error('Credit amount must be a positive number');
 
-  const user = await runInTransaction(async (db) => {
+  const user = await withDbTransaction(async (db) => {
     const bal = await fetchBalances(userId, db);
     const availableAfter = roundUsdt(bal.available + amount);
     await updateUserBalances(db, userId, availableAfter, bal.locked);
@@ -255,7 +247,7 @@ async function debitAvailable(userId, amountUsdt, {
   const amount = roundUsdt(amountUsdt);
   if (amount <= 0) throw new Error('Debit amount must be a positive number');
 
-  const user = await runInTransaction(async (db) => {
+  const user = await withDbTransaction(async (db) => {
     const bal = await fetchBalances(userId, db);
     if (bal.available < amount - 0.001 && !allowInsufficient) {
       const err = new Error(
@@ -332,7 +324,7 @@ async function lockUsdtForEscrow(userId, amountUsdt, {
     throw new Error('Escrow hold requires holdType, referenceType, and referenceId');
   }
 
-  const result = await runInTransaction(async (db) => {
+  const result = await withDbTransaction(async (db) => {
     const existing = await db.get(
       `SELECT id FROM usdt_escrow_holds
        WHERE reference_type = ? AND reference_id = ? AND hold_type = ? AND status = 'active'`,
@@ -440,7 +432,7 @@ async function refundEscrowHold({
   createdBy = 'system',
   metadata,
 } = {}) {
-  const result = await runInTransaction(async (db) => {
+  const result = await withDbTransaction(async (db) => {
     const hold = await db.get(
       `SELECT * FROM usdt_escrow_holds
        WHERE user_id = ? AND reference_type = ? AND reference_id = ? AND hold_type = ? AND status = 'active'`,
@@ -541,7 +533,7 @@ async function consumeEscrowToBuyer({
     throw new Error('Escrow gross amount must equal buyer net plus platform fee');
   }
 
-  const result = await runInTransaction(async (db) => {
+  const result = await withDbTransaction(async (db) => {
     const hold = await db.get(
       `SELECT * FROM usdt_escrow_holds
        WHERE user_id = ? AND reference_type = ? AND reference_id = ? AND hold_type = ? AND status = 'active'`,
@@ -716,7 +708,7 @@ async function transferUsdtInternal(fromUserId, toUserId, amountUsdt, {
     }
   }
 
-  const result = await runInTransaction(async (db) => {
+  const result = await withDbTransaction(async (db) => {
     const senderBal = await fetchBalances(fromUserId, db);
     if (senderBal.available < totalDebit - 0.001) {
       const err = new Error(
@@ -825,7 +817,8 @@ async function transferUsdtInternal(fromUserId, toUserId, amountUsdt, {
 module.exports = {
   roundUsdt,
   generateJournalId,
-  runInTransaction,
+  runInTransaction: withDbTransaction,
+  withDbTransaction,
   getUsdtBalances,
   creditAvailable,
   debitAvailable,
