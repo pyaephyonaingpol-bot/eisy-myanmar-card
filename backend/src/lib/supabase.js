@@ -72,12 +72,33 @@ function getSupabase() {
   return client;
 }
 
+function getSupabaseStatus() {
+  const { url, anonKey, serviceKey } = getSupabaseConfig();
+  let host = null;
+  if (url) {
+    try { host = new URL(url).host; } catch { host = 'invalid-url'; }
+  }
+  return {
+    enabled: isSupabaseEnabled(),
+    public_enabled: isPublicSupabaseEnabled(),
+    project_host: host,
+    has_service_role_key: isUsableSecret(serviceKey),
+    has_anon_key: isUsableSecret(anonKey),
+  };
+}
+
 function getPublicSupabaseConfig() {
   const { url, anonKey } = getSupabaseConfig();
   if (!isPublicSupabaseEnabled()) {
-    return { enabled: false, url: null, anonKey: null };
+    return {
+      enabled: false,
+      url: null,
+      anonKey: null,
+      status: getSupabaseStatus(),
+      message: 'Supabase sync is disabled — set NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY (and SUPABASE_SERVICE_ROLE_KEY for server dual-write)',
+    };
   }
-  return { enabled: true, url, anonKey };
+  return { enabled: true, url, anonKey, status: getSupabaseStatus() };
 }
 
 function resetSupabaseClientForTests() {
@@ -90,5 +111,6 @@ module.exports = {
   isPublicSupabaseEnabled,
   getSupabaseConfig,
   getPublicSupabaseConfig,
+  getSupabaseStatus,
   resetSupabaseClientForTests,
 };

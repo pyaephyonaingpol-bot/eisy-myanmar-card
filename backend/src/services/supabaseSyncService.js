@@ -127,11 +127,116 @@ async function syncCardReload(reload, user) {
   });
 }
 
+async function syncTransactionActivity(log, user) {
+  if (!isSupabaseEnabled() || !log) return null;
+  const u = user || (log.user_id ? await User.findById(log.user_id) : null);
+  return upsertRow('transaction_activity', {
+    id: String(log.id),
+    user_id: String(log.user_id),
+    user_email: u?.email || log.email || null,
+    user_name: u?.name || log.name || null,
+    type: log.type || 'other',
+    direction: log.direction || 'neutral',
+    amount_usd: log.amount_usd != null ? Number(log.amount_usd) : null,
+    amount_mmk: log.amount_mmk != null ? Number(log.amount_mmk) : null,
+    balance_before: log.balance_before != null ? Number(log.balance_before) : null,
+    balance_after: log.balance_after != null ? Number(log.balance_after) : null,
+    reference_type: log.reference_type || null,
+    reference_id: log.reference_id != null ? String(log.reference_id) : null,
+    description: log.description || null,
+    metadata: safeJson(log.metadata),
+    created_by: log.created_by || null,
+    created_at: log.created_at || nowIso(),
+  });
+}
+
+/**
+ * Full historical backfill from Turso/LibSQL (source of truth) → Supabase mirrors.
+ * Safe to re-run (upsert). Does not delete or rewrite local DB rows.
+ */
+async function backfillHistoricalDataToSupabase({
+  depositLimit = 5000,
+  cardLimit = 5000,
+  reloadLimit = 5000,
+  activityLimit = 10000,
+} = {}) {
+  if (!isSupabaseEnabled()) {
+    return {
+      ok: false,
+      error: 'Supabase is not configured — set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY',
+    };
+  }
+
+  const { getDb } = require('../db');
+  const DepositRequest = require('../models/DepositRequest');
+  const Card = require('../models/Card');
+  const TransactionLog = require('../models/TransactionLog');
+  const db = getDb();
+
+  const summary = {
+    users: { total: 0, synced: 0, failed: 0 },
+    deposits: { total: 0, synced: 0, failed: 0 },
+    cards: { total: 0, synced: 0, failed: 0 },
+    reloads: { total: 0, synced: 0, failed: 0 },
+    activity: { total: 0, synced: 0, failed: 0 },
+  };
+
+  const users = await db.all('SELECT * FROM users ORDER BY id ASC');
+  summary.users.total = users.length;
+  for (const user of users) {
+    const row = await upsertUserWallet(user);
+    if (row) summary.users.synced += 1;
+    else summary.users.failed += 1;
+  }
+
+  const deposits = await DepositRequest.listAll({ limit: depositLimit });
+  summary.deposits.total = deposits.length;
+  for (const deposit of deposits) {
+    const row = await syncDeposit(deposit);
+    if (row) summary.deposits.synced += 1;
+    else summary.deposits.failed += 1;
+  }
+
+  const cards = await Card.listAll({ limit: cardLimit });
+  summary.cards.total = cards.length;
+  for (const card of cards) {
+    const row = await syncCardApplication(card);
+    if (row) summary.cards.synced += 1;
+    else summary.cards.failed += 1;
+  }
+
+  const reloads = await db.all(`
+    SELECT r.*, u.email AS user_email, u.name AS user_name
+    FROM card_reload_requests r
+    LEFT JOIN users u ON u.id = r.user_id
+    ORDER BY r.id ASC
+    LIMIT ?
+  `, reloadLimit);
+  summary.reloads.total = reloads.length;
+  for (const reload of reloads) {
+    const row = await syncCardReload(reload);
+    if (row) summary.reloads.synced += 1;
+    else summary.reloads.failed += 1;
+  }
+
+  const activities = await TransactionLog.listAll({ limit: activityLimit });
+  summary.activity.total = activities.length;
+  for (const log of activities) {
+    const row = await syncTransactionActivity(log);
+    if (row) summary.activity.synced += 1;
+    else summary.activity.failed += 1;
+  }
+
+  return { ok: true, summary };
+}
+
 module.exports = {
   syncUserWalletById,
   upsertUserWallet,
   syncDeposit,
   syncCardApplication,
   syncCardReload,
+  syncTransactionActivity,
+  backfillHistoricalDataToSupabase,
   isSupabaseEnabled,
 };

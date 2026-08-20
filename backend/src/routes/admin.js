@@ -352,6 +352,39 @@ router.get('/ledger-summary', requirePermission('ledger'), async (_req, res) => 
   }
 });
 
+router.get('/supabase/status', requirePermission('settings_read'), async (_req, res) => {
+  try {
+    const { getSupabaseStatus } = require('../lib/supabase');
+    const { getDatabaseInfo } = require('../db');
+    res.json({
+      database: getDatabaseInfo(),
+      supabase: getSupabaseStatus(),
+      note: 'Source of truth for users/transactions is Turso/LibSQL. Supabase is an optional dual-write mirror.',
+    });
+  } catch (err) {
+    console.error('[admin/supabase/status]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/supabase/backfill', requirePermission('settings_write'), async (_req, res) => {
+  try {
+    const { backfillHistoricalDataToSupabase } = require('../services/supabaseSyncService');
+    const result = await backfillHistoricalDataToSupabase();
+    if (!result.ok) {
+      return res.status(400).json({ error: result.error, summary: null });
+    }
+    res.json({
+      success: true,
+      message: 'Historical Turso records upserted into Supabase mirrors',
+      summary: result.summary,
+    });
+  } catch (err) {
+    console.error('[admin/supabase/backfill]', err);
+    res.status(500).json({ error: err.message || 'Backfill failed' });
+  }
+});
+
 router.get('/settings', requirePermission('settings_read'), async (_req, res) => {
   try {
     const settings = await getAllSettings();

@@ -72,20 +72,47 @@ CREATE TABLE IF NOT EXISTS card_reload_requests (
 CREATE INDEX IF NOT EXISTS idx_card_reload_user ON card_reload_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_card_reload_status ON card_reload_requests(status);
 
+-- Historical activity mirror (from LibSQL transaction_logs)
+CREATE TABLE IF NOT EXISTS transaction_activity (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  user_email TEXT,
+  user_name TEXT,
+  type TEXT NOT NULL,
+  direction TEXT DEFAULT 'neutral',
+  amount_usd NUMERIC(18, 4),
+  amount_mmk NUMERIC(18, 2),
+  balance_before NUMERIC(18, 4),
+  balance_after NUMERIC(18, 4),
+  reference_type TEXT,
+  reference_id TEXT,
+  description TEXT,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_transaction_activity_user ON transaction_activity(user_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_activity_type ON transaction_activity(type);
+CREATE INDEX IF NOT EXISTS idx_transaction_activity_created ON transaction_activity(created_at DESC);
+
 -- Permissive policies for demo (app uses its own Express auth).
 -- Tighten with RLS + auth.uid() before production.
 ALTER TABLE user_wallets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE deposit_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE card_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE card_reload_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transaction_activity ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "anon_all_user_wallets" ON user_wallets FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "anon_all_deposit_requests" ON deposit_requests FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "anon_all_card_applications" ON card_applications FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "anon_all_card_reload_requests" ON card_reload_requests FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "anon_all_transaction_activity" ON transaction_activity FOR ALL USING (true) WITH CHECK (true);
 
 -- Enable Realtime (run after tables exist):
 -- ALTER PUBLICATION supabase_realtime ADD TABLE user_wallets;
 -- ALTER PUBLICATION supabase_realtime ADD TABLE deposit_requests;
 -- ALTER PUBLICATION supabase_realtime ADD TABLE card_applications;
 -- ALTER PUBLICATION supabase_realtime ADD TABLE card_reload_requests;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE transaction_activity;
