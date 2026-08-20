@@ -1,5 +1,8 @@
 -- Eisy Myanmar — Supabase schema for synced app state
 -- Run in Supabase SQL Editor, then enable Realtime for each table (Database → Replication).
+--
+-- Supabase Auth signup trigger fix (handle_new_user / profiles):
+-- see supabase/auth_profiles.sql if auth.signUp() returns "Database error saving new user".
 
 CREATE TABLE IF NOT EXISTS user_wallets (
   user_id TEXT PRIMARY KEY,
