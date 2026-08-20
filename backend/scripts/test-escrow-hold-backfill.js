@@ -19,6 +19,7 @@ const {
   confirmMmkTransfer,
   releaseP2pBuyOrderByMaker,
 } = require('../src/services/p2pBuyOrderService');
+const { cancelP2pAd } = require('../src/services/p2pAdService');
 
 async function createTestUser(email, name, phone) {
   const db = getDb();
@@ -116,6 +117,13 @@ async function run() {
     adId
   );
   assert.strictEqual(Number(holdAfterRelease.remaining_usdt), 30, 'Hold remaining should decrease after release');
+
+  console.log('[test-escrow-hold-backfill] Cancelling legacy ad without escrow hold record...');
+  const orphanAdId = await createLegacySellAdWithoutHold(db, seller.id, 25);
+  await db.run(`UPDATE users SET balance_usdt_locked = 0 WHERE id = ?`, seller.id);
+  const cancelResult = await cancelP2pAd(seller.id, orphanAdId);
+  assert.strictEqual(cancelResult.ad.status, 'cancelled', 'Legacy ad cancel should succeed');
+  assert.strictEqual(Number(cancelResult.ad.escrow_locked_usdt), 0, 'Ad escrow should be cleared');
 
   console.log('========================================');
   console.log('ESCROW HOLD BACKFILL TEST PASSED');
