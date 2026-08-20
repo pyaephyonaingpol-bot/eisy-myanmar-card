@@ -15,6 +15,126 @@ function generateJournalId(prefix = 'USDT') {
   return `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 }
 
+function normalizeEscrowReferenceId(referenceId) {
+  const id = parseInt(referenceId, 10);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+async function backfillEscrowHoldFromReference(db, {
+  userId = null,
+  referenceType,
+  referenceId,
+  holdType,
+} = {}) {
+  const refId = normalizeEscrowReferenceId(referenceId);
+  if (!refId || !referenceType || !holdType) return null;
+
+  if (holdType === 'p2p_ad' && referenceType === 'p2p_ads') {
+    const ad = await db.get('SELECT * FROM p2p_ads WHERE id = ?', refId);
+    if (!ad || ad.side !== 'sell' || !['active', 'closed'].includes(ad.status)) return null;
+
+    const escrowAmount = roundUsdt(Number(ad.escrow_locked_usdt || 0));
+    if (escrowAmount <= 0) return null;
+    if (userId != null && Number(ad.user_id) !== Number(userId)) return null;
+
+    const bal = await fetchBalances(ad.user_id, db);
+    if (bal.locked < escrowAmount - 0.001) return null;
+
+    await db.run(`
+      INSERT OR IGNORE INTO usdt_escrow_holds (
+        user_id, amount_usdt, remaining_usdt, hold_type,
+        reference_type, reference_id, status, metadata
+      ) VALUES (?, ?, ?, 'p2p_ad', 'p2p_ads', ?, 'active', ?)
+    `,
+      ad.user_id,
+      escrowAmount,
+      escrowAmount,
+      refId,
+      JSON.stringify({ backfilled: true, source: 'p2p_ads' })
+    );
+  } else if (holdType === 'p2p_sell_order' && referenceType === 'p2p_sell_orders') {
+    const order = await db.get('SELECT * FROM p2p_sell_orders WHERE id = ?', refId);
+    if (!order || !['pending_merchant_mmk', 'disputed'].includes(order.status)) return null;
+
+    const escrowAmount = roundUsdt(Number(order.amount_usdt || 0));
+    if (escrowAmount <= 0) return null;
+    if (userId != null && Number(order.user_id) !== Number(userId)) return null;
+
+    const bal = await fetchBalances(order.user_id, db);
+    if (bal.locked < escrowAmount - 0.001) return null;
+
+    await db.run(`
+      INSERT OR IGNORE INTO usdt_escrow_holds (
+        user_id, amount_usdt, remaining_usdt, hold_type,
+        reference_type, reference_id, status, metadata
+      ) VALUES (?, ?, ?, 'p2p_sell_order', 'p2p_sell_orders', ?, 'active', ?)
+    `,
+      order.user_id,
+      escrowAmount,
+      escrowAmount,
+      refId,
+      JSON.stringify({ backfilled: true, source: 'p2p_sell_orders' })
+    );
+  } else {
+    return null;
+  }
+
+  return db.get(
+    `SELECT * FROM usdt_escrow_holds
+     WHERE reference_type = ? AND reference_id = ? AND hold_type = ? AND status = 'active'`,
+    referenceType,
+    refId,
+    holdType
+  );
+}
+
+async function findActiveEscrowHold(db, {
+  userId = null,
+  referenceType,
+  referenceId,
+  holdType,
+} = {}, { ensure = false } = {}) {
+  const refId = normalizeEscrowReferenceId(referenceId);
+  if (!refId || !referenceType || !holdType) return null;
+
+  const lookup = async (includeUser) => {
+    if (includeUser && userId != null) {
+      return db.get(
+        `SELECT * FROM usdt_escrow_holds
+         WHERE user_id = ? AND reference_type = ? AND reference_id = ? AND hold_type = ? AND status = 'active'`,
+        userId,
+        referenceType,
+        refId,
+        holdType
+      );
+    }
+    return db.get(
+      `SELECT * FROM usdt_escrow_holds
+       WHERE reference_type = ? AND reference_id = ? AND hold_type = ? AND status = 'active'`,
+      referenceType,
+      refId,
+      holdType
+    );
+  };
+
+  let hold = await lookup(true);
+  if (!hold) {
+    hold = await lookup(false);
+    if (hold && userId != null && Number(hold.user_id) !== Number(userId)) {
+      return null;
+    }
+  }
+
+  if (hold || !ensure) return hold;
+
+  return backfillEscrowHoldFromReference(db, {
+    userId,
+    referenceType,
+    referenceId: refId,
+    holdType,
+  });
+}
+
 async function withDbTransaction(fn) {
   return runInTransaction(getDb(), fn);
 }
@@ -323,13 +443,15 @@ async function lockUsdtForEscrow(userId, amountUsdt, {
   if (!holdType || !referenceType || referenceId == null) {
     throw new Error('Escrow hold requires holdType, referenceType, and referenceId');
   }
+  const refId = normalizeEscrowReferenceId(referenceId);
+  if (!refId) throw new Error('Escrow hold referenceId must be a positive integer');
 
   const result = await withDbTransaction(async (db) => {
     const existing = await db.get(
       `SELECT id FROM usdt_escrow_holds
        WHERE reference_type = ? AND reference_id = ? AND hold_type = ? AND status = 'active'`,
       referenceType,
-      referenceId,
+      refId,
       holdType
     );
     if (existing) {
@@ -365,7 +487,7 @@ async function lockUsdtForEscrow(userId, amountUsdt, {
       amount,
       holdType,
       referenceType,
-      referenceId,
+      refId,
       jid,
       metadata ? JSON.stringify(metadata) : null
     );
@@ -379,7 +501,7 @@ async function lockUsdtForEscrow(userId, amountUsdt, {
       balanceAfter: availableAfter,
       lockedBalanceAfter: lockedAfter,
       referenceType,
-      referenceId,
+      referenceId: refId,
       description: description || `USDT locked in escrow — ${formatUsdt(amount)}`,
       metadata: {
         wallet: 'usdt',
@@ -398,7 +520,7 @@ async function lockUsdtForEscrow(userId, amountUsdt, {
       balanceBefore: bal.available,
       balanceAfter: availableAfter,
       referenceType,
-      referenceId,
+      referenceId: refId,
       description: description || `USDT escrow lock — ${formatUsdt(amount)}`,
       createdBy,
       metadata: {
@@ -432,15 +554,16 @@ async function refundEscrowHold({
   createdBy = 'system',
   metadata,
 } = {}) {
+  const refId = normalizeEscrowReferenceId(referenceId);
+  if (!refId) throw new Error('Escrow hold referenceId must be a positive integer');
+
   const result = await withDbTransaction(async (db) => {
-    const hold = await db.get(
-      `SELECT * FROM usdt_escrow_holds
-       WHERE user_id = ? AND reference_type = ? AND reference_id = ? AND hold_type = ? AND status = 'active'`,
+    const hold = await findActiveEscrowHold(db, {
       userId,
       referenceType,
-      referenceId,
-      holdType
-    );
+      referenceId: refId,
+      holdType,
+    }, { ensure: true });
     if (!hold) {
       const err = new Error('Active escrow hold not found');
       err.code = 'ESCROW_HOLD_NOT_FOUND';
@@ -478,7 +601,7 @@ async function refundEscrowHold({
       balanceAfter: availableAfter,
       lockedBalanceAfter: lockedAfter,
       referenceType,
-      referenceId,
+      referenceId: refId,
       description: description || `Escrow refunded — ${formatUsdt(refundAmount)}`,
       metadata: { wallet: 'usdt', hold_type: holdType, escrow_refund: true, ...(metadata || {}) },
       journalId: jid,
@@ -492,7 +615,7 @@ async function refundEscrowHold({
       balanceBefore: bal.available,
       balanceAfter: availableAfter,
       referenceType,
-      referenceId,
+      referenceId: refId,
       description: description || `Escrow refund — ${formatUsdt(refundAmount)}`,
       createdBy,
       metadata: { wallet: 'usdt', hold_type: holdType, locked_usdt_after: lockedAfter, ...(metadata || {}) },
@@ -534,14 +657,17 @@ async function consumeEscrowToBuyer({
   }
 
   const result = await withDbTransaction(async (db) => {
-    const hold = await db.get(
-      `SELECT * FROM usdt_escrow_holds
-       WHERE user_id = ? AND reference_type = ? AND reference_id = ? AND hold_type = ? AND status = 'active'`,
-      fromUserId,
-      holdReference.referenceType,
-      holdReference.referenceId,
-      holdReference.holdType
-    );
+    const holdRefId = normalizeEscrowReferenceId(holdReference.referenceId);
+    if (!holdRefId) {
+      throw new Error('Escrow hold referenceId must be a positive integer');
+    }
+
+    const hold = await findActiveEscrowHold(db, {
+      userId: fromUserId,
+      referenceType: holdReference.referenceType,
+      referenceId: holdRefId,
+      holdType: holdReference.holdType,
+    }, { ensure: true });
     if (!hold) {
       const err = new Error('Active escrow hold not found for release');
       err.code = 'ESCROW_HOLD_NOT_FOUND';
@@ -825,5 +951,7 @@ module.exports = {
   lockUsdtForEscrow,
   refundEscrowHold,
   consumeEscrowToBuyer,
+  findActiveEscrowHold,
+  ensureActiveEscrowHold: (db, params) => findActiveEscrowHold(db, params, { ensure: true }),
   transferUsdtInternal,
 };
