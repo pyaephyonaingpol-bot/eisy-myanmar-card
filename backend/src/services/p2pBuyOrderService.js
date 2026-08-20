@@ -4,7 +4,7 @@ const P2PAd = require('../models/P2PAd');
 const P2PBuyOrder = require('../models/P2PBuyOrder');
 const TransactionLog = require('../models/TransactionLog');
 const { formatUsdt, formatMmk } = require('./walletService');
-const { consumeEscrowToBuyer } = require('./usdtLedgerService');
+const { consumeEscrowToBuyer, ensureActiveEscrowHold } = require('./usdtLedgerService');
 const { getCardPricingSettings, calculateP2pFeeBreakdown } = require('./settingsService');
 const { PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { parsePaymentMethods } = require('./p2pMarketService');
@@ -119,6 +119,20 @@ async function createP2pBuyOrderFromAd(userId, { adId, amount_usdt, payment_meth
 
   if (Number(ad.escrow_locked_usdt) < roundedUsdt - 0.001) {
     throw new Error('Seller ad has insufficient escrow for this trade');
+  }
+
+  const db = getDb();
+  const activeHold = await ensureActiveEscrowHold(db, {
+    userId: ad.user_id,
+    referenceType: 'p2p_ads',
+    referenceId: adId,
+    holdType: 'p2p_ad',
+  });
+  if (!activeHold) {
+    throw new Error('Seller ad escrow is not ready — ask the seller to re-post the listing');
+  }
+  if (Number(activeHold.remaining_usdt) < roundedUsdt - 0.001) {
+    throw new Error('Seller ad has insufficient escrow hold for this trade');
   }
 
   await P2PAd.reserveVolume(adId, roundedUsdt);
