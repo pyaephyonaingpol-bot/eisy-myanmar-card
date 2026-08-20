@@ -1,4 +1,5 @@
 const { getDb } = require('../db');
+const { runInTransaction } = require('../lib/dbTransaction');
 const User = require('../models/User');
 const TransactionLog = require('../models/TransactionLog');
 const { getCardPricingSettings } = require('./settingsService');
@@ -68,20 +69,15 @@ async function migrateLegacyUsdToMmk(userId) {
   const balanceAfterMmk = balanceBeforeMmk + mmkAmount;
 
   const db = getDb();
-  await db.run('BEGIN');
-  try {
-    await db.run(`
+  await runInTransaction(db, async (conn) => {
+    await conn.run(`
       UPDATE users
       SET balance_mmk = COALESCE(balance_mmk, 0) + ?,
           balance = 0,
           updated_at = datetime('now')
       WHERE id = ?
     `, mmkAmount, userId);
-    await db.run('COMMIT');
-  } catch (err) {
-    await db.run('ROLLBACK');
-    throw err;
-  }
+  });
 
   await TransactionLog.create({
     userId,
