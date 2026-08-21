@@ -1,13 +1,15 @@
 /**
  * Mobile viewport + keyboard lock
  *
- * 1) Freeze --app-vh to a pixel shell height (prefer layout viewport).
- * 2) Never recalculate that height while an input is focused / keyboard open.
- * 3) Only refresh on orientation change (or desktop window resize without keyboard).
+ * Idle (keyboard closed): leave --app-vh as CSS 100svh so Safari chrome /
+ * address-bar changes do not leave the shell taller than the visible area.
+ *
+ * Keyboard open: snapshot a pixel height and freeze --app-vh so the shell
+ * does not collapse with visualViewport / 100dvh.
  *
  * Works with CSS: html/body are overflow-hidden + fixed; scrolling happens
  * inside .app-content / .auth-screen — so the keyboard overlays instead of
- * resizing the document and causing layout loops.
+ * resizing the document (viewport meta also sets interactive-widget=overlays-content).
  */
 (function lockAppViewport() {
   const root = document.documentElement;
@@ -19,15 +21,28 @@
   let unlockTimer = 0;
 
   function layoutHeight() {
-    // Prefer the layout viewport. visualViewport shrinks with the keyboard and
-    // must not drive shell height.
     return Math.round(window.innerHeight || root.clientHeight || 0);
   }
 
   function visualHeight() {
     const vv = window.visualViewport;
-    if (vv && Number.isFinite(vv.height)) return Math.round(vv.height);
+    if (vv && Number.isFinite(vv.height) && vv.height > 0) {
+      return Math.round(vv.height);
+    }
     return layoutHeight();
+  }
+
+  /**
+   * Visible shell height: never taller than what the user can see.
+   * Using min(layout, visual) avoids the iOS Safari case where innerHeight
+   * outruns the area above the browser chrome.
+   */
+  function visibleShellHeight() {
+    const layout = layoutHeight();
+    const visual = visualHeight();
+    if (!layout) return visual || 0;
+    if (!visual) return layout;
+    return Math.min(layout, visual);
   }
 
   function keyboardOpen() {
@@ -35,23 +50,25 @@
     const layout = layoutHeight();
     const visual = visualHeight();
     if (!layout || !visual) return false;
-    return (layout - visual) > 120 || (shellPx - visual) > 120;
+    return (layout - visual) > 120 || (shellPx > 0 && (shellPx - visual) > 120);
   }
 
-  function applyShellHeight(force) {
-    if (!force && keyboardOpen()) return;
+  function lockShellHeight(force) {
+    if (!force && keyboardOpen() && shellPx) return;
 
-    const next = layoutHeight();
+    const next = visibleShellHeight();
     if (!next || !Number.isFinite(next)) return;
 
-    // While not focused, allow growth (address bar hide) but never shrink from
-    // a transient visualViewport blip. Forced updates always take the new value.
-    if (force || !shellPx || next >= shellPx - 2) {
-      shellPx = next;
-    }
-
+    shellPx = next;
     root.style.setProperty('--app-vh', `${shellPx}px`);
     root.style.setProperty('--app-shell-px', `${shellPx}px`);
+  }
+
+  /** Restore CSS svh / fill-available instead of a stale pixel lock. */
+  function releaseShellHeight() {
+    shellPx = 0;
+    root.style.removeProperty('--app-vh');
+    root.style.removeProperty('--app-shell-px');
   }
 
   function isTextEntry(el) {
@@ -77,8 +94,8 @@
     if (!isTextEntry(event.target)) return;
     focusDepth += 1;
     if (focusDepth === 1) {
-      // Snapshot the current shell before the keyboard animates.
-      applyShellHeight(true);
+      // Snapshot before the keyboard animates (and before visualViewport shrinks).
+      lockShellHeight(true);
       setKeyboardClass(true);
     }
   }
@@ -94,18 +111,24 @@
       }
       focusDepth = 0;
       setKeyboardClass(false);
-      // Keep the pixel lock — do not bounce back to svh mid-session.
-    }, 80);
+      // Drop the pixel lock so Safari chrome / 100svh stay in sync.
+      releaseShellHeight();
+    }, 120);
   }
 
   function onOrientationChange() {
     shellPx = 0;
     setKeyboardClass(false);
     focusDepth = 0;
-    window.setTimeout(() => applyShellHeight(true), 280);
+    releaseShellHeight();
+    window.setTimeout(() => {
+      // Soft remeasure only if still needed after rotation settles.
+      if (mqMobile.matches && keyboardOpen()) lockShellHeight(true);
+    }, 280);
   }
 
-  applyShellHeight(true);
+  // Idle: rely on CSS --app-vh (100svh). Do not lock pixels on first paint —
+  // locking to a tall innerHeight is what lets Safari chrome cover content.
 
   document.addEventListener('focusin', onFocusIn, true);
   document.addEventListener('focusout', onFocusOut, true);
@@ -123,16 +146,12 @@
       onOrientationChange();
       return;
     }
-    // Ignore keyboard / visualViewport-driven resizes entirely.
     if (keyboardOpen()) return;
-    // Desktop window resizes may update; on mobile keep the lock unless height grew.
-    if (mqMobile.matches) {
-      const next = layoutHeight();
-      if (next && next > shellPx + 40) applyShellHeight(true);
-      return;
+    // Desktop window resizes: keep CSS vars in sync via optional soft lock clear.
+    if (!mqMobile.matches) {
+      releaseShellHeight();
     }
-    applyShellHeight(true);
   }, { passive: true });
 
-  // Intentionally no visualViewport resize/scroll listeners.
+  // Intentionally no visualViewport resize/scroll listeners while idle.
 })();
