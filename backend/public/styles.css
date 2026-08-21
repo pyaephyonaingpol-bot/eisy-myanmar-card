@@ -87,15 +87,14 @@ body {
   color: var(--text-primary);
   line-height: 1.55;
   /* Fixed shell: keyboard overlays; page itself does not bounce/resize.
-     Use inset alone (no width:100%) so safe-area padding cannot force overflow.
-     Prefer inset + 100% over a second --app-vh on body so iOS Safari does not
-     extend the fixed box past the visible chrome (classic 100vh bug). */
+     Height tracks --app-vh (100svh idle) so the shell matches the visible
+     viewport on iOS Safari and Chrome without collapsing children to 0. */
   position: fixed;
   inset: 0;
   width: auto;
   max-width: 100%;
-  height: 100%;
-  max-height: 100%;
+  height: var(--app-vh);
+  max-height: var(--app-vh);
   overflow: hidden;
   overflow-x: hidden;
   overscroll-behavior: none;
@@ -191,6 +190,8 @@ html.has-session #dashboardScreen,
 html.has-session #adminApp {
   min-height: 0;
   height: 100%;
+  height: var(--app-vh);
+  max-height: var(--app-vh);
 }
 
 h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; }
@@ -1902,8 +1903,8 @@ pre.output.hidden { display: none !important; }
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 1rem;
   margin-bottom: 1.25rem;
-  min-height: 12.5rem;
-  align-items: stretch;
+  min-height: 0;
+  align-items: start;
   min-width: 0;
   max-width: 100%;
   width: 100%;
@@ -1913,12 +1914,14 @@ pre.output.hidden { display: none !important; }
   border-radius: var(--radius-xl);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: var(--shadow-lg);
-  min-height: 12.5rem;
+  min-height: 0;
+  height: auto;
   display: flex;
   flex-direction: column;
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
+  overflow: visible;
 }
 .wallet-hero-card.mmk {
   background: linear-gradient(135deg, #1e3a8a, #4338ca, #6366f1);
@@ -2171,7 +2174,9 @@ pre.output.hidden { display: none !important; }
   width: 100%;
   max-width: 100%;
   height: 100%;
+  height: var(--app-vh);
   max-height: 100%;
+  max-height: var(--app-vh);
   min-height: 0;
   min-width: 0;
   overflow: hidden;
@@ -2184,7 +2189,9 @@ pre.output.hidden { display: none !important; }
   width: 100%;
   max-width: 100%;
   height: 100%;
+  height: var(--app-vh);
   max-height: 100%;
+  max-height: var(--app-vh);
   min-height: 0;
   min-width: 0;
   overflow: hidden;
@@ -2346,17 +2353,17 @@ pre.output.hidden { display: none !important; }
 .app-page {
   display: none;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
   min-width: 0;
   max-width: 100%;
   width: 100%;
   box-sizing: border-box;
-  /* Critical for Safari: do not let the page flex-shrink inside .app-content
-     (that squashes panels into thin bars / stretched empty shells). */
+  /* Do not flex-shrink inside .app-content — Safari/Chrome would squash panels. */
   flex: 0 0 auto;
-  flex-shrink: 0;
   height: auto;
-  min-height: min-content;
+  max-height: none;
+  min-height: 0;
+  overflow: visible;
   align-self: stretch;
 }
 .app-page.is-active { display: flex; }
@@ -2365,7 +2372,11 @@ pre.output.hidden { display: none !important; }
 .app-page > .page-header,
 .app-page > .section-toolbar {
   flex: 0 0 auto;
-  min-height: min-content;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  overflow: visible;
+  position: relative;
 }
 
 .app-content img,
@@ -2523,18 +2534,26 @@ body.sidebar-scroll-lock {
     max-width: 100%;
     padding-left: 1rem;
     padding-right: 1rem;
-    /* Extra bottom inset so Safari toolbar / home indicator do not cover CTAs */
-    padding-bottom: max(1.75rem, calc(var(--safe-bottom) + 1.5rem));
-    /* Prevent Safari from flex-shrinking page sections inside the scroller */
+    padding-bottom: max(2rem, calc(var(--safe-bottom) + 1.75rem));
+    gap: 1.25rem;
     align-items: stretch;
   }
 
-  .app-content > .app-page {
+  .app-content > .app-page,
+  .app-content > .app-page.is-active {
+    display: flex;
     flex: 0 0 auto !important;
     flex-shrink: 0 !important;
     height: auto !important;
     max-height: none !important;
-    min-height: min-content !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    position: relative;
+  }
+
+  /* Inactive pages must stay hidden even when width rules touch .app-page */
+  .app-content > .app-page:not(.is-active) {
+    display: none !important;
   }
 
   .header {
@@ -2574,26 +2593,92 @@ body.sidebar-scroll-lock {
     max-width: 100%;
   }
 
-  .wallet-hero-actions-row .btn {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-
   .app-main .header {
     position: relative;
     top: auto;
   }
 
-  /* Soften reserved empty heights that look like layout holes on short phones */
-  .summary-grid,
+  /* Wallet overview: stack cards with clear gap; never clip action buttons */
   .wallet-dual-grid {
-    min-height: 0;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1.15rem !important;
+    min-height: 0 !important;
+    height: auto !important;
+    align-items: stretch !important;
+    overflow: visible !important;
+    margin-bottom: 1rem !important;
   }
+
+  .wallet-hero-card {
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    flex: 0 0 auto !important;
+    padding-bottom: 1.15rem !important;
+  }
+
+  .wallet-hero-actions {
+    margin-top: 0.35rem;
+    overflow: visible !important;
+  }
+
+  .wallet-hero-actions-row {
+    display: flex !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  .wallet-hero-actions-row .btn {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    position: relative !important;
+    height: auto !important;
+  }
+
+  .summary-grid {
+    min-height: 0;
+    gap: 0.75rem;
+  }
+
   .summary-item {
     min-height: 0;
   }
-  .wallet-hero-card {
-    min-height: 0;
+
+  .summary-panel,
+  .panel {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  .grid-2 {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1.25rem !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .action-row {
+    display: flex !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    gap: 0.5rem !important;
+    overflow: visible !important;
+  }
+
+  .action-row .btn {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   html.kb-open .app-shell,
@@ -2622,7 +2707,7 @@ body.sidebar-scroll-lock {
 }
 
 @media (max-width: 480px) {
-  .app-content { padding: 1rem; padding-bottom: max(1.75rem, calc(var(--safe-bottom) + 1.5rem)); }
+  .app-content { padding: 1rem; padding-bottom: max(2rem, calc(var(--safe-bottom) + 1.75rem)); }
 
   .auth-card {
     padding: 1.35rem 1.15rem;
@@ -2657,12 +2742,14 @@ body.sidebar-scroll-lock {
   }
 
   .wallet-hero-actions-row {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
   }
 
   .wallet-hero-actions-row .btn {
-    width: 100%;
+    width: 100% !important;
+    flex: 0 0 auto !important;
   }
 
   .summary-grid { grid-template-columns: 1fr; }
@@ -2984,7 +3071,8 @@ html.app-hydrating .wallet-hero-actions-row {
     overflow-x: auto !important;
   }
 
-  /* Global page / card / section wrappers */
+  /* Global page / card / section wrappers — width only; do NOT set overflow-x
+     here (it forces overflow-y:auto and clips/stacks wallet buttons). */
   .app-content,
   .app-page,
   .page-header,
@@ -3008,13 +3096,14 @@ html.app-hydrating .wallet-hero-actions-row {
     max-width: 100% !important;
     min-width: 0 !important;
     box-sizing: border-box !important;
-    overflow-x: hidden;
   }
 
   .app-content {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
-    padding-bottom: max(1.75rem, calc(var(--safe-bottom) + 1.5rem)) !important;
+    padding-bottom: max(2rem, calc(var(--safe-bottom) + 1.75rem)) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
   }
 
   .app-page,
@@ -3023,12 +3112,19 @@ html.app-hydrating .wallet-hero-actions-row {
     flex-shrink: 0 !important;
     height: auto !important;
     max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .app-content > .app-page:not(.is-active) {
+    display: none !important;
   }
 
   .app-page > .panel,
   .app-page > .grid-2 {
     flex: 0 0 auto !important;
-    min-height: min-content !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 
   .panel,
@@ -3041,9 +3137,12 @@ html.app-hydrating .wallet-hero-actions-row {
   .wallet-hero-card {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
   }
 
-  /* Button groups: wrap and allow text to wrap instead of clipping */
+  /* Button groups: stack cleanly on narrow screens — no overlapping flex share */
   .card-action-bar,
   .action-row,
   .section-toolbar,
@@ -3055,6 +3154,7 @@ html.app-hydrating .wallet-hero-actions-row {
     flex-wrap: wrap !important;
     gap: 0.5rem !important;
     max-width: 100% !important;
+    overflow: visible !important;
   }
 
   .card-action-bar .btn,
@@ -3070,6 +3170,7 @@ html.app-hydrating .wallet-hero-actions-row {
     height: auto !important;
     line-height: 1.35 !important;
     text-align: center;
+    position: relative !important;
   }
 }
 
@@ -3078,8 +3179,16 @@ html.app-hydrating .wallet-hero-actions-row {
   .action-row .btn,
   .section-toolbar .btn,
   .wallet-hero-actions-row .btn {
-    flex: 1 1 100% !important;
+    flex: 0 0 auto !important;
     width: 100% !important;
+  }
+
+  .card-action-bar,
+  .action-row,
+  .wallet-hero-actions-row {
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
   }
 
   .card-status-hero {
