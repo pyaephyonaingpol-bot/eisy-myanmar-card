@@ -652,6 +652,8 @@
       const txFilterBtn = $('txFilterBtn');
       if (txFilterBtn) txFilterBtn.addEventListener('click', () => this.loadTransactions());
 
+      this.initTxCsvExportControls();
+
       const txCategoryTabs = $('txCategoryTabs');
       if (txCategoryTabs) {
         this.txCategory = this.txCategory || 'p2p';
@@ -3393,6 +3395,93 @@
             '</tbody></table>';
       } catch (err) {
         table.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+      }
+    },
+
+    yangonDateString(now = new Date()) {
+      try {
+        return new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Yangon',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(now);
+      } catch (_) {
+        return now.toISOString().slice(0, 10);
+      }
+    },
+
+    initTxCsvExportControls() {
+      const dateInput = $('txExportDate');
+      if (dateInput && !dateInput.value) {
+        dateInput.value = this.yangonDateString();
+      }
+      const btn = $('txExportCsvBtn');
+      if (btn) {
+        btn.addEventListener('click', () => {
+          this.downloadTransactionsCsv().catch((err) => {
+            const status = $('txExportStatus');
+            if (status) status.textContent = err.message || 'CSV export failed';
+          });
+        });
+      }
+    },
+
+    async downloadTransactionsCsv() {
+      const status = $('txExportStatus');
+      const btn = $('txExportCsvBtn');
+      const date = $('txExportDate')?.value || this.yangonDateString();
+      const source = $('txExportSource')?.value || 'nowpayments';
+      const userId = $('txUserFilter')?.value?.trim();
+
+      let path = '/api/admin/transactions/csv?date=' + encodeURIComponent(date)
+        + '&source=' + encodeURIComponent(source);
+      if (userId) path += '&user_id=' + encodeURIComponent(userId);
+
+      if (status) status.textContent = 'Preparing CSV…';
+      if (btn) btn.disabled = true;
+
+      try {
+        const res = await fetch(path, {
+          method: 'GET',
+          headers: this.headers(),
+        });
+
+        if (res.status === 401) {
+          this.clearSession();
+          this.showLogin();
+          throw new Error('Admin session expired — please sign in again');
+        }
+
+        if (!res.ok) {
+          let message = 'CSV export failed';
+          try {
+            const data = await res.json();
+            message = data.error || message;
+          } catch (_) { /* ignore */ }
+          throw new Error(message);
+        }
+
+        const blob = await res.blob();
+        const disposition = res.headers.get('Content-Disposition') || '';
+        const match = /filename="([^"]+)"/i.exec(disposition);
+        const filename = match?.[1] || ('eisy-transactions-' + date + '.csv');
+        const rowCount = res.headers.get('X-Export-Row-Count') || '?';
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        if (status) {
+          status.textContent = 'Downloaded ' + filename + ' (' + rowCount + ' rows, Asia/Yangon).';
+        }
+      } finally {
+        if (btn) btn.disabled = false;
       }
     },
 
