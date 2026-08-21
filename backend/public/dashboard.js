@@ -3076,18 +3076,28 @@ const Dashboard = {
     const cfg = (window.Eisy && window.Eisy.config) || {};
     const amount = Math.round((Number(amountUsdt) || 0) * 100) / 100;
     if (!(amount > 0)) return null;
+    const mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
     const feePercent = Number(fees.payment_service_fee_percent ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
     const minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1);
     const percentFee = Math.round(amount * feePercent) / 100;
-    const fee = Math.round(Math.max(percentFee, minimumFee) * 100) / 100;
+    let fee = 0;
+    if (mode === 'off') fee = 0;
+    else if (mode === 'percent') fee = Math.round(percentFee * 100) / 100;
+    else if (mode === 'fixed') fee = Math.round(minimumFee * 100) / 100;
+    else fee = Math.round(Math.max(percentFee, minimumFee) * 100) / 100;
     const net = Math.round((amount - fee) * 100) / 100;
+    let feeLabel = 'No service fee';
+    if (fee > 0) {
+      if (mode === 'fixed') feeLabel = `fixed $${fee.toFixed(2)}`;
+      else if (mode === 'percent') feeLabel = `${feePercent}% ($${fee.toFixed(2)})`;
+      else if (percentFee < minimumFee) feeLabel = `min $${minimumFee.toFixed(2)} (${feePercent}% = $${percentFee.toFixed(2)})`;
+      else feeLabel = `${feePercent}% ($${fee.toFixed(2)})`;
+    }
     return {
       amount_usdt: amount,
       fee_usdt: fee,
       net_usdt: net,
-      fee_label: percentFee < minimumFee
-        ? `min $${minimumFee.toFixed(2)} (2% = $${percentFee.toFixed(2)})`
-        : `${feePercent}% ($${fee.toFixed(2)})`,
+      fee_label: feeLabel,
       invalid_net: net <= 0,
     };
   },
@@ -3103,19 +3113,30 @@ const Dashboard = {
     const cfg = (window.Eisy && window.Eisy.config) || {};
     const amount = Math.round(Number(amountMmk) || 0);
     if (!(amount > 0)) return null;
+    const mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
     const feePercent = Number(fees.payment_service_fee_percent ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
     const rate = Number(fees.mmk_to_usd_rate || this.pricingSettings?.mmk_to_usd_rate || 4500);
     const minimumFee = Math.round(Number(fees.payment_service_fee_minimum_usdt ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1) * rate);
     const percentFee = Math.round(amount * feePercent / 100);
-    const fee = Math.max(percentFee, minimumFee);
+    let fee = 0;
+    if (mode === 'off') fee = 0;
+    else if (mode === 'percent') fee = percentFee;
+    else if (mode === 'fixed') fee = minimumFee;
+    else fee = Math.max(percentFee, minimumFee);
     const net = amount - fee;
+    let feeLabel = 'No service fee';
+    if (fee > 0) {
+      if (mode === 'fixed') feeLabel = `fixed ${fee.toLocaleString()} MMK`;
+      else if (mode === 'percent') feeLabel = `${feePercent}% (${fee.toLocaleString()} MMK)`;
+      else if (percentFee < minimumFee) {
+        feeLabel = `min ${minimumFee.toLocaleString()} MMK (${feePercent}% = ${percentFee.toLocaleString()} MMK)`;
+      } else feeLabel = `${feePercent}% (${fee.toLocaleString()} MMK)`;
+    }
     return {
       amount_mmk: amount,
       fee_mmk: fee,
       net_mmk: net,
-      fee_label: percentFee < minimumFee
-        ? `min ${minimumFee.toLocaleString()} MMK (${feePercent}% = ${percentFee.toLocaleString()} MMK)`
-        : `${feePercent}% (${fee.toLocaleString()} MMK)`,
+      fee_label: feeLabel,
       invalid_net: net <= 0,
     };
   },
@@ -4798,20 +4819,28 @@ const Dashboard = {
     const network = method === 'bank' ? 'BANK' : ($('withdrawNetwork')?.value || 'TRC20');
     const isBank = network === 'BANK';
 
+    const mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
     const feePercent = Number(fees.payment_service_fee_percent ?? 2);
     const minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? 1);
     const percentFee = Math.round(amountUsdt * feePercent) / 100;
-    let feeUsdt = Math.max(percentFee, minimumFee);
-    feeUsdt = Math.round(feeUsdt * 100) / 100;
+    let feeUsdt = 0;
+    if (mode === 'off') feeUsdt = 0;
+    else if (mode === 'percent') feeUsdt = Math.round(percentFee * 100) / 100;
+    else if (mode === 'fixed') feeUsdt = Math.round(minimumFee * 100) / 100;
+    else feeUsdt = Math.round(Math.max(percentFee, minimumFee) * 100) / 100;
     const netUsdt = Math.round((amountUsdt - feeUsdt) * 100) / 100;
     const min = Number(fees.minimum_usdt_withdrawal || 10);
     const rate = Number(fees.mmk_to_usd_rate || 4500);
     const amountMmk = isBank ? Math.round(netUsdt * rate) : null;
-    const usedMinimum = percentFee < minimumFee;
+    const usedMinimum = mode === 'max_percent_or_min' && percentFee < minimumFee;
 
-    const feeLabel = usedMinimum
-      ? `min $${minimumFee.toFixed(2)} (2% = $${percentFee.toFixed(2)})`
-      : `${feePercent}% ($${feeUsdt.toFixed(2)})`;
+    let feeLabel = 'No service fee';
+    if (feeUsdt > 0) {
+      if (mode === 'fixed') feeLabel = `fixed $${feeUsdt.toFixed(2)}`;
+      else if (mode === 'percent') feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
+      else if (usedMinimum) feeLabel = `min $${minimumFee.toFixed(2)} (${feePercent}% = $${percentFee.toFixed(2)})`;
+      else feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
+    }
 
     return {
       payout_method: method,
@@ -4821,6 +4850,7 @@ const Dashboard = {
       net_usdt: netUsdt,
       fee_label: feeLabel,
       fee_percent: feePercent,
+      fee_mode: mode,
       minimum_fee_usdt: minimumFee,
       used_minimum_fee: usedMinimum,
       exchange_rate: isBank ? rate : null,
@@ -4901,22 +4931,34 @@ const Dashboard = {
     const fees = this.withdrawalFees || {};
     const amount = Math.round(Number(amountMmk) || 0);
     if (!Number.isFinite(amount) || amount <= 0) return null;
+    const mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
     const feePercent = Number(fees.payment_service_fee_percent ?? fees.mmk_withdraw_fee_percent ?? 2);
     const rate = Number(fees.mmk_to_usd_rate || 4500);
     const minimumFee = Math.round(Number(fees.payment_service_fee_minimum_usdt ?? 1) * rate);
     const percentFee = Math.round(amount * feePercent / 100);
-    const feeMmk = Math.max(percentFee, minimumFee);
+    let feeMmk = 0;
+    if (mode === 'off') feeMmk = 0;
+    else if (mode === 'percent') feeMmk = percentFee;
+    else if (mode === 'fixed') feeMmk = minimumFee;
+    else feeMmk = Math.max(percentFee, minimumFee);
     const netMmk = amount - feeMmk;
     const min = Number(fees.minimum_mmk_withdrawal || 10000);
-    const usedMinimum = percentFee < minimumFee;
+    const usedMinimum = mode === 'max_percent_or_min' && percentFee < minimumFee;
+    let feeLabel = 'No service fee';
+    if (feeMmk > 0) {
+      if (mode === 'fixed') feeLabel = `fixed ${feeMmk.toLocaleString()} MMK`;
+      else if (mode === 'percent') feeLabel = `${feePercent}% (${feeMmk.toLocaleString()} MMK)`;
+      else if (usedMinimum) {
+        feeLabel = `min ${minimumFee.toLocaleString()} MMK (${feePercent}% = ${percentFee.toLocaleString()} MMK)`;
+      } else feeLabel = `${feePercent}% (${feeMmk.toLocaleString()} MMK)`;
+    }
     return {
       amount_mmk: amount,
       fee_mmk: feeMmk,
       net_mmk: netMmk,
       fee_percent: feePercent,
-      fee_label: usedMinimum
-        ? `min ${minimumFee.toLocaleString()} MMK (${feePercent}% = ${percentFee.toLocaleString()} MMK)`
-        : `${feePercent}% (${feeMmk.toLocaleString()} MMK)`,
+      fee_mode: mode,
+      fee_label: feeLabel,
       minimum_mmk_withdrawal: min,
       below_minimum: amount < min,
       invalid_net: netMmk <= 0,
@@ -5416,9 +5458,16 @@ const Dashboard = {
     if (reloadFeeEl) reloadFeeEl.textContent = '$3.50 fixed (+ $2.00 platform profit per reload)';
 
     const wf = p.withdrawal_fees || this.withdrawalFees || {};
+    const mode = String(wf.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
     const pct = Number(wf.payment_service_fee_percent ?? 2);
     const minFee = Number(wf.payment_service_fee_minimum_usdt ?? 1);
-    const unifiedLabel = `${pct}% (min $${minFee.toFixed(2)})`;
+    const unifiedLabel = mode === 'off'
+      ? 'No service fee'
+      : mode === 'fixed'
+        ? `fixed $${minFee.toFixed(2)}`
+        : mode === 'percent'
+          ? `${pct}%`
+          : `${pct}% (min $${minFee.toFixed(2)})`;
     if ($('ratesWithdrawFeeTrc20')) {
       $('ratesWithdrawFeeTrc20').textContent = unifiedLabel;
     }

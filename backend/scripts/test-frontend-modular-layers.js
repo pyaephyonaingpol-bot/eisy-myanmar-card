@@ -91,6 +91,30 @@ function main() {
     }).fee_usdt,
     1
   );
+  assert.strictEqual(
+    sandbox.EisyHooks.depositFees.calculateUsdtDepositFeePreview(100, {
+      payment_service_fee_mode: 'off',
+      payment_service_fee_percent: 2,
+      payment_service_fee_minimum_usdt: 1,
+    }).fee_usdt,
+    0
+  );
+  assert.strictEqual(
+    sandbox.EisyHooks.depositFees.calculateUsdtDepositFeePreview(100, {
+      payment_service_fee_mode: 'fixed',
+      payment_service_fee_percent: 2,
+      payment_service_fee_minimum_usdt: 3,
+    }).fee_usdt,
+    3
+  );
+  assert.strictEqual(
+    sandbox.EisyHooks.depositFees.calculateUsdtDepositFeePreview(100, {
+      payment_service_fee_mode: 'percent',
+      payment_service_fee_percent: 2,
+      payment_service_fee_minimum_usdt: 5,
+    }).fee_usdt,
+    2
+  );
   assert.ok(sandbox.EisyComponents.ready);
   assert.ok(sandbox.EisyComponents.toast.showToast);
   assert.ok(sandbox.EisyComponents.usdtAddressBox.showUsdtDepositAddress);
