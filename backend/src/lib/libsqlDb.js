@@ -26,11 +26,13 @@ function resultSetToRun(result) {
   };
 }
 
-function trackTransactionCommand(txDepthRef, sql) {
+function trackTransactionCommand(txDepthRef, sql, { failed = false } = {}) {
   const cmd = String(sql || '').trim().split(/\s+/)[0]?.toUpperCase();
   if (cmd === 'BEGIN') {
-    txDepthRef.depth += 1;
+    if (!failed) txDepthRef.depth += 1;
   } else if (cmd === 'COMMIT' || cmd === 'ROLLBACK') {
+    // Always clear local depth for txn control — LibSQL may already have
+    // aborted the transaction, so ROLLBACK can fail with "no transaction is active".
     txDepthRef.depth = Math.max(0, txDepthRef.depth - 1);
   }
 }
@@ -72,9 +74,14 @@ function createLibsqlDb(client) {
     },
 
     async run(sql, ...params) {
-      const result = await client.execute({ sql, args: params });
-      trackTransactionCommand(txDepthRef, sql);
-      return resultSetToRun(result);
+      try {
+        const result = await client.execute({ sql, args: params });
+        trackTransactionCommand(txDepthRef, sql);
+        return resultSetToRun(result);
+      } catch (err) {
+        trackTransactionCommand(txDepthRef, sql, { failed: true });
+        throw err;
+      }
     },
 
     async exec(sql) {
@@ -86,8 +93,13 @@ function createLibsqlDb(client) {
         return;
       }
 
-      await client.execute(sql);
-      trackTransactionCommand(txDepthRef, trimmed);
+      try {
+        await client.execute(sql);
+        trackTransactionCommand(txDepthRef, trimmed);
+      } catch (err) {
+        trackTransactionCommand(txDepthRef, trimmed, { failed: true });
+        throw err;
+      }
     },
   };
 

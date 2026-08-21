@@ -16,6 +16,7 @@
     "test:frontend-modular": "node scripts/test-frontend-modular-layers.js",
     "test:nowpayments-ipn": "node scripts/test-nowpayments-ipn.js",
     "test:nowpayments-payout": "node scripts/test-nowpayments-payout.js",
+    "test:withdraw-rollback": "node scripts/test-withdraw-rollback.js",
     "test:transaction-csv-export": "node scripts/test-transaction-csv-export.js"
   },
   "dependencies": {
