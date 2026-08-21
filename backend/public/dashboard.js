@@ -186,23 +186,11 @@ const Dashboard = {
   },
 
   bindSupabaseUserRealtime() {
+    // Realtime replication is optional. Balance freshness comes from API
+    // re-queries (/api/user/wallet). Keep deposit/card listeners only.
     if (!window.SupabaseBridge?.isReady() || !Auth.user?.id) return;
-    const userId = Auth.user.id;
-
-    window.SupabaseBridge.subscribeUser(userId, {
-      onWallet: (row) => {
-        this.applySupabaseWalletRow(row);
-      },
-      onWalletRefresh: () => {
-        this.loadWallet({ preferSupabase: true });
-      },
-      onSubscribed: () => {
-        // Pull latest balances immediately after realtime connects.
-        this.loadWallet({ preferSupabase: true });
-      },
-      onSubscribeError: () => {
-        // Realtime unavailable — polling still covers Table Editor edits.
-      },
+    window.SupabaseBridge.unsubscribeAll();
+    window.SupabaseBridge.subscribeUser(Auth.user.id, {
       onDeposits: () => {
         this.loadDepositHistory();
       },
@@ -214,11 +202,6 @@ const Dashboard = {
         this.loadAllCards({ preserveSelection: true, silent: true, forceRefresh: true });
       },
     });
-
-    // Poll as a reliable refresh trigger (Realtime may be off in Dashboard → Replication).
-    window.SupabaseBridge.startWalletPolling(userId, (row) => {
-      this.applySupabaseWalletRow(row);
-    }, 8000);
   },
 
   onPageChange(page, opts = {}) {
@@ -227,7 +210,7 @@ const Dashboard = {
       this.populateReloadCardSelect();
       if (opts.depositTab) this.switchDepositTab(opts.depositTab);
     }
-    if (page === 'usdt-wallet') this.loadUsdtWalletPage();
+    if (page === 'usdt-wallet') this.loadUsdtWalletPage(true);
     if (page === 'rates') this.renderRatesPage();
     if (page === 'p2p') {
       if (opts.p2pTab) this.switchP2pTab(opts.p2pTab);
@@ -245,6 +228,7 @@ const Dashboard = {
     if (page === 'home') {
       this.updateHomeRateSummary();
       this.loadDepositHistory();
+      this.loadWallet();
     }
   },
 
@@ -262,10 +246,10 @@ const Dashboard = {
         && !Auth.needsPinUnlock()
       ) {
         this.loadAllCards({ preserveSelection: true, silent: true });
-        // Re-pull latest Supabase balances when the tab becomes visible.
-        this.loadWallet({ preferSupabase: true });
-        if (window.SupabaseBridge?.isReady() && Auth.user?.id) {
-          this.bindSupabaseUserRealtime();
+        // Re-check balances from the API (fresh Supabase overlay) when returning to the tab.
+        this.loadWallet();
+        if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+          this.loadUsdtWalletPage(true);
         }
       }
     });
@@ -796,38 +780,19 @@ const Dashboard = {
     });
   },
 
-  async loadUsdtWalletPage(forceRefresh = false) {
+  async loadUsdtWalletPage(_forceRefresh = true) {
     if (!Auth.isLoggedIn()) return;
     const balanceEl = $('usdtWalletPageBalance');
     const depositEl = $('usdtWalletDepositAddresses');
     const linkedEl = $('usdtLinkedWalletsList');
     if (!depositEl) return;
 
-    if (!forceRefresh && this._usdtWalletCache) {
-      this.renderUsdtWalletPage(this._usdtWalletCache);
-      return;
-    }
-
+    // Always force a fresh API fetch so Supabase Table Editor edits show immediately.
+    // (Previously a client cache could keep stale Turso balances on screen.)
     try {
       const data = await (window.EisyServices?.usdtWallet?.getOverview
         ? window.EisyServices.usdtWallet.getOverview()
-        : Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true }));
-
-      // Overlay latest Supabase balances so Table Editor edits win over Turso lag.
-      if (window.SupabaseBridge?.isReady() && Auth.user?.id) {
-        const row = await window.SupabaseBridge.fetchUserWallet(Auth.user.id);
-        const shaped = window.SupabaseBridge.walletToApiShape(row);
-        if (shaped) {
-          data.balance_usdt = shaped.balance_usdt;
-          data.balance_usdt_locked = shaped.balance_usdt_locked;
-          data.balance_usdt_total = shaped.balance_usdt_total;
-          data.balance_formatted = shaped.usdt_formatted;
-          data.locked_formatted = shaped.locked_formatted;
-          data.total_formatted = shaped.total_formatted;
-          data.source = 'supabase';
-        }
-      }
-
+        : Auth.api('GET', `/api/user/usdt-wallet?_=${Date.now()}`, null, { sensitive: true }));
       this._usdtWalletCache = data;
       this.walletUsdt = data.balance_usdt;
       this.walletUsdtLocked = data.balance_usdt_locked || 0;
@@ -5731,20 +5696,14 @@ const Dashboard = {
     } catch (_) {}
   },
 
-  async loadWallet({ preferSupabase = true } = {}) {
+  async loadWallet(_opts = {}) {
     try {
-      if (preferSupabase && window.SupabaseBridge?.isReady() && Auth.user?.id) {
-        const row = await window.SupabaseBridge.fetchUserWallet(Auth.user.id);
-        if (row) {
-          this.applySupabaseWalletRow(row);
-          if ($('sumName')) $('sumName').textContent = Auth.user?.name || row.name || '—';
-          if ($('sumPhone')) $('sumPhone').textContent = Auth.user?.phone || '—';
-          if ($('sumEmail')) $('sumEmail').textContent = Auth.user?.email || row.email || '—';
-          return;
-        }
-      }
-      const data = await Auth.api('GET', '/api/user/wallet', null, { sensitive: true });
+      // Always query the API — server performs a fresh Supabase overlay when enabled.
+      // Cache-bust query param avoids any intermediary HTTP caches.
+      const data = await Auth.api('GET', `/api/user/wallet?_=${Date.now()}`, null, { sensitive: true });
       this.renderWalletBalances(data);
+      this.walletUsdt = data.balance_usdt;
+      this.walletUsdtLocked = data.balance_usdt_locked || 0;
       if ($('sumName')) $('sumName').textContent = Auth.user?.name || '—';
       if ($('sumPhone')) $('sumPhone').textContent = Auth.user?.phone || '—';
       if ($('sumEmail')) $('sumEmail').textContent = Auth.user?.email || '—';

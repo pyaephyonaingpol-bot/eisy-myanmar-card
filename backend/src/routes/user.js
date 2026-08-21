@@ -22,6 +22,7 @@ const CardReloadRequest = require('../models/CardReloadRequest');
 const { createDepositRequest } = require('../services/depositService');
 const { RELOAD_PENDING_MESSAGE } = require('../services/cardReloadApprovalService');
 const { walletPayload, formatMmk, formatUsdt, migrateLegacyUsdToMmk } = require('../services/walletService');
+const { overlayWalletPayloadFromSupabase } = require('../services/supabaseWalletReadService');
 const {
   purchaseCardFromWallet,
   reloadCardFromWallet,
@@ -152,12 +153,19 @@ router.get('/wallet/deposit-addresses', requireAuth, async (_req, res) => {
 
 router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
   try {
+    // Balance checks must never be served from HTTP/CDN caches.
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+
     const legacyMigration = await migrateLegacyUsdToMmk(req.user.id);
     const user = await User.findById(req.user.id);
+    const localPayload = walletPayload(user);
+    // Prefer a fresh Supabase read so Table Editor edits show immediately.
+    const balances = await overlayWalletPayloadFromSupabase(req.user.id, localPayload);
     res.json({
       user_id: user.id,
-      ...walletPayload(user),
-      balance: user.balance_mmk ?? 0,
+      ...balances,
+      balance: balances.balance_mmk ?? user.balance_mmk ?? 0,
       currency: 'MMK',
       legacy_migration: legacyMigration.migrated ? legacyMigration : null,
     });

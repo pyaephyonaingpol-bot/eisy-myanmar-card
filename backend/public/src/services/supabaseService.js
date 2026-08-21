@@ -1,6 +1,8 @@
 /**
- * Browser Supabase bridge — reads config from /api/config/supabase,
- * fetches synced state, and subscribes to Realtime updates.
+ * Browser Supabase bridge — reads config from /api/config/supabase and
+ * can fetch synced state. Balance display prefers the backend API
+ * (/api/user/wallet), which performs a fresh Supabase read — Realtime
+ * replication is optional and not required for Table Editor edits to show.
  *
  * Canonical location: /src/services/supabaseService.js (Step 3).
  */
@@ -45,6 +47,7 @@ const SupabaseBridge = {
 
   async fetchUserWallet(userId) {
     if (!this.isReady() || !userId) return null;
+    // Always re-query PostgREST (no client-side row cache).
     const { data, error } = await this.client
       .from('user_wallets')
       .select('*')

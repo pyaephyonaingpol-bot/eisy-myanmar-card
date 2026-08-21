@@ -16,6 +16,8 @@ const router = express.Router();
 
 router.get('/', requireAuth, requireSensitive, async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
     const includeOnChain = req.query.on_chain === '1' || req.query.on_chain === 'true';
     const overview = await getWalletOverview(req.user.id, { includeOnChain });
     res.json(overview);
@@ -27,6 +29,8 @@ router.get('/', requireAuth, requireSensitive, async (req, res) => {
 
 router.get('/balance', requireAuth, requireSensitive, async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
     const balance = await getWalletBalance(req.user.id);
     res.json(balance);
   } catch (err) {
