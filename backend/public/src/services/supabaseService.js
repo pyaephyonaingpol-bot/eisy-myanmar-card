@@ -45,7 +45,7 @@ const SupabaseBridge = {
     return this.enabled && Boolean(this.client);
   },
 
-  async fetchUserWallet(userId) {
+  async fetchUserWallet(userId, { email } = {}) {
     if (!this.isReady() || !userId) return null;
     // Always re-query PostgREST (no client-side row cache).
     const { data, error } = await this.client
@@ -55,9 +55,20 @@ const SupabaseBridge = {
       .maybeSingle();
     if (error) {
       console.warn('[SupabaseBridge] fetchUserWallet:', error.message);
-      return null;
     }
-    return data;
+
+    let row = (!error && data) ? data : null;
+    const wanted = String(email || '').trim().toLowerCase();
+    const rowEmail = String(row?.email || '').trim().toLowerCase();
+    if ((!row || (wanted && rowEmail && rowEmail !== wanted)) && wanted) {
+      const byEmail = await this.client
+        .from('user_wallets')
+        .select('*')
+        .ilike('email', wanted)
+        .maybeSingle();
+      if (!byEmail.error && byEmail.data) row = byEmail.data;
+    }
+    return row;
   },
 
   /**

@@ -258,22 +258,14 @@ async function fetchLinkedOnChainBalance(network, address) {
   }
 }
 
-async function getWalletOverview(userId, { includeOnChain = false } = {}) {
-  const user = await User.findById(userId);
-  if (!user) throw new Error('User not found');
-
-  await provisionCustodialAddresses(userId);
-  await syncLedgerFromTransactionLogs(userId);
-
-  const settings = await getUsdtDepositSettings();
-  const rows = await UserUsdtWalletAddress.findByUserId(userId);
+async function resolveUsdtBalancesForDisplay(userId, user = null) {
   const { getUsdtBalances } = require('./usdtLedgerService');
   const { overlayWalletPayloadFromSupabase } = require('./supabaseWalletReadService');
   let balances = await getUsdtBalances(userId);
-  // Fresh Supabase available balance when a mirrored row exists (manual Table Editor edits).
   const fromSb = await overlayWalletPayloadFromSupabase(userId, {
     balance_usdt: balances.available_usdt,
     balance_usdt_locked: balances.locked_usdt,
+    email: user?.email,
   });
   if (fromSb.source === 'supabase') {
     balances = {
@@ -287,40 +279,91 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
       source: 'supabase',
     };
   }
+  return balances;
+}
 
-  const custodial = [];
-  const linked = [];
+async function getWalletOverview(userId, { includeOnChain = false } = {}) {
+  const user = await User.findById(userId);
+  if (!user) throw new Error('User not found');
 
-  for (const row of rows) {
-    const mapped = mapAddressRow(row);
-    if (row.address_type === 'linked') {
-      if (includeOnChain) {
-        mapped.on_chain_balance = await fetchLinkedOnChainBalance(row.network, row.address);
-      }
-      linked.push(mapped);
-    } else {
-      custodial.push(mapped);
-    }
+  // Always resolve balances first so Available / Locked / Total can render
+  // even when deposit-address provisioning or escrow queries fail.
+  const balances = await resolveUsdtBalancesForDisplay(userId, user);
+
+  let settings = {
+    minimum_usdt_deposit: 10,
+    usdt_trc20_address: null,
+    usdt_bep20_address: null,
+    usdt_erc20_address: null,
+  };
+  let custodial = [];
+  let linked = [];
+  let escrow_holds = [];
+  let recent_transactions = [];
+
+  try {
+    await provisionCustodialAddresses(userId);
+  } catch (err) {
+    console.warn('[usdt-wallet/overview] provision skipped:', err.message);
   }
 
-  const recentTransactions = await UsdtWalletTransaction.findByUserId(userId, { limit: 10 });
-  const UsdtEscrowHold = require('../models/UsdtEscrowHold');
-  const escrowRows = await UsdtEscrowHold.findByUserId(userId, { status: 'active' });
-  const escrow_holds = escrowRows.map((row) => ({
-    id: row.id,
-    hold_type: row.hold_type,
-    amount_usdt: Number(row.amount_usdt ?? 0),
-    remaining_usdt: Number(row.remaining_usdt ?? 0),
-    reference_type: row.reference_type,
-    reference_id: row.reference_id,
-    status: row.status,
-    created_at: row.created_at,
-    label: row.hold_type === 'p2p_ad'
-      ? 'P2P sell ad escrow'
-      : row.hold_type === 'p2p_sell_order'
-        ? 'P2P sell order escrow'
-        : row.hold_type,
-  }));
+  try {
+    await syncLedgerFromTransactionLogs(userId);
+  } catch (err) {
+    console.warn('[usdt-wallet/overview] ledger sync skipped:', err.message);
+  }
+
+  try {
+    settings = await getUsdtDepositSettings();
+  } catch (err) {
+    console.warn('[usdt-wallet/overview] settings skipped:', err.message);
+  }
+
+  try {
+    const rows = await UserUsdtWalletAddress.findByUserId(userId);
+    for (const row of rows) {
+      const mapped = mapAddressRow(row);
+      if (row.address_type === 'linked') {
+        if (includeOnChain) {
+          mapped.on_chain_balance = await fetchLinkedOnChainBalance(row.network, row.address);
+        }
+        linked.push(mapped);
+      } else {
+        custodial.push(mapped);
+      }
+    }
+  } catch (err) {
+    console.warn('[usdt-wallet/overview] addresses skipped:', err.message);
+  }
+
+  try {
+    const txRows = await UsdtWalletTransaction.findByUserId(userId, { limit: 10 });
+    recent_transactions = txRows.map(mapTransactionRow);
+  } catch (err) {
+    console.warn('[usdt-wallet/overview] transactions skipped:', err.message);
+  }
+
+  try {
+    const UsdtEscrowHold = require('../models/UsdtEscrowHold');
+    const escrowRows = await UsdtEscrowHold.findByUserId(userId, { status: 'active' });
+    escrow_holds = escrowRows.map((row) => ({
+      id: row.id,
+      hold_type: row.hold_type,
+      amount_usdt: Number(row.amount_usdt ?? 0),
+      remaining_usdt: Number(row.remaining_usdt ?? 0),
+      reference_type: row.reference_type,
+      reference_id: row.reference_id,
+      status: row.status,
+      created_at: row.created_at,
+      label: row.hold_type === 'p2p_ad'
+        ? 'P2P sell ad escrow'
+        : row.hold_type === 'p2p_sell_order'
+          ? 'P2P sell order escrow'
+          : row.hold_type,
+    }));
+  } catch (err) {
+    console.warn('[usdt-wallet/overview] escrow skipped:', err.message);
+  }
 
   return {
     balance_usdt: balances.available_usdt,
@@ -339,7 +382,7 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
     deposit_addresses: custodial,
     linked_addresses: linked,
     escrow_holds,
-    recent_transactions: recentTransactions.map(mapTransactionRow),
+    recent_transactions,
   };
 }
 
@@ -349,25 +392,11 @@ async function getWalletTransactions(userId, { limit = 100, offset = 0, network 
 }
 
 async function getWalletBalance(userId) {
-  const { getUsdtBalances } = require('./usdtLedgerService');
-  const { overlayWalletPayloadFromSupabase } = require('./supabaseWalletReadService');
-  const balances = await getUsdtBalances(userId);
-  const fromSb = await overlayWalletPayloadFromSupabase(userId, {
-    balance_usdt: balances.available_usdt,
-    balance_usdt_locked: balances.locked_usdt,
-  });
-  if (fromSb.source !== 'supabase') {
-    return { ...balances, source: 'turso' };
-  }
+  const user = await User.findById(userId);
+  const balances = await resolveUsdtBalancesForDisplay(userId, user);
   return {
     ...balances,
-    available_usdt: fromSb.balance_usdt,
-    locked_usdt: fromSb.balance_usdt_locked,
-    total_usdt: fromSb.balance_usdt_total,
-    available_formatted: fromSb.usdt_formatted,
-    locked_formatted: fromSb.usdt_locked_formatted,
-    total_formatted: fromSb.usdt_total_formatted,
-    source: 'supabase',
+    source: balances.source || 'turso',
   };
 }
 

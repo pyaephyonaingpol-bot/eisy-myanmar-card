@@ -2,6 +2,9 @@
  * Fresh (uncached) wallet reads from Supabase for balance display.
  * Used when operators edit balances in the Supabase Table Editor so the
  * live site reflects those values without Realtime replication.
+ *
+ * Looks up by Turso user_id first, then falls back to email when IDs
+ * have drifted between Turso and the user_wallets mirror.
  */
 const { getSupabase, isSupabaseEnabled } = require('../lib/supabase');
 
@@ -15,26 +18,74 @@ function formatUsdt(amount) {
   return `$ ${n.toFixed(2)} USDT`;
 }
 
+function normalizeEmail(email) {
+  const s = String(email || '').trim().toLowerCase();
+  return s || null;
+}
+
 /**
  * Query user_wallets once per call — no in-process cache.
+ * Prefer user_id; if missing or email mismatches, resolve by email.
  * @returns {Promise<object|null>}
  */
-async function fetchFreshUserWalletRow(userId) {
+async function fetchFreshUserWalletRow(userId, { email } = {}) {
   if (!isSupabaseEnabled() || userId == null || userId === '') return null;
   const sb = getSupabase();
   if (!sb) return null;
 
+  const selectCols = 'user_id, email, name, balance_mmk, balance_usdt, updated_at';
+  const wantedEmail = normalizeEmail(email);
+
   const { data, error } = await sb
     .from('user_wallets')
-    .select('user_id, email, name, balance_mmk, balance_usdt, updated_at')
+    .select(selectCols)
     .eq('user_id', String(userId))
     .maybeSingle();
 
   if (error) {
     console.warn('[supabase/wallet-read]', error.message);
-    return null;
   }
-  return data || null;
+
+  let row = (!error && data) ? data : null;
+  const rowEmail = normalizeEmail(row?.email);
+  const idMiss = !row;
+  const emailMismatch = Boolean(wantedEmail && rowEmail && rowEmail !== wantedEmail);
+
+  if ((idMiss || emailMismatch) && wantedEmail) {
+    const byEmail = await sb
+      .from('user_wallets')
+      .select(selectCols)
+      .ilike('email', wantedEmail)
+      .maybeSingle();
+
+    if (byEmail.error) {
+      console.warn('[supabase/wallet-read] email lookup:', byEmail.error.message);
+    } else if (byEmail.data) {
+      if (emailMismatch || idMiss) {
+        console.info(
+          `[supabase/wallet-read] Resolved user ${userId} via email ${wantedEmail}`
+          + ` (mirror user_id=${byEmail.data.user_id})`
+        );
+      }
+      row = byEmail.data;
+    }
+  }
+
+  // If caller did not pass email and id lookup missed, try Turso email.
+  if (!row && !wantedEmail) {
+    try {
+      const User = require('../models/User');
+      const user = await User.findById(userId);
+      const fallbackEmail = normalizeEmail(user?.email);
+      if (fallbackEmail) {
+        return fetchFreshUserWalletRow(userId, { email: fallbackEmail });
+      }
+    } catch (err) {
+      console.warn('[supabase/wallet-read] turso email fallback:', err.message);
+    }
+  }
+
+  return row || null;
 }
 
 /**
@@ -60,6 +111,7 @@ function supabaseWalletToPayload(row, { lockedUsdt = 0 } = {}) {
     usdt_total_formatted: formatUsdt(usdtTotal),
     source: 'supabase',
     supabase_updated_at: row.updated_at || null,
+    supabase_user_id: row.user_id != null ? String(row.user_id) : null,
   };
 }
 
@@ -68,7 +120,18 @@ function supabaseWalletToPayload(row, { lockedUsdt = 0 } = {}) {
  * Falls back to the Turso/local payload when Supabase is off or empty.
  */
 async function overlayWalletPayloadFromSupabase(userId, basePayload = {}) {
-  const row = await fetchFreshUserWalletRow(userId);
+  let email = basePayload.email;
+  if (!email) {
+    try {
+      const User = require('../models/User');
+      const user = await User.findById(userId);
+      email = user?.email || null;
+    } catch (_) {
+      email = null;
+    }
+  }
+
+  const row = await fetchFreshUserWalletRow(userId, { email });
   if (!row) {
     return { ...basePayload, source: basePayload.source || 'turso' };
   }
