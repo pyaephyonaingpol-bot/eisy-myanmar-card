@@ -1,6 +1,5 @@
 const User = require('../models/User');
 const { getSupabase, isSupabaseEnabled } = require('../lib/supabase');
-const { parseRecordMetadata } = require('./settingsService');
 
 function safeJson(value) {
   if (value == null) return {};

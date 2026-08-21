@@ -104,13 +104,19 @@ ALTER TABLE card_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE card_reload_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transaction_activity ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "anon_all_user_wallets" ON user_wallets;
+DROP POLICY IF EXISTS "anon_all_deposit_requests" ON deposit_requests;
+DROP POLICY IF EXISTS "anon_all_card_applications" ON card_applications;
+DROP POLICY IF EXISTS "anon_all_card_reload_requests" ON card_reload_requests;
+DROP POLICY IF EXISTS "anon_all_transaction_activity" ON transaction_activity;
+
 CREATE POLICY "anon_all_user_wallets" ON user_wallets FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "anon_all_deposit_requests" ON deposit_requests FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "anon_all_card_applications" ON card_applications FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "anon_all_card_reload_requests" ON card_reload_requests FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "anon_all_transaction_activity" ON transaction_activity FOR ALL USING (true) WITH CHECK (true);
 
--- Enable Realtime (run after tables exist):
+-- Enable Realtime: Dashboard → Database → Replication, or uncomment below (skip if already added):
 -- ALTER PUBLICATION supabase_realtime ADD TABLE user_wallets;
 -- ALTER PUBLICATION supabase_realtime ADD TABLE deposit_requests;
 -- ALTER PUBLICATION supabase_realtime ADD TABLE card_applications;
