@@ -154,6 +154,37 @@ const Dashboard = {
     }
   },
 
+  applySupabaseWalletRow(row) {
+    const data = window.SupabaseBridge?.walletToApiShape?.(row);
+    if (!data) return false;
+    this.renderWalletBalances(data);
+    this.walletUsdt = data.balance_usdt;
+    this.walletUsdtLocked = data.balance_usdt_locked || 0;
+    // Keep USDT wallet page in sync when a Supabase edit arrives.
+    if (this._usdtWalletCache) {
+      this._usdtWalletCache = {
+        ...this._usdtWalletCache,
+        balance_usdt: data.balance_usdt,
+        balance_usdt_locked: data.balance_usdt_locked,
+        balance_usdt_total: data.balance_usdt_total,
+        balance_formatted: data.usdt_formatted,
+        locked_formatted: data.locked_formatted,
+        total_formatted: data.total_formatted,
+        source: 'supabase',
+      };
+      if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+        this.renderUsdtWalletPage(this._usdtWalletCache);
+      }
+    } else if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+      // Soft-refresh overview fields without waiting for Turso.
+      if ($('usdtWalletAvailableBalance')) $('usdtWalletAvailableBalance').textContent = data.usdt_formatted;
+      if ($('usdtWalletLockedBalance')) $('usdtWalletLockedBalance').textContent = data.locked_formatted;
+      if ($('usdtWalletTotalBalance')) $('usdtWalletTotalBalance').textContent = data.total_formatted;
+      if ($('usdtWalletPageBalance')) $('usdtWalletPageBalance').textContent = data.usdt_formatted;
+    }
+    return true;
+  },
+
   bindSupabaseUserRealtime() {
     // Realtime replication is optional. Balance freshness comes from API
     // re-queries (/api/user/wallet). Keep deposit/card listeners only.
@@ -5665,7 +5696,7 @@ const Dashboard = {
     } catch (_) {}
   },
 
-  async loadWallet() {
+  async loadWallet(_opts = {}) {
     try {
       // Always query the API — server performs a fresh Supabase overlay when enabled.
       // Cache-bust query param avoids any intermediary HTTP caches.
