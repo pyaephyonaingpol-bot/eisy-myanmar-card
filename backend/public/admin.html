@@ -725,15 +725,26 @@
 
       <section id="tabTransactions" class="panel app-page" data-page="transactions">
         <h2>Transaction History</h2>
-        <p class="hint" style="margin-bottom:0.75rem">P2P trading and card reload ledgers are kept separate for accurate financial reporting.</p>
+        <p class="hint" style="margin-bottom:0.75rem">P2P trading and card reload ledgers are kept separate for accurate financial reporting. Use Daily CSV Export for NOWPayments (Supabase) deposits and ledger downloads.</p>
         <div class="admin-tabs" id="txCategoryTabs" role="tablist">
           <button type="button" class="tab active" data-tx-category="p2p">P2P Transactions</button>
           <button type="button" class="tab" data-tx-category="card_reload">Card Reload Transactions</button>
         </div>
-        <div class="admin-toolbar">
+        <div class="admin-toolbar" style="flex-wrap:wrap;gap:0.5rem;align-items:center">
           <input id="txUserFilter" type="number" placeholder="Filter by user ID" />
           <button type="button" id="txFilterBtn" class="btn btn-secondary btn-sm">Filter</button>
+          <span style="width:1px;height:1.5rem;background:rgba(148,163,184,0.35);margin:0 0.25rem" aria-hidden="true"></span>
+          <label for="txExportDate" class="hint" style="margin:0">Daily CSV</label>
+          <input id="txExportDate" type="date" title="Date (Asia/Yangon)" />
+          <select id="txExportSource" title="Export source">
+            <option value="nowpayments">NOWPayments (Supabase)</option>
+            <option value="p2p">P2P</option>
+            <option value="card_reload">Card Reload</option>
+            <option value="ledger">Full Ledger</option>
+          </select>
+          <button type="button" id="txExportCsvBtn" class="btn btn-primary btn-sm">Download CSV</button>
         </div>
+        <p id="txExportStatus" class="hint" style="margin:0.5rem 0 0.75rem"></p>
         <div id="transactionsTable" class="data-table-wrap"><p class="hint">Loading…</p></div>
       </section>
 
@@ -1127,6 +1138,6 @@
   <script src="/viewport.js?v=20260816kb2"></script>
   <script src="/i18n.js?v=20260817m2"></script>
   <script src="/nav.js?v=20260816kb2"></script>
-  <script src="/admin.js?v=20260817m2" defer></script>
+  <script src="/admin.js?v=20260821csv" defer></script>
 </body>
 </html>
