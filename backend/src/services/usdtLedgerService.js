@@ -6,6 +6,7 @@ const TransactionLog = require('../models/TransactionLog');
 const UsdtInternalTransfer = require('../models/UsdtInternalTransfer');
 const { formatUsdt } = require('./walletService');
 const { syncUserWalletById } = require('./supabaseSyncService');
+const { pullSupabaseBalancesIntoTurso } = require('./supabaseWalletReadService');
 
 function roundUsdt(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
@@ -270,6 +271,10 @@ function syncWallets(userIds) {
 }
 
 async function getUsdtBalances(userId) {
+  // Align Turso available USDT with Supabase before reporting (Table Editor edits).
+  await pullSupabaseBalancesIntoTurso(userId).catch((err) => {
+    console.warn('[ledger] supabase→turso pull skipped:', err.message);
+  });
   const db = getDb();
   const bal = await fetchBalances(userId, db);
   return {
@@ -367,6 +372,11 @@ async function debitAvailable(userId, amountUsdt, {
   const amount = roundUsdt(amountUsdt);
   if (amount <= 0) throw new Error('Debit amount must be a positive number');
 
+  // Ensure escrow/debit sees Supabase available USDT (UI source after manual edits).
+  await pullSupabaseBalancesIntoTurso(userId).catch((err) => {
+    console.warn('[ledger] supabase→turso pull skipped:', err.message);
+  });
+
   const user = await withDbTransaction(async (db) => {
     const bal = await fetchBalances(userId, db);
     if (bal.available < amount - 0.001 && !allowInsufficient) {
@@ -445,6 +455,11 @@ async function lockUsdtForEscrow(userId, amountUsdt, {
   }
   const refId = normalizeEscrowReferenceId(referenceId);
   if (!refId) throw new Error('Escrow hold referenceId must be a positive integer');
+
+  // Pull Supabase available USDT into Turso so sell-ad escrow matches the visible balance.
+  await pullSupabaseBalancesIntoTurso(userId).catch((err) => {
+    console.warn('[ledger] supabase→turso pull skipped:', err.message);
+  });
 
   const result = await withDbTransaction(async (db) => {
     const existing = await db.get(
@@ -819,6 +834,10 @@ async function transferUsdtInternal(fromUserId, toUserId, amountUsdt, {
   const fee = roundUsdt(feeUsdt);
   const totalDebit = roundUsdt(amount + fee);
   if (amount <= 0) throw new Error('Transfer amount must be positive');
+
+  await pullSupabaseBalancesIntoTurso(fromUserId).catch((err) => {
+    console.warn('[ledger] supabase→turso pull skipped:', err.message);
+  });
 
   const toUser = await User.findById(toUserId);
   if (!toUser) throw new Error('Recipient not found');

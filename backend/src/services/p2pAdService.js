@@ -103,6 +103,14 @@ async function createP2pAd(userId, body) {
 
   const roundedVolume = Math.round(totalVolume * 100) / 100;
 
+  // Align Turso available USDT with Supabase before sell-ad escrow lock.
+  if (side === 'sell') {
+    const { pullSupabaseBalancesIntoTurso } = require('./supabaseWalletReadService');
+    await pullSupabaseBalancesIntoTurso(userId).catch((err) => {
+      console.warn('[p2p/ad] supabase→turso pull skipped:', err.message);
+    });
+  }
+
   let ad;
   try {
     ad = await P2PAd.create({
