@@ -11,6 +11,7 @@ const SupabaseBridge = {
   enabled: false,
   _initPromise: null,
   _channels: [],
+  _walletPollTimer: null,
 
   async init() {
     if (this._initPromise) return this._initPromise;
@@ -54,6 +55,29 @@ const SupabaseBridge = {
       return null;
     }
     return data;
+  },
+
+  /**
+   * Apply latest Supabase wallet row into a standard wallet API shape.
+   * Prefer this for UI so Table Editor edits show up without waiting on Turso.
+   */
+  walletToApiShape(row) {
+    if (!row) return null;
+    const balanceMmk = Number(row.balance_mmk ?? 0);
+    const balanceUsdt = Number(row.balance_usdt ?? 0);
+    const lockedUsdt = Number(row.balance_usdt_locked ?? row.locked_usdt ?? 0);
+    return {
+      balance_mmk: balanceMmk,
+      balance_usdt: balanceUsdt,
+      balance_usdt_locked: lockedUsdt,
+      balance_usdt_total: balanceUsdt + lockedUsdt,
+      mmk_formatted: `Ks ${Math.round(balanceMmk).toLocaleString()} MMK`,
+      usdt_formatted: `$ ${balanceUsdt.toFixed(2)} USDT`,
+      locked_formatted: `$ ${lockedUsdt.toFixed(2)} USDT`,
+      total_formatted: `$ ${(balanceUsdt + lockedUsdt).toFixed(2)} USDT`,
+      updated_at: row.updated_at || null,
+      source: 'supabase',
+    };
   },
 
   async fetchUserDeposits(userId, limit = 50) {
@@ -219,24 +243,24 @@ const SupabaseBridge = {
     };
   },
 
-  walletToApiShape(row) {
-    if (!row) return null;
-    return {
-      balance_mmk: Number(row.balance_mmk ?? 0),
-      balance_usdt: Number(row.balance_usdt ?? 0),
-      mmk_formatted: `Ks ${Math.round(Number(row.balance_mmk ?? 0)).toLocaleString()} MMK`,
-      usdt_formatted: `$ ${Number(row.balance_usdt ?? 0).toFixed(2)} USDT`,
-    };
-  },
-
   subscribeUser(userId, handlers = {}) {
     if (!this.isReady() || !userId) return null;
     const uid = String(userId);
+
+    // Drop prior user channels so we never stack duplicate listeners.
+    this.unsubscribeAll();
+
     const channel = this.client
-      .channel(`user-${uid}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_wallets', filter: `user_id=eq.${uid}` }, (payload) => {
-        handlers.onWallet?.(payload.new);
-      })
+      .channel(`user-wallet-${uid}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_wallets', filter: `user_id=eq.${uid}` },
+        (payload) => {
+          const row = payload.new || null;
+          if (row) handlers.onWallet?.(row);
+          else handlers.onWalletRefresh?.();
+        }
+      )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'deposit_requests', filter: `user_id=eq.${uid}` }, () => {
         handlers.onDeposits?.();
       })
@@ -246,9 +270,48 @@ const SupabaseBridge = {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'card_applications', filter: `user_id=eq.${uid}` }, () => {
         handlers.onCards?.();
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.info('[SupabaseBridge] Realtime subscribed for user', uid);
+          handlers.onSubscribed?.();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('[SupabaseBridge] Realtime channel issue:', status, err?.message || err || '');
+          handlers.onSubscribeError?.(status);
+        }
+      });
+
     this._channels.push(channel);
     return channel;
+  },
+
+  /**
+   * Poll user_wallets so Table Editor balance edits appear even when
+   * Realtime replication is not enabled for the table.
+   */
+  startWalletPolling(userId, onRow, intervalMs = 8000) {
+    this.stopWalletPolling();
+    if (!this.isReady() || !userId || typeof onRow !== 'function') return null;
+
+    const tick = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      try {
+        const row = await this.fetchUserWallet(userId);
+        if (row) onRow(row);
+      } catch (err) {
+        console.warn('[SupabaseBridge] wallet poll:', err.message);
+      }
+    };
+
+    tick();
+    this._walletPollTimer = setInterval(tick, Math.max(3000, Number(intervalMs) || 8000));
+    return this._walletPollTimer;
+  },
+
+  stopWalletPolling() {
+    if (this._walletPollTimer) {
+      clearInterval(this._walletPollTimer);
+      this._walletPollTimer = null;
+    }
   },
 
   subscribeAdmin(handlers = {}) {
@@ -264,8 +327,8 @@ const SupabaseBridge = {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'card_reload_requests' }, () => {
         handlers.onReloads?.();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_wallets' }, () => {
-        handlers.onWallets?.();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_wallets' }, (payload) => {
+        handlers.onWallets?.(payload.new || null);
       })
       .subscribe();
     this._channels.push(channel);
@@ -273,6 +336,7 @@ const SupabaseBridge = {
   },
 
   unsubscribeAll() {
+    this.stopWalletPolling();
     this._channels.forEach((ch) => {
       try { this.client?.removeChannel(ch); } catch (_) { /* ignore */ }
     });
