@@ -165,8 +165,6 @@ $('depositForm').addEventListener('submit', async (e) => {
     const ref = data.deposit.ref_code;
     $('refCodeBox').classList.remove('hidden');
     $('refCodeDisplay').textContent = ref;
-    $('verifyRef').value = ref;
-    $('verifyAmount').value = data.deposit.amount_mmk;
 
     showOutput('depositOutput', data);
     log(`Deposit requested: ${ref} (${data.deposit.amount_mmk} MMK)`, 'ok');
@@ -182,45 +180,6 @@ $('btnCopyRef').addEventListener('click', () => {
   navigator.clipboard.writeText(ref).then(() => {
     log(`Copied ref code: ${ref}`, 'ok');
   });
-});
-
-$('verifyForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  try {
-    const secret = localStorage.getItem('deposit_listener_secret');
-    const adminKey = localStorage.getItem('adminKey') || localStorage.getItem('admin_api_key');
-    const opts = {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(secret ? { 'X-Deposit-Listener-Secret': secret } : {}),
-        ...(!secret && adminKey ? { 'X-Admin-Key': adminKey } : {}),
-      },
-      body: JSON.stringify({
-        ref_code: $('verifyRef').value.trim(),
-        amount: parseFloat($('verifyAmount').value),
-        txn_id: $('verifyTxn').value.trim() || undefined,
-        sender_phone: $('verifyPhone').value.trim() || undefined,
-      }),
-    };
-    const res = await fetch(`${API}/api/deposit/verify`, opts);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    showOutput('verifyOutput', data);
-    log(`Verified ${data.deposit.ref_code} — new balance $${Number(data.user.balance).toFixed(2)}`, 'ok');
-
-    if (currentRefCode === data.deposit.ref_code) {
-      stopPolling();
-      const statusEl = $('depositStatus');
-      statusEl.textContent = 'Payment Verified!';
-      statusEl.className = 'status-line verified';
-    }
-
-    loadUserSummary();
-  } catch (err) {
-    showOutput('verifyOutput', err.message, true);
-    log(`Verify failed: ${err.message}`, 'error');
-  }
 });
 
 // Initial load
