@@ -14,7 +14,8 @@
     "test:usdt-deposit-duplicate": "node scripts/test-usdt-deposit-duplicate.js",
     "test:frontend-lib": "node scripts/test-frontend-lib-modules.js",
     "test:frontend-modular": "node scripts/test-frontend-modular-layers.js",
-    "test:nowpayments-ipn": "node scripts/test-nowpayments-ipn.js"
+    "test:nowpayments-ipn": "node scripts/test-nowpayments-ipn.js",
+    "verify:nowpayments-supabase": "node scripts/verify-nowpayments-supabase.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",

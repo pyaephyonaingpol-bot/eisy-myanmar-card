@@ -60,7 +60,7 @@ async function createPaymentHandler(req, res) {
 /**
  * NOWPayments IPN webhook.
  * Verifies x-nowpayments-sig, credits the matching local deposit, and
- * optionally updates a Supabase transactions row when configured.
+ * upserts the Supabase `transactions` row for every IPN when configured.
  */
 router.post('/webhook', async (req, res) => {
   try {
