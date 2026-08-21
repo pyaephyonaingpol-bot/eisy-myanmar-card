@@ -268,7 +268,25 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
   const settings = await getUsdtDepositSettings();
   const rows = await UserUsdtWalletAddress.findByUserId(userId);
   const { getUsdtBalances } = require('./usdtLedgerService');
-  const balances = await getUsdtBalances(userId);
+  const { overlayWalletPayloadFromSupabase } = require('./supabaseWalletReadService');
+  let balances = await getUsdtBalances(userId);
+  // Fresh Supabase available balance when a mirrored row exists (manual Table Editor edits).
+  const fromSb = await overlayWalletPayloadFromSupabase(userId, {
+    balance_usdt: balances.available_usdt,
+    balance_usdt_locked: balances.locked_usdt,
+  });
+  if (fromSb.source === 'supabase') {
+    balances = {
+      ...balances,
+      available_usdt: fromSb.balance_usdt,
+      locked_usdt: fromSb.balance_usdt_locked,
+      total_usdt: fromSb.balance_usdt_total,
+      available_formatted: fromSb.usdt_formatted,
+      locked_formatted: fromSb.usdt_locked_formatted,
+      total_formatted: fromSb.usdt_total_formatted,
+      source: 'supabase',
+    };
+  }
 
   const custodial = [];
   const linked = [];
@@ -311,6 +329,7 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
     balance_formatted: balances.available_formatted,
     locked_formatted: balances.locked_formatted,
     total_formatted: balances.total_formatted,
+    source: balances.source || 'turso',
     minimum_usdt_deposit: settings.minimum_usdt_deposit,
     networks: SUPPORTED_NETWORKS.map((id) => ({
       id,
@@ -331,7 +350,25 @@ async function getWalletTransactions(userId, { limit = 100, offset = 0, network 
 
 async function getWalletBalance(userId) {
   const { getUsdtBalances } = require('./usdtLedgerService');
-  return getUsdtBalances(userId);
+  const { overlayWalletPayloadFromSupabase } = require('./supabaseWalletReadService');
+  const balances = await getUsdtBalances(userId);
+  const fromSb = await overlayWalletPayloadFromSupabase(userId, {
+    balance_usdt: balances.available_usdt,
+    balance_usdt_locked: balances.locked_usdt,
+  });
+  if (fromSb.source !== 'supabase') {
+    return { ...balances, source: 'turso' };
+  }
+  return {
+    ...balances,
+    available_usdt: fromSb.balance_usdt,
+    locked_usdt: fromSb.balance_usdt_locked,
+    total_usdt: fromSb.balance_usdt_total,
+    available_formatted: fromSb.usdt_formatted,
+    locked_formatted: fromSb.usdt_locked_formatted,
+    total_formatted: fromSb.usdt_total_formatted,
+    source: 'supabase',
+  };
 }
 
 module.exports = {

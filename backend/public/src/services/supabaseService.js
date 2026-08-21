@@ -1,6 +1,8 @@
 /**
- * Browser Supabase bridge — reads config from /api/config/supabase,
- * fetches synced state, and subscribes to Realtime updates.
+ * Browser Supabase bridge — reads config from /api/config/supabase and
+ * can fetch synced state. Balance display prefers the backend API
+ * (/api/user/wallet), which performs a fresh Supabase read — Realtime
+ * replication is optional and not required for Table Editor edits to show.
  *
  * Canonical location: /src/services/supabaseService.js (Step 3).
  */
@@ -44,6 +46,7 @@ const SupabaseBridge = {
 
   async fetchUserWallet(userId) {
     if (!this.isReady() || !userId) return null;
+    // Always re-query PostgREST (no client-side row cache).
     const { data, error } = await this.client
       .from('user_wallets')
       .select('*')
@@ -221,11 +224,19 @@ const SupabaseBridge = {
 
   walletToApiShape(row) {
     if (!row) return null;
+    const balanceMmk = Number(row.balance_mmk ?? 0);
+    const balanceUsdt = Number(row.balance_usdt ?? 0);
+    const lockedUsdt = Number(row.balance_usdt_locked ?? row.locked_usdt ?? 0);
     return {
-      balance_mmk: Number(row.balance_mmk ?? 0),
-      balance_usdt: Number(row.balance_usdt ?? 0),
-      mmk_formatted: `Ks ${Math.round(Number(row.balance_mmk ?? 0)).toLocaleString()} MMK`,
-      usdt_formatted: `$ ${Number(row.balance_usdt ?? 0).toFixed(2)} USDT`,
+      balance_mmk: balanceMmk,
+      balance_usdt: balanceUsdt,
+      balance_usdt_locked: lockedUsdt,
+      balance_usdt_total: balanceUsdt + lockedUsdt,
+      mmk_formatted: `Ks ${Math.round(balanceMmk).toLocaleString()} MMK`,
+      usdt_formatted: `$ ${balanceUsdt.toFixed(2)} USDT`,
+      usdt_locked_formatted: `$ ${lockedUsdt.toFixed(2)} USDT`,
+      usdt_total_formatted: `$ ${(balanceUsdt + lockedUsdt).toFixed(2)} USDT`,
+      source: 'supabase',
     };
   },
 

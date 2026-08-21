@@ -141,6 +141,7 @@ const Auth = {
         method,
         headers: this.headers(opts),
         body: body ? JSON.stringify(body) : undefined,
+        cache: opts.sensitive ? 'no-store' : 'default',
       });
       const text = await res.text();
       let data = {};
