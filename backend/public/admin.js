@@ -2557,10 +2557,11 @@
         }
         table.innerHTML =
           '<table class="data-table"><thead><tr>' +
-            '<th>ID</th><th>User</th><th>Ref</th><th>Method</th><th>Destination</th><th>Amount</th><th>Fee</th><th>Payout</th><th>Status</th><th>Actions</th>' +
+            '<th>ID</th><th>User</th><th>Ref</th><th>Method</th><th>Destination</th><th>Amount</th><th>Fee</th><th>Payout</th><th>NP ID</th><th>Status</th><th>Actions</th>' +
           '</tr></thead><tbody>' +
           rows.map((w) => {
-            const pending = ['pending', 'processing'].indexOf(String(w.status || '').toLowerCase()) !== -1;
+            const status = String(w.status || '').toLowerCase();
+            const actionable = status === 'pending' || status === 'processing';
             const method = w.payout_method === 'bank' ? 'Bank (USDT→MMK)' : (w.network || 'Crypto');
             const dest = w.payout_method === 'bank'
               ? this.esc((w.bank_name || '') + ' · ' + (w.account_name || '') + ' · ' + (w.account_number || ''))
@@ -2568,6 +2569,10 @@
             const payout = w.payout_method === 'bank'
               ? (Math.round(Number(w.amount_mmk || 0)).toLocaleString() + ' MMK @ ' + Number(w.exchange_rate || 0).toLocaleString())
               : ('$' + Number(w.net_usdt || 0).toFixed(2) + ' USDT');
+            const npId = w.nowpayments_payout_id || w.nowpayments_withdrawal_id || '';
+            const npLabel = npId
+              ? this.esc(String(npId)) + (w.payout_provider ? '<br><small>' + this.esc(w.payout_provider) + '</small>' : '')
+              : '—';
             return '<tr>' +
               '<td>' + w.id + '</td>' +
               '<td>' + this.esc(w.user_name || w.user_email || ('#' + w.user_id)) + '<br><small>#' + w.user_id + '</small></td>' +
@@ -2577,9 +2582,10 @@
               '<td>$' + Number(w.amount_usdt || 0).toFixed(2) + '</td>' +
               '<td>$' + Number(w.fee_usdt || 0).toFixed(2) + '</td>' +
               '<td>' + payout + '</td>' +
+              '<td style="max-width:140px;word-break:break-all;font-size:0.85em">' + npLabel + '</td>' +
               '<td>' + this.statusBadge(w.status) + '</td>' +
               '<td class="actions-cell">' +
-                (pending
+                (actionable
                   ? '<button type="button" class="btn btn-sm btn-approve" data-action="complete-usdt-wd" data-id="' + w.id + '">Complete</button>' +
                     '<button type="button" class="btn btn-sm btn-reject" data-action="reject-usdt-wd" data-id="' + w.id + '">Reject</button>'
                   : '') +
