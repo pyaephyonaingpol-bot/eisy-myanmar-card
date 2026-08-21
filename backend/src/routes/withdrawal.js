@@ -99,6 +99,16 @@ router.get('/fees', requireAuth, async (_req, res) => {
       networks: [
         {
           network: 'TRC20',
+          payout_method: 'nowpayments',
+          label: 'NOWPayments (USDT TRC20)',
+          fee_rule: feeRule,
+          fee_mode: mode,
+          fee_percent: pct,
+          minimum_fee_usdt: minUsdt,
+          fee_label: feeLabel,
+        },
+        {
+          network: 'TRC20',
           payout_method: 'crypto',
           label: 'TRC20 (TRON Network)',
           fee_rule: feeRule,

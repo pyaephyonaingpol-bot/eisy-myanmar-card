@@ -4914,19 +4914,85 @@ const Dashboard = {
   },
 
   getWithdrawPayoutMethod() {
-    return ($('withdrawPayoutMethod')?.value || 'crypto') === 'bank' ? 'bank' : 'crypto';
+    const raw = String($('withdrawPayoutMethod')?.value || 'nowpayments').trim().toLowerCase();
+    if (raw === 'bank') return 'bank';
+    if (raw === 'crypto') return 'crypto';
+    return 'nowpayments';
+  },
+
+  isWithdrawCryptoLikeMethod(method = this.getWithdrawPayoutMethod()) {
+    return method === 'nowpayments' || method === 'crypto';
   },
 
   syncWithdrawPayoutFields() {
     const method = this.getWithdrawPayoutMethod();
+    const cryptoLike = this.isWithdrawCryptoLikeMethod(method);
     const cryptoFields = $('withdrawCryptoFields');
     const bankFields = $('withdrawBankFields');
     const walletInput = $('withdrawWalletAddress');
     const networkSelect = $('withdrawNetwork');
-    if (cryptoFields) cryptoFields.classList.toggle('hidden', method !== 'crypto');
+    const networkField = $('withdrawNetworkField');
+    const methodHint = $('withdrawMethodHint');
+    const submitBtn = $('btnSubmitWithdrawUsdt');
+
+    if (cryptoFields) cryptoFields.classList.toggle('hidden', !cryptoLike);
     if (bankFields) bankFields.classList.toggle('hidden', method !== 'bank');
-    if (walletInput) walletInput.required = method === 'crypto';
-    if (networkSelect) networkSelect.required = method === 'crypto';
+    if (walletInput) {
+      walletInput.required = cryptoLike;
+      walletInput.placeholder = method === 'nowpayments' ? 'T…' : 'T… or 0x…';
+    }
+    if (networkSelect) {
+      networkSelect.required = cryptoLike;
+      if (method === 'nowpayments') {
+        networkSelect.value = 'TRC20';
+        // Prefer TRC20 for NOWPayments; keep BEP20 available only on generic crypto.
+        Array.from(networkSelect.options).forEach((opt) => {
+          opt.hidden = opt.value !== 'TRC20';
+          opt.disabled = opt.value !== 'TRC20';
+        });
+      } else {
+        Array.from(networkSelect.options).forEach((opt) => {
+          opt.hidden = false;
+          opt.disabled = false;
+        });
+      }
+    }
+    if (networkField) {
+      // Still show network for transparency on NOWPayments (locked to TRC20).
+      networkField.classList.toggle('hidden', false);
+    }
+
+    if (methodHint) {
+      const t = window.EisyI18n?.t?.bind(window.EisyI18n);
+      if (method === 'nowpayments') {
+        methodHint.textContent = t
+          ? t('withdraw_method_nowpayments_hint')
+          : 'Automated payout to your TRC20 wallet via NOWPayments.';
+        methodHint.dataset.i18n = 'withdraw_method_nowpayments_hint';
+      } else if (method === 'crypto') {
+        methodHint.textContent = t
+          ? t('withdraw_method_crypto_hint')
+          : 'Send USDT to TRC20 or BEP20. Processing may be manual if NOWPayments is unavailable.';
+        methodHint.dataset.i18n = 'withdraw_method_crypto_hint';
+      } else {
+        methodHint.textContent = t
+          ? t('withdraw_method_bank_hint')
+          : 'Convert USDT to MMK at the platform rate and receive bank transfer after processing.';
+        methodHint.dataset.i18n = 'withdraw_method_bank_hint';
+      }
+    }
+
+    if (submitBtn) {
+      const t = window.EisyI18n?.t?.bind(window.EisyI18n);
+      if (method === 'nowpayments') {
+        submitBtn.textContent = t ? t('btn_withdraw_nowpayments') : 'Withdraw with NOWPayments';
+        submitBtn.dataset.i18n = 'btn_withdraw_nowpayments';
+      } else {
+        submitBtn.textContent = t ? t('btn_submit_withdraw') : 'Submit Withdrawal Request';
+        submitBtn.dataset.i18n = 'btn_submit_withdraw';
+      }
+    }
+
     ['withdrawUsdtBankName', 'withdrawUsdtAccountName', 'withdrawUsdtAccountNumber'].forEach((id) => {
       const el = $(id);
       if (el) el.required = method === 'bank';
@@ -4939,7 +5005,9 @@ const Dashboard = {
     if (!fees || !Number.isFinite(amountUsdt) || amountUsdt <= 0) return null;
 
     const method = this.getWithdrawPayoutMethod();
-    const network = method === 'bank' ? 'BANK' : ($('withdrawNetwork')?.value || 'TRC20');
+    const network = method === 'bank'
+      ? 'BANK'
+      : (method === 'nowpayments' ? 'TRC20' : ($('withdrawNetwork')?.value || 'TRC20'));
     const isBank = network === 'BANK';
 
     const mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
@@ -4988,12 +5056,18 @@ const Dashboard = {
     const amount = parseFloat($('withdrawAmountUsdt')?.value);
     const preview = this.calculateWithdrawPreviewClient(amount);
     const method = this.getWithdrawPayoutMethod();
-    const network = method === 'bank' ? 'BANK' : ($('withdrawNetwork')?.value || 'TRC20');
+    const network = method === 'bank'
+      ? 'BANK'
+      : (method === 'nowpayments' ? 'TRC20' : ($('withdrawNetwork')?.value || 'TRC20'));
 
     if ($('withdrawPreviewNetwork')) {
-      $('withdrawPreviewNetwork').textContent = method === 'bank'
-        ? 'Bank (USDT → MMK)'
-        : (network === 'BEP20' ? 'BEP20 (BSC)' : 'TRC20 (TRON)');
+      if (method === 'bank') {
+        $('withdrawPreviewNetwork').textContent = 'Bank (USDT → MMK)';
+      } else if (method === 'nowpayments') {
+        $('withdrawPreviewNetwork').textContent = 'NOWPayments · TRC20 (TRON)';
+      } else {
+        $('withdrawPreviewNetwork').textContent = network === 'BEP20' ? 'BEP20 (BSC)' : 'TRC20 (TRON)';
+      }
     }
 
     const mmkRow = $('withdrawPreviewMmkRow');
@@ -5015,7 +5089,9 @@ const Dashboard = {
 
     let summary = method === 'bank'
       ? `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} = $${preview.net_usdt.toFixed(2)} USDT → ${Math.round(preview.amount_mmk || 0).toLocaleString()} MMK (rate ${Number(preview.exchange_rate || 0).toLocaleString()}).`
-      : `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} fee = $${preview.net_usdt.toFixed(2)} sent to your wallet.`;
+      : method === 'nowpayments'
+        ? `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} fee = $${preview.net_usdt.toFixed(2)} sent via NOWPayments (USDT TRC20).`
+        : `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} fee = $${preview.net_usdt.toFixed(2)} sent to your wallet.`;
     if (preview.below_minimum) summary = `Minimum withdrawal is $${preview.minimum_usdt_withdrawal.toFixed(2)} USDT.`;
     if (preview.invalid_net) summary = 'Amount too small after fee.';
     if ($('withdrawPreviewSummary')) $('withdrawPreviewSummary').textContent = summary;
@@ -5029,7 +5105,8 @@ const Dashboard = {
     if ($('withdrawUsdtBankName')) $('withdrawUsdtBankName').value = '';
     if ($('withdrawUsdtAccountName')) $('withdrawUsdtAccountName').value = '';
     if ($('withdrawUsdtAccountNumber')) $('withdrawUsdtAccountNumber').value = '';
-    if ($('withdrawPayoutMethod')) $('withdrawPayoutMethod').value = 'crypto';
+    if ($('withdrawPayoutMethod')) $('withdrawPayoutMethod').value = 'nowpayments';
+    if ($('withdrawNetwork')) $('withdrawNetwork').value = 'TRC20';
     if ($('withdrawAmountUsdt')) {
       const min = Number(this.withdrawalFees?.minimum_usdt_withdrawal || 10);
       $('withdrawAmountUsdt').value = min > 0 ? min.toFixed(2) : '';
@@ -5147,7 +5224,8 @@ const Dashboard = {
     $('withdrawUsdtForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const method = this.getWithdrawPayoutMethod();
-      const network = $('withdrawNetwork')?.value;
+      const cryptoLike = this.isWithdrawCryptoLikeMethod(method);
+      const network = method === 'nowpayments' ? 'TRC20' : $('withdrawNetwork')?.value;
       const walletAddress = $('withdrawWalletAddress')?.value?.trim();
       const amount = parseFloat($('withdrawAmountUsdt')?.value);
       const preview = this.calculateWithdrawPreviewClient(amount);
@@ -5157,7 +5235,7 @@ const Dashboard = {
         return;
       }
 
-      if (method === 'crypto' && !walletAddress) {
+      if (cryptoLike && !walletAddress) {
         this.toast('Enter a valid crypto wallet address', 'error');
         return;
       }
@@ -5179,7 +5257,7 @@ const Dashboard = {
       const prevLabel = btn?.textContent;
       if (btn) {
         btn.disabled = true;
-        btn.textContent = 'Submitting…';
+        btn.textContent = method === 'nowpayments' ? 'Sending via NOWPayments…' : 'Submitting…';
       }
 
       try {
@@ -5192,7 +5270,7 @@ const Dashboard = {
             account_number: accountNumber,
           }
           : {
-            payout_method: 'crypto',
+            payout_method: method === 'nowpayments' ? 'nowpayments' : 'crypto',
             network,
             wallet_address: walletAddress,
             amount_usdt: preview.amount_usdt,
@@ -5216,13 +5294,20 @@ const Dashboard = {
           $('withdrawSuccessMessage').textContent = data.message
             || (method === 'bank'
               ? `Withdrawal submitted. ${Math.round(preview.amount_mmk || 0).toLocaleString()} MMK will be sent to your bank after processing.`
-              : `Withdrawal submitted. Net $${Number(data.withdrawal?.net_usdt || preview.net_usdt).toFixed(2)} USDT will be sent after processing.`);
+              : method === 'nowpayments'
+                ? `Withdrawal submitted. Net $${Number(data.withdrawal?.net_usdt || preview.net_usdt).toFixed(2)} USDT is being sent via NOWPayments.`
+                : `Withdrawal submitted. Net $${Number(data.withdrawal?.net_usdt || preview.net_usdt).toFixed(2)} USDT will be sent after processing.`);
         }
-        this.toast('Withdrawal request submitted', 'ok');
+        this.toast(
+          method === 'nowpayments' ? 'NOWPayments withdrawal submitted' : 'Withdrawal request submitted',
+          'ok'
+        );
         this.log(
           method === 'bank'
             ? `Withdrawal ${data.ref_code}: ${Math.round(preview.amount_mmk || 0).toLocaleString()} MMK to bank`
-            : `Withdrawal ${data.ref_code}: $${preview.net_usdt.toFixed(2)} net (${network})`,
+            : method === 'nowpayments'
+              ? `NOWPayments withdrawal ${data.ref_code}: $${preview.net_usdt.toFixed(2)} net (TRC20)`
+              : `Withdrawal ${data.ref_code}: $${preview.net_usdt.toFixed(2)} net (${network})`,
           'ok'
         );
         this._usdtWalletCache = null;
@@ -5233,7 +5318,13 @@ const Dashboard = {
       } finally {
         if (btn) {
           btn.disabled = false;
-          btn.textContent = prevLabel || 'Submit Withdrawal Request';
+          if (method === 'nowpayments') {
+            btn.textContent = window.EisyI18n?.t?.('btn_withdraw_nowpayments') || 'Withdraw with NOWPayments';
+            btn.dataset.i18n = 'btn_withdraw_nowpayments';
+          } else {
+            btn.textContent = prevLabel || window.EisyI18n?.t?.('btn_submit_withdraw') || 'Submit Withdrawal Request';
+            btn.dataset.i18n = 'btn_submit_withdraw';
+          }
         }
       }
     });

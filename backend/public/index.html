@@ -159,19 +159,21 @@
         <h3 id="withdrawUsdtModalTitle" data-i18n="withdraw_usdt_title">Withdraw USDT</h3>
         <button type="button" id="withdrawUsdtModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">Withdraw USDT to a crypto wallet, or convert at the platform rate and receive MMK in your bank account. MMK wallet → USDT exchange is not available.</p>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">Withdraw USDT via NOWPayments to a TRC20 wallet, to another crypto network, or convert at the platform rate to MMK in your bank account. MMK wallet → USDT exchange is not available.</p>
 
       <form id="withdrawUsdtForm" class="form">
         <div class="field">
           <label for="withdrawPayoutMethod" data-i18n="withdraw_payout_method">Payout Method</label>
           <select id="withdrawPayoutMethod" required>
+            <option value="nowpayments" data-i18n="withdraw_method_nowpayments" selected>NOWPayments (USDT TRC20)</option>
             <option value="crypto" data-i18n="withdraw_method_crypto">Crypto Wallet (USDT)</option>
             <option value="bank" data-i18n="withdraw_method_bank">Bank Account (USDT → MMK)</option>
           </select>
+          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_nowpayments_hint">Automated payout to your TRC20 wallet via NOWPayments.</small>
         </div>
 
         <div id="withdrawCryptoFields">
-          <div class="field">
+          <div class="field" id="withdrawNetworkField">
             <label for="withdrawNetwork" data-i18n="withdraw_network">Network</label>
             <select id="withdrawNetwork">
               <option value="TRC20">TRC20 (TRON Network)</option>
@@ -180,7 +182,7 @@
           </div>
           <div class="field">
             <label for="withdrawWalletAddress" data-i18n="withdraw_wallet_address">Destination Wallet Address</label>
-            <input id="withdrawWalletAddress" type="text" placeholder="T... or 0x..." autocomplete="off" />
+            <input id="withdrawWalletAddress" type="text" placeholder="T…" autocomplete="off" />
           </div>
         </div>
 
@@ -218,7 +220,7 @@
           <p id="withdrawPreviewSummary" class="reload-preview-receive">Fee is deducted from your requested amount.</p>
         </div>
 
-        <button type="submit" class="btn btn-primary" id="btnSubmitWithdrawUsdt" data-i18n="btn_submit_withdraw">Submit Withdrawal Request</button>
+        <button type="submit" class="btn btn-primary" id="btnSubmitWithdrawUsdt" data-i18n="btn_withdraw_nowpayments">Withdraw with NOWPayments</button>
       </form>
 
       <div id="withdrawSuccessBox" class="ref-box hidden">
@@ -1425,7 +1427,7 @@
   <script src="/vendor/browser-image-compression.js?v=20260812a"></script>
   <script type="module" src="/supabaseBridge.js?v=20260821fresh"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260817m2"></script>
+  <script src="/i18n.js?v=20260821npwd1"></script>
   <script src="/auth.js?v=20260821fresh"></script>
   <script src="/src/services/apiClient.js?v=20260817m2"></script>
   <script src="/src/services/depositApi.js?v=20260817m2"></script>
@@ -1446,6 +1448,6 @@
   <script src="/src/components/index.js?v=20260817m2"></script>
   <script src="/nav.js?v=20260816kb2"></script>
   <script src="/viewport.js?v=20260821scroll"></script>
-  <script src="/dashboard.js?v=20260821prod1"></script>
+  <script src="/dashboard.js?v=20260821npwd1"></script>
 </body>
 </html>
