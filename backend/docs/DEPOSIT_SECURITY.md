@@ -52,7 +52,4 @@ USDT_MIN_CONFIRMATIONS=1
 
 Android listener: set Gradle property `DEPOSIT_LISTENER_SECRET` to the same value
 (see `deposit_listener/app/build.gradle.kts` → `BuildConfig.LISTENER_SECRET`).
-
-Dashboard listener simulation:  
-`localStorage.setItem('deposit_listener_secret', '…')` then use the verify form.
-Admin simulation may instead send `X-Admin-Key`.
+Admin tools may verify deposits with `X-Admin-Key` when a listener secret is not presented.

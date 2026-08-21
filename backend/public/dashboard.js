@@ -4386,8 +4386,6 @@ const Dashboard = {
         }, { sensitive: true });
         $('refCodeBox').classList.remove('hidden');
         $('refCodeDisplay').textContent = data.deposit.ref_code;
-        if ($('verifyRef')) $('verifyRef').value = data.deposit.ref_code;
-        if ($('verifyAmount')) $('verifyAmount').value = data.deposit.amount_mmk;
         $('activeDepositId').value = data.deposit.id;
         $('depositSubmitForm').classList.remove('hidden');
         this.clearDepositScreenshotPreview();
@@ -4432,37 +4430,6 @@ const Dashboard = {
     $('btnExpandProofPreview').onclick = () => {
       if (!this._proofPreviewUrl || !this._proofPreviewType) return;
       this.openProofLightbox(this._proofPreviewUrl, this._proofPreviewName, this._proofPreviewType);
-    };
-
-    $('verifyForm').onsubmit = async (e) => {
-      e.preventDefault();
-      try {
-        const secret = localStorage.getItem('deposit_listener_secret');
-        const adminKey = localStorage.getItem('adminKey') || localStorage.getItem('admin_api_key');
-        const res = await fetch('/api/deposit/verify', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(secret
-              ? { 'X-Deposit-Listener-Secret': secret }
-              : (adminKey ? { 'X-Admin-Key': adminKey } : {})),
-          },
-          body: JSON.stringify({
-            ref_code: $('verifyRef').value.trim(),
-            amount: parseFloat($('verifyAmount').value),
-            txn_id: $('verifyTxn').value.trim(),
-            sender_phone: $('verifyPhone').value.trim(),
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-        showOutput('verifyOutput', data);
-        this.log('Deposit verified (listener simulation)', 'ok');
-        this.loadWallet();
-        this.loadTransactions();
-      } catch (err) {
-        showOutput('verifyOutput', err.message, true);
-      }
     };
 
     $('btnCopyRef').onclick = () => {
@@ -4720,8 +4687,6 @@ const Dashboard = {
     if (!data.deposit) return;
     $('refCodeBox')?.classList.remove('hidden');
     if ($('refCodeDisplay')) $('refCodeDisplay').textContent = data.deposit.ref_code;
-    if ($('verifyRef')) $('verifyRef').value = data.deposit.ref_code;
-    if ($('verifyAmount')) $('verifyAmount').value = data.deposit.amount_mmk;
     if ($('activeDepositId')) $('activeDepositId').value = data.deposit.id;
     if ($('amountMmk')) $('amountMmk').value = data.deposit.amount_mmk;
     if ($('paymentMethod') && data.pricing_breakdown?.payment_method) {
