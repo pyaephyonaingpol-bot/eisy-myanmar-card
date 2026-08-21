@@ -154,13 +154,54 @@ const Dashboard = {
     }
   },
 
+  applySupabaseWalletRow(row) {
+    const data = window.SupabaseBridge?.walletToApiShape?.(row);
+    if (!data) return false;
+    this.renderWalletBalances(data);
+    this.walletUsdt = data.balance_usdt;
+    this.walletUsdtLocked = data.balance_usdt_locked || 0;
+    // Keep USDT wallet page in sync when a Supabase edit arrives.
+    if (this._usdtWalletCache) {
+      this._usdtWalletCache = {
+        ...this._usdtWalletCache,
+        balance_usdt: data.balance_usdt,
+        balance_usdt_locked: data.balance_usdt_locked,
+        balance_usdt_total: data.balance_usdt_total,
+        balance_formatted: data.usdt_formatted,
+        locked_formatted: data.locked_formatted,
+        total_formatted: data.total_formatted,
+        source: 'supabase',
+      };
+      if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+        this.renderUsdtWalletPage(this._usdtWalletCache);
+      }
+    } else if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+      // Soft-refresh overview fields without waiting for Turso.
+      if ($('usdtWalletAvailableBalance')) $('usdtWalletAvailableBalance').textContent = data.usdt_formatted;
+      if ($('usdtWalletLockedBalance')) $('usdtWalletLockedBalance').textContent = data.locked_formatted;
+      if ($('usdtWalletTotalBalance')) $('usdtWalletTotalBalance').textContent = data.total_formatted;
+      if ($('usdtWalletPageBalance')) $('usdtWalletPageBalance').textContent = data.usdt_formatted;
+    }
+    return true;
+  },
+
   bindSupabaseUserRealtime() {
     if (!window.SupabaseBridge?.isReady() || !Auth.user?.id) return;
-    window.SupabaseBridge.unsubscribeAll();
-    window.SupabaseBridge.subscribeUser(Auth.user.id, {
+    const userId = Auth.user.id;
+
+    window.SupabaseBridge.subscribeUser(userId, {
       onWallet: (row) => {
-        const data = window.SupabaseBridge.walletToApiShape(row);
-        if (data) this.renderWalletBalances(data);
+        this.applySupabaseWalletRow(row);
+      },
+      onWalletRefresh: () => {
+        this.loadWallet({ preferSupabase: true });
+      },
+      onSubscribed: () => {
+        // Pull latest balances immediately after realtime connects.
+        this.loadWallet({ preferSupabase: true });
+      },
+      onSubscribeError: () => {
+        // Realtime unavailable — polling still covers Table Editor edits.
       },
       onDeposits: () => {
         this.loadDepositHistory();
@@ -173,6 +214,11 @@ const Dashboard = {
         this.loadAllCards({ preserveSelection: true, silent: true, forceRefresh: true });
       },
     });
+
+    // Poll as a reliable refresh trigger (Realtime may be off in Dashboard → Replication).
+    window.SupabaseBridge.startWalletPolling(userId, (row) => {
+      this.applySupabaseWalletRow(row);
+    }, 8000);
   },
 
   onPageChange(page, opts = {}) {
@@ -216,6 +262,11 @@ const Dashboard = {
         && !Auth.needsPinUnlock()
       ) {
         this.loadAllCards({ preserveSelection: true, silent: true });
+        // Re-pull latest Supabase balances when the tab becomes visible.
+        this.loadWallet({ preferSupabase: true });
+        if (window.SupabaseBridge?.isReady() && Auth.user?.id) {
+          this.bindSupabaseUserRealtime();
+        }
       }
     });
 
@@ -761,8 +812,25 @@ const Dashboard = {
       const data = await (window.EisyServices?.usdtWallet?.getOverview
         ? window.EisyServices.usdtWallet.getOverview()
         : Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true }));
+
+      // Overlay latest Supabase balances so Table Editor edits win over Turso lag.
+      if (window.SupabaseBridge?.isReady() && Auth.user?.id) {
+        const row = await window.SupabaseBridge.fetchUserWallet(Auth.user.id);
+        const shaped = window.SupabaseBridge.walletToApiShape(row);
+        if (shaped) {
+          data.balance_usdt = shaped.balance_usdt;
+          data.balance_usdt_locked = shaped.balance_usdt_locked;
+          data.balance_usdt_total = shaped.balance_usdt_total;
+          data.balance_formatted = shaped.usdt_formatted;
+          data.locked_formatted = shaped.locked_formatted;
+          data.total_formatted = shaped.total_formatted;
+          data.source = 'supabase';
+        }
+      }
+
       this._usdtWalletCache = data;
       this.walletUsdt = data.balance_usdt;
+      this.walletUsdtLocked = data.balance_usdt_locked || 0;
       this.renderUsdtWalletPage(data);
       await this.loadUsdtWalletTransactions();
     } catch (err) {
@@ -5663,12 +5731,12 @@ const Dashboard = {
     } catch (_) {}
   },
 
-  async loadWallet() {
+  async loadWallet({ preferSupabase = true } = {}) {
     try {
-      if (window.SupabaseBridge?.isReady() && Auth.user?.id) {
+      if (preferSupabase && window.SupabaseBridge?.isReady() && Auth.user?.id) {
         const row = await window.SupabaseBridge.fetchUserWallet(Auth.user.id);
         if (row) {
-          this.renderWalletBalances(window.SupabaseBridge.walletToApiShape(row));
+          this.applySupabaseWalletRow(row);
           if ($('sumName')) $('sumName').textContent = Auth.user?.name || row.name || '—';
           if ($('sumPhone')) $('sumPhone').textContent = Auth.user?.phone || '—';
           if ($('sumEmail')) $('sumEmail').textContent = Auth.user?.email || row.email || '—';
