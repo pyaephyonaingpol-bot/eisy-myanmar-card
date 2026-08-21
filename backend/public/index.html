@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="192x192" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="512x512" href="/icons/Icon-512.png" />
-  <link rel="stylesheet" href="/styles.css?v=20260816dup1" />
+  <link rel="stylesheet" href="/styles.css?v=20260816kb7" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
     /* Early paint lock: avoid auth↔dashboard flash before JS mounts */
@@ -568,7 +568,7 @@
         </div>
         <div class="field" style="grid-column:1/-1">
           <label>Accepted Payment Methods</label>
-          <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:0.35rem">
+          <div class="action-row" style="margin-top:0.35rem">
             <label><input type="checkbox" name="p2pAdPayMethod" value="KPay" checked /> KPay</label>
             <label><input type="checkbox" name="p2pAdPayMethod" value="WavePay" checked /> WavePay</label>
             <label><input type="checkbox" name="p2pAdPayMethod" value="KBZ Bank" /> KBZ Bank</label>
@@ -768,7 +768,7 @@
       <div class="app-main">
         <header class="header">
           <div class="header-inner">
-            <div style="display:flex;align-items:center;gap:0.75rem">
+            <div class="header-brand-row">
               <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Open menu" aria-expanded="false" aria-controls="userSidebar">☰</button>
               <div>
                 <h1 class="page-heading" data-i18n="nav_dashboard">Dashboard</h1>
@@ -867,7 +867,7 @@
             <div class="grid-2">
               <section class="panel">
                 <h2 data-i18n="quick_actions">Quick Actions</h2>
-                <div style="display:flex;flex-wrap:wrap;gap:0.65rem">
+                <div class="action-row">
                   <button type="button" class="btn btn-primary btn-sm" data-goto="cards" data-i18n="view_my_cards">View My Cards</button>
                   <button type="button" class="btn btn-secondary btn-sm" data-goto="deposits" data-i18n="make_deposit">Make a Deposit</button>
                   <button type="button" class="btn btn-secondary btn-sm" id="btnSellConvertUsdtQuick" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
@@ -1025,7 +1025,7 @@
             </div>
 
             <section class="panel">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+              <div class="section-toolbar">
                 <h2 style="margin:0" data-i18n="card_reload_history">Card Reload History</h2>
                 <button type="button" id="btnLoadCardReloads" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
               </div>
@@ -1041,7 +1041,7 @@
                 <h2 class="page-heading" data-i18n="usdt_wallet_page_title">USDT Wallet</h2>
                 <p class="page-desc" data-i18n="usdt_wallet_page_desc">View your platform balance, copy deposit addresses (TRC20 / BEP20 / ERC20), link external wallets, and track USDT activity.</p>
               </div>
-              <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+              <div class="action-row">
                 <button type="button" class="btn btn-secondary btn-sm" data-goto="deposits" data-deposit-tab="usdt" data-i18n="btn_top_up_usdt">Top Up USDT</button>
                 <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdtPage" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
                 <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawUsdtPage" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
@@ -1260,7 +1260,7 @@
             </div>
 
             <section class="panel">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+              <div class="section-toolbar">
                 <h2 style="margin:0">Deposit &amp; Request History</h2>
                 <button type="button" id="btnLoadDeposits" class="btn btn-secondary btn-sm">Refresh</button>
               </div>
@@ -1276,7 +1276,7 @@
                 <p class="page-desc">Buy or sell USDT peer-to-peer with verified users. Post your own ad or trade from the market. Payments via KPay, WavePay, or Bank — not from your internal MMK wallet.</p>
                 <span id="p2pBuyerFeeBadge" class="p2p-fee-badge p2p-fee-badge-buyer">0% Fee for Buyers. Seller pays platform fee upon release.</span>
               </div>
-              <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+              <div class="action-row">
                 <button type="button" id="btnPostP2pAd" class="btn btn-primary btn-sm">Post P2P Ad</button>
                 <button type="button" id="btnRefreshP2pMarket" class="btn btn-secondary btn-sm">Refresh</button>
               </div>
