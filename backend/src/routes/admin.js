@@ -380,6 +380,7 @@ router.get('/settings', requirePermission('settings_read'), async (_req, res) =>
         mmk_withdraw_fee_percent: pricing.mmk_withdraw_fee_percent,
         payment_service_fee_percent: pricing.payment_service_fee_percent,
         payment_service_fee_minimum_usdt: pricing.payment_service_fee_minimum_usdt,
+        payment_service_fee_mode: pricing.payment_service_fee_mode,
       },
       ledger_summary: ledgerSummary,
       current_rate: currentRate,
@@ -1284,6 +1285,43 @@ router.get('/transactions', requirePermission('transactions'), async (req, res) 
   } catch (err) {
     console.error('[admin/transactions]', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Daily CSV export for accounting.
+ * GET /api/admin/transactions/csv?date=YYYY-MM-DD&source=nowpayments|p2p|card_reload|ledger
+ * Dates are interpreted in Asia/Yangon (UTC+06:30).
+ */
+router.get('/transactions/csv', requirePermission('transactions'), async (req, res) => {
+  try {
+    const { buildDailyTransactionsCsv } = require('../services/transactionCsvExportService');
+    const userId = req.query.user_id ? parseInt(req.query.user_id, 10) : null;
+    const result = await buildDailyTransactionsCsv({
+      date: req.query.date || undefined,
+      source: req.query.source || 'nowpayments',
+      userId: Number.isFinite(userId) ? userId : null,
+    });
+
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${result.filename}"`,
+      'Cache-Control': 'no-store',
+      'X-Export-Date': result.date,
+      'X-Export-Source': result.source,
+      'X-Export-Row-Count': String(result.rowCount),
+      'X-Export-Timezone': result.timezone,
+    });
+    return res.status(200).send(result.csv);
+  } catch (err) {
+    console.error('[admin/transactions/csv]', err);
+    const status = err.code === 'INVALID_DATE' || err.code === 'INVALID_SOURCE'
+      ? 400
+      : (err.code === 'SUPABASE_NOT_CONFIGURED' || err.code === 'SUPABASE_QUERY_FAILED' ? 503 : 500);
+    return res.status(status).json({
+      error: err.message || 'Failed to export CSV',
+      code: err.code || 'CSV_EXPORT_FAILED',
+    });
   }
 });
 
