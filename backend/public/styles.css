@@ -44,6 +44,7 @@
    * Prefer 100svh (small viewport) over 100dvh — dvh shrinks with the keyboard
    * and was causing sidebar/main/header reflow and overlapping text.
    * --app-dvh is only for overlays that intentionally track the visible area.
+   * viewport.js may temporarily override --app-vh with a px lock while kb-open.
    */
   --app-vh: 100vh;
   --app-dvh: 100vh;
@@ -65,7 +66,9 @@
 
 html {
   height: 100%;
+  height: -webkit-fill-available;
   height: var(--app-vh);
+  max-height: -webkit-fill-available;
   max-height: var(--app-vh);
   max-width: 100%;
   overflow: hidden;
@@ -84,13 +87,15 @@ body {
   color: var(--text-primary);
   line-height: 1.55;
   /* Fixed shell: keyboard overlays; page itself does not bounce/resize.
-     Use inset alone (no width:100%) so safe-area padding cannot force overflow. */
+     Use inset alone (no width:100%) so safe-area padding cannot force overflow.
+     Prefer inset + 100% over a second --app-vh on body so iOS Safari does not
+     extend the fixed box past the visible chrome (classic 100vh bug). */
   position: fixed;
   inset: 0;
   width: auto;
   max-width: 100%;
-  height: var(--app-vh);
-  max-height: var(--app-vh);
+  height: 100%;
+  max-height: 100%;
   overflow: hidden;
   overflow-x: hidden;
   overscroll-behavior: none;
@@ -183,8 +188,8 @@ html.has-session #adminApp.hidden {
 }
 html.has-session #dashboardScreen,
 html.has-session #adminApp {
-  min-height: 100vh;
-  min-height: var(--app-vh);
+  min-height: 0;
+  height: 100%;
 }
 
 h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; }
@@ -260,8 +265,7 @@ small.hint {
 /* Auth */
 .auth-screen {
   height: 100%;
-  height: var(--app-vh);
-  max-height: var(--app-vh);
+  max-height: 100%;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -770,7 +774,7 @@ a.btn { text-decoration: none; }
 .card-status-pill.frozen { background: rgba(30, 64, 175, 0.35); color: #93c5fd; border-color: rgba(59, 130, 246, 0.5); }
 .card-status-pill.terminated { background: rgba(127, 29, 29, 0.4); color: #fca5a5; border-color: rgba(239, 68, 68, 0.55); }
 .card-status-alert { margin-bottom: 1rem; padding: 0.85rem 1rem; border-radius: var(--radius-md); font-size: 0.875rem; line-height: 1.45; border: 1px solid var(--warning-border); background: var(--warning-bg); color: #fde68a; min-height: 3.25rem; }
-.card-status-alert.hidden { visibility: hidden; min-height: 0; margin: 0; padding: 0; border: 0; }
+.card-status-alert.hidden { display: none !important; }
 .card-status-alert.suspended { background: rgba(154, 52, 18, 0.2); border-color: rgba(249, 115, 22, 0.45); color: #fdba74; }
 .card-status-alert.frozen { background: rgba(30, 64, 175, 0.2); border-color: rgba(59, 130, 246, 0.45); color: #bfdbfe; }
 .card-status-alert.terminated { background: rgba(127, 29, 29, 0.25); border-color: rgba(239, 68, 68, 0.5); color: #fecaca; }
@@ -2166,8 +2170,7 @@ pre.output.hidden { display: none !important; }
   width: 100%;
   max-width: 100%;
   height: 100%;
-  height: var(--app-vh);
-  max-height: var(--app-vh);
+  max-height: 100%;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
@@ -2180,8 +2183,7 @@ pre.output.hidden { display: none !important; }
   width: 100%;
   max-width: 100%;
   height: 100%;
-  height: var(--app-vh);
-  max-height: var(--app-vh);
+  max-height: 100%;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
@@ -2348,8 +2350,22 @@ pre.output.hidden { display: none !important; }
   max-width: 100%;
   width: 100%;
   box-sizing: border-box;
+  /* Critical for Safari: do not let the page flex-shrink inside .app-content
+     (that squashes panels into thin bars / stretched empty shells). */
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  height: auto;
+  min-height: min-content;
+  align-self: stretch;
 }
 .app-page.is-active { display: flex; }
+.app-page > .panel,
+.app-page > .grid-2,
+.app-page > .page-header,
+.app-page > .section-toolbar {
+  flex: 0 0 auto;
+  min-height: min-content;
+}
 
 .app-content img,
 .app-content video,
@@ -2506,6 +2522,18 @@ body.sidebar-scroll-lock {
     max-width: 100%;
     padding-left: 1rem;
     padding-right: 1rem;
+    /* Extra bottom inset so Safari toolbar / home indicator do not cover CTAs */
+    padding-bottom: max(1.75rem, calc(var(--safe-bottom) + 1.5rem));
+    /* Prevent Safari from flex-shrinking page sections inside the scroller */
+    align-items: stretch;
+  }
+
+  .app-content > .app-page {
+    flex: 0 0 auto !important;
+    flex-shrink: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: min-content !important;
   }
 
   .header {
@@ -2555,6 +2583,18 @@ body.sidebar-scroll-lock {
     top: auto;
   }
 
+  /* Soften reserved empty heights that look like layout holes on short phones */
+  .summary-grid,
+  .wallet-dual-grid {
+    min-height: 0;
+  }
+  .summary-item {
+    min-height: 0;
+  }
+  .wallet-hero-card {
+    min-height: 0;
+  }
+
   html.kb-open .app-shell,
   html.kb-open .app-main,
   html.kb-open #dashboardScreen,
@@ -2581,7 +2621,7 @@ body.sidebar-scroll-lock {
 }
 
 @media (max-width: 480px) {
-  .app-content { padding: 1rem; }
+  .app-content { padding: 1rem; padding-bottom: max(1.75rem, calc(var(--safe-bottom) + 1.5rem)); }
 
   .auth-card {
     padding: 1.35rem 1.15rem;
@@ -2625,6 +2665,15 @@ body.sidebar-scroll-lock {
   }
 
   .summary-grid { grid-template-columns: 1fr; }
+  .summary-item.highlight .value {
+    font-size: 1.15rem;
+    min-height: 0;
+  }
+  .summary-item .card-status-pill {
+    font-size: 0.65rem;
+    min-width: 0;
+    max-width: 100%;
+  }
   h1 { font-size: 1.25rem; }
 }
 
@@ -2964,6 +3013,21 @@ html.app-hydrating .wallet-hero-actions-row {
   .app-content {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
+    padding-bottom: max(1.75rem, calc(var(--safe-bottom) + 1.5rem)) !important;
+  }
+
+  .app-page,
+  .app-content > .app-page.is-active {
+    flex: 0 0 auto !important;
+    flex-shrink: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  .app-page > .panel,
+  .app-page > .grid-2 {
+    flex: 0 0 auto !important;
+    min-height: min-content !important;
   }
 
   .panel,
