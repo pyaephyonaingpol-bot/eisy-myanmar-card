@@ -104,16 +104,32 @@ async function setSetting(key, value) {
     VALUES (?, ?, datetime('now'))
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
   `, key, String(value));
+  invalidateSettingsCache();
+}
+
+let _settingsCache = null;
+let _settingsCacheAt = 0;
+const SETTINGS_CACHE_TTL_MS = parseInt(process.env.SETTINGS_CACHE_TTL_MS || '15000', 10);
+
+function invalidateSettingsCache() {
+  _settingsCache = null;
+  _settingsCacheAt = 0;
 }
 
 async function getAllSettings() {
+  const now = Date.now();
+  if (_settingsCache && (now - _settingsCacheAt) < SETTINGS_CACHE_TTL_MS) {
+    return { ..._settingsCache };
+  }
   const db = getDb();
   const rows = await db.all('SELECT key, value, updated_at FROM app_settings ORDER BY key');
   const map = { ...DEFAULTS };
   for (const row of rows) {
     map[row.key] = row.value;
   }
-  return map;
+  _settingsCache = map;
+  _settingsCacheAt = now;
+  return { ...map };
 }
 
 async function getCardPricingSettings() {
@@ -706,6 +722,7 @@ module.exports = {
   getSetting,
   setSetting,
   getAllSettings,
+  invalidateSettingsCache,
   getCardPricingSettings,
   getCurrentRateSummary,
   buildRateSnapshot,

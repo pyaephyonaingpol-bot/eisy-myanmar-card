@@ -9,7 +9,7 @@
 
   function startDepositStatusPolling({
     refCode,
-    intervalMs = 3000,
+    intervalMs = 5000,
     getStatus,
     onVerified,
     onReview,

@@ -12,6 +12,9 @@ const NETWORK_LABELS = {
   ERC20: 'ERC20 (Ethereum)',
 };
 
+/** Users whose USDT ledger has already been backfilled (or confirmed present). */
+const _ledgerSyncedUsers = new Set();
+
 function normalizeNetwork(network) {
   const n = String(network || '').trim().toUpperCase();
   if (n === 'TRC20' || n === 'TRON') return 'TRC20';
@@ -212,8 +215,15 @@ async function recordWalletEntry({
 }
 
 async function syncLedgerFromTransactionLogs(userId, { limit = 200 } = {}) {
+  if (_ledgerSyncedUsers.has(userId)) {
+    return { synced: 0, skipped: true };
+  }
+
   const existingCount = await UsdtWalletTransaction.countByUserId(userId);
-  if (existingCount > 0) return { synced: 0, skipped: true };
+  if (existingCount > 0) {
+    _ledgerSyncedUsers.add(userId);
+    return { synced: 0, skipped: true };
+  }
 
   const logs = await TransactionLog.findByUserId(userId, { limit });
   let synced = 0;
@@ -246,6 +256,7 @@ async function syncLedgerFromTransactionLogs(userId, { limit = 200 } = {}) {
     synced += 1;
   }
 
+  _ledgerSyncedUsers.add(userId);
   return { synced, skipped: false };
 }
 
@@ -300,13 +311,30 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
   let linked = [];
   let escrow_holds = [];
   let recent_transactions = [];
+  let rows = [];
 
   try {
-    await provisionCustodialAddresses(userId);
+    rows = await UserUsdtWalletAddress.findByUserId(userId);
   } catch (err) {
-    console.warn('[usdt-wallet/overview] provision skipped:', err.message);
+    console.warn('[usdt-wallet/overview] addresses load skipped:', err.message);
   }
 
+  const custodialNetworks = new Set(
+    rows.filter((r) => r.address_type === 'custodial').map((r) => r.network)
+  );
+  const needsProvision = SUPPORTED_NETWORKS.some((net) => !custodialNetworks.has(net));
+
+  // Only provision when at least one custodial network is missing.
+  if (needsProvision) {
+    try {
+      await provisionCustodialAddresses(userId);
+      rows = await UserUsdtWalletAddress.findByUserId(userId);
+    } catch (err) {
+      console.warn('[usdt-wallet/overview] provision skipped:', err.message);
+    }
+  }
+
+  // One-shot ledger backfill — skipped after first successful check per process.
   try {
     await syncLedgerFromTransactionLogs(userId);
   } catch (err) {
@@ -320,7 +348,6 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
   }
 
   try {
-    const rows = await UserUsdtWalletAddress.findByUserId(userId);
     for (const row of rows) {
       const mapped = mapAddressRow(row);
       if (row.address_type === 'linked') {
@@ -333,7 +360,7 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
       }
     }
   } catch (err) {
-    console.warn('[usdt-wallet/overview] addresses skipped:', err.message);
+    console.warn('[usdt-wallet/overview] addresses map skipped:', err.message);
   }
 
   try {

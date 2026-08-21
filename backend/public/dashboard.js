@@ -14,13 +14,56 @@ const Dashboard = {
   withdrawalFees: null,
   walletUsdtLocked: null,
 
+  /* ── Client fetch freshness / in-flight dedupe ── */
+  _fetchMeta: {},
+  _inflight: {},
+  FETCH_TTL_MS: {
+    wallet: 20000,
+    deposits: 25000,
+    usdtWallet: 20000,
+    pricing: 300000,
+    withdrawalFees: 300000,
+    paymentMethods: 300000,
+    cards: 20000,
+    transactions: 45000,
+  },
+
+  _markFetched(key) {
+    this._fetchMeta[key] = Date.now();
+  },
+
+  _isFresh(key, ttlMs) {
+    const at = this._fetchMeta[key];
+    if (!at) return false;
+    return (Date.now() - at) < (ttlMs ?? this.FETCH_TTL_MS[key] ?? 20000);
+  },
+
+  _withInflight(key, fn) {
+    if (this._inflight[key]) return this._inflight[key];
+    const pending = Promise.resolve()
+      .then(fn)
+      .finally(() => {
+        if (this._inflight[key] === pending) delete this._inflight[key];
+      });
+    this._inflight[key] = pending;
+    return pending;
+  },
+
+  invalidateFetch(...keys) {
+    for (const key of keys) {
+      delete this._fetchMeta[key];
+      delete this._inflight[key];
+    }
+  },
+
   p2pApi() {
     return window.EisyServices?.p2p || null;
   },
 
   refreshP2pWalletState() {
+    this.invalidateFetch('wallet', 'usdtWallet');
     this._usdtWalletCache = null;
-    this.loadWallet();
+    this.loadWallet({ force: true });
     if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
       this.loadUsdtWalletPage(true);
     }
@@ -201,12 +244,13 @@ const Dashboard = {
   },
 
   onPageChange(page, opts = {}) {
+    const force = Boolean(opts.forceReload);
     if (page === 'deposits') {
-      this.loadDepositHistory();
+      this.loadDepositHistory({ force });
       this.populateReloadCardSelect();
       if (opts.depositTab) this.switchDepositTab(opts.depositTab);
     }
-    if (page === 'usdt-wallet') this.loadUsdtWalletPage(true);
+    if (page === 'usdt-wallet') this.loadUsdtWalletPage(force);
     if (page === 'rates') this.renderRatesPage();
     if (page === 'p2p') {
       if (opts.p2pTab) this.switchP2pTab(opts.p2pTab);
@@ -218,13 +262,18 @@ const Dashboard = {
       this.updateChangePasswordUI();
     }
     if (page === 'cards') {
-      this.loadAllCards({ preserveSelection: true, silent: true, forceRefresh: true });
+      const hasPending = (this.allCards || []).some((c) => this.isCardPending(c));
+      this.loadAllCards({
+        preserveSelection: true,
+        silent: true,
+        forceRefresh: force || hasPending || !this._isFresh('cards'),
+      });
       this.loadReloadHistory();
     }
     if (page === 'home') {
       this.updateHomeRateSummary();
-      this.loadDepositHistory();
-      this.loadWallet();
+      this.loadDepositHistory({ force });
+      this.loadWallet({ force });
     }
   },
 
@@ -241,11 +290,18 @@ const Dashboard = {
         && Auth.isLoggedIn()
         && !Auth.needsPinUnlock()
       ) {
-        this.loadAllCards({ preserveSelection: true, silent: true });
-        // Re-check balances from the API (fresh Supabase overlay) when returning to the tab.
-        this.loadWallet();
-        if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
-          this.loadUsdtWalletPage(true);
+        const hasPending = (this.allCards || []).some((c) => this.isCardPending(c));
+        if (hasPending || !this._isFresh('cards')) {
+          this.loadAllCards({ preserveSelection: true, silent: true });
+        }
+        // Re-check balances only when stale (avoid hammering on every tab focus).
+        if (!this._isFresh('wallet')) this.loadWallet();
+        if (
+          typeof AppNav !== 'undefined'
+          && AppNav.currentPage === 'usdt-wallet'
+          && !this._isFresh('usdtWallet')
+        ) {
+          this.loadUsdtWalletPage(false);
         }
       }
     });
@@ -253,8 +309,17 @@ const Dashboard = {
     const schedulePoll = () => {
       const cards = this.allCards || [];
       const hasPending = cards.some((c) => this.isCardPending(c));
-      // Empty or pending lists need faster refresh so new/approved cards appear promptly
-      const intervalMs = (!cards.length || hasPending) ? 10000 : 45000;
+      const onCardsPage = typeof AppNav !== 'undefined' && AppNav.currentPage === 'cards';
+      // Poll only while pending, or while viewing cards with an empty list.
+      if (!hasPending && !(onCardsPage && !cards.length)) {
+        if (this.cardsPollTimer) {
+          clearInterval(this.cardsPollTimer);
+          this.cardsPollTimer = null;
+          this._cardsPollIntervalMs = null;
+        }
+        return;
+      }
+      const intervalMs = hasPending ? 15000 : 30000;
       if (this.cardsPollTimer && this._cardsPollIntervalMs === intervalMs) return;
       if (this.cardsPollTimer) clearInterval(this.cardsPollTimer);
       this._cardsPollIntervalMs = intervalMs;
@@ -804,65 +869,74 @@ const Dashboard = {
     });
   },
 
-  async loadUsdtWalletPage(_forceRefresh = true) {
+  async loadUsdtWalletPage(forceRefresh = false) {
     if (!Auth.isLoggedIn()) return;
     const depositEl = $('usdtWalletDepositAddresses');
     const linkedEl = $('usdtLinkedWalletsList');
 
-    // Always force a fresh API fetch so Supabase Table Editor edits show immediately.
-    this.setUsdtWalletBalancePlaceholders('Loading…');
-
-    try {
-      const data = await (window.EisyServices?.usdtWallet?.getOverview
-        ? window.EisyServices.usdtWallet.getOverview()
-        : Auth.api('GET', `/api/user/usdt-wallet?_=${Date.now()}`, null, { sensitive: true }));
-      this._usdtWalletCache = data;
-      this.walletUsdt = data.balance_usdt ?? data.available_usdt;
-      this.walletUsdtLocked = data.balance_usdt_locked ?? data.locked_usdt ?? 0;
-      this.renderUsdtWalletPage(data);
-      try {
-        await this.loadUsdtWalletTransactions();
-      } catch (txErr) {
-        console.warn('[usdt-wallet] transactions:', txErr.message);
-      }
-    } catch (err) {
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
-        if (this.walletUsdt != null) {
-          this.syncUsdtWalletBalancesFromPayload({
-            balance_usdt: this.walletUsdt,
-            balance_usdt_locked: this.walletUsdtLocked || 0,
-          });
-        } else {
-          this.setUsdtWalletBalancePlaceholders('🔒 Locked');
-        }
-        if (depositEl) depositEl.innerHTML = '<p class="hint">Unlock with PIN to view your USDT wallet.</p>';
-        if (linkedEl) linkedEl.innerHTML = '<p class="hint">PIN required.</p>';
-        $('pinUnlockModal')?.classList.remove('hidden');
-        return;
-      }
-
-      // Overview failed — still try the wallet balance endpoint so Available/Locked/Total populate.
-      try {
-        const wallet = await Auth.api('GET', `/api/user/wallet?_=${Date.now()}`, null, { sensitive: true });
-        this.walletUsdt = wallet.balance_usdt;
-        this.walletUsdtLocked = wallet.balance_usdt_locked || 0;
-        this.syncUsdtWalletBalancesFromPayload(wallet);
-      } catch (walletErr) {
-        if (this.walletUsdt != null) {
-          this.syncUsdtWalletBalancesFromPayload({
-            balance_usdt: this.walletUsdt,
-            balance_usdt_locked: this.walletUsdtLocked || 0,
-          });
-        } else {
-          this.setUsdtWalletBalancePlaceholders('—');
-        }
-        console.warn('[usdt-wallet] balance fallback failed:', walletErr.message);
-      }
-
-      if (depositEl) {
-        depositEl.innerHTML = `<p class="hint">${err.message || 'Failed to load USDT wallet'}</p>`;
-      }
+    if (!forceRefresh && this._usdtWalletCache && this._isFresh('usdtWallet')) {
+      this.renderUsdtWalletPage(this._usdtWalletCache);
+      return;
     }
+
+    return this._withInflight('usdtWallet', async () => {
+      this.setUsdtWalletBalancePlaceholders('Loading…');
+
+      try {
+        const data = await (window.EisyServices?.usdtWallet?.getOverview
+          ? window.EisyServices.usdtWallet.getOverview()
+          : Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true }));
+        this._usdtWalletCache = data;
+        this.walletUsdt = data.balance_usdt ?? data.available_usdt;
+        this.walletUsdtLocked = data.balance_usdt_locked ?? data.locked_usdt ?? 0;
+        this._markFetched('usdtWallet');
+        this._markFetched('wallet');
+        this.renderUsdtWalletPage(data);
+        try {
+          await this.loadUsdtWalletTransactions();
+        } catch (txErr) {
+          console.warn('[usdt-wallet] transactions:', txErr.message);
+        }
+      } catch (err) {
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+          if (this.walletUsdt != null) {
+            this.syncUsdtWalletBalancesFromPayload({
+              balance_usdt: this.walletUsdt,
+              balance_usdt_locked: this.walletUsdtLocked || 0,
+            });
+          } else {
+            this.setUsdtWalletBalancePlaceholders('🔒 Locked');
+          }
+          if (depositEl) depositEl.innerHTML = '<p class="hint">Unlock with PIN to view your USDT wallet.</p>';
+          if (linkedEl) linkedEl.innerHTML = '<p class="hint">PIN required.</p>';
+          $('pinUnlockModal')?.classList.remove('hidden');
+          return;
+        }
+
+        // Overview failed — still try the wallet balance endpoint so Available/Locked/Total populate.
+        try {
+          const wallet = await Auth.api('GET', '/api/user/wallet', null, { sensitive: true });
+          this.walletUsdt = wallet.balance_usdt;
+          this.walletUsdtLocked = wallet.balance_usdt_locked || 0;
+          this._markFetched('wallet');
+          this.syncUsdtWalletBalancesFromPayload(wallet);
+        } catch (walletErr) {
+          if (this.walletUsdt != null) {
+            this.syncUsdtWalletBalancesFromPayload({
+              balance_usdt: this.walletUsdt,
+              balance_usdt_locked: this.walletUsdtLocked || 0,
+            });
+          } else {
+            this.setUsdtWalletBalancePlaceholders('—');
+          }
+          console.warn('[usdt-wallet] balance fallback failed:', walletErr.message);
+        }
+
+        if (depositEl) {
+          depositEl.innerHTML = `<p class="hint">${err.message || 'Failed to load USDT wallet'}</p>`;
+        }
+      }
+    });
   },
 
   async submitUsdtTransfer(e) {
@@ -1085,12 +1159,21 @@ const Dashboard = {
 
   async loadDepositPaymentMethods() {
     const select = $('paymentMethod');
+    if (
+      Array.isArray(this._depositPaymentMethods)
+      && this._depositPaymentMethods.length
+      && this._isFresh('paymentMethods')
+    ) {
+      return;
+    }
+    return this._withInflight('paymentMethods', async () => {
     try {
       const data = window.EisyServices?.deposit
         ? await window.EisyServices.deposit.getPaymentMethods()
         : await Auth.api('GET', '/api/deposit/payment-methods');
       this._depositPaymentMethods = Array.isArray(data.payment_methods) ? data.payment_methods : [];
       this._usdtMasterDeposit = data.usdt || null;
+      this._markFetched('paymentMethods');
 
       if (select) {
         if (!this._depositPaymentMethods.length) {
@@ -1125,6 +1208,7 @@ const Dashboard = {
       }
       console.warn('[deposit] payment-methods', err.message);
     }
+    });
   },
 
   paymentMethodOptionValue(id) {
@@ -3946,13 +4030,8 @@ const Dashboard = {
           $('pinUnlockError').textContent = '';
           if ($('unlockPin')) $('unlockPin').value = '';
           this.log('PIN verified — sensitive access unlocked', 'ok');
+          this.invalidateFetch('wallet', 'deposits', 'usdtWallet', 'cards');
           this.refreshAuthUI();
-          this.loadWallet();
-          this.loadAllCards();
-          if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
-            this._usdtWalletCache = null;
-            this.loadUsdtWalletPage(true);
-          }
         } catch (err) {
           $('pinUnlockError').textContent = err.message;
         }
@@ -3970,13 +4049,8 @@ const Dashboard = {
           $('pinUnlockError').textContent = '';
           this.toast(data.message || 'PIN reset to 123456 — unlocked', 'ok');
           this.log('PIN reset to default test PIN (123456)', 'ok');
+          this.invalidateFetch('wallet', 'deposits', 'usdtWallet', 'cards');
           this.refreshAuthUI();
-          this.loadWallet();
-          this.loadAllCards();
-          if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
-            this._usdtWalletCache = null;
-            this.loadUsdtWalletPage(true);
-          }
         } catch (err) {
           $('pinUnlockError').textContent = err.message;
           this.toast(err.message || 'Failed to reset PIN', 'error');
@@ -4506,9 +4580,16 @@ const Dashboard = {
 
   async loadCardPricing() {
     if (!Auth.isLoggedIn()) return;
+    if (this.cardPricing && this._isFresh('pricing')) {
+      this.updateCardPricingBreakdown();
+      this.updateHomeRateSummary();
+      return;
+    }
+    return this._withInflight('pricing', async () => {
     try {
       const data = await Auth.api('GET', '/api/user/card/pricing');
       this.cardPricing = data;
+      this._markFetched('pricing');
       const min = data.minimum_initial_deposit_usd ?? 10;
       const input = $('cardInitialLoad');
       if (input) {
@@ -4550,6 +4631,7 @@ const Dashboard = {
     } catch (err) {
       console.warn('[card pricing]', err.message);
     }
+    });
   },
 
   updateCardPricingBreakdown() {
@@ -4835,11 +4917,14 @@ const Dashboard = {
 
   async loadWithdrawalFees() {
     if (!Auth.isLoggedIn()) return;
+    if (this.withdrawalFees && this._isFresh('withdrawalFees')) return;
+    return this._withInflight('withdrawalFees', async () => {
     try {
       const data = await (window.EisyServices?.withdrawal?.getFees
         ? window.EisyServices.withdrawal.getFees()
         : Auth.api('GET', '/api/withdrawal/fees'));
       this.withdrawalFees = data.fees || data;
+      this._markFetched('withdrawalFees');
       if (data.mmk_to_usd_rate != null) {
         this.withdrawalFees.mmk_to_usd_rate = data.mmk_to_usd_rate;
       }
@@ -4860,6 +4945,7 @@ const Dashboard = {
     } catch (err) {
       console.warn('[Dashboard] withdrawal fees:', err.message);
     }
+    });
   },
 
   getWithdrawPayoutMethod() {
@@ -5737,49 +5823,59 @@ const Dashboard = {
       </table>`;
   },
 
-  async loadDepositHistory() {
+  async loadDepositHistory(opts = {}) {
     if (!Auth.isLoggedIn()) return;
+    const force = Boolean(opts.force);
+    if (!force && this._isFresh('deposits')) return;
+
     const el = $('depositHistoryTable');
     if (!el) return;
-    try {
-      let deposits = [];
-      let reloads = [];
 
-      if (window.SupabaseBridge?.isReady() && Auth.user?.id) {
-        [deposits, reloads] = await Promise.all([
-          window.SupabaseBridge.fetchUserDeposits(Auth.user.id),
-          window.SupabaseBridge.fetchUserReloads(Auth.user.id),
-        ]);
-      } else {
-        const [{ deposits: apiDeposits }, { reloads: apiReloads }] = await Promise.all([
-          Auth.api('GET', '/api/user/deposits'),
-          Auth.api('GET', '/api/user/reloads'),
-        ]);
-        deposits = apiDeposits || [];
-        reloads = apiReloads || [];
+    return this._withInflight('deposits', async () => {
+      if (!el.querySelector('table') && !el.querySelector('.hint')) {
+        el.innerHTML = '<p class="hint">Loading…</p>';
       }
+      try {
+        let deposits = [];
+        let reloads = [];
 
-      this.renderPendingRequestsList(deposits, reloads);
-      await this.loadReloadHistory(reloads);
-      if (!deposits.length) {
-        el.innerHTML = '<p class="hint">No deposit requests yet.</p>';
-        return;
+        if (window.SupabaseBridge?.isReady() && Auth.user?.id) {
+          [deposits, reloads] = await Promise.all([
+            window.SupabaseBridge.fetchUserDeposits(Auth.user.id),
+            window.SupabaseBridge.fetchUserReloads(Auth.user.id),
+          ]);
+        } else {
+          const [{ deposits: apiDeposits }, { reloads: apiReloads }] = await Promise.all([
+            Auth.api('GET', '/api/user/deposits'),
+            Auth.api('GET', '/api/user/reloads'),
+          ]);
+          deposits = apiDeposits || [];
+          reloads = apiReloads || [];
+        }
+
+        this._markFetched('deposits');
+        this.renderPendingRequestsList(deposits, reloads);
+        await this.loadReloadHistory(reloads);
+        if (!deposits.length) {
+          el.innerHTML = '<p class="hint">No deposit requests yet.</p>';
+          return;
+        }
+        el.innerHTML = `
+          <table class="data-table">
+            <thead><tr>
+              <th>Date &amp; Time</th>
+              <th>Request Type</th>
+              <th>Amount (MMK / USD)</th>
+              <th>Ref / Txn ID</th>
+              <th>Status</th>
+            </tr></thead>
+            <tbody>${deposits.map((d) => this.renderDepositHistoryRow(d)).join('')}</tbody>
+          </table>`;
+      } catch (err) {
+        el.innerHTML = `<p class="hint">${err.message || 'Failed to load deposits'}</p>`;
+        this.renderPendingRequestsList([], []);
       }
-      el.innerHTML = `
-        <table class="data-table">
-          <thead><tr>
-            <th>Date &amp; Time</th>
-            <th>Request Type</th>
-            <th>Amount (MMK / USD)</th>
-            <th>Ref / Txn ID</th>
-            <th>Status</th>
-          </tr></thead>
-          <tbody>${deposits.map((d) => this.renderDepositHistoryRow(d)).join('')}</tbody>
-        </table>`;
-    } catch (err) {
-      el.innerHTML = `<p class="hint">${err.message || 'Failed to load deposits'}</p>`;
-      this.renderPendingRequestsList([], []);
-    }
+    });
   },
 
   async loadTransactions() {
@@ -5817,30 +5913,36 @@ const Dashboard = {
     } catch (_) {}
   },
 
-  async loadWallet(_opts = {}) {
-    try {
-      // Always query the API — server performs a fresh Supabase overlay when enabled.
-      // Cache-bust query param avoids any intermediary HTTP caches.
-      const data = await Auth.api('GET', `/api/user/wallet?_=${Date.now()}`, null, { sensitive: true });
-      this.renderWalletBalances(data);
-      this.walletUsdt = data.balance_usdt;
-      this.walletUsdtLocked = data.balance_usdt_locked || 0;
-      if ($('sumName')) $('sumName').textContent = Auth.user?.name || '—';
-      if ($('sumPhone')) $('sumPhone').textContent = Auth.user?.phone || '—';
-      if ($('sumEmail')) $('sumEmail').textContent = Auth.user?.email || '—';
-      // Keep USDT Wallet page Available/Locked/Total in sync with the same payload.
-      if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
-        this.syncUsdtWalletBalancesFromPayload(data);
-      }
-    } catch (err) {
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
-        if ($('sumBalanceMmk')) $('sumBalanceMmk').textContent = '🔒 Locked';
-        if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = '🔒 Locked';
+  async loadWallet(opts = {}) {
+    if (!Auth.isLoggedIn()) return;
+    const force = Boolean(opts.force);
+    if (!force && this._isFresh('wallet')) return;
+
+    return this._withInflight('wallet', async () => {
+      try {
+        // Sensitive Auth.api already uses cache: 'no-store' — no Date.now() needed.
+        const data = await Auth.api('GET', '/api/user/wallet', null, { sensitive: true });
+        this.renderWalletBalances(data);
+        this.walletUsdt = data.balance_usdt;
+        this.walletUsdtLocked = data.balance_usdt_locked || 0;
+        this._markFetched('wallet');
+        if ($('sumName')) $('sumName').textContent = Auth.user?.name || '—';
+        if ($('sumPhone')) $('sumPhone').textContent = Auth.user?.phone || '—';
+        if ($('sumEmail')) $('sumEmail').textContent = Auth.user?.email || '—';
+        // Keep USDT Wallet page Available/Locked/Total in sync with the same payload.
         if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
-          this.setUsdtWalletBalancePlaceholders('🔒 Locked');
+          this.syncUsdtWalletBalancesFromPayload(data);
+        }
+      } catch (err) {
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+          if ($('sumBalanceMmk')) $('sumBalanceMmk').textContent = '🔒 Locked';
+          if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = '🔒 Locked';
+          if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+            this.setUsdtWalletBalancePlaceholders('🔒 Locked');
+          }
         }
       }
-    }
+    });
   },
 
   async loadAllCards({ preserveSelection = false, silent = false, forceRefresh = false } = {}) {
@@ -5908,6 +6010,7 @@ const Dashboard = {
 
       this.allCards = newCards;
       this.saveCardsCache(this.allCards);
+      this._markFetched('cards');
 
       if (prevCardId != null) {
         const idx = this.allCards.findIndex((c) => c.id === prevCardId);
@@ -6176,22 +6279,30 @@ const Dashboard = {
       this._pollStop();
       this._pollStop = null;
     }
+    let reviewHistoryLoaded = false;
     if (window.EisyHooks?.depositPolling?.startDepositStatusPolling && window.EisyServices?.deposit) {
       const handle = window.EisyHooks.depositPolling.startDepositStatusPolling({
         refCode: ref,
+        intervalMs: 5000,
         getStatus: (code) => window.EisyServices.deposit.getStatus(code),
         onVerified: () => {
           if ($('depositStatus')) {
             $('depositStatus').textContent = 'Payment Verified!';
             $('depositStatus').className = 'status-line ok';
           }
-          this.loadWallet();
+          this.invalidateFetch('wallet', 'deposits', 'transactions');
+          this.loadWallet({ force: true });
           this.loadTransactions();
-          this.loadDepositHistory();
+          this.loadDepositHistory({ force: true });
         },
         onReview: () => {
           if ($('depositStatus')) $('depositStatus').textContent = 'Under admin review…';
-          this.loadDepositHistory();
+          // History once on first review — avoid refetching every poll tick.
+          if (!reviewHistoryLoaded) {
+            reviewHistoryLoaded = true;
+            this.invalidateFetch('deposits');
+            this.loadDepositHistory({ force: true });
+          }
         },
       });
       this.pollTimer = handle.timerRef?.() || null;
@@ -6205,15 +6316,20 @@ const Dashboard = {
           clearInterval(this.pollTimer);
           $('depositStatus').textContent = 'Payment Verified!';
           $('depositStatus').className = 'status-line ok';
-          this.loadWallet();
+          this.invalidateFetch('wallet', 'deposits', 'transactions');
+          this.loadWallet({ force: true });
           this.loadTransactions();
-          this.loadDepositHistory();
+          this.loadDepositHistory({ force: true });
         } else if (deposit.status === 'SUBMITTED' || deposit.status === 'UNDER_REVIEW') {
           $('depositStatus').textContent = 'Under admin review…';
-          this.loadDepositHistory();
+          if (!reviewHistoryLoaded) {
+            reviewHistoryLoaded = true;
+            this.invalidateFetch('deposits');
+            this.loadDepositHistory({ force: true });
+          }
         }
       } catch (_) {}
-    }, 3000);
+    }, 5000);
   },
 
   log(msg, type) {
