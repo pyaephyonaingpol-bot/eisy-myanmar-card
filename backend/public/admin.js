@@ -2546,7 +2546,7 @@
     async loadUsdtWithdrawals() {
       const table = $('usdtWithdrawalsTable');
       if (!table) return;
-      const filter = ($('usdtWithdrawalFilter') && $('usdtWithdrawalFilter').value) || 'pending';
+      const filter = ($('usdtWithdrawalFilter') && $('usdtWithdrawalFilter').value) || 'all';
       try {
         const qs = filter === 'all' ? '?status=all' : ('?status=' + encodeURIComponent(filter));
         const data = await this.api('GET', '/api/admin/withdrawals/usdt' + qs);
@@ -2600,7 +2600,7 @@
     async loadMmkWithdrawals() {
       const table = $('mmkWithdrawalsTable');
       if (!table) return;
-      const filter = ($('mmkWithdrawalFilter') && $('mmkWithdrawalFilter').value) || 'pending';
+      const filter = ($('mmkWithdrawalFilter') && $('mmkWithdrawalFilter').value) || 'all';
       try {
         const qs = filter === 'all' ? '?status=all' : ('?status=' + encodeURIComponent(filter));
         const data = await this.api('GET', '/api/admin/withdrawals/mmk' + qs);

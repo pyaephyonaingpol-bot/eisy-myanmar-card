@@ -131,25 +131,13 @@ const UsdtWithdrawal = {
       ? null
       : String(status).trim().toLowerCase();
 
-    // Admin default "pending" queue: include in-flight NOWPayments payouts (`processing`).
-    // Use status=pending_only for strictly pending rows.
-    if (normalized === 'pending' || normalized === 'open') {
+    // open = actionable queue (manual pending + in-flight NOWPayments processing)
+    if (normalized === 'open') {
       return db.all(`
         SELECT w.*, u.name AS user_name, u.email AS user_email
         FROM ${this.TABLE} w
         LEFT JOIN users u ON u.id = w.user_id
         WHERE LOWER(w.status) IN ('pending', 'processing')
-        ORDER BY w.created_at DESC
-        LIMIT ?
-      `, lim);
-    }
-
-    if (normalized === 'pending_only') {
-      return db.all(`
-        SELECT w.*, u.name AS user_name, u.email AS user_email
-        FROM ${this.TABLE} w
-        LEFT JOIN users u ON u.id = w.user_id
-        WHERE LOWER(w.status) = 'pending'
         ORDER BY w.created_at DESC
         LIMIT ?
       `, lim);

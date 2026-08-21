@@ -1627,7 +1627,7 @@ router.get('/withdrawals/usdt', requirePermission('withdrawals'), async (req, re
     const status = req.query.status;
     const rows = await UsdtWithdrawal.listAll({
       status: status && status !== 'all' ? status : undefined,
-      limit: 200,
+      limit: 500,
     });
     res.json({ withdrawals: rows });
   } catch (err) {
@@ -1724,7 +1724,7 @@ router.get('/withdrawals/mmk', requirePermission('withdrawals'), async (req, res
     const status = req.query.status;
     const rows = await MmkWithdrawal.listAll({
       status: status && status !== 'all' ? status : undefined,
-      limit: 200,
+      limit: 500,
     });
     res.json({ withdrawals: rows });
   } catch (err) {
