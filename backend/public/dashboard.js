@@ -5280,6 +5280,12 @@ const Dashboard = {
           ? window.EisyServices.withdrawal.createUsdt(payload)
           : Auth.api('POST', '/api/withdrawal/usdt', payload, { sensitive: true }));
 
+        if (data.success === false || (method === 'nowpayments' && data.payout_submitted === false && !data.payout)) {
+          throw Object.assign(new Error(data.error || data.message || 'NOWPayments payout was not submitted'), {
+            code: data.code || 'NOWPAYMENTS_PAYOUT_FAILED',
+          });
+        }
+
         if (data.wallet) {
           this.walletUsdt = data.wallet.balance_usdt;
           this.walletMmk = data.wallet.balance_mmk ?? this.walletMmk;
@@ -5299,7 +5305,9 @@ const Dashboard = {
                 : `Withdrawal submitted. Net $${Number(data.withdrawal?.net_usdt || preview.net_usdt).toFixed(2)} USDT will be sent after processing.`);
         }
         this.toast(
-          method === 'nowpayments' ? 'NOWPayments withdrawal submitted' : 'Withdrawal request submitted',
+          method === 'nowpayments' && data.payout_submitted
+            ? 'NOWPayments payout submitted'
+            : (method === 'nowpayments' ? 'Withdrawal submitted' : 'Withdrawal request submitted'),
           'ok'
         );
         this.log(

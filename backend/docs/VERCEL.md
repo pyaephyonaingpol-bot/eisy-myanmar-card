@@ -31,7 +31,30 @@ Deposit QR images use `GET /api/qr?data=…` (PNG) so they do not rely on third-
 | `DATABASE_AUTH_TOKEN` | Turso auth token |
 | `PUBLIC_BASE_URL` | Canonical site URL (e.g. `https://eisymyanmar.com`) |
 | `AUTH_SECRET` | Session signing secret |
-| `MASTER_PRIVATE_KEY` | TRON hex key for USDT TRC20 withdrawal payouts |
+| `MASTER_PRIVATE_KEY` | TRON hex key for USDT TRC20 withdrawal payouts (fallback) |
+| `NOWPAYMENTS_API_KEY` | NOWPayments API key (deposits + payouts) |
+| `NOWPAYMENTS_IPN_SECRET` | IPN HMAC secret |
+| `NOWPAYMENTS_EMAIL` | Dashboard login email for payout JWT (`POST /v1/auth`) |
+| `NOWPAYMENTS_PASSWORD` | Dashboard login password for payout JWT |
+| `NOWPAYMENTS_PAYOUTS_ENABLED` | Set `true` to enable mass payouts |
+| `NOWPAYMENTS_REQUIRE_LIVE_PAYOUT` | Defaults to required on Vercel; set `false` only for dry-run |
+
+Optional payout 2FA (required if enabled on the NOWPayments account):
+
+| Variable | Purpose |
+|----------|---------|
+| `NOWPAYMENTS_PAYOUT_2FA_SECRET` | Authenticator BASE32 secret (preferred) |
+| `NOWPAYMENTS_PAYOUT_VERIFICATION_CODE` | Static 2FA code (less ideal) |
+
+Sync from local `.env` (after `npx vercel login` + `npx vercel link`):
+
+```bash
+./scripts/sync-nowpayments-env-to-vercel.sh --check
+./scripts/sync-nowpayments-env-to-vercel.sh --vercel
+npx vercel --prod
+```
+
+Verify (admin session): `GET /api/admin/nowpayments/payout-config` — `ready` must be `true`.
 
 Aliases accepted: `BINANCE_PAY_API_KEY`, `BINANCE_PAY_API_SECRET`, `BINANCE_PAY_MERCHANT_ID`.
 

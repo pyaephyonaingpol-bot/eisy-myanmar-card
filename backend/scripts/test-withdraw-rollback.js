@@ -17,6 +17,7 @@ async function main() {
   const dbFile = path.join(os.tmpdir(), `eisy-withdraw-rollback-${Date.now()}.db`);
   process.env.DATABASE_URL = `file:${dbFile}`;
   process.env.NOWPAYMENTS_PAYOUTS_ENABLED = 'false';
+  process.env.NOWPAYMENTS_REQUIRE_LIVE_PAYOUT = 'false';
   process.env.NODE_ENV = process.env.NODE_ENV || 'test';
   for (const key of Object.keys(process.env)) {
     if (/supabase/i.test(key)) delete process.env[key];

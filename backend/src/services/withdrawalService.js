@@ -20,6 +20,8 @@ const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRev
 const { transferUsdtTrc20 } = require('./tronMasterWalletService');
 const {
   isNowPaymentsPayoutsEnabled,
+  isLivePayoutRequired,
+  assertNowPaymentsPayoutsReady,
   triggerNowPaymentsPayoutForWithdrawal,
   getAutoWithdrawMaxUsdt,
 } = require('./nowPaymentsPayoutService');
@@ -141,6 +143,18 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     throw new Error('Enter a valid USDT withdrawal amount');
   }
 
+  const requireLive = isLivePayoutRequired();
+  if (requireLive) {
+    assertNowPaymentsPayoutsReady();
+    if (!payoutCurrencySupported(normalizedNetwork)) {
+      const err = new Error(
+        `NOWPayments live payouts require TRC20 or BEP20 (got ${normalizedNetwork})`
+      );
+      err.code = 'NOWPAYMENTS_PAYOUT_UNSUPPORTED_NETWORK';
+      throw err;
+    }
+  }
+
   const settings = await getWithdrawalFeeSettings();
   const breakdown = calculateWithdrawalBreakdown(requestedAmount, normalizedNetwork, settings);
 
@@ -152,6 +166,18 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     throw new Error(
       `Amount too small — after ${formatUsdt(breakdown.fee_usdt)} network fee, nothing would be sent. Increase the amount.`
     );
+  }
+
+  if (requireLive) {
+    const maxUsdt = getAutoWithdrawMaxUsdt();
+    const net = Number(breakdown.net_usdt);
+    if (maxUsdt != null && net > maxUsdt) {
+      const err = new Error(
+        `Net amount ${formatUsdt(net)} exceeds auto-payout max ${formatUsdt(maxUsdt)}. Raise USDT_AUTO_WITHDRAW_MAX_USDT or lower the amount.`
+      );
+      err.code = 'NOWPAYMENTS_PAYOUT_ABOVE_MAX';
+      throw err;
+    }
   }
 
   const refCode = await uniqueRefCode('usdt_withdrawal_requests', 'WD');
@@ -211,17 +237,18 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
 
   let payout = null;
   let refreshed = withdrawal;
-  if (isNowPaymentsPayoutsEnabled()) {
+  const shouldAutoPayout = isNowPaymentsPayoutsEnabled() || requireLive;
+  if (shouldAutoPayout) {
     const maxUsdt = getAutoWithdrawMaxUsdt();
     const net = Number(breakdown.net_usdt);
     const withinMax = maxUsdt == null || net <= maxUsdt;
     if (withinMax && payoutCurrencySupported(normalizedNetwork)) {
       try {
-        payout = await triggerNowPaymentsPayoutForWithdrawal(withdrawal);
+        payout = await triggerNowPaymentsPayoutForWithdrawal(withdrawal, { force: requireLive });
         refreshed = payout.withdrawal || (await UsdtWithdrawal.findById(withdrawal.id));
       } catch (err) {
         console.warn(
-          `[withdrawal] NOWPayments auto-payout skipped for ${refCode}:`,
+          `[withdrawal] NOWPayments auto-payout failed for ${refCode}:`,
           err.code || '',
           err.message
         );
@@ -230,7 +257,29 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
           adminNote: `Queued for manual/admin payout — NOWPayments: ${err.message}`,
         }).catch(() => {});
         refreshed = await UsdtWithdrawal.findById(withdrawal.id);
+
+        if (requireLive) {
+          const liveErr = new Error(
+            `Withdrawal ${refCode} was recorded but the live NOWPayments payout failed: ${err.message}`
+          );
+          liveErr.code = err.code || 'NOWPAYMENTS_PAYOUT_FAILED';
+          liveErr.status = err.status || 502;
+          liveErr.withdrawal = refreshed;
+          liveErr.breakdown = breakdown;
+          liveErr.cause = err;
+          throw liveErr;
+        }
       }
+    } else if (requireLive) {
+      const err = new Error(
+        withinMax
+          ? `NOWPayments live payouts require TRC20 or BEP20 (got ${normalizedNetwork})`
+          : `Net amount exceeds auto-payout max — cannot skip live payout`
+      );
+      err.code = withinMax ? 'NOWPAYMENTS_PAYOUT_UNSUPPORTED_NETWORK' : 'NOWPAYMENTS_PAYOUT_ABOVE_MAX';
+      err.withdrawal = refreshed;
+      err.breakdown = breakdown;
+      throw err;
     }
   }
 
