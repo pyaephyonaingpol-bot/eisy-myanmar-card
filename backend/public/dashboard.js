@@ -2956,9 +2956,17 @@ const Dashboard = {
         ? 'Sell ads: this amount is escrowed from your USDT wallet immediately.'
         : 'Buy ads: no USDT escrow — you pay MMK externally when sellers accept your ad.';
     }
+    const avail = $('p2pAdAvailableHint');
+    if (avail) {
+      const available = Number(this.walletUsdt ?? 0);
+      avail.textContent = side === 'sell'
+        ? `Available for escrow: $${available.toFixed(2)} USDT`
+        : '';
+      avail.classList.toggle('hidden', side !== 'sell');
+    }
   },
 
-  openPostP2pAdModal() {
+  async openPostP2pAdModal() {
     if (!Auth.isLoggedIn()) {
       this.toast('Please log in to post an ad', 'error');
       return;
@@ -2971,6 +2979,8 @@ const Dashboard = {
     $('p2pPostAdForm')?.reset();
     if ($('p2pAdMin')) $('p2pAdMin').value = '5';
     if ($('p2pAdMax')) $('p2pAdMax').value = '500';
+    // Refresh balances so escrow hint matches Supabase/Turso available USDT.
+    await this.loadWallet();
     this.updateP2pAdEscrowHint();
     $('p2pPostAdModal')?.classList.remove('hidden');
     document.body.classList.add('sidebar-scroll-lock');
