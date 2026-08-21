@@ -550,15 +550,25 @@
                 <input id="wrEffectiveDate" type="date" required />
               </div>
 
-              <p class="sa-section-label">Service fee</p>
+              <p class="sa-section-label">Service fee / markup</p>
+              <div class="field">
+                <label for="wrFeeMode">Fee mode</label>
+                <select id="wrFeeMode">
+                  <option value="off">Off (no fee)</option>
+                  <option value="percent">Percent only</option>
+                  <option value="fixed">Fixed USDT only</option>
+                  <option value="max_percent_or_min" selected>Max(percent, minimum)</option>
+                </select>
+                <small class="hint">Optional platform profit on deposits &amp; withdrawals</small>
+              </div>
               <div class="field">
                 <label for="wrFeePercent">Percent (%)</label>
                 <input id="wrFeePercent" type="number" step="0.01" min="0" max="20" required />
               </div>
               <div class="field">
-                <label for="wrFeeMinUsdt">Minimum (USDT)</label>
+                <label for="wrFeeMinUsdt">Fixed / minimum (USDT)</label>
                 <input id="wrFeeMinUsdt" type="number" step="0.01" min="0" required />
-                <small class="hint">Fee = max(amount × %, minimum). Use 0% + 2 min for a flat 2 USDT fee.</small>
+                <small class="hint">Fixed amount when mode is Fixed; otherwise the minimum floor for Max(%, min).</small>
               </div>
 
               <p class="sa-section-label">Minimums</p>
@@ -884,13 +894,24 @@
             <small class="hint">Read-only</small>
           </div>
           <div class="field">
-            <label for="settingPaymentFeePercent">Service fee (%)</label>
-            <input id="settingPaymentFeePercent" type="number" step="0.01" min="0" max="20" required />
-            <small class="hint">Deposits &amp; withdrawals: max(amount × %, minimum)</small>
+            <label for="settingPaymentFeeMode">Service fee mode</label>
+            <select id="settingPaymentFeeMode">
+              <option value="off">Off (no fee)</option>
+              <option value="percent">Percent only</option>
+              <option value="fixed">Fixed USDT only</option>
+              <option value="max_percent_or_min" selected>Max(percent, minimum)</option>
+            </select>
+            <small class="hint">Optional markup on deposits &amp; withdrawals</small>
           </div>
           <div class="field">
-            <label for="settingPaymentFeeMinUsdt">Min service fee (USDT)</label>
+            <label for="settingPaymentFeePercent">Service fee (%)</label>
+            <input id="settingPaymentFeePercent" type="number" step="0.01" min="0" max="20" required />
+            <small class="hint">Used for Percent and Max(%, min) modes</small>
+          </div>
+          <div class="field">
+            <label for="settingPaymentFeeMinUsdt">Fixed / min fee (USDT)</label>
             <input id="settingPaymentFeeMinUsdt" type="number" step="0.01" min="0" required />
+            <small class="hint">Fixed amount or minimum floor, depending on mode</small>
           </div>
 
           <p class="sa-section-label">Minimum withdrawals</p>

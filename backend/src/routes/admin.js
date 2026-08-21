@@ -380,6 +380,7 @@ router.get('/settings', requirePermission('settings_read'), async (_req, res) =>
         mmk_withdraw_fee_percent: pricing.mmk_withdraw_fee_percent,
         payment_service_fee_percent: pricing.payment_service_fee_percent,
         payment_service_fee_minimum_usdt: pricing.payment_service_fee_minimum_usdt,
+        payment_service_fee_mode: pricing.payment_service_fee_mode,
       },
       ledger_summary: ledgerSummary,
       current_rate: currentRate,

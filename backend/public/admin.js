@@ -831,6 +831,7 @@
               p2p_seller_fee_percent: parseFloat($('settingP2pSellerFee')?.value || '1'),
               minimum_usdt_withdrawal: parseFloat($('settingMinUsdtWithdrawal')?.value || '10'),
               minimum_mmk_withdrawal: parseFloat($('settingMinMmkWithdrawal')?.value || '10000'),
+              payment_service_fee_mode: $('settingPaymentFeeMode')?.value || 'max_percent_or_min',
               payment_service_fee_percent: parseFloat($('settingPaymentFeePercent')?.value || '2'),
               payment_service_fee_minimum_usdt: parseFloat($('settingPaymentFeeMinUsdt')?.value || '1'),
               // Keep legacy keys aligned with the live unified fee
@@ -1038,6 +1039,7 @@
         if ($('wrEffectiveDate')) {
           $('wrEffectiveDate').value = r.rate_effective_date || new Date().toISOString().slice(0, 10);
         }
+        if ($('wrFeeMode')) $('wrFeeMode').value = r.payment_service_fee_mode || 'max_percent_or_min';
         if ($('wrFeePercent')) $('wrFeePercent').value = r.payment_service_fee_percent ?? '';
         if ($('wrFeeMinUsdt')) $('wrFeeMinUsdt').value = r.payment_service_fee_minimum_usdt ?? '';
         if ($('wrMinUsdt')) $('wrMinUsdt').value = r.minimum_usdt_withdrawal ?? '';
@@ -1055,6 +1057,7 @@
         if (out) {
           out.textContent = JSON.stringify({
             mmk_to_usd_rate: r.mmk_to_usd_rate,
+            payment_service_fee_mode: r.payment_service_fee_mode,
             payment_service_fee_percent: r.payment_service_fee_percent,
             payment_service_fee_minimum_usdt: r.payment_service_fee_minimum_usdt,
             minimum_usdt_withdrawal: r.minimum_usdt_withdrawal,
@@ -1097,6 +1100,7 @@
         const data = await this.api('PUT', '/api/admin/withdrawal-rates', {
           mmk_to_usd_rate: Number($('wrExchangeRate')?.value),
           effective_date: $('wrEffectiveDate')?.value,
+          payment_service_fee_mode: $('wrFeeMode')?.value || 'max_percent_or_min',
           payment_service_fee_percent: Number($('wrFeePercent')?.value),
           payment_service_fee_minimum_usdt: Number($('wrFeeMinUsdt')?.value),
           minimum_usdt_withdrawal: Number($('wrMinUsdt')?.value),
@@ -2863,6 +2867,7 @@
         if ($('settingP2pSellerFee')) $('settingP2pSellerFee').value = p.p2p_seller_fee_percent ?? 1;
         if ($('settingMinUsdtWithdrawal')) $('settingMinUsdtWithdrawal').value = p.minimum_usdt_withdrawal ?? 10;
         if ($('settingMinMmkWithdrawal')) $('settingMinMmkWithdrawal').value = p.minimum_mmk_withdrawal ?? 10000;
+        if ($('settingPaymentFeeMode')) $('settingPaymentFeeMode').value = p.payment_service_fee_mode || 'max_percent_or_min';
         if ($('settingPaymentFeePercent')) $('settingPaymentFeePercent').value = p.payment_service_fee_percent ?? 2;
         if ($('settingPaymentFeeMinUsdt')) $('settingPaymentFeeMinUsdt').value = p.payment_service_fee_minimum_usdt ?? 1;
         if ($('settingPlatformRevenueBalance')) {

@@ -63,6 +63,23 @@ function mapMmkWithdrawal(row) {
 router.get('/fees', requireAuth, async (_req, res) => {
   try {
     const settings = await getWithdrawalFeeSettings();
+    const mode = settings.payment_service_fee_mode || 'max_percent_or_min';
+    const feeRule = mode === 'off'
+      ? 'fee = 0'
+      : mode === 'percent'
+        ? 'fee = amount * percent/100'
+        : mode === 'fixed'
+          ? 'fee = fixedUsdt'
+          : 'Math.max(amount * percent/100, minimum)';
+    const pct = settings.payment_service_fee_percent ?? 2;
+    const minUsdt = settings.payment_service_fee_minimum_usdt ?? 1;
+    const feeLabel = mode === 'off'
+      ? 'No service fee'
+      : mode === 'fixed'
+        ? `fixed $${Number(minUsdt).toFixed(2)}`
+        : mode === 'percent'
+          ? `${pct}%`
+          : `${pct}% (min $${Number(minUsdt).toFixed(2)})`;
     res.json({
       fees: settings,
       policy: {
@@ -70,37 +87,41 @@ router.get('/fees', requireAuth, async (_req, res) => {
         mmk_bank_withdraw_allowed: true,
         usdt_crypto_withdraw_allowed: true,
         usdt_bank_withdraw_allowed: true,
-        service_fee_rule: 'Math.max(amount * 0.02, 1)',
-        service_fee_percent: settings.payment_service_fee_percent ?? 2,
-        service_fee_minimum_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
+        service_fee_rule: feeRule,
+        service_fee_mode: mode,
+        service_fee_percent: pct,
+        service_fee_minimum_usdt: minUsdt,
       },
       networks: [
         {
           network: 'TRC20',
           payout_method: 'crypto',
           label: 'TRC20 (TRON Network)',
-          fee_rule: 'Math.max(amount * 0.02, 1)',
-          fee_percent: settings.payment_service_fee_percent ?? 2,
-          minimum_fee_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
-          fee_label: '2% (min $1 USDT)',
+          fee_rule: feeRule,
+          fee_mode: mode,
+          fee_percent: pct,
+          minimum_fee_usdt: minUsdt,
+          fee_label: feeLabel,
         },
         {
           network: 'BEP20',
           payout_method: 'crypto',
           label: 'BEP20 (BSC Network)',
-          fee_rule: 'Math.max(amount * 0.02, 1)',
-          fee_percent: settings.payment_service_fee_percent ?? 2,
-          minimum_fee_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
-          fee_label: '2% (min $1 USDT)',
+          fee_rule: feeRule,
+          fee_mode: mode,
+          fee_percent: pct,
+          minimum_fee_usdt: minUsdt,
+          fee_label: feeLabel,
         },
         {
           network: 'BANK',
           payout_method: 'bank',
           label: 'Bank Account (USDT → MMK)',
-          fee_rule: 'Math.max(amount * 0.02, 1)',
-          fee_percent: settings.payment_service_fee_percent ?? 2,
-          minimum_fee_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
-          fee_label: '2% (min $1 USDT)',
+          fee_rule: feeRule,
+          fee_mode: mode,
+          fee_percent: pct,
+          minimum_fee_usdt: minUsdt,
+          fee_label: feeLabel,
           exchange_rate: settings.mmk_to_usd_rate,
         },
       ],
@@ -109,6 +130,7 @@ router.get('/fees', requireAuth, async (_req, res) => {
       mmk_withdraw_fee_percent: settings.payment_service_fee_percent ?? 2,
       payment_service_fee_percent: settings.payment_service_fee_percent ?? 2,
       payment_service_fee_minimum_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
+      payment_service_fee_mode: mode,
       mmk_to_usd_rate: settings.mmk_to_usd_rate,
     });
   } catch (err) {
