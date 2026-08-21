@@ -52,7 +52,9 @@ function normalizeNetwork(network) {
 
 function normalizePayoutMethod(method) {
   const m = String(method || 'crypto').trim().toLowerCase();
-  if (m === 'crypto' || m === 'wallet' || m === 'onchain') return 'crypto';
+  if (m === 'crypto' || m === 'wallet' || m === 'onchain' || m === 'nowpayments' || m === 'np') {
+    return 'crypto';
+  }
   if (m === 'bank' || m === 'mmk_bank' || m === 'fiat') return 'bank';
   return null;
 }
