@@ -157,10 +157,19 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.set('Pragma', 'no-cache');
 
-    const legacyMigration = await migrateLegacyUsdToMmk(req.user.id);
-    const user = await User.findById(req.user.id);
-    const localPayload = walletPayload(user);
-    // Prefer a fresh Supabase read so Table Editor edits show immediately.
+    let user = await User.findById(req.user.id);
+    let legacyMigration = { migrated: false };
+    // Skip migrate work for the common case (legacy USD already cleared).
+    if (Number(user?.balance ?? 0) > 0.001) {
+      legacyMigration = await migrateLegacyUsdToMmk(req.user.id);
+      user = await User.findById(req.user.id);
+    }
+    const localPayload = {
+      ...walletPayload(user),
+      email: user.email || req.user.email,
+    };
+    // Prefer a fresh Supabase read so Table Editor edits show immediately
+    // (short server TTL cache avoids repeat RTTs on rapid SPA polls).
     const balances = await overlayWalletPayloadFromSupabase(req.user.id, localPayload);
     res.json({
       user_id: user.id,

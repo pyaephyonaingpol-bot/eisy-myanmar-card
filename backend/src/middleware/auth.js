@@ -9,6 +9,24 @@ const {
 } = require('../lib/adminRoles');
 
 const SESSION_EXPIRY_DAYS = parseInt(process.env.SESSION_EXPIRY_DAYS || '30', 10);
+/** Avoid writing last_seen_at on every API call — throttle to once per N ms. */
+const SESSION_TOUCH_TTL_MS = parseInt(process.env.SESSION_TOUCH_TTL_MS || '300000', 10); // 5 min
+const _sessionTouchAt = new Map();
+
+function shouldTouchSession(token) {
+  const now = Date.now();
+  const last = _sessionTouchAt.get(token) || 0;
+  if (now - last < SESSION_TOUCH_TTL_MS) return false;
+  _sessionTouchAt.set(token, now);
+  // Bound map growth for long-lived processes
+  if (_sessionTouchAt.size > 5000) {
+    const cutoff = now - SESSION_TOUCH_TTL_MS;
+    for (const [k, ts] of _sessionTouchAt) {
+      if (ts < cutoff) _sessionTouchAt.delete(k);
+    }
+  }
+  return true;
+}
 
 /** Fallback when ADMIN_API_KEY env is unset (local/dev or misconfigured deploy). */
 const DEFAULT_ADMIN_API_KEY = 'eisy-admin-dev-key';
@@ -56,25 +74,30 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Invalid or expired session', code: 'SESSION_INVALID' });
     }
 
-    const user = await User.findById(session.user_id);
-    if (!user || (user.auth_status && user.auth_status === 'suspended')) {
+    // findByToken already JOINs users — avoid a second User.findById on every request.
+    if (session.auth_status && session.auth_status === 'suspended') {
       return res.status(403).json({ error: 'Account unavailable', code: 'ACCOUNT_SUSPENDED' });
     }
 
-    await UserSession.touch(token, addDays(SESSION_EXPIRY_DAYS));
+    if (shouldTouchSession(token)) {
+      // Fire-and-forget — do not block the request on session bookkeeping.
+      UserSession.touch(token, addDays(SESSION_EXPIRY_DAYS)).catch((err) => {
+        console.warn('[auth] session touch skipped:', err.message);
+      });
+    }
 
     req.sessionToken = token;
     req.session = session;
     req.user = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      phone: user.phone,
-      email_verified: user.email_verified,
-      has_pin: Boolean(user.pin_hash),
-      biometrics_enabled: Boolean(user.biometrics_enabled),
-      auth_status: user.auth_status,
-      admin_role: user.admin_role || null,
+      id: session.uid || session.user_id,
+      email: session.email,
+      name: session.name,
+      phone: session.phone,
+      email_verified: session.email_verified,
+      has_pin: Boolean(session.pin_hash),
+      biometrics_enabled: Boolean(session.biometrics_enabled),
+      auth_status: session.auth_status,
+      admin_role: session.admin_role || null,
     };
 
     next();

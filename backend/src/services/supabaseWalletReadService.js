@@ -5,8 +5,14 @@
  *
  * Looks up by Turso user_id first, then falls back to email when IDs
  * have drifted between Turso and the user_wallets mirror.
+ *
+ * Short in-process TTL cache avoids repeated PostgREST RTTs when the
+ * SPA polls wallet / USDT overview within a few seconds.
  */
 const { getSupabase, isSupabaseEnabled } = require('../lib/supabase');
+
+const ROW_CACHE_TTL_MS = parseInt(process.env.SUPABASE_WALLET_CACHE_TTL_MS || '4000', 10);
+const _rowCache = new Map(); // key → { expiresAt, row }
 
 function formatMmk(amount) {
   const n = Number(amount) || 0;
@@ -23,13 +29,51 @@ function normalizeEmail(email) {
   return s || null;
 }
 
+function cacheKey(userId, email) {
+  return `${String(userId)}|${normalizeEmail(email) || ''}`;
+}
+
+function readRowCache(key) {
+  const hit = _rowCache.get(key);
+  if (!hit) return undefined;
+  if (Date.now() > hit.expiresAt) {
+    _rowCache.delete(key);
+    return undefined;
+  }
+  return hit.row;
+}
+
+function writeRowCache(key, row) {
+  _rowCache.set(key, { row, expiresAt: Date.now() + ROW_CACHE_TTL_MS });
+  if (_rowCache.size > 2000) {
+    const now = Date.now();
+    for (const [k, v] of _rowCache) {
+      if (v.expiresAt < now) _rowCache.delete(k);
+    }
+  }
+}
+
+function invalidateUserWalletCache(userId) {
+  const prefix = `${String(userId)}|`;
+  for (const key of _rowCache.keys()) {
+    if (key === String(userId) || key.startsWith(prefix)) _rowCache.delete(key);
+  }
+}
+
 /**
- * Query user_wallets once per call — no in-process cache.
+ * Query user_wallets once per call (with short TTL cache).
  * Prefer user_id; if missing or email mismatches, resolve by email.
  * @returns {Promise<object|null>}
  */
-async function fetchFreshUserWalletRow(userId, { email } = {}) {
+async function fetchFreshUserWalletRow(userId, { email, bypassCache = false } = {}) {
   if (!isSupabaseEnabled() || userId == null || userId === '') return null;
+
+  const key = cacheKey(userId, email);
+  if (!bypassCache) {
+    const cached = readRowCache(key);
+    if (cached !== undefined) return cached;
+  }
+
   const sb = getSupabase();
   if (!sb) return null;
 
@@ -78,13 +122,14 @@ async function fetchFreshUserWalletRow(userId, { email } = {}) {
       const user = await User.findById(userId);
       const fallbackEmail = normalizeEmail(user?.email);
       if (fallbackEmail) {
-        return fetchFreshUserWalletRow(userId, { email: fallbackEmail });
+        return fetchFreshUserWalletRow(userId, { email: fallbackEmail, bypassCache });
       }
     } catch (err) {
       console.warn('[supabase/wallet-read] turso email fallback:', err.message);
     }
   }
 
+  writeRowCache(key, row || null);
   return row || null;
 }
 
@@ -131,7 +176,10 @@ async function overlayWalletPayloadFromSupabase(userId, basePayload = {}) {
     }
   }
 
-  const row = await fetchFreshUserWalletRow(userId, { email });
+  const row = await fetchFreshUserWalletRow(userId, {
+    email,
+    bypassCache: Boolean(basePayload.bypass_cache || basePayload.fresh),
+  });
   if (!row) {
     return { ...basePayload, source: basePayload.source || 'turso' };
   }
@@ -150,4 +198,5 @@ module.exports = {
   fetchFreshUserWalletRow,
   supabaseWalletToPayload,
   overlayWalletPayloadFromSupabase,
+  invalidateUserWalletCache,
 };
