@@ -23,6 +23,8 @@ function mapUsdtWithdrawal(row) {
     id: row.id,
     ref_code: row.ref_code,
     payout_method: row.payout_method || 'crypto',
+    payout_provider: row.payout_provider || null,
+    payout_currency: row.payout_currency || null,
     network: row.network,
     wallet_address: row.wallet_address,
     amount_usdt: row.amount_usdt,
@@ -36,6 +38,8 @@ function mapUsdtWithdrawal(row) {
     status: row.status,
     admin_note: row.admin_note,
     tx_hash: row.tx_hash,
+    nowpayments_payout_id: row.nowpayments_payout_id || null,
+    nowpayments_withdrawal_id: row.nowpayments_withdrawal_id || null,
     created_at: row.created_at,
     processed_at: row.processed_at,
   };
@@ -195,6 +199,15 @@ router.post('/usdt', requireAuth, requireSensitive, async (req, res) => {
       ref_code: result.withdrawal.ref_code,
       withdrawal: mapUsdtWithdrawal(result.withdrawal),
       breakdown: result.breakdown,
+      payout: result.payout
+        ? {
+            provider: 'nowpayments',
+            payout_id: result.payout.payout_id,
+            status: result.payout.status,
+            currency: result.payout.currency,
+            message: result.payout.message,
+          }
+        : null,
       message: result.message,
       wallet: walletPayload(user),
     });

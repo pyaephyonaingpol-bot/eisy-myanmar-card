@@ -71,6 +71,59 @@ const UsdtWithdrawal = {
     return this.findById(id);
   },
 
+  async updatePayoutFields(id, {
+    status,
+    adminNote,
+    txHash,
+    processedBy,
+    payoutProvider,
+    payoutCurrency,
+    nowpaymentsPayoutId,
+    nowpaymentsWithdrawalId,
+  } = {}) {
+    const db = getDb();
+    const nextStatus = status || null;
+    const processedAt = nextStatus && ['completed', 'rejected', 'cancelled'].includes(nextStatus)
+      ? ", processed_at = datetime('now')"
+      : '';
+    await db.run(`
+      UPDATE ${this.TABLE}
+      SET status = COALESCE(?, status),
+          admin_note = COALESCE(?, admin_note),
+          tx_hash = COALESCE(?, tx_hash),
+          processed_by = COALESCE(?, processed_by),
+          payout_provider = COALESCE(?, payout_provider),
+          payout_currency = COALESCE(?, payout_currency),
+          nowpayments_payout_id = COALESCE(?, nowpayments_payout_id),
+          nowpayments_withdrawal_id = COALESCE(?, nowpayments_withdrawal_id),
+          updated_at = datetime('now')
+          ${processedAt}
+      WHERE id = ?
+    `,
+    nextStatus,
+    adminNote || null,
+    txHash || null,
+    processedBy ?? null,
+    payoutProvider || null,
+    payoutCurrency || null,
+    nowpaymentsPayoutId != null ? String(nowpaymentsPayoutId) : null,
+    nowpaymentsWithdrawalId != null ? String(nowpaymentsWithdrawalId) : null,
+    id);
+    return this.findById(id);
+  },
+
+  async findByNowPaymentsPayoutId(payoutId) {
+    if (payoutId == null || String(payoutId).trim() === '') return null;
+    const db = getDb();
+    return db.get(
+      `SELECT * FROM ${this.TABLE}
+       WHERE nowpayments_payout_id = ? OR nowpayments_withdrawal_id = ?
+       LIMIT 1`,
+      String(payoutId),
+      String(payoutId)
+    );
+  },
+
   async listAll({ status, limit = 200 } = {}) {
     const db = getDb();
     if (status) {

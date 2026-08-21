@@ -18,6 +18,11 @@ const {
 } = require('./settingsService');
 const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { transferUsdtTrc20 } = require('./tronMasterWalletService');
+const {
+  isNowPaymentsPayoutsEnabled,
+  triggerNowPaymentsPayoutForWithdrawal,
+  getAutoWithdrawMaxUsdt,
+} = require('./nowPaymentsPayoutService');
 
 function generateRefCode(prefix = 'WD') {
   const num = Math.floor(1000 + Math.random() * 9000);
@@ -148,6 +153,9 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
   }
 
   const refCode = await uniqueRefCode('usdt_withdrawal_requests', 'WD');
+  const feeTypeForDb = ['percent', 'fixed'].includes(String(breakdown.fee_type))
+    ? breakdown.fee_type
+    : (String(breakdown.fee_type || '').includes('percent') ? 'percent' : 'fixed');
 
   const withdrawal = await UsdtWithdrawal.create({
     userId,
@@ -158,7 +166,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     amountUsdt: breakdown.amount_usdt,
     feeUsdt: breakdown.fee_usdt,
     netUsdt: breakdown.net_usdt,
-    feeType: breakdown.fee_type === 'percent_with_minimum' ? 'percent' : breakdown.fee_type,
+    feeType: feeTypeForDb,
   });
 
   await debitUsdt(userId, breakdown.amount_usdt, {
@@ -194,11 +202,45 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     });
   }
 
+  let payout = null;
+  let refreshed = withdrawal;
+  if (isNowPaymentsPayoutsEnabled()) {
+    const maxUsdt = getAutoWithdrawMaxUsdt();
+    const net = Number(breakdown.net_usdt);
+    const withinMax = maxUsdt == null || net <= maxUsdt;
+    if (withinMax && payoutCurrencySupported(normalizedNetwork)) {
+      try {
+        payout = await triggerNowPaymentsPayoutForWithdrawal(withdrawal);
+        refreshed = payout.withdrawal || (await UsdtWithdrawal.findById(withdrawal.id));
+      } catch (err) {
+        console.warn(
+          `[withdrawal] NOWPayments auto-payout skipped for ${refCode}:`,
+          err.code || '',
+          err.message
+        );
+        await UsdtWithdrawal.updateStatus(withdrawal.id, {
+          status: 'pending',
+          adminNote: `Queued for manual/admin payout — NOWPayments: ${err.message}`,
+        }).catch(() => {});
+        refreshed = await UsdtWithdrawal.findById(withdrawal.id);
+      }
+    }
+  }
+
+  const autoStarted = Boolean(payout && !payout.alreadyTriggered);
   return {
-    withdrawal,
+    withdrawal: refreshed,
     breakdown,
-    message: `Withdrawal ${refCode} submitted. ${formatUsdt(breakdown.net_usdt)} will be sent to your ${normalizedNetwork} address after processing.`,
+    payout,
+    message: autoStarted
+      ? `Withdrawal ${refCode} submitted. ${formatUsdt(breakdown.net_usdt)} is being sent to your ${normalizedNetwork} address via NOWPayments.`
+      : `Withdrawal ${refCode} submitted. ${formatUsdt(breakdown.net_usdt)} will be sent to your ${normalizedNetwork} address after processing.`,
   };
+}
+
+function payoutCurrencySupported(network) {
+  const n = String(network || '').toUpperCase();
+  return n === 'TRC20' || n === 'BEP20';
 }
 
 async function createUsdtBankWithdrawalRequest(userId, body = {}) {
@@ -219,6 +261,9 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
   }
 
   const refCode = await uniqueRefCode('usdt_withdrawal_requests', 'WB');
+  const feeTypeForDb = ['percent', 'fixed'].includes(String(breakdown.fee_type))
+    ? breakdown.fee_type
+    : (String(breakdown.fee_type || '').includes('percent') ? 'percent' : 'fixed');
 
   const withdrawal = await UsdtWithdrawal.create({
     userId,
@@ -229,7 +274,7 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
     amountUsdt: breakdown.amount_usdt,
     feeUsdt: breakdown.fee_usdt,
     netUsdt: breakdown.net_usdt,
-    feeType: breakdown.fee_type === 'percent_with_minimum' ? 'percent' : breakdown.fee_type,
+    feeType: feeTypeForDb,
     exchangeRate: breakdown.exchange_rate,
     amountMmk: breakdown.amount_mmk,
     bankName: bank.bankName,
@@ -395,10 +440,39 @@ async function completeUsdtWithdrawal(id, { adminNote, txHash, adminId, skipOnCh
   let note = adminNote || null;
 
   const network = normalizeNetwork(row.network);
+  const preferNowPayments = !skipOnChain
+    && !resolvedTxHash
+    && row.payout_method === 'crypto'
+    && payoutCurrencySupported(network)
+    && isNowPaymentsPayoutsEnabled();
+
+  if (preferNowPayments) {
+    try {
+      const payout = await triggerNowPaymentsPayoutForWithdrawal(row, { force: true });
+      if (payout?.withdrawal?.status === 'completed') {
+        return payout.withdrawal;
+      }
+      // Still processing via IPN — return current row (processing)
+      return payout.withdrawal || UsdtWithdrawal.findById(id);
+    } catch (err) {
+      console.warn('[withdrawal] NOWPayments complete failed, falling back:', err.message);
+      // Fall through to master-wallet TRC20 path when available
+      if (network !== 'TRC20') {
+        await UsdtWithdrawal.updateStatus(id, {
+          status: 'pending',
+          adminNote: `NOWPayments payout failed: ${err.message}`,
+          processedBy: adminId || null,
+        });
+        throw err;
+      }
+    }
+  }
+
   const shouldSendOnChain = !skipOnChain
     && row.payout_method === 'crypto'
     && network === 'TRC20'
-    && !resolvedTxHash;
+    && !resolvedTxHash
+    && !row.nowpayments_payout_id;
 
   if (shouldSendOnChain) {
     // Mark processing so concurrent completes do not double-send.
@@ -542,4 +616,5 @@ module.exports = {
   normalizePayoutMethod,
   validateWalletAddress,
   validateBankDetails,
+  payoutCurrencySupported,
 };

@@ -1,26 +1,44 @@
-# USDT TRC20 withdrawals (master wallet)
+# USDT withdrawals
 
-When an admin processes a pending **TRC20 crypto** USDT withdrawal, the backend
-sends `net_usdt` from the platform master wallet via TronWeb.
+## Crypto (NOWPayments mass payouts)
 
-## Flow
+When NOWPayments payouts are configured, `POST /api/withdrawal/usdt` with
+`payout_method=crypto` automatically submits a Custody payout:
 
-1. User creates `POST /api/withdrawal/usdt` with `network=TRC20` → USDT balance debited, row `pending`
+1. User creates withdrawal → USDT balance debited, row `pending`/`processing`
+2. Server `POST /v1/auth` → JWT, then `POST /v1/payout` with:
+   - TRC20 → `currency: "usdttrc20"`
+   - BEP20 → `currency: "usdtbsc"`
+3. Optional `POST /v1/payout/:id/verify` when 2FA is enabled
+4. IPN marks the row `completed` (stores `tx_hash`) or `rejected` (refunds)
+
+Env: see [`NOWPAYMENTS.md`](./NOWPAYMENTS.md). Feature flag:
+`NOWPAYMENTS_PAYOUTS_ENABLED` / `USDT_AUTO_WITHDRAW_ENABLED`, optional cap
+`USDT_AUTO_WITHDRAW_MAX_USDT`.
+
+Retry endpoints:
+
+- User: `POST /api/nowpayments/payout` `{ "withdrawal_id": 123 }`
+- Admin: `POST /api/admin/withdrawals/usdt/:id/nowpayments-payout`
+
+## Crypto fallback (TRON master wallet)
+
+When NOWPayments payouts are **not** configured, admin complete still sends
+TRC20 via TronWeb from `MASTER_PRIVATE_KEY`:
+
+1. User creates `POST /api/withdrawal/usdt` with `network=TRC20` → row `pending`
 2. Admin completes `POST /api/admin/withdrawals/usdt/:id/complete`
-3. `processUsdtTrc20Withdrawal` → `transferUsdtTrc20`:
-   - Reads `process.env.MASTER_PRIVATE_KEY` (never hardcoded)
-   - Checks master USDT balance (≥ net amount) and TRX for fees
-   - Transfers TRC20 USDT to `wallet_address`
-   - Stores returned `txId` and marks withdrawal `completed`
+3. `processUsdtTrc20Withdrawal` → `transferUsdtTrc20`
+4. Stores `txId`, marks `completed`
 
-If a manual `tx_hash` is provided, the on-chain send is skipped.
+If a manual `tx_hash` is provided, the on-chain / NOWPayments send is skipped.
 
 ## Admin balance check
 
-`GET /api/admin/master-wallet-balance` returns TRX + USDT for the master address.
-The admin Deposits/Withdrawals tab has a **Check Master Wallet Balance** button that calls this endpoint.
+`GET /api/admin/master-wallet-balance` returns TRX + USDT for the master address
+(used when falling back to hot-wallet sends).
 
-## Env
+## Env (master wallet fallback)
 
 | Variable | Required | Notes |
 |----------|----------|--------|
@@ -33,11 +51,13 @@ The admin Deposits/Withdrawals tab has a **Check Master Wallet Balance** button 
 
 - **MMK → USDT conversion is forbidden** (`assertMmkToUsdtForbidden`, debit purpose guard)
 - MMK wallet debits only for: card issuance, card reload, MMK bank withdrawal
-- TRC20 master-wallet payouts never debit/credit MMK
-- USDT→bank and MMK bank withdrawals stay manual/admin bank rails (not Tron)
+- TRC20 / NOWPayments payouts never debit/credit MMK
+- USDT→bank and MMK bank withdrawals stay manual/admin bank rails
 
 ## Key files
 
+- `backend/src/services/nowPaymentsPayoutService.js` — auth, create/verify payout, IPN
 - `backend/src/services/tronMasterWalletService.js` — TronWeb transfer + balance checks
-- `backend/src/services/withdrawalService.js` — `processUsdtTrc20Withdrawal`, `completeUsdtWithdrawal`
+- `backend/src/services/withdrawalService.js` — create / complete / reject
 - `backend/src/services/walletService.js` — MMK debit allow-list
+- `server/routes/nowpayments.js` — `/payout`, `/payout-webhook`
