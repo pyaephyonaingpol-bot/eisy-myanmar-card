@@ -18,10 +18,14 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions (user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions (status);
 CREATE INDEX IF NOT EXISTS idx_transactions_payment_id ON transactions (payment_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_order_id ON transactions (order_id);
 
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "service_role_transactions" ON transactions
+-- App auth is Express-side; service role bypasses RLS. Keep a permissive policy for tooling.
+DROP POLICY IF EXISTS "service_role_transactions" ON transactions;
+DROP POLICY IF EXISTS "anon_all_transactions" ON transactions;
+CREATE POLICY "anon_all_transactions" ON transactions
   FOR ALL
   USING (true)
   WITH CHECK (true);

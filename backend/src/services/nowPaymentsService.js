@@ -181,29 +181,98 @@ async function insertPendingSupabaseTransaction({
   orderId,
   metadata = {},
 }) {
+  return upsertSupabaseNowPaymentsTransaction({
+    userId,
+    paymentId,
+    amount,
+    currency,
+    orderId,
+    status: 'pending',
+    paymentStatus: 'waiting',
+    metadata,
+  });
+}
+
+function mergeTransactionMetadata(existingMeta, nextMeta) {
+  const base = existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta)
+    ? existingMeta
+    : {};
+  const extra = nextMeta && typeof nextMeta === 'object' && !Array.isArray(nextMeta)
+    ? nextMeta
+    : {};
+  return { ...base, ...extra };
+}
+
+/**
+ * Create or update a Supabase `transactions` row for a NOWPayments deposit.
+ * Uses payment_id uniqueness; falls back to order_id lookup when needed.
+ */
+async function upsertSupabaseNowPaymentsTransaction({
+  userId,
+  paymentId,
+  amount,
+  currency = 'USDT',
+  orderId = null,
+  status = 'pending',
+  paymentStatus = null,
+  metadata = {},
+} = {}) {
+  if (!isSupabaseEnabled()) return null;
   const sb = getSupabase();
   if (!sb) return null;
 
+  const resolvedPaymentId = paymentId != null && paymentId !== ''
+    ? String(paymentId)
+    : (orderId != null && orderId !== '' ? String(orderId) : null);
+  if (!resolvedPaymentId) {
+    console.warn('[nowpayments] Supabase upsert skipped — missing payment_id/order_id');
+    return null;
+  }
+
+  let existing = await findSupabaseTransactionByPaymentId(resolvedPaymentId);
+  if (!existing && orderId) {
+    existing = await findSupabaseTransactionByOrderId(orderId);
+  }
+
   const row = {
-    user_id: String(userId),
-    payment_id: String(paymentId),
-    amount: Number(amount),
-    currency: String(currency || 'USDT').toUpperCase(),
-    status: 'pending',
-    payment_status: 'waiting',
-    order_id: orderId || null,
-    metadata,
+    user_id: String(userId || existing?.user_id || ''),
+    payment_id: resolvedPaymentId,
+    amount: Number(
+      amount != null && Number.isFinite(Number(amount))
+        ? amount
+        : (existing?.amount ?? 0)
+    ),
+    currency: String(currency || existing?.currency || 'USDT').toUpperCase(),
+    status: String(status || existing?.status || 'pending').toLowerCase(),
+    payment_status: paymentStatus != null
+      ? String(paymentStatus).toLowerCase()
+      : (existing?.payment_status || null),
+    order_id: orderId != null ? String(orderId) : (existing?.order_id || null),
+    metadata: mergeTransactionMetadata(existing?.metadata, metadata),
     updated_at: new Date().toISOString(),
   };
 
+  if (!row.user_id) {
+    console.warn('[nowpayments] Supabase upsert skipped — missing user_id');
+    return null;
+  }
+
   const { data, error } = await sb
     .from('transactions')
-    .insert(row)
+    .upsert(row, { onConflict: 'payment_id' })
     .select('*')
-    .single();
+    .maybeSingle();
 
   if (error) {
-    console.warn('[nowpayments] Optional Supabase insert skipped:', error.message);
+    const missingTable = /Could not find the table|PGRST205|schema cache/i.test(error.message || '');
+    if (missingTable) {
+      console.error(
+        '[nowpayments] Supabase `transactions` table is missing. '
+        + 'Run supabase/nowpayments_transactions.sql (or supabase/schema.sql) in the SQL Editor.'
+      );
+    } else {
+      console.warn('[nowpayments] Supabase transactions upsert failed:', error.message);
+    }
     return null;
   }
 
@@ -218,6 +287,8 @@ async function findSupabaseTransactionByOrderId(orderId) {
     .from('transactions')
     .select('*')
     .eq('order_id', String(orderId))
+    .order('updated_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
@@ -574,31 +645,81 @@ async function findSupabaseTransactionByPaymentId(paymentId) {
   return data;
 }
 
-async function markSupabaseTransactionFinished(paymentId, { paymentStatus, ipnPayload } = {}) {
-  const sb = getSupabase();
-  if (!sb || !paymentId) return null;
-
-  const updatePayload = {
+async function markSupabaseTransactionFinished(paymentId, {
+  paymentStatus,
+  ipnPayload,
+  userId,
+  amount,
+  currency,
+  orderId,
+  metadata = {},
+} = {}) {
+  return upsertSupabaseNowPaymentsTransaction({
+    userId,
+    paymentId,
+    amount,
+    currency,
+    orderId,
     status: FINISHED_STATUS,
-    payment_status: paymentStatus || FINISHED_STATUS,
-    updated_at: new Date().toISOString(),
-  };
-  if (ipnPayload) {
-    updatePayload.metadata = { ipn: ipnPayload };
-  }
+    paymentStatus: paymentStatus || FINISHED_STATUS,
+    metadata: {
+      ...metadata,
+      ...(ipnPayload ? { ipn: ipnPayload } : {}),
+    },
+  });
+}
 
-  const { data, error } = await sb
-    .from('transactions')
-    .update(updatePayload)
-    .eq('payment_id', String(paymentId))
-    .select('*')
-    .maybeSingle();
+/**
+ * Persist IPN progress on Supabase even before payment is finished
+ * (waiting / confirming / partially_paid / failed / expired / finished).
+ */
+async function syncSupabaseTransactionFromIpn(body, {
+  userId = null,
+  amount = null,
+  currency = 'USDT',
+  deposit = null,
+} = {}) {
+  if (!isSupabaseEnabled()) return null;
 
-  if (error) {
-    console.warn('[nowpayments] Optional Supabase update skipped:', error.message);
-    return null;
-  }
-  return data;
+  const paymentId = parsePaymentId(body);
+  const orderId = body?.order_id != null && body.order_id !== ''
+    ? String(body.order_id)
+    : null;
+  const invoiceId = body?.invoice_id != null && body.invoice_id !== ''
+    ? String(body.invoice_id)
+    : null;
+  const paymentStatus = String(body.payment_status || body.status || '').toLowerCase() || null;
+  const effectivePaymentId = paymentId || invoiceId || orderId;
+  if (!effectivePaymentId) return null;
+
+  const meta = deposit ? parseRecordMetadata(deposit.metadata) : {};
+  const resolvedUserId = userId
+    || deposit?.user_id
+    || meta.user_id
+    || null;
+  const resolvedAmount = amount
+    ?? meta.net_usdt
+    ?? resolveCreditAmountUsdt(body);
+
+  return upsertSupabaseNowPaymentsTransaction({
+    userId: resolvedUserId,
+    paymentId: effectivePaymentId,
+    amount: resolvedAmount,
+    currency: String(body.outcome_currency || body.pay_currency || currency || 'USDT').toUpperCase(),
+    orderId,
+    status: paymentStatus === FINISHED_STATUS ? FINISHED_STATUS : 'pending',
+    paymentStatus,
+    metadata: {
+      provider: 'nowpayments',
+      deposit_id: deposit?.id || meta.deposit_id || null,
+      deposit_ref: deposit?.ref_code || meta.deposit_ref || null,
+      invoice_id: invoiceId,
+      ipn: body,
+      gross_usdt: meta.gross_usdt ?? meta.amount_usdt ?? null,
+      fee_usdt: meta.fee_usdt ?? null,
+      net_usdt: meta.net_usdt ?? resolvedAmount,
+    },
+  });
 }
 
 /**
@@ -698,11 +819,24 @@ async function creditLocalNowPaymentsDeposit(deposit, {
   });
 
   if (isSupabaseEnabled()) {
+    const meta = parseRecordMetadata(refreshed.metadata);
     await markSupabaseTransactionFinished(paymentId, {
       paymentStatus,
       ipnPayload: body,
+      userId: refreshed.user_id,
+      amount: result.net_usdt,
+      currency: 'USDT',
+      orderId: meta.nowpayments_order_id || meta.order_id || null,
+      metadata: {
+        provider: 'nowpayments',
+        deposit_id: refreshed.id,
+        deposit_ref: refreshed.ref_code,
+        gross_usdt: meta.gross_usdt ?? meta.amount_usdt ?? null,
+        fee_usdt: meta.fee_usdt ?? null,
+        net_usdt: result.net_usdt,
+      },
     }).catch((err) => {
-      console.warn('[nowpayments] Optional Supabase finish skipped:', err.message);
+      console.warn('[nowpayments] Supabase finish upsert skipped:', err.message);
     });
   }
 
@@ -761,22 +895,34 @@ async function handleNowPaymentsWebhook(req) {
     };
   }
 
-  if (paymentStatus !== FINISHED_STATUS) {
-    return {
-      ok: true,
-      ignored: true,
-      payment_id: paymentId,
-      order_id: orderId,
-      payment_status: paymentStatus,
-      message: `Payment status "${paymentStatus}" — no balance update`,
-    };
-  }
-
   const localDeposit = await findDepositByNowPaymentsIds({
     orderId,
     paymentId,
     invoiceId,
   });
+
+  // Always mirror IPN progress into Supabase `transactions` when configured,
+  // including non-finished statuses (waiting/confirming/etc.).
+  const supabaseTx = await syncSupabaseTransactionFromIpn(body, {
+    deposit: localDeposit,
+    userId: localDeposit?.user_id || null,
+  }).catch((err) => {
+    console.warn('[nowpayments] Supabase IPN sync skipped:', err.message);
+    return null;
+  });
+
+  if (paymentStatus !== FINISHED_STATUS) {
+    return {
+      ok: true,
+      ignored: true,
+      payment_id: paymentId || invoiceId || orderId,
+      order_id: orderId,
+      payment_status: paymentStatus,
+      transaction: supabaseTx,
+      message: `Payment status "${paymentStatus}" — recorded on Supabase, no balance update`,
+    };
+  }
+
   if (localDeposit) {
     return creditLocalNowPaymentsDeposit(localDeposit, {
       paymentId: paymentId || invoiceId || orderId,
@@ -831,6 +977,11 @@ async function handleNowPaymentsWebhook(req) {
   const updated = await markSupabaseTransactionFinished(existing.payment_id, {
     paymentStatus,
     ipnPayload: body,
+    userId: existing.user_id,
+    amount: amountUsdt,
+    currency: String(body.outcome_currency || body.pay_currency || existing.currency || 'USDT').toUpperCase(),
+    orderId,
+    metadata: existing.metadata || {},
   });
 
   const creditResult = await creditUserBalanceFromNowPayment({
@@ -865,6 +1016,8 @@ module.exports = {
   creditUserBalanceFromNowPayment,
   resolveSupabaseTransactionForIpn,
   findDepositByNowPaymentsIds,
+  upsertSupabaseNowPaymentsTransaction,
+  syncSupabaseTransactionFromIpn,
   DEFAULT_PAY_CURRENCY,
   FINISHED_STATUS,
 };

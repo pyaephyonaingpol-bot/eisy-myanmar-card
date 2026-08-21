@@ -76,20 +76,43 @@ CREATE TABLE IF NOT EXISTS card_reload_requests (
 CREATE INDEX IF NOT EXISTS idx_card_reload_user ON card_reload_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_card_reload_status ON card_reload_requests(status);
 
+-- NOWPayments deposit ledger (IPN dual-write). Also in nowpayments_transactions.sql.
+CREATE TABLE IF NOT EXISTS transactions (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id TEXT NOT NULL,
+  payment_id TEXT NOT NULL UNIQUE,
+  amount NUMERIC(18, 8) NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'USDT',
+  status TEXT NOT NULL DEFAULT 'pending',
+  payment_status TEXT,
+  order_id TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions (user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions (status);
+CREATE INDEX IF NOT EXISTS idx_transactions_payment_id ON transactions (payment_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_order_id ON transactions (order_id);
+
 -- Permissive policies for demo (app uses its own Express auth).
 -- Tighten with RLS + auth.uid() before production.
 ALTER TABLE user_wallets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE deposit_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE card_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE card_reload_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "anon_all_user_wallets" ON user_wallets FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "anon_all_deposit_requests" ON deposit_requests FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "anon_all_card_applications" ON card_applications FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "anon_all_card_reload_requests" ON card_reload_requests FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "anon_all_transactions" ON transactions FOR ALL USING (true) WITH CHECK (true);
 
 -- Enable Realtime (run after tables exist):
 -- ALTER PUBLICATION supabase_realtime ADD TABLE user_wallets;
 -- ALTER PUBLICATION supabase_realtime ADD TABLE deposit_requests;
 -- ALTER PUBLICATION supabase_realtime ADD TABLE card_applications;
 -- ALTER PUBLICATION supabase_realtime ADD TABLE card_reload_requests;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE transactions;
