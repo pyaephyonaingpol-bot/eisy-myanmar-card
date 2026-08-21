@@ -2602,11 +2602,12 @@ body.sidebar-scroll-lock {
   .wallet-dual-grid {
     display: flex !important;
     flex-direction: column !important;
-    gap: 1rem !important;
+    gap: 1.15rem !important;
     min-height: 0 !important;
     height: auto !important;
     align-items: stretch !important;
     overflow: visible !important;
+    margin-bottom: 1rem !important;
   }
 
   .wallet-hero-card {
@@ -2615,6 +2616,7 @@ body.sidebar-scroll-lock {
     max-height: none !important;
     overflow: visible !important;
     flex: 0 0 auto !important;
+    padding-bottom: 1.15rem !important;
   }
 
   .wallet-hero-actions {
