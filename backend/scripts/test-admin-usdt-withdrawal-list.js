@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Admin USDT withdrawal list: default "pending" filter must include processing
- * (NOWPayments in-flight) so refs like WD-3723 remain visible.
+ * Admin USDT withdrawal list: default "all" returns every status;
+ * pending / processing / open filters behave as expected.
  * Run: node backend/scripts/test-admin-usdt-withdrawal-list.js
  */
 'use strict';
@@ -44,21 +44,24 @@ async function main() {
     (?, 'WD-DONE', 'crypto', 'TRC20', 'Tdone', 5, 1, 4, 'fixed', 'completed', NULL, NULL)
   `, userId, userId, userId);
 
-  const open = await UsdtWithdrawal.listAll({ status: 'pending' });
-  const only = await UsdtWithdrawal.listAll({ status: 'pending_only' });
-  const processing = await UsdtWithdrawal.listAll({ status: 'processing' });
   const all = await UsdtWithdrawal.listAll({ status: 'all' });
+  const pending = await UsdtWithdrawal.listAll({ status: 'pending' });
+  const processing = await UsdtWithdrawal.listAll({ status: 'processing' });
+  const completed = await UsdtWithdrawal.listAll({ status: 'completed' });
+  const open = await UsdtWithdrawal.listAll({ status: 'open' });
 
-  assert.deepStrictEqual(
-    open.map((r) => r.ref_code).sort(),
-    ['WD-3723', 'WD-PENDING'],
-    'default pending filter should include processing'
-  );
-  assert.deepStrictEqual(only.map((r) => r.ref_code), ['WD-PENDING']);
+  assert.strictEqual(all.length, 3, 'status=all should return every withdrawal');
+  assert.ok(all.some((r) => r.ref_code === 'WD-3723'), 'WD-3723 must appear in all');
+  assert.deepStrictEqual(pending.map((r) => r.ref_code), ['WD-PENDING']);
   assert.strictEqual(processing.length, 1);
   assert.strictEqual(processing[0].ref_code, 'WD-3723');
   assert.strictEqual(processing[0].nowpayments_payout_id, 'np-batch-3723');
-  assert.strictEqual(all.length, 3);
+  assert.deepStrictEqual(completed.map((r) => r.ref_code), ['WD-DONE']);
+  assert.deepStrictEqual(
+    open.map((r) => r.ref_code).sort(),
+    ['WD-3723', 'WD-PENDING'],
+    'open filter should include pending + processing'
+  );
 
   await closeDb().catch(() => {});
   console.log('test-admin-usdt-withdrawal-list: OK');
