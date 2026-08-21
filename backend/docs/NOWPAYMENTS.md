@@ -6,6 +6,14 @@
 NOWPAYMENTS_API_KEY=your_api_key          # Dashboard → API keys
 NOWPAYMENTS_IPN_SECRET=your_ipn_secret    # Dashboard → Store → IPN / Instant payment notifications
 PUBLIC_BASE_URL=https://YOUR_DOMAIN       # Required for IPN + redirect URLs
+
+# Mass payouts (USDT withdrawals via NOWPayments Custody)
+NOWPAYMENTS_EMAIL=merchant@example.com    # Dashboard login (JWT /auth)
+NOWPAYMENTS_PASSWORD=your_password
+NOWPAYMENTS_PAYOUTS_ENABLED=true          # or leave unset when email+password+api key are set
+# USDT_AUTO_WITHDRAW_MAX_USDT=500         # optional net-USDT auto-payout cap
+# NOWPAYMENTS_PAYOUT_2FA_SECRET=BASE32    # if payout 2FA is enabled on the account
+# NOWPAYMENTS_PAYOUT_VERIFICATION_CODE=   # static 2FA code (prefer TOTP secret)
 ```
 
 Keys are read from `process.env` at request time (not cached at `require()`).
@@ -21,7 +29,11 @@ or a full anon key), the server also dual-writes to `transactions` — run
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/api/create-payment` | Bearer session | Create invoice + pending local deposit |
-| `POST` | `/api/nowpayments/webhook` | IPN signature | NOWPayments IPN callback |
+| `POST` | `/api/nowpayments/webhook` | IPN signature | Deposit (+ payout) IPN callback |
+| `POST` | `/api/nowpayments/payout-webhook` | IPN signature | Dedicated payout IPN |
+| `POST` | `/api/nowpayments/payout` | Bearer + PIN | Retry payout for own withdrawal |
+| `POST` | `/api/withdrawal/usdt` | Bearer + PIN | Create withdrawal; auto-triggers payout when enabled |
+| `POST` | `/api/admin/withdrawals/usdt/:id/nowpayments-payout` | Admin | Admin retry payout |
 
 ### Create payment
 
@@ -57,15 +69,50 @@ Response includes `checkout_url` (hosted NOWPayments page), `payment_id`, `order
 
 Fee rule matches Binance Pay deposits: `Math.max(amount * 0.02, 1)`.
 
+## USDT payouts (withdrawals)
+
+When `NOWPAYMENTS_PAYOUTS_ENABLED` is on (or email+password+API key are set), a crypto
+`POST /api/withdrawal/usdt` automatically:
+
+1. Debits the user (gross) and records `usdt_withdrawal_requests`
+2. Authenticates with `POST /v1/auth` (JWT)
+3. Creates `POST /v1/payout` with ticker `usdttrc20` (TRC20) or `usdtbsc` (BEP20)
+4. Optionally verifies with 2FA (`POST /v1/payout/:id/verify`)
+5. Marks the row `processing` until payout IPN reports `FINISHED` (sets `tx_hash`) or `FAILED` (refunds)
+
+Payout body sent to NOWPayments:
+
+```json
+{
+  "ipn_callback_url": "https://YOUR_DOMAIN/api/nowpayments/payout-webhook",
+  "withdrawals": [
+    {
+      "address": "T…",
+      "currency": "usdttrc20",
+      "amount": 49,
+      "unique_id": "WD-1234",
+      "ipn_callback_url": "https://YOUR_DOMAIN/api/nowpayments/payout-webhook"
+    }
+  ]
+}
+```
+
+Disable payout 2FA in the NOWPayments dashboard for fully automated flow, **or** set
+`NOWPAYMENTS_PAYOUT_2FA_SECRET` to the account authenticator secret.
+
+Admin complete (`POST /api/admin/withdrawals/usdt/:id/complete`) prefers NOWPayments when
+configured, then falls back to the TRON master wallet for TRC20.
+
 ## Webhook URL
 
 Register in NOWPayments:
 
 ```text
 https://YOUR_DOMAIN/api/nowpayments/webhook
+https://YOUR_DOMAIN/api/nowpayments/payout-webhook
 ```
 
-## Flow
+## Deposit flow
 
 1. App creates a pending `deposit_requests_v2` row (and optionally a Supabase `transactions` row) with the NOWPayments invoice / order id.
 2. NOWPayments sends IPN `POST` with header `x-nowpayments-sig`.
@@ -74,8 +121,9 @@ https://YOUR_DOMAIN/api/nowpayments/webhook
    - Credit the matching local deposit (net USDT after the 2% / $1 fee)
    - Optionally mark the Supabase `transactions` row `status = 'finished'` when dual-write is enabled
 
-## Test signature helper
+## Tests
 
 ```bash
 cd backend && npm run test:nowpayments-ipn
+cd backend && npm run test:nowpayments-payout
 ```

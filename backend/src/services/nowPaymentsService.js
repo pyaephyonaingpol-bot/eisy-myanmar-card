@@ -744,6 +744,15 @@ async function handleNowPaymentsWebhook(req) {
     throw err;
   }
 
+  // Payout IPNs share the same signature scheme — route by payload shape.
+  const {
+    isPayoutIpnPayload,
+    handleNowPaymentsPayoutWebhook,
+  } = require('./nowPaymentsPayoutService');
+  if (isPayoutIpnPayload(body)) {
+    return handleNowPaymentsPayoutWebhook(req);
+  }
+
   const paymentId = parsePaymentId(body);
   const orderId = body?.order_id != null && body.order_id !== ''
     ? String(body.order_id)

@@ -1574,6 +1574,10 @@ const {
   completeMmkWithdrawal,
   rejectMmkWithdrawal,
 } = require('../services/withdrawalService');
+const {
+  triggerNowPaymentsPayoutForWithdrawal,
+  isNowPaymentsPayoutsEnabled,
+} = require('../services/nowPaymentsPayoutService');
 const { walletPayload: adminWalletPayload } = require('../services/walletService');
 const { getMasterWalletInfo } = require('../services/tronMasterWalletService');
 
@@ -1648,13 +1652,49 @@ router.post('/withdrawals/usdt/:id/complete', requirePermission('withdrawals'), 
     });
   } catch (err) {
     console.error('[admin/withdrawals/usdt complete]', err.code || '', err.message);
-    const status = ['INSUFFICIENT_USDT', 'INSUFFICIENT_TRX', 'MASTER_KEY_MISSING'].includes(err.code)
+    const status = ['INSUFFICIENT_USDT', 'INSUFFICIENT_TRX', 'MASTER_KEY_MISSING',
+      'NOWPAYMENTS_NOT_CONFIGURED', 'NOWPAYMENTS_PAYOUT_AUTH_MISSING'].includes(err.code)
       ? 422
       : 400;
     res.status(status).json({
       error: err.message || 'Failed to complete withdrawal',
       code: err.code || undefined,
       details: err.details || undefined,
+      nowpayments: err.nowpayments || undefined,
+    });
+  }
+});
+
+/** Explicitly submit / retry a NOWPayments mass payout for a pending crypto withdrawal. */
+router.post('/withdrawals/usdt/:id/nowpayments-payout', requirePermission('withdrawals'), async (req, res) => {
+  try {
+    if (!isNowPaymentsPayoutsEnabled()) {
+      return res.status(503).json({
+        success: false,
+        error: 'NOWPayments payouts are not enabled',
+        code: 'NOWPAYMENTS_PAYOUTS_DISABLED',
+      });
+    }
+    const id = parseInt(req.params.id, 10);
+    const row = await UsdtWithdrawal.findById(id);
+    if (!row) {
+      return res.status(404).json({ error: 'USDT withdrawal not found' });
+    }
+    const result = await triggerNowPaymentsPayoutForWithdrawal(row, { force: true });
+    res.status(201).json({
+      success: true,
+      provider: 'nowpayments',
+      message: result.message,
+      payout_id: result.payout_id,
+      withdrawal: result.withdrawal,
+    });
+  } catch (err) {
+    console.error('[admin/withdrawals/usdt nowpayments-payout]', err.code || '', err.message);
+    res.status(400).json({
+      success: false,
+      error: err.message || 'NOWPayments payout failed',
+      code: err.code,
+      nowpayments: err.nowpayments,
     });
   }
 });
