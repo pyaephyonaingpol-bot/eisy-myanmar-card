@@ -188,20 +188,25 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
   });
 
   if (breakdown.fee_usdt > 0) {
-    await creditPlatformUsdtRevenue(breakdown.fee_usdt, {
-      feeType: PLATFORM_FEE_TYPES.WITHDRAWAL,
-      description: `USDT withdrawal fee — ${refCode} (${normalizedNetwork}, ${formatUsdt(breakdown.fee_usdt)})`,
-      referenceType: 'usdt_withdrawal_requests',
-      referenceId: withdrawal.id,
-      relatedUserId: userId,
-      metadata: {
-        network: normalizedNetwork,
-        payout_method: 'crypto',
-        ref_code: refCode,
-        fee_type: breakdown.fee_type,
-        requested_amount: breakdown.amount_usdt,
-      },
-    });
+    try {
+      await creditPlatformUsdtRevenue(breakdown.fee_usdt, {
+        feeType: PLATFORM_FEE_TYPES.WITHDRAWAL,
+        description: `USDT withdrawal fee — ${refCode} (${normalizedNetwork}, ${formatUsdt(breakdown.fee_usdt)})`,
+        referenceType: 'usdt_withdrawal_requests',
+        referenceId: withdrawal.id,
+        relatedUserId: userId,
+        metadata: {
+          network: normalizedNetwork,
+          payout_method: 'crypto',
+          ref_code: refCode,
+          fee_type: breakdown.fee_type,
+          requested_amount: breakdown.amount_usdt,
+        },
+      });
+    } catch (feeErr) {
+      // Do not fail the withdrawal after the user was debited — fee ledger is best-effort.
+      console.warn('[withdrawal] platform withdrawal fee credit failed:', feeErr.message);
+    }
   }
 
   let payout = null;
@@ -302,20 +307,24 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
   });
 
   if (breakdown.fee_usdt > 0) {
-    await creditPlatformUsdtRevenue(breakdown.fee_usdt, {
-      feeType: PLATFORM_FEE_TYPES.WITHDRAWAL,
-      description: `USDT→Bank withdrawal fee — ${refCode} (${formatUsdt(breakdown.fee_usdt)})`,
-      referenceType: 'usdt_withdrawal_requests',
-      referenceId: withdrawal.id,
-      relatedUserId: userId,
-      metadata: {
-        payout_method: 'bank',
-        ref_code: refCode,
-        fee_type: breakdown.fee_type,
-        amount_mmk: breakdown.amount_mmk,
-        exchange_rate: breakdown.exchange_rate,
-      },
-    });
+    try {
+      await creditPlatformUsdtRevenue(breakdown.fee_usdt, {
+        feeType: PLATFORM_FEE_TYPES.WITHDRAWAL,
+        description: `USDT→Bank withdrawal fee — ${refCode} (${formatUsdt(breakdown.fee_usdt)})`,
+        referenceType: 'usdt_withdrawal_requests',
+        referenceId: withdrawal.id,
+        relatedUserId: userId,
+        metadata: {
+          payout_method: 'bank',
+          ref_code: refCode,
+          fee_type: breakdown.fee_type,
+          amount_mmk: breakdown.amount_mmk,
+          exchange_rate: breakdown.exchange_rate,
+        },
+      });
+    } catch (feeErr) {
+      console.warn('[withdrawal] platform bank withdrawal fee credit failed:', feeErr.message);
+    }
   }
 
   return {

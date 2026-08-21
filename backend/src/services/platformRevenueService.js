@@ -4,6 +4,7 @@ const TransactionLog = require('../models/TransactionLog');
 const { PLATFORM_FEE_TYPES, USDT_FEE_TYPES } = require('../constants/platformFeeTypes');
 const { getSetting, setSetting } = require('./settingsService');
 const { formatUsdt } = require('./walletService');
+const { runInTransaction } = require('../lib/dbTransaction');
 
 const SUB_BALANCE_KEYS = {
   [PLATFORM_FEE_TYPES.P2P]: 'platform_revenue_p2p_usdt',
@@ -105,8 +106,7 @@ async function creditPlatformUsdtRevenue(amountUsdt, {
   }
 
   const db = getDb();
-  await db.run('BEGIN');
-  try {
+  return runInTransaction(db, async () => {
     const current = await getPlatformUsdtRevenueBalance();
     const balanceAfter = Math.round((current + amount) * 100) / 100;
     await setSetting('platform_usdt_revenue_balance', balanceAfter);
@@ -149,12 +149,8 @@ async function creditPlatformUsdtRevenue(amountUsdt, {
       });
     }
 
-    await db.run('COMMIT');
     return { balance_before: current, balance_after: balanceAfter };
-  } catch (err) {
-    await db.run('ROLLBACK');
-    throw err;
-  }
+  });
 }
 
 async function recordPlatformUsdFee(amountUsd, {
@@ -172,8 +168,7 @@ async function recordPlatformUsdFee(amountUsd, {
   }
 
   const db = getDb();
-  await db.run('BEGIN');
-  try {
+  return runInTransaction(db, async () => {
     const event = await recordPlatformFeeEvent({
       feeType,
       amount,
@@ -206,12 +201,8 @@ async function recordPlatformUsdFee(amountUsd, {
       });
     }
 
-    await db.run('COMMIT');
     return event;
-  } catch (err) {
-    await db.run('ROLLBACK');
-    throw err;
-  }
+  });
 }
 
 module.exports = {
