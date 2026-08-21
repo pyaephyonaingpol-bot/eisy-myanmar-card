@@ -19,9 +19,47 @@ function normalizeRow(row, columns) {
   return out;
 }
 
+function resultSetToRun(result) {
+  return {
+    lastID: Number(result.lastInsertRowid ?? 0),
+    changes: Number(result.rowsAffected ?? 0),
+  };
+}
+
+function trackTransactionCommand(txDepthRef, sql) {
+  const cmd = String(sql || '').trim().split(/\s+/)[0]?.toUpperCase();
+  if (cmd === 'BEGIN') {
+    txDepthRef.depth += 1;
+  } else if (cmd === 'COMMIT' || cmd === 'ROLLBACK') {
+    txDepthRef.depth = Math.max(0, txDepthRef.depth - 1);
+  }
+}
+
 function createLibsqlDb(client) {
+  const txDepthRef = { depth: 0 };
+
   const adapter = {
     isLibsql: true,
+    client,
+
+    isInTransaction() {
+      return txDepthRef.depth > 0;
+    },
+
+    async safeRollback() {
+      if (txDepthRef.depth <= 0) return;
+      try {
+        await client.execute('ROLLBACK');
+      } catch (err) {
+        const msg = String(err?.message || err || '');
+        if (!/no transaction is active/i.test(msg) && !/cannot rollback/i.test(msg)) {
+          throw err;
+        }
+      } finally {
+        txDepthRef.depth = 0;
+      }
+    },
+
     async get(sql, ...params) {
       const result = await client.execute({ sql, args: params });
       if (!result.rows?.length) return undefined;
@@ -35,10 +73,8 @@ function createLibsqlDb(client) {
 
     async run(sql, ...params) {
       const result = await client.execute({ sql, args: params });
-      return {
-        lastID: Number(result.lastInsertRowid ?? 0),
-        changes: Number(result.rowsAffected ?? 0),
-      };
+      trackTransactionCommand(txDepthRef, sql);
+      return resultSetToRun(result);
     },
 
     async exec(sql) {
@@ -51,6 +87,7 @@ function createLibsqlDb(client) {
       }
 
       await client.execute(sql);
+      trackTransactionCommand(txDepthRef, trimmed);
     },
   };
 

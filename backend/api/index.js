@@ -6,6 +6,7 @@
  * - POST /api/deposit/create (Binance Pay + fee Math.max(amount*0.02, 1))
  * - POST /api/webhook/binance (PAY_SUCCESS → credit net USDT)
  */
+require('../src/lib/loadEnv');
 const { initDb, getDb } = require('../src/db');
 const { app } = require('../src/index');
 const { hashPin } = require('../src/services/cryptoService');

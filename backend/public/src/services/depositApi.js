@@ -17,6 +17,9 @@
     createBinancePay(body) {
       return api().request('POST', '/api/deposit/create', body, { sensitive: true });
     },
+    createNowPayments(body) {
+      return api().request('POST', '/api/create-payment', body, { sensitive: true });
+    },
     createRequest(body) {
       return api().request('POST', '/api/deposit/request', body, { sensitive: true });
     },

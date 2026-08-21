@@ -1,5 +1,12 @@
 -- Eisy Myanmar — Supabase schema for synced app state
--- Run in Supabase SQL Editor, then enable Realtime for each table (Database → Replication).
+-- Run in Supabase SQL Editor.
+--
+-- Realtime replication (Database → Replication) is OPTIONAL.
+-- The live site reads balances via API fresh queries to user_wallets,
+-- so Table Editor edits appear without enabling Realtime.
+--
+-- Supabase Auth signup trigger fix (handle_new_user / profiles):
+-- see supabase/auth_profiles.sql if auth.signUp() returns "Database error saving new user".
 
 CREATE TABLE IF NOT EXISTS user_wallets (
   user_id TEXT PRIMARY KEY,

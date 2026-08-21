@@ -18,8 +18,8 @@ const TransactionLog = {
       amountUsd ?? null, amountMmk ?? null,
       balanceBefore ?? null, balanceAfter ?? null,
       referenceType || null, referenceId ?? null,
-      description, metadata ? JSON.stringify(metadata) : null,
-      ipAddress || null, createdBy
+      description || null, metadata ? JSON.stringify(metadata) : null,
+      ipAddress || null, createdBy || 'system'
     );
 
     return db.get('SELECT * FROM transaction_logs WHERE id = ?', result.lastID);

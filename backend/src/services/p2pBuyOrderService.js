@@ -4,7 +4,7 @@ const P2PAd = require('../models/P2PAd');
 const P2PBuyOrder = require('../models/P2PBuyOrder');
 const TransactionLog = require('../models/TransactionLog');
 const { formatUsdt, formatMmk } = require('./walletService');
-const { consumeEscrowToBuyer } = require('./usdtLedgerService');
+const { consumeEscrowToBuyer, ensureActiveEscrowHold } = require('./usdtLedgerService');
 const { getCardPricingSettings, calculateP2pFeeBreakdown } = require('./settingsService');
 const { PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { parsePaymentMethods } = require('./p2pMarketService');
@@ -117,8 +117,22 @@ async function createP2pBuyOrderFromAd(userId, { adId, amount_usdt, payment_meth
   const feeBreakdown = calculateP2pFeeBreakdown(amountUsdt, settings);
   const roundedUsdt = Math.round(amountUsdt * 100) / 100;
 
-  if (Number(ad.escrow_locked_usdt) < feeBreakdown.seller_total_usdt) {
-    throw new Error('Seller ad has insufficient escrow for this trade (including platform fee)');
+  if (Number(ad.escrow_locked_usdt) < roundedUsdt - 0.001) {
+    throw new Error('Seller ad has insufficient escrow for this trade');
+  }
+
+  const db = getDb();
+  const activeHold = await ensureActiveEscrowHold(db, {
+    userId: ad.user_id,
+    referenceType: 'p2p_ads',
+    referenceId: adId,
+    holdType: 'p2p_ad',
+  });
+  if (!activeHold) {
+    throw new Error('Seller ad escrow is not ready — ask the seller to re-post the listing');
+  }
+  if (Number(activeHold.remaining_usdt) < roundedUsdt - 0.001) {
+    throw new Error('Seller ad has insufficient escrow hold for this trade');
   }
 
   await P2PAd.reserveVolume(adId, roundedUsdt);
@@ -263,11 +277,11 @@ async function releaseP2pBuyOrder(orderId, { adminNote, reviewedBy = 'admin', ma
   }
 
   const isAdminRelease = reviewedBy === 'admin' || String(reviewedBy).startsWith('admin');
+  const actorType = isAdminRelease ? 'admin' : 'user';
   if (makerUserId) {
     if (order.maker_user_id !== makerUserId) {
       throw new Error('Only the ad owner can release USDT for this order');
     }
-    reviewedBy = `user:${makerUserId}`;
   } else if (!isAdminRelease) {
     throw new Error('This order must be released by the seller (ad owner)');
   }
@@ -320,7 +334,7 @@ async function releaseP2pBuyOrder(orderId, { adminNote, reviewedBy = 'admin', ma
       amount_mmk: order.amount_mmk,
       fee_percent_applied: feePercent,
     },
-    createdBy: reviewedBy,
+    createdBy: actorType,
   });
 
   const updated = await P2PBuyOrder.updateStatus(orderId, finalStatus, {
@@ -345,7 +359,7 @@ async function releaseP2pBuyOrder(orderId, { adminNote, reviewedBy = 'admin', ma
     referenceType: 'p2p_buy_orders',
     referenceId: orderId,
     description: `P2P buy order ${order.ref_code} released — ${formatUsdt(buyerReceives)} to buyer, ${formatUsdt(platformFee)} platform fee from seller escrow`,
-    createdBy: reviewedBy,
+    createdBy: actorType,
     metadata: {
       admin_note: adminNote,
       buyer_receives_usdt: buyerReceives,
@@ -372,7 +386,7 @@ async function releaseP2pBuyOrder(orderId, { adminNote, reviewedBy = 'admin', ma
 }
 
 async function releaseP2pBuyOrderByMaker(orderId, makerUserId) {
-  return releaseP2pBuyOrder(orderId, { makerUserId, reviewedBy: `user:${makerUserId}` });
+  return releaseP2pBuyOrder(orderId, { makerUserId, reviewedBy: 'user' });
 }
 
 async function rejectP2pBuyOrder(orderId, { adminNote, rejectionReason, reviewedBy = 'admin', finalStatus = 'rejected' } = {}) {
@@ -381,6 +395,8 @@ async function rejectP2pBuyOrder(orderId, { adminNote, rejectionReason, reviewed
   if (!['pending_payment', 'pending_seller_release'].includes(order.status)) {
     throw new Error(`Order cannot be rejected in status: ${order.status}`);
   }
+
+  const actorType = (reviewedBy === 'admin' || String(reviewedBy).startsWith('admin')) ? 'admin' : 'user';
 
   if (order.ad_id) {
     await P2PAd.restoreVolume(order.ad_id, Number(order.amount_usdt));
@@ -399,7 +415,7 @@ async function rejectP2pBuyOrder(orderId, { adminNote, rejectionReason, reviewed
     referenceType: 'p2p_buy_orders',
     referenceId: orderId,
     description: `P2P buy order rejected — ${order.ref_code}: ${rejectionReason || adminNote || 'No reason'}`,
-    createdBy: reviewedBy,
+    createdBy: actorType,
     metadata: {
       ad_id: order.ad_id,
       maker_user_id: order.maker_user_id,

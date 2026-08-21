@@ -2,9 +2,11 @@ const User = require('../models/User');
 const OtpCode = require('../models/OtpCode');
 const UserSession = require('../models/UserSession');
 const TransactionLog = require('../models/TransactionLog');
+const crypto = require('crypto');
 const { sendOtpEmail } = require('./emailService');
 const { devOtpPayload } = require('./devOtp');
 const { addMinutes, addDays } = require('../lib/sqliteDatetime');
+const { syncUserWalletById } = require('./supabaseSyncService');
 const {
   hashPin, verifyPin, generateOtp, generateSessionToken,
   createPinToken, validatePinFormat, normalizeEmail, hashToken,
@@ -32,7 +34,49 @@ function pinTokenMeta() {
 }
 
 function syntheticPhone(email) {
-  return `e.${email.replace(/[^a-z0-9]/gi, '').slice(0, 20)}`;
+  const normalized = normalizeEmail(email);
+  const digest = crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 12);
+  return `e${digest}`;
+}
+
+function mapUserPersistenceError(err) {
+  const msg = String(err?.message || err || '');
+  if (/users\.email|UNIQUE constraint failed: users\.email/i.test(msg)) {
+    const mapped = new Error('Email already registered — switch to Login');
+    mapped.code = 'EMAIL_ALREADY_REGISTERED';
+    return mapped;
+  }
+  if (/users\.phone|UNIQUE constraint failed: users\.phone/i.test(msg)) {
+    const mapped = new Error('Phone number already registered — use a different number or log in');
+    mapped.code = 'PHONE_ALREADY_REGISTERED';
+    return mapped;
+  }
+  if (/NOT NULL constraint failed: users\.phone/i.test(msg)) {
+    return new Error('Phone number is required');
+  }
+  console.error('[auth] User persistence failed:', msg);
+  const mapped = new Error('Could not create account — please try again or contact support');
+  mapped.code = 'USER_CREATE_FAILED';
+  return mapped;
+}
+
+async function resolveRegistrationPhone(normalizedEmail, phone) {
+  const trimmed = String(phone || '').trim();
+  if (trimmed) {
+    const existing = await User.findByPhone(trimmed);
+    if (existing) {
+      const err = new Error('Phone number already registered — use a different number or log in');
+      err.code = 'PHONE_ALREADY_REGISTERED';
+      throw err;
+    }
+    return trimmed;
+  }
+
+  let candidate = syntheticPhone(normalizedEmail);
+  if (await User.findByPhone(candidate)) {
+    candidate = `e${crypto.randomBytes(6).toString('hex')}`;
+  }
+  return candidate;
 }
 
 async function sendRegistrationOtp(email, ipAddress) {
@@ -78,14 +122,30 @@ async function completeRegistration({ email, otp, name, phone, pin, ipAddress, d
     await OtpCode.markVerified(record.id);
   }
 
-  const userPhone = phone || syntheticPhone(normalized);
-  const user = await User.create({
-    name: name || normalized.split('@')[0],
-    phone: userPhone,
-    email: normalized,
-    pinHash: hashPin(pin),
-  });
+  const existing = await User.findByEmail(normalized);
+  if (existing) {
+    const err = new Error('Email already registered — switch to Login');
+    err.code = 'EMAIL_ALREADY_REGISTERED';
+    throw err;
+  }
+
+  const userPhone = await resolveRegistrationPhone(normalized, phone);
+  let user;
+  try {
+    user = await User.create({
+      name: name || normalized.split('@')[0],
+      phone: userPhone,
+      email: normalized,
+      pinHash: hashPin(pin),
+    });
+  } catch (err) {
+    throw mapUserPersistenceError(err);
+  }
   await User.verifyEmail(user.id);
+
+  syncUserWalletById(user.id).catch((err) => {
+    console.warn('[auth] Supabase wallet sync after register:', err.message);
+  });
 
   const { sessionToken, session } = await createSession({
     userId: user.id,

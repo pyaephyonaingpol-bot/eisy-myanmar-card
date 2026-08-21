@@ -103,29 +103,37 @@ async function createP2pAd(userId, body) {
 
   const roundedVolume = Math.round(totalVolume * 100) / 100;
 
-  const ad = await P2PAd.create({
-    userId,
-    side,
-    network,
-    priceMmkPerUsdt: priceMmk,
-    totalVolumeUsdt: roundedVolume,
-    availableVolumeUsdt: roundedVolume,
-    minOrderUsdt: minOrder,
-    maxOrderUsdt: maxOrder,
-    paymentMethods,
-    paymentAccounts,
-    escrowLockedUsdt: side === 'sell' ? roundedVolume : 0,
-  });
-
-  if (side === 'sell') {
-    await lockUsdtForEscrow(userId, roundedVolume, {
-      holdType: 'p2p_ad',
-      referenceType: 'p2p_ads',
-      referenceId: ad.id,
-      description: `P2P sell ad escrow — ${formatUsdt(roundedVolume)} locked for marketplace listing`,
-      createdBy: 'user',
-      metadata: { side: 'sell', total_volume_usdt: roundedVolume },
+  let ad;
+  try {
+    ad = await P2PAd.create({
+      userId,
+      side,
+      network,
+      priceMmkPerUsdt: priceMmk,
+      totalVolumeUsdt: roundedVolume,
+      availableVolumeUsdt: roundedVolume,
+      minOrderUsdt: minOrder,
+      maxOrderUsdt: maxOrder,
+      paymentMethods,
+      paymentAccounts,
+      escrowLockedUsdt: side === 'sell' ? roundedVolume : 0,
     });
+
+    if (side === 'sell') {
+      await lockUsdtForEscrow(userId, roundedVolume, {
+        holdType: 'p2p_ad',
+        referenceType: 'p2p_ads',
+        referenceId: ad.id,
+        description: `P2P sell ad escrow — ${formatUsdt(roundedVolume)} locked for marketplace listing`,
+        createdBy: 'user',
+        metadata: { side: 'sell', total_volume_usdt: roundedVolume },
+      });
+    }
+  } catch (err) {
+    if (ad?.id && side === 'sell') {
+      await P2PAd.updateStatus(ad.id, 'cancelled').catch(() => {});
+    }
+    throw err;
   }
 
   await TransactionLog.create({
@@ -170,19 +178,27 @@ async function cancelP2pAd(userId, adId) {
 
   let user = await User.findById(userId);
   const escrowRemaining = Number(ad.escrow_locked_usdt || 0);
+  let escrowRefunded = 0;
+  let escrowHoldMissing = false;
 
   if (ad.side === 'sell' && escrowRemaining > 0) {
-    await refundEscrowHold({
-      userId,
-      referenceType: 'p2p_ads',
-      referenceId: adId,
-      holdType: 'p2p_ad',
-      amountUsdt: escrowRemaining,
-      description: `P2P sell ad cancelled — ${formatUsdt(escrowRemaining)} escrow refunded`,
-      createdBy: 'user',
-      metadata: { ad_cancel: true, escrow_refund: true },
-    });
-    user = await User.findById(userId);
+    try {
+      const refund = await refundEscrowHold({
+        userId,
+        referenceType: 'p2p_ads',
+        referenceId: adId,
+        holdType: 'p2p_ad',
+        amountUsdt: escrowRemaining,
+        description: `P2P sell ad cancelled — ${formatUsdt(escrowRemaining)} escrow refunded`,
+        createdBy: 'user',
+        metadata: { ad_cancel: true, escrow_refund: true },
+      });
+      escrowRefunded = refund.refundAmount;
+      user = await User.findById(userId);
+    } catch (err) {
+      if (err.code !== 'ESCROW_HOLD_NOT_FOUND') throw err;
+      escrowHoldMissing = true;
+    }
     await P2PAd.clearEscrow(adId);
   }
 
@@ -191,18 +207,24 @@ async function cancelP2pAd(userId, adId) {
   await TransactionLog.create({
     userId,
     type: 'p2p_ad_cancelled',
-    direction: ad.side === 'sell' ? 'credit' : 'neutral',
-    amountUsd: escrowRemaining,
+    direction: ad.side === 'sell' && escrowRefunded > 0 ? 'credit' : 'neutral',
+    amountUsd: escrowRefunded || escrowRemaining,
     referenceType: 'p2p_ads',
     referenceId: adId,
+    description: escrowHoldMissing
+      ? `P2P ${ad.side} ad cancelled — no escrow hold record (legacy listing cleared)`
+      : `P2P ${ad.side} ad cancelled — ${formatUsdt(escrowRefunded || escrowRemaining)} escrow refunded`,
     createdBy: 'user',
+    metadata: escrowHoldMissing ? { escrow_hold_missing: true, escrow_cleared: escrowRemaining } : undefined,
   });
 
   return {
     ad: P2PAd.mapForClient(updated, { user }),
     user: { id: user.id, balance_usdt: user.balance_usdt },
     message: ad.side === 'sell'
-      ? `Ad cancelled — ${formatUsdt(escrowRemaining)} USDT returned to your wallet`
+      ? (escrowHoldMissing
+        ? 'Ad cancelled — listing removed (no escrow hold was on file for this ad)'
+        : `Ad cancelled — ${formatUsdt(escrowRefunded || escrowRemaining)} USDT returned to your wallet`)
       : 'Buy ad cancelled',
   };
 }
