@@ -104,7 +104,8 @@ body {
   touch-action: manipulation;
 }
 
-/* While an input is focused, freeze any remaining dynamic sizing hints */
+/* While an input is focused, freeze any remaining dynamic sizing hints.
+ * Desktop keeps the fixed shell; mobile document-scroll overrides below. */
 html.kb-open,
 html.kb-open body {
   overflow: hidden !important;
@@ -117,8 +118,9 @@ html.kb-open body {
 @media (max-width: 900px) {
   body.keyboard-open .app-main,
   body.keyboard-open .app-shell {
-    min-height: 0;
+    min-height: var(--app-vh);
     height: auto;
+    max-height: none;
   }
 }
 
@@ -2461,13 +2463,73 @@ body.sidebar-scroll-lock {
 }
 
 @media (max-width: 900px) {
+  /*
+   * Mobile document-scroll layout (replaces rigid h-screen shell):
+   * - html/body use min-height (100svh) instead of fixed height + position:fixed
+   * - shell/main grow with content (flex-col); the page scrolls naturally
+   * - inputs/buttons stay in normal flow near forms instead of being clipped
+   */
+  html {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 100% !important;
+    min-height: -webkit-fill-available !important;
+    min-height: var(--app-vh) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+  }
+
+  body {
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 100% !important;
+    min-height: -webkit-fill-available !important;
+    min-height: var(--app-vh) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    display: flex;
+    flex-direction: column;
+  }
+
+  html.kb-open,
+  html.kb-open body,
+  body.kb-open {
+    height: auto !important;
+    max-height: none !important;
+    min-height: var(--app-vh) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  html.has-session #dashboardScreen,
+  html.has-session #adminApp,
+  #dashboardScreen,
+  #adminApp {
+    height: auto !important;
+    max-height: none !important;
+    min-height: var(--app-vh) !important;
+    overflow: visible !important;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+  }
+
   .app-shell {
-    height: 100%;
-    max-height: 100%;
-    min-height: 0;
+    height: auto !important;
+    max-height: none !important;
+    min-height: var(--app-vh) !important;
     width: 100%;
     max-width: 100%;
-    overflow-x: hidden;
+    overflow: visible !important;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
   }
 
   .app-sidebar {
@@ -2516,32 +2578,49 @@ body.sidebar-scroll-lock {
     max-width: 100%;
     flex: 1 1 auto;
     min-width: 0;
-    height: 100%;
-    max-height: 100%;
-    min-height: 0;
-    overflow: hidden;
-    overflow-x: hidden;
+    height: auto !important;
+    max-height: none !important;
+    min-height: var(--app-vh) !important;
+    overflow: visible !important;
+    display: flex;
+    flex-direction: column;
   }
 
   .app-content {
-    overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
+    flex: 1 1 auto;
+    overflow: visible !important;
+    -webkit-overflow-scrolling: auto;
+    overscroll-behavior: auto;
     min-height: 0;
     min-width: 0;
     width: 100%;
     max-width: 100%;
+    height: auto !important;
+    max-height: none !important;
     padding-left: 1rem;
     padding-right: 1rem;
-    padding-bottom: max(2rem, calc(var(--safe-bottom) + 1.75rem));
+    padding-bottom: max(2.5rem, calc(var(--safe-bottom) + 2rem));
     gap: 1.25rem;
     align-items: stretch;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .auth-screen {
+    height: auto !important;
+    max-height: none !important;
+    min-height: var(--app-vh) !important;
+    overflow-x: hidden;
+    overflow-y: visible;
+    align-items: flex-start;
+    padding-top: max(2rem, calc(var(--safe-top) + 1.25rem));
+    padding-bottom: max(2rem, calc(var(--safe-bottom) + 1.25rem));
   }
 
   .app-content > .app-page,
   .app-content > .app-page.is-active {
     display: flex;
+    flex-direction: column;
     flex: 0 0 auto !important;
     flex-shrink: 0 !important;
     height: auto !important;
@@ -2568,6 +2647,12 @@ body.sidebar-scroll-lock {
     max-width: 100%;
   }
 
+  .app-main .header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+
   .panel,
   .form,
   .field,
@@ -2591,11 +2676,6 @@ body.sidebar-scroll-lock {
 
   .btn {
     max-width: 100%;
-  }
-
-  .app-main .header {
-    position: relative;
-    top: auto;
   }
 
   /* Wallet overview: stack cards with clear gap; never clip action buttons */
@@ -2681,16 +2761,21 @@ body.sidebar-scroll-lock {
     max-width: 100% !important;
   }
 
+  /* Keyboard open: keep natural scroll — do not re-lock shell to 100% height */
   html.kb-open .app-shell,
   html.kb-open .app-main,
   html.kb-open #dashboardScreen,
-  html.kb-open #adminApp {
-    height: 100% !important;
-    max-height: 100% !important;
+  html.kb-open #adminApp,
+  html.kb-open .app-content {
+    height: auto !important;
+    max-height: none !important;
     min-height: 0 !important;
     max-width: 100% !important;
+    overflow: visible !important;
+  }
+
+  body.sidebar-scroll-lock {
     overflow: hidden !important;
-    overflow-x: hidden !important;
   }
 }
 
@@ -3101,9 +3186,10 @@ html.app-hydrating .wallet-hero-actions-row {
   .app-content {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
-    padding-bottom: max(2rem, calc(var(--safe-bottom) + 1.75rem)) !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
+    padding-bottom: max(2.5rem, calc(var(--safe-bottom) + 2rem)) !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
   }
 
   .app-page,
