@@ -17,6 +17,7 @@
     "test:nowpayments-ipn": "node scripts/test-nowpayments-ipn.js",
     "test:nowpayments-payout": "node scripts/test-nowpayments-payout.js",
     "test:withdraw-rollback": "node scripts/test-withdraw-rollback.js",
+    "test:admin-usdt-wd-list": "node scripts/test-admin-usdt-withdrawal-list.js",
     "test:transaction-csv-export": "node scripts/test-transaction-csv-export.js"
   },
   "dependencies": {

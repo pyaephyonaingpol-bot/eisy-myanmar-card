@@ -126,23 +126,53 @@ const UsdtWithdrawal = {
 
   async listAll({ status, limit = 200 } = {}) {
     const db = getDb();
-    if (status) {
+    const lim = Math.min(Math.max(parseInt(limit, 10) || 200, 1), 500);
+    const normalized = status == null || status === '' || status === 'all'
+      ? null
+      : String(status).trim().toLowerCase();
+
+    // Admin default "pending" queue: include in-flight NOWPayments payouts (`processing`).
+    // Use status=pending_only for strictly pending rows.
+    if (normalized === 'pending' || normalized === 'open') {
       return db.all(`
         SELECT w.*, u.name AS user_name, u.email AS user_email
         FROM ${this.TABLE} w
-        JOIN users u ON u.id = w.user_id
-        WHERE w.status = ?
+        LEFT JOIN users u ON u.id = w.user_id
+        WHERE LOWER(w.status) IN ('pending', 'processing')
         ORDER BY w.created_at DESC
         LIMIT ?
-      `, status, limit);
+      `, lim);
     }
+
+    if (normalized === 'pending_only') {
+      return db.all(`
+        SELECT w.*, u.name AS user_name, u.email AS user_email
+        FROM ${this.TABLE} w
+        LEFT JOIN users u ON u.id = w.user_id
+        WHERE LOWER(w.status) = 'pending'
+        ORDER BY w.created_at DESC
+        LIMIT ?
+      `, lim);
+    }
+
+    if (normalized) {
+      return db.all(`
+        SELECT w.*, u.name AS user_name, u.email AS user_email
+        FROM ${this.TABLE} w
+        LEFT JOIN users u ON u.id = w.user_id
+        WHERE LOWER(w.status) = ?
+        ORDER BY w.created_at DESC
+        LIMIT ?
+      `, normalized, lim);
+    }
+
     return db.all(`
       SELECT w.*, u.name AS user_name, u.email AS user_email
       FROM ${this.TABLE} w
-      JOIN users u ON u.id = w.user_id
+      LEFT JOIN users u ON u.id = w.user_id
       ORDER BY w.created_at DESC
       LIMIT ?
-    `, limit);
+    `, lim);
   },
 };
 
