@@ -176,11 +176,7 @@ const Dashboard = {
         this.renderUsdtWalletPage(this._usdtWalletCache);
       }
     } else if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
-      // Soft-refresh overview fields without waiting for Turso.
-      if ($('usdtWalletAvailableBalance')) $('usdtWalletAvailableBalance').textContent = data.usdt_formatted;
-      if ($('usdtWalletLockedBalance')) $('usdtWalletLockedBalance').textContent = data.locked_formatted;
-      if ($('usdtWalletTotalBalance')) $('usdtWalletTotalBalance').textContent = data.total_formatted;
-      if ($('usdtWalletPageBalance')) $('usdtWalletPageBalance').textContent = data.usdt_formatted;
+      this.syncUsdtWalletBalancesFromPayload(data);
     }
     return true;
   },
@@ -780,33 +776,92 @@ const Dashboard = {
     });
   },
 
+  setUsdtWalletBalancePlaceholders(text) {
+    const label = text == null || text === '' ? '—' : String(text);
+    if ($('usdtWalletAvailableBalance')) $('usdtWalletAvailableBalance').textContent = label;
+    if ($('usdtWalletLockedBalance')) $('usdtWalletLockedBalance').textContent = label;
+    if ($('usdtWalletTotalBalance')) $('usdtWalletTotalBalance').textContent = label;
+  },
+
+  /**
+   * Map /api/user/wallet (or partial) payloads into USDT wallet page balance fields.
+   */
+  syncUsdtWalletBalancesFromPayload(data) {
+    if (!data) return;
+    const available = data.balance_usdt ?? data.available_usdt;
+    const locked = data.balance_usdt_locked ?? data.locked_usdt ?? 0;
+    const total = data.balance_usdt_total
+      ?? data.total_usdt
+      ?? (Number(available || 0) + Number(locked || 0));
+    this.renderUsdtWalletPage({
+      ...data,
+      balance_usdt: available,
+      balance_usdt_locked: locked,
+      balance_usdt_total: total,
+      balance_formatted: data.balance_formatted || data.available_formatted || data.usdt_formatted,
+      locked_formatted: data.locked_formatted || data.usdt_locked_formatted,
+      total_formatted: data.total_formatted || data.usdt_total_formatted,
+    });
+  },
+
   async loadUsdtWalletPage(_forceRefresh = true) {
     if (!Auth.isLoggedIn()) return;
-    const balanceEl = $('usdtWalletPageBalance');
     const depositEl = $('usdtWalletDepositAddresses');
     const linkedEl = $('usdtLinkedWalletsList');
-    if (!depositEl) return;
 
     // Always force a fresh API fetch so Supabase Table Editor edits show immediately.
-    // (Previously a client cache could keep stale Turso balances on screen.)
+    this.setUsdtWalletBalancePlaceholders('Loading…');
+
     try {
       const data = await (window.EisyServices?.usdtWallet?.getOverview
         ? window.EisyServices.usdtWallet.getOverview()
         : Auth.api('GET', `/api/user/usdt-wallet?_=${Date.now()}`, null, { sensitive: true }));
       this._usdtWalletCache = data;
-      this.walletUsdt = data.balance_usdt;
-      this.walletUsdtLocked = data.balance_usdt_locked || 0;
+      this.walletUsdt = data.balance_usdt ?? data.available_usdt;
+      this.walletUsdtLocked = data.balance_usdt_locked ?? data.locked_usdt ?? 0;
       this.renderUsdtWalletPage(data);
-      await this.loadUsdtWalletTransactions();
+      try {
+        await this.loadUsdtWalletTransactions();
+      } catch (txErr) {
+        console.warn('[usdt-wallet] transactions:', txErr.message);
+      }
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
-        if (balanceEl) balanceEl.textContent = '🔒 Locked';
-        depositEl.innerHTML = '<p class="hint">Unlock with PIN to view your USDT wallet.</p>';
+        if (this.walletUsdt != null) {
+          this.syncUsdtWalletBalancesFromPayload({
+            balance_usdt: this.walletUsdt,
+            balance_usdt_locked: this.walletUsdtLocked || 0,
+          });
+        } else {
+          this.setUsdtWalletBalancePlaceholders('🔒 Locked');
+        }
+        if (depositEl) depositEl.innerHTML = '<p class="hint">Unlock with PIN to view your USDT wallet.</p>';
         if (linkedEl) linkedEl.innerHTML = '<p class="hint">PIN required.</p>';
         $('pinUnlockModal')?.classList.remove('hidden');
         return;
       }
-      depositEl.innerHTML = `<p class="hint">${err.message || 'Failed to load USDT wallet'}</p>`;
+
+      // Overview failed — still try the wallet balance endpoint so Available/Locked/Total populate.
+      try {
+        const wallet = await Auth.api('GET', `/api/user/wallet?_=${Date.now()}`, null, { sensitive: true });
+        this.walletUsdt = wallet.balance_usdt;
+        this.walletUsdtLocked = wallet.balance_usdt_locked || 0;
+        this.syncUsdtWalletBalancesFromPayload(wallet);
+      } catch (walletErr) {
+        if (this.walletUsdt != null) {
+          this.syncUsdtWalletBalancesFromPayload({
+            balance_usdt: this.walletUsdt,
+            balance_usdt_locked: this.walletUsdtLocked || 0,
+          });
+        } else {
+          this.setUsdtWalletBalancePlaceholders('—');
+        }
+        console.warn('[usdt-wallet] balance fallback failed:', walletErr.message);
+      }
+
+      if (depositEl) {
+        depositEl.innerHTML = `<p class="hint">${err.message || 'Failed to load USDT wallet'}</p>`;
+      }
     }
   },
 
@@ -888,21 +943,30 @@ const Dashboard = {
   },
 
   renderUsdtWalletPage(data) {
-    if ($('usdtWalletAvailableBalance')) {
-      $('usdtWalletAvailableBalance').textContent = data.balance_formatted || this.formatUsdt(data.balance_usdt);
-    }
-    if ($('usdtWalletLockedBalance')) {
-      $('usdtWalletLockedBalance').textContent = data.locked_formatted || this.formatUsdt(data.balance_usdt_locked || 0);
-    }
-    if ($('usdtWalletTotalBalance')) {
-      $('usdtWalletTotalBalance').textContent = data.total_formatted || this.formatUsdt(data.balance_usdt_total || data.balance_usdt);
-    }
+    if (!data) return;
+    const availableNum = data.balance_usdt ?? data.available_usdt;
+    const lockedNum = data.balance_usdt_locked ?? data.locked_usdt ?? 0;
+    const totalNum = data.balance_usdt_total
+      ?? data.total_usdt
+      ?? (Number(availableNum || 0) + Number(lockedNum || 0));
+    const availableText = data.balance_formatted
+      || data.available_formatted
+      || data.usdt_formatted
+      || this.formatUsdt(availableNum);
+    const lockedText = data.locked_formatted
+      || data.usdt_locked_formatted
+      || this.formatUsdt(lockedNum);
+    const totalText = data.total_formatted
+      || data.usdt_total_formatted
+      || this.formatUsdt(totalNum);
+
+    if ($('usdtWalletAvailableBalance')) $('usdtWalletAvailableBalance').textContent = availableText;
+    if ($('usdtWalletLockedBalance')) $('usdtWalletLockedBalance').textContent = lockedText;
+    if ($('usdtWalletTotalBalance')) $('usdtWalletTotalBalance').textContent = totalText;
     if ($('sumBalanceUsdt')) {
-      const locked = Number(data.balance_usdt_locked || 0);
-      const available = data.balance_formatted || this.formatUsdt(data.balance_usdt);
-      $('sumBalanceUsdt').textContent = locked > 0
-        ? `${available} (${data.locked_formatted || this.formatUsdt(locked)} locked)`
-        : available;
+      $('sumBalanceUsdt').textContent = Number(lockedNum) > 0
+        ? `${availableText} (${lockedText} locked)`
+        : availableText;
     }
 
     this.renderUsdtEscrowHolds(data.escrow_holds);
@@ -3885,6 +3949,10 @@ const Dashboard = {
           this.refreshAuthUI();
           this.loadWallet();
           this.loadAllCards();
+          if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+            this._usdtWalletCache = null;
+            this.loadUsdtWalletPage(true);
+          }
         } catch (err) {
           $('pinUnlockError').textContent = err.message;
         }
@@ -3905,6 +3973,10 @@ const Dashboard = {
           this.refreshAuthUI();
           this.loadWallet();
           this.loadAllCards();
+          if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+            this._usdtWalletCache = null;
+            this.loadUsdtWalletPage(true);
+          }
         } catch (err) {
           $('pinUnlockError').textContent = err.message;
           this.toast(err.message || 'Failed to reset PIN', 'error');
@@ -5756,10 +5828,17 @@ const Dashboard = {
       if ($('sumName')) $('sumName').textContent = Auth.user?.name || '—';
       if ($('sumPhone')) $('sumPhone').textContent = Auth.user?.phone || '—';
       if ($('sumEmail')) $('sumEmail').textContent = Auth.user?.email || '—';
+      // Keep USDT Wallet page Available/Locked/Total in sync with the same payload.
+      if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+        this.syncUsdtWalletBalancesFromPayload(data);
+      }
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
         if ($('sumBalanceMmk')) $('sumBalanceMmk').textContent = '🔒 Locked';
         if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = '🔒 Locked';
+        if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+          this.setUsdtWalletBalancePlaceholders('🔒 Locked');
+        }
       }
     }
   },

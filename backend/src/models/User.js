@@ -2,6 +2,7 @@ const { getDb } = require('../db');
 
 const PUBLIC_FIELDS = [
   'id', 'name', 'phone', 'email', 'username', 'email_verified', 'kyc_status', 'balance', 'balance_mmk', 'balance_usdt',
+  'balance_usdt_locked',
   'auth_status', 'biometrics_enabled', 'last_login_at', 'created_at', 'updated_at',
 ];
 
