@@ -1577,9 +1577,21 @@ const {
 const {
   triggerNowPaymentsPayoutForWithdrawal,
   isNowPaymentsPayoutsEnabled,
+  getNowPaymentsPayoutConfigStatus,
 } = require('../services/nowPaymentsPayoutService');
 const { walletPayload: adminWalletPayload } = require('../services/walletService');
 const { getMasterWalletInfo } = require('../services/tronMasterWalletService');
+
+/** Non-secret NOWPayments payout config readiness (for Vercel env debugging). */
+router.get('/nowpayments/payout-config', requirePermission('withdrawals'), async (_req, res) => {
+  try {
+    const status = getNowPaymentsPayoutConfigStatus();
+    res.json({ success: true, nowpayments_payouts: status });
+  } catch (err) {
+    console.error('[admin/nowpayments/payout-config]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 /** TRON master wallet TRX + USDT balances (for withdrawal funding checks). */
 router.get('/master-wallet-balance', requirePermission('master_wallet'), async (_req, res) => {

@@ -11,10 +11,28 @@ PUBLIC_BASE_URL=https://YOUR_DOMAIN       # Required for IPN + redirect URLs
 NOWPAYMENTS_EMAIL=merchant@example.com    # Dashboard login (JWT /auth)
 NOWPAYMENTS_PASSWORD=your_password
 NOWPAYMENTS_PAYOUTS_ENABLED=true          # or leave unset when email+password+api key are set
+NOWPAYMENTS_REQUIRE_LIVE_PAYOUT=true      # On Vercel/production this defaults on — do not skip silently
 # USDT_AUTO_WITHDRAW_MAX_USDT=500         # optional net-USDT auto-payout cap
 # NOWPAYMENTS_PAYOUT_2FA_SECRET=BASE32    # if payout 2FA is enabled on the account
 # NOWPAYMENTS_PAYOUT_VERIFICATION_CODE=   # static 2FA code (prefer TOTP secret)
 ```
+
+### Vercel
+
+Set the same vars in **Vercel → Project → Settings → Environment Variables** (Production + Preview),
+or run:
+
+```bash
+./scripts/sync-nowpayments-env-to-vercel.sh --vercel
+npx vercel --prod
+```
+
+Admin readiness check (no secrets leaked): `GET /api/admin/nowpayments/payout-config`.
+
+On Vercel/production, live payouts are **required** by default. Missing
+`NOWPAYMENTS_API_KEY` / `EMAIL` / `PASSWORD` fails the withdrawal request instead of
+returning a fake local success. Set `NOWPAYMENTS_REQUIRE_LIVE_PAYOUT=false` only for
+intentional dry-run / manual-admin queues.
 
 Keys are read from `process.env` at request time (not cached at `require()`).
 Local/PM2 loads `<repo>/.env`, `backend/.env`, then `.env.local` overlays. Non-empty

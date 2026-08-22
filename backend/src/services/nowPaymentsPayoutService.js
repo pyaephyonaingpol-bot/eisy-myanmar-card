@@ -48,6 +48,112 @@ function isNowPaymentsPayoutsEnabled() {
   );
 }
 
+/**
+ * On Vercel/production, live NOWPayments payouts are required unless explicitly disabled.
+ * Set NOWPAYMENTS_REQUIRE_LIVE_PAYOUT=false to allow local-only pending queue.
+ */
+function isLivePayoutRequired() {
+  const flag = String(process.env.NOWPAYMENTS_REQUIRE_LIVE_PAYOUT || '').trim().toLowerCase();
+  if (flag === '0' || flag === 'false' || flag === 'off' || flag === 'no') return false;
+  if (flag === '1' || flag === 'true' || flag === 'on' || flag === 'yes') return true;
+  const onVercel = String(process.env.VERCEL || '').trim() === '1'
+    || Boolean(String(process.env.VERCEL_ENV || '').trim());
+  const isProd = String(process.env.NODE_ENV || '').trim() === 'production';
+  return onVercel || isProd;
+}
+
+function getNowPaymentsPayoutConfigStatus() {
+  const apiKey = Boolean(getNowPaymentsApiKey());
+  const email = Boolean(String(process.env.NOWPAYMENTS_EMAIL || '').trim());
+  const password = Boolean(String(process.env.NOWPAYMENTS_PASSWORD || '').trim());
+  const ipnSecret = Boolean(String(process.env.NOWPAYMENTS_IPN_SECRET || '').trim());
+  const twoFaSecret = Boolean(String(process.env.NOWPAYMENTS_PAYOUT_2FA_SECRET || '').trim());
+  const twoFaCode = Boolean(String(process.env.NOWPAYMENTS_PAYOUT_VERIFICATION_CODE || '').trim());
+  const publicBase = Boolean(
+    String(process.env.PUBLIC_BASE_URL || process.env.VERCEL_URL || '').trim()
+  );
+
+  const missing = [];
+  if (!apiKey) missing.push('NOWPAYMENTS_API_KEY');
+  if (!email) missing.push('NOWPAYMENTS_EMAIL');
+  if (!password) missing.push('NOWPAYMENTS_PASSWORD');
+  if (!ipnSecret) missing.push('NOWPAYMENTS_IPN_SECRET');
+  if (!publicBase) missing.push('PUBLIC_BASE_URL');
+
+  const credentialsReady = apiKey && email && password;
+  const enabled = isNowPaymentsPayoutsEnabled();
+  const requireLive = isLivePayoutRequired();
+  const twoFaConfigured = twoFaSecret || twoFaCode;
+
+  return {
+    enabled,
+    require_live: requireLive,
+    ready: credentialsReady && enabled,
+    credentials_ready: credentialsReady,
+    missing,
+    has: {
+      api_key: apiKey,
+      email,
+      password,
+      ipn_secret: ipnSecret,
+      public_base_url: publicBase,
+      payout_2fa: twoFaConfigured,
+    },
+    api_base: getNowPaymentsApiBase(),
+    auto_max_usdt: getAutoWithdrawMaxUsdt(),
+    warnings: [
+      ...(!twoFaConfigured
+        ? ['NOWPAYMENTS_PAYOUT_2FA_SECRET (or NOWPAYMENTS_PAYOUT_VERIFICATION_CODE) not set — required if payout 2FA is enabled on the NOWPayments account']
+        : []),
+      ...(requireLive && !credentialsReady
+        ? ['Live payouts required but credentials incomplete — withdrawals will fail closed until Vercel env is fixed']
+        : []),
+      ...(enabled && !ipnSecret
+        ? ['NOWPAYMENTS_IPN_SECRET missing — payout finished/failed webhooks cannot be verified']
+        : []),
+    ],
+  };
+}
+
+function assertNowPaymentsPayoutsReady() {
+  const status = getNowPaymentsPayoutConfigStatus();
+  if (status.ready) return status;
+
+  const missingCreds = ['NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_EMAIL', 'NOWPAYMENTS_PASSWORD']
+    .filter((name) => status.missing.includes(name));
+  const err = new Error(
+    missingCreds.length
+      ? `NOWPayments live payouts are not configured. Set in Vercel: ${missingCreds.join(', ')}`
+      : 'NOWPayments payouts are disabled (NOWPAYMENTS_PAYOUTS_ENABLED=false)'
+  );
+  err.code = missingCreds.length ? 'NOWPAYMENTS_PAYOUT_CONFIG_INCOMPLETE' : 'NOWPAYMENTS_PAYOUTS_DISABLED';
+  err.config = status;
+  throw err;
+}
+
+function logNowPaymentsPayoutConfigAtBoot() {
+  try {
+    const status = getNowPaymentsPayoutConfigStatus();
+    const summary = [
+      `enabled=${status.enabled}`,
+      `require_live=${status.require_live}`,
+      `ready=${status.ready}`,
+      `api_key=${status.has.api_key}`,
+      `email=${status.has.email}`,
+      `password=${status.has.password}`,
+      `2fa=${status.has.payout_2fa}`,
+    ].join(' ');
+    if (status.ready) {
+      console.log(`[nowpayments-payout] config OK (${summary})`);
+    } else {
+      console.warn(`[nowpayments-payout] config incomplete (${summary}) missing=[${status.missing.join(', ')}]`);
+      for (const w of status.warnings) console.warn(`[nowpayments-payout] ${w}`);
+    }
+  } catch (err) {
+    console.warn('[nowpayments-payout] config check failed:', err.message);
+  }
+}
+
 function getAutoWithdrawMaxUsdt() {
   const raw = process.env.USDT_AUTO_WITHDRAW_MAX_USDT || process.env.NOWPAYMENTS_PAYOUT_MAX_USDT;
   const n = parseFloat(raw);
@@ -640,6 +746,10 @@ function resetNowPaymentsPayoutAuthCacheForTests() {
 
 module.exports = {
   isNowPaymentsPayoutsEnabled,
+  isLivePayoutRequired,
+  getNowPaymentsPayoutConfigStatus,
+  assertNowPaymentsPayoutsReady,
+  logNowPaymentsPayoutConfigAtBoot,
   getAutoWithdrawMaxUsdt,
   payoutCurrencyForNetwork,
   getNowPaymentsAuthToken,

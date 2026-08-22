@@ -381,6 +381,7 @@
         this.loadP2pDisputes();
         this.loadP2pSellOrders();
         this.loadUsdtWithdrawals();
+        this.loadNowPaymentsPayoutConfig();
         this.loadMmkWithdrawals();
         if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
       }
@@ -984,7 +985,7 @@
         tasks.push(this.loadDeposits(), this.loadP2pDisputes(), this.loadP2pBuyOrders(), this.loadP2pSellOrders());
       }
       if (this.hasPermission('withdrawals')) {
-        tasks.push(this.loadUsdtWithdrawals(), this.loadMmkWithdrawals());
+        tasks.push(this.loadUsdtWithdrawals(), this.loadMmkWithdrawals(), this.loadNowPaymentsPayoutConfig());
       }
       if (this.hasPermission('cards')) {
         tasks.push(this.loadPendingCards(), this.loadIssuedCards(), this.loadPendingReloads());
@@ -2541,6 +2542,36 @@
       })();
 
       return this._masterWalletBalanceInFlight;
+    },
+
+    async loadNowPaymentsPayoutConfig() {
+      const el = $('nowpaymentsPayoutConfigStatus');
+      if (!el) return;
+      try {
+        const data = await this.api('GET', '/api/admin/nowpayments/payout-config');
+        const s = data.nowpayments_payouts || {};
+        const bits = [
+          s.ready ? 'ready' : 'NOT READY',
+          'enabled=' + Boolean(s.enabled),
+          'require_live=' + Boolean(s.require_live),
+          'api_key=' + Boolean(s.has?.api_key),
+          'email=' + Boolean(s.has?.email),
+          'password=' + Boolean(s.has?.password),
+          '2fa=' + Boolean(s.has?.payout_2fa),
+        ];
+        let msg = 'NOWPayments payouts: ' + bits.join(' · ');
+        if (Array.isArray(s.missing) && s.missing.length) {
+          msg += ' — missing Vercel env: ' + s.missing.join(', ');
+        }
+        if (Array.isArray(s.warnings) && s.warnings.length) {
+          msg += ' — ' + s.warnings[0];
+        }
+        el.textContent = msg;
+        el.style.color = s.ready ? '' : '#b45309';
+      } catch (err) {
+        el.textContent = 'NOWPayments payout config check failed: ' + (err.message || 'error');
+        el.style.color = '#ef4444';
+      }
     },
 
     async loadUsdtWithdrawals() {

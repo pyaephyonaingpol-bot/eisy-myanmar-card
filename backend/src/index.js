@@ -148,6 +148,13 @@ async function start() {
 
   await initDb();
 
+  try {
+    const { logNowPaymentsPayoutConfigAtBoot } = require('./services/nowPaymentsPayoutService');
+    logNowPaymentsPayoutConfigAtBoot();
+  } catch (err) {
+    console.warn('[nowpayments-payout] boot config log skipped:', err.message);
+  }
+
   const { processExpiredP2pOrders } = require('./services/p2pOrderExpiryService');
   const expiryInterval = setInterval(() => {
     processExpiredP2pOrders().catch((err) => {

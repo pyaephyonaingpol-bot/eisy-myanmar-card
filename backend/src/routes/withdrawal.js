@@ -206,6 +206,7 @@ router.post('/usdt', requireAuth, requireSensitive, async (req, res) => {
     const user = await User.findById(req.user.id);
     res.status(201).json({
       success: true,
+      payout_submitted: Boolean(result.payout && !result.payout.alreadyTriggered),
       ref_code: result.withdrawal.ref_code,
       withdrawal: mapUsdtWithdrawal(result.withdrawal),
       breakdown: result.breakdown,
@@ -222,13 +223,34 @@ router.post('/usdt', requireAuth, requireSensitive, async (req, res) => {
       wallet: walletPayload(user),
     });
   } catch (err) {
-    console.error('[withdrawal/usdt POST]', err);
-    const status = err.code === 'INSUFFICIENT_USDT_BALANCE' ? 402 : 400;
+    console.error('[withdrawal/usdt POST]', err.code || '', err.message);
+    if (err.withdrawal) {
+      const user = await User.findById(req.user.id).catch(() => null);
+      return res.status(err.status && Number.isFinite(err.status) ? err.status : 502).json({
+        success: false,
+        payout_submitted: false,
+        error: err.message || 'NOWPayments payout failed',
+        code: err.code || 'NOWPAYMENTS_PAYOUT_FAILED',
+        ref_code: err.withdrawal.ref_code,
+        withdrawal: mapUsdtWithdrawal(err.withdrawal),
+        breakdown: err.breakdown || undefined,
+        wallet: user ? walletPayload(user) : undefined,
+      });
+    }
+    const status = err.code === 'INSUFFICIENT_USDT_BALANCE'
+      ? 402
+      : ([
+        'NOWPAYMENTS_PAYOUT_CONFIG_INCOMPLETE',
+        'NOWPAYMENTS_PAYOUTS_DISABLED',
+        'NOWPAYMENTS_NOT_CONFIGURED',
+        'NOWPAYMENTS_PAYOUT_AUTH_MISSING',
+      ].includes(err.code) ? 503 : 400);
     res.status(status).json({
       error: err.message || 'Withdrawal failed',
       code: err.code,
       required_usdt: err.required_usdt,
       available_usdt: err.available_usdt,
+      missing: err.config?.missing,
     });
   }
 });

@@ -44,11 +44,23 @@ async function bootstrap() {
   ready = (async () => {
     await initDb();
     await ensureDemoUser();
+    try {
+      const { logNowPaymentsPayoutConfigAtBoot } = require('../src/services/nowPaymentsPayoutService');
+      logNowPaymentsPayoutConfigAtBoot();
+    } catch (err) {
+      console.warn('[nowpayments-payout] boot config log skipped:', err.message);
+    }
     console.log('[vercel] Express serverless handler ready', {
       env: process.env.VERCEL_ENV || process.env.NODE_ENV,
       hasBinanceKey: Boolean(process.env.BINANCE_API_KEY || process.env.BINANCE_PAY_API_KEY),
       hasBinanceSecret: Boolean(process.env.BINANCE_SECRET_KEY || process.env.BINANCE_PAY_API_SECRET),
       hasMerchantId: Boolean(process.env.BINANCE_MERCHANT_ID || process.env.BINANCE_PAY_MERCHANT_ID),
+      hasNowPaymentsApiKey: Boolean(process.env.NOWPAYMENTS_API_KEY),
+      hasNowPaymentsEmail: Boolean(process.env.NOWPAYMENTS_EMAIL),
+      hasNowPaymentsPassword: Boolean(process.env.NOWPAYMENTS_PASSWORD),
+      hasNowPayments2fa: Boolean(
+        process.env.NOWPAYMENTS_PAYOUT_2FA_SECRET || process.env.NOWPAYMENTS_PAYOUT_VERIFICATION_CODE
+      ),
     });
   })().catch((err) => {
     ready = null;
