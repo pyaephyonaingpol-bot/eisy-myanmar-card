@@ -1626,6 +1626,29 @@ const Dashboard = {
     btn.textContent = busy ? 'Compressing photos…' : 'Submit for Review';
   },
 
+  canCompressKycImages() {
+    const compressFn = typeof imageCompression === 'function'
+      ? imageCompression
+      : (typeof window !== 'undefined' && typeof window.imageCompression === 'function'
+        ? window.imageCompression
+        : null);
+    // browser-image-compression sets CustomFileReader=false when FileReader is missing
+    // (Capacitor / React Native WebViews), which throws on `new CustomFileReader()`.
+    return Boolean(compressFn && typeof FileReader === 'function');
+  },
+
+  shouldUseKycCompressionWorker() {
+    if (typeof Worker !== 'function') return false;
+    // Workers in native shells often lack FileReader even when the main page has it.
+    try {
+      if (window.Capacitor?.isNativePlatform?.()) return false;
+    } catch (_) { /* ignore */ }
+    if (typeof window !== 'undefined' && window.cordova) return false;
+    const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '';
+    if (/ReactNative|Hermes/i.test(ua)) return false;
+    return true;
+  },
+
   async compressKycImage(file, { onProgress } = {}) {
     if (!file || !/^image\//.test(file.type)) {
       throw new Error('Please select an image file');
@@ -1634,20 +1657,18 @@ const Dashboard = {
     if (file.size <= 900 * 1024 && file.size > 0) {
       return file;
     }
-    const compressFn = typeof imageCompression === 'function'
-      ? imageCompression
-      : (typeof window !== 'undefined' && typeof window.imageCompression === 'function'
-        ? window.imageCompression
-        : null);
-    if (!compressFn) {
-      console.warn('[kyc] browser-image-compression not loaded — uploading original');
+    if (!this.canCompressKycImages()) {
+      console.warn('[kyc] FileReader/imageCompression unavailable — uploading original');
       return file;
     }
+    const compressFn = typeof imageCompression === 'function'
+      ? imageCompression
+      : window.imageCompression;
 
     const options = {
       maxSizeMB: 1,
       maxWidthOrHeight: 1920,
-      useWebWorker: true,
+      useWebWorker: this.shouldUseKycCompressionWorker(),
       // Prefer local vendor copy so workers don't hit CDN
       libURL: '/vendor/browser-image-compression.js?v=20260812a',
       initialQuality: 0.8,
@@ -1657,7 +1678,13 @@ const Dashboard = {
         : undefined,
     };
 
-    let compressed = await compressFn(file, options);
+    let compressed;
+    try {
+      compressed = await compressFn(file, options);
+    } catch (err) {
+      console.warn('[kyc] image compression failed — uploading original', err);
+      return file;
+    }
     // Ensure File has a stable name for multer / UX
     if (!(compressed instanceof File)) {
       compressed = new File([compressed], file.name.replace(/\.\w+$/, '') + '.jpg', {
