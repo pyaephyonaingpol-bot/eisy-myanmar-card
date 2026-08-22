@@ -77,11 +77,13 @@ app.use('/uploads', express.static(UPLOAD_DIR));
 
 app.get('/health', (_req, res) => {
   const { getDatabaseInfo } = require('./db');
+  const { getSupabaseStatus } = require('./lib/supabase');
   res.json({
     status: 'ok',
     service: 'Eisy Myanmar Backend',
     timestamp: new Date().toISOString(),
     database: getDatabaseInfo(),
+    supabase: getSupabaseStatus(),
   });
 });
 
