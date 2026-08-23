@@ -1367,6 +1367,27 @@
             </div>
 
             <div class="settings-grid">
+              <div class="settings-card settings-card-wide">
+                <h3 data-i18n="profile_heading">Profile</h3>
+                <p class="hint" style="margin-bottom:0.75rem" data-i18n="profile_hint">Update your display name and phone number alongside your sign-in email.</p>
+                <form id="profileForm" class="form form-compact">
+                  <div class="field">
+                    <label for="profileName" data-i18n="name">Name</label>
+                    <input id="profileName" name="name" type="text" required autocomplete="name" />
+                  </div>
+                  <div class="field">
+                    <label for="profileEmail" data-i18n="email">Email</label>
+                    <input id="profileEmail" type="email" readonly disabled aria-readonly="true" />
+                    <small class="hint" data-i18n="profile_email_readonly">Email is used for sign-in and cannot be changed here.</small>
+                  </div>
+                  <div class="field">
+                    <label for="profilePhone"><span data-i18n="phone">Phone</span> <span class="hint" data-i18n="profile_phone_optional">(optional)</span></label>
+                    <input id="profilePhone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+959..." />
+                  </div>
+                  <p id="profileFormError" class="error-text hidden"></p>
+                  <button type="submit" id="profileFormSubmit" class="btn btn-primary btn-sm" data-i18n="btn_save_profile">Save Profile</button>
+                </form>
+              </div>
               <div class="settings-card">
                 <h3>Security PIN</h3>
                 <p>Your 6-digit PIN protects wallet balance, card details, and deposit actions.</p>

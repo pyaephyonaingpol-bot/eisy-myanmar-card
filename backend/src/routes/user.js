@@ -30,6 +30,7 @@ const {
   reloadCardFromUsdtWallet,
 } = require('../services/cardWalletService');
 const { resolveActivePaymentMethod } = require('../services/depositPaymentMethodService');
+const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
   isPendingCardRecord,
   normalizeCardStatus,
@@ -119,7 +120,7 @@ router.get('/me', requireAuth, async (req, res) => {
     const user = await User.findById(req.user.id);
     res.json({
       user: {
-        ...User.stripPrivate(user),
+        ...mapPublicUser(user),
         has_pin: Boolean(user.pin_hash),
         has_password: Boolean(user.password_hash),
         biometrics_enabled: Boolean(user.biometrics_enabled),
@@ -130,6 +131,38 @@ router.get('/me', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[user/me]', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.patch('/profile', requireAuth, async (req, res) => {
+  try {
+    const { name, phone } = req.body || {};
+    if (name == null && phone === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: 'Provide name and/or phone to update',
+        code: 'PROFILE_NOTHING_TO_UPDATE',
+      });
+    }
+
+    const user = await updateUserProfile(req.user.id, { name, phone });
+    res.json({
+      success: true,
+      message: 'Profile updated',
+      user,
+    });
+  } catch (err) {
+    console.error('[user/profile PATCH]', err);
+    const status = err.code === 'PHONE_ALREADY_REGISTERED'
+      || err.code === 'INVALID_PHONE'
+      || err.code === 'INVALID_NAME'
+      ? 400
+      : 500;
+    res.status(status).json({
+      success: false,
+      error: err.message || 'Failed to update profile',
+      code: err.code || 'PROFILE_UPDATE_FAILED',
+    });
   }
 });
 
@@ -667,13 +700,7 @@ router.get('/:user_id', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     res.json({
-      user: {
-        id: user.id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-        created_at: user.created_at,
-      },
+      user: mapPublicUser(user),
     });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });

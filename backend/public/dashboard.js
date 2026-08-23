@@ -84,6 +84,7 @@ const Dashboard = {
       this.clearStaleDepositDrafts();
       this.bindAuthForms();
       this.bindChangePasswordForm();
+      this.bindProfileForm();
       this.bindDashboardForms();
       this.initSupabase().catch((err) => console.warn('[Dashboard] Supabase init:', err.message));
       this.bindCardCopyButtons();
@@ -260,6 +261,7 @@ const Dashboard = {
       this.loadSupportThreads();
       this.loadKycStatusUI();
       this.updateChangePasswordUI();
+      this.updateProfileFormUI();
     }
     if (page === 'cards') {
       const hasPending = (this.allCards || []).some((c) => this.isCardPending(c));
@@ -4182,6 +4184,101 @@ const Dashboard = {
     return null;
   },
 
+  formatUserPhone(phone) {
+    const value = String(phone || '').trim();
+    if (!value) return null;
+    if (/^e[0-9a-f]{12}$/i.test(value)) return null;
+    return value;
+  },
+
+  updateProfileFormUI() {
+    const user = Auth.user || {};
+    const nameEl = $('profileName');
+    const emailEl = $('profileEmail');
+    const phoneEl = $('profilePhone');
+    const errEl = $('profileFormError');
+    if (nameEl) nameEl.value = user.name || '';
+    if (emailEl) emailEl.value = user.email || '';
+    if (phoneEl) {
+      phoneEl.value = this.formatUserPhone(user.phone || user.phone_display) || '';
+    }
+    if (errEl) {
+      errEl.textContent = '';
+      errEl.classList.add('hidden');
+    }
+    const acctInfo = $('settingsAccountInfo');
+    if (acctInfo) {
+      const phoneLabel = this.formatUserPhone(user.phone || user.phone_display);
+      const parts = [
+        user.name || user.email || 'User',
+        user.email ? `(${user.email})` : null,
+        phoneLabel ? `· ${phoneLabel}` : null,
+      ].filter(Boolean);
+      acctInfo.textContent = `Signed in as ${parts.join(' ')}`;
+    }
+  },
+
+  bindProfileForm() {
+    const form = $('profileForm');
+    if (!form || form.dataset.bound) return;
+    form.dataset.bound = '1';
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = $('profileFormError');
+      const submitBtn = $('profileFormSubmit');
+      const name = $('profileName')?.value?.trim();
+      const phone = $('profilePhone')?.value?.trim() ?? '';
+
+      if (!name) {
+        const msg = 'Name is required';
+        if (errEl) {
+          errEl.textContent = msg;
+          errEl.classList.remove('hidden');
+        }
+        this.toast(msg, 'error');
+        return;
+      }
+
+      if (errEl) {
+        errEl.textContent = '';
+        errEl.classList.add('hidden');
+      }
+      if (submitBtn) submitBtn.disabled = true;
+
+      try {
+        const data = window.EisyServices?.account?.updateProfile
+          ? await window.EisyServices.account.updateProfile({ name, phone })
+          : await Auth.api('PATCH', '/api/user/profile', { name, phone });
+
+        const nextUser = data.user || {};
+        if (Auth.user) {
+          Auth.setSession({
+            sessionToken: Auth.sessionToken,
+            user: { ...Auth.user, ...nextUser },
+            pinToken: Auth.pinToken,
+          });
+        }
+        this.updateProfileFormUI();
+        if ($('sumName')) $('sumName').textContent = nextUser.name || name;
+        if ($('sumPhone')) {
+          $('sumPhone').textContent = this.formatUserPhone(nextUser.phone || nextUser.phone_display) || '—';
+        }
+        if ($('sumEmail')) $('sumEmail').textContent = nextUser.email || Auth.user?.email || '—';
+        if ($('headerUser')) $('headerUser').textContent = nextUser.name || Auth.user?.name || '';
+        this.toast(data.message || 'Profile updated', 'ok');
+        this.log('Profile updated', 'ok');
+      } catch (err) {
+        if (errEl) {
+          errEl.textContent = err.message || 'Failed to update profile';
+          errEl.classList.remove('hidden');
+        }
+        this.toast(err.message || 'Failed to update profile', 'error');
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+  },
+
   updateChangePasswordUI() {
     const hint = $('changePasswordHint');
     const currentField = $('currentPassword');
@@ -4529,10 +4626,16 @@ const Dashboard = {
     if (Auth.user) {
       if ($('headerUser')) $('headerUser').textContent = Auth.user.name || Auth.user.email;
       if ($('headerEmail')) $('headerEmail').textContent = Auth.user.email || '';
-      const acctInfo = $('settingsAccountInfo');
       if (acctInfo) {
-        acctInfo.textContent = `Signed in as ${Auth.user.name || Auth.user.email} (${Auth.user.email})`;
+        const phoneLabel = this.formatUserPhone(Auth.user.phone || Auth.user.phone_display);
+        const parts = [
+          Auth.user.name || Auth.user.email || 'User',
+          Auth.user.email ? `(${Auth.user.email})` : null,
+          phoneLabel ? `· ${phoneLabel}` : null,
+        ].filter(Boolean);
+        acctInfo.textContent = `Signed in as ${parts.join(' ')}`;
       }
+      this.updateProfileFormUI();
       if (Auth.needsPinUnlock()) {
         $('pinUnlockModal')?.classList.remove('hidden');
         this.applyCachedCardsIfAvailable();
@@ -6018,7 +6121,9 @@ const Dashboard = {
         this.walletUsdtLocked = data.balance_usdt_locked || 0;
         this._markFetched('wallet');
         if ($('sumName')) $('sumName').textContent = Auth.user?.name || '—';
-        if ($('sumPhone')) $('sumPhone').textContent = Auth.user?.phone || '—';
+        if ($('sumPhone')) {
+          $('sumPhone').textContent = this.formatUserPhone(Auth.user?.phone || Auth.user?.phone_display) || '—';
+        }
         if ($('sumEmail')) $('sumEmail').textContent = Auth.user?.email || '—';
         // Keep USDT Wallet page Available/Locked/Total in sync with the same payload.
         if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {

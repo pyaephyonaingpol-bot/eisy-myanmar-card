@@ -1,4 +1,4 @@
-const User = require('../models/User');
+const { mapPublicUser } = require('./profileService');
 const OtpCode = require('../models/OtpCode');
 const UserSession = require('../models/UserSession');
 const TransactionLog = require('../models/TransactionLog');
@@ -33,11 +33,11 @@ function pinTokenMeta() {
   };
 }
 
-function syntheticPhone(email) {
-  const normalized = normalizeEmail(email);
-  const digest = crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 12);
-  return `e${digest}`;
-}
+const {
+  isSyntheticPhone,
+  syntheticPhone,
+  normalizePhoneInput,
+} = require('../lib/phoneUtils');
 
 function mapUserPersistenceError(err) {
   const msg = String(err?.message || err || '');
@@ -63,13 +63,14 @@ function mapUserPersistenceError(err) {
 async function resolveRegistrationPhone(normalizedEmail, phone) {
   const trimmed = String(phone || '').trim();
   if (trimmed) {
-    const existing = await User.findByPhone(trimmed);
+    const normalized = normalizePhoneInput(trimmed);
+    const existing = await User.findByPhone(normalized);
     if (existing) {
       const err = new Error('Phone number already registered — use a different number or log in');
       err.code = 'PHONE_ALREADY_REGISTERED';
       throw err;
     }
-    return trimmed;
+    return normalized;
   }
 
   let candidate = syntheticPhone(normalizedEmail);
@@ -163,7 +164,7 @@ async function completeRegistration({ email, otp, name, phone, pin, ipAddress, d
   });
 
   return {
-    user: User.stripPrivate(user),
+    user: mapPublicUser(user),
     sessionToken,
     session,
     session_expires_at: session?.expires_at || sessionExpiresAt(),
@@ -240,7 +241,7 @@ async function loginWithPin({ email, pin, ipAddress, deviceName, devicePlatform 
 
   const freshUser = await User.findById(user.id);
   return {
-    user: User.stripPrivate(freshUser),
+    user: mapPublicUser(freshUser),
     sessionToken,
     session,
     session_expires_at: session?.expires_at || sessionExpiresAt(),
@@ -285,7 +286,7 @@ async function verifyLoginOtp({ email, otp, ipAddress, deviceName, devicePlatfor
 
   const freshUser = await User.findById(user.id);
   return {
-    user: User.stripPrivate(freshUser),
+    user: mapPublicUser(freshUser),
     sessionToken,
     session,
     session_expires_at: session?.expires_at || sessionExpiresAt(),
@@ -426,7 +427,7 @@ async function verifyBiometrics(email, deviceToken, ipAddress, deviceName, devic
   });
 
   return {
-    user: User.stripPrivate(user),
+    user: mapPublicUser(user),
     sessionToken,
     session,
     session_expires_at: session?.expires_at || sessionExpiresAt(),
@@ -473,7 +474,7 @@ async function getMe(userId) {
   const user = await User.findById(userId);
   if (!user) throw new Error('User not found');
   return {
-    ...User.stripPrivate(user),
+    ...mapPublicUser(user),
     has_pin: Boolean(user.pin_hash),
     has_password: Boolean(user.password_hash),
     kyc_status: (user.kyc_status || 'UNVERIFIED').toUpperCase(),

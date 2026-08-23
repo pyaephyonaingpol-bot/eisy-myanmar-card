@@ -1,0 +1,4 @@
+-- 044_user_profile_phone.sql
+-- User profile phone is stored on users.phone (existing column).
+-- Optional in the UI: empty submissions keep or assign a synthetic internal placeholder.
+-- No ALTER required for SQLite; documents profile PATCH /api/user/profile support.
