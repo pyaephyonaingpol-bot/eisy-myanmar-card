@@ -337,6 +337,101 @@ async function main() {
   }
 
   console.log('\nNOWPayments IPN + local deposit checks passed.');
+
+  section('Supabase finish when IPN payment_id differs from invoice id');
+  process.env.SUPABASE_URL = 'https://example.supabase.co';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-secret-key';
+  resetSupabaseClientForTests();
+
+  const supabaseRows = [{
+    id: 'tx-mismatch-1',
+    user_id: '42',
+    payment_id: '555001',
+    amount: 24,
+    currency: 'USDT',
+    status: 'pending',
+    payment_status: 'waiting',
+    order_id: 'NP-ORDER-MISMATCH',
+    metadata: { net_usdt: 24, deposit_ref: 'REF-MISMATCH' },
+  }];
+
+  function makeTransactionsMock(rows) {
+    return {
+      from(table) {
+        if (table !== 'transactions') {
+          throw new Error(`unexpected table: ${table}`);
+        }
+        const ctx = {};
+        const chain = {
+          select() { return chain; },
+          insert(row) {
+            rows.push(row);
+            return {
+              select() {
+                return {
+                  single: async () => ({ data: row, error: null }),
+                };
+              },
+            };
+          },
+          update(payload) {
+            ctx.update = payload;
+            return chain;
+          },
+          eq(column, value) {
+            ctx.filters = ctx.filters || [];
+            ctx.filters.push({ column, value });
+            return chain;
+          },
+          maybeSingle: async () => {
+            const match = rows.find((row) => (
+              (ctx.filters || []).every((f) => String(row[f.column]) === String(f.value))
+            ));
+            if (ctx.update && match) {
+              Object.assign(match, ctx.update);
+              return { data: { ...match }, error: null };
+            }
+            return { data: match ? { ...match } : null, error: null };
+          },
+        };
+        return chain;
+      },
+    };
+  }
+
+  const supabase = require('../src/lib/supabase');
+  resetSupabaseClientForTests();
+  const originalGetSupabase = supabase.getSupabase;
+  supabase.getSupabase = () => makeTransactionsMock(supabaseRows);
+
+  delete require.cache[require.resolve('../src/services/nowPaymentsService')];
+  const {
+    syncSupabaseTransactionAfterLocalDeposit,
+  } = require('../src/services/nowPaymentsService');
+
+  const ipnMismatchBody = {
+    payment_id: 999888,
+    invoice_id: 555001,
+    order_id: 'NP-ORDER-MISMATCH',
+    payment_status: 'finished',
+    pay_amount: 25,
+  };
+
+  const finishedRow = await syncSupabaseTransactionAfterLocalDeposit(ipnMismatchBody, {
+    paymentStatus: 'finished',
+  });
+
+  assert.ok(finishedRow, 'must resolve Supabase row via order_id/invoice_id and mark finished');
+  assert.strictEqual(finishedRow.status, 'finished');
+  assert.strictEqual(finishedRow.payment_id, '999888', 'payment_id must sync to IPN payment_id');
+  assert.strictEqual(finishedRow.metadata.deposit_ref, 'REF-MISMATCH', 'metadata must be merged, not replaced');
+  assert.deepStrictEqual(finishedRow.metadata.ipn, ipnMismatchBody);
+
+  supabase.getSupabase = originalGetSupabase;
+  delete require.cache[require.resolve('../src/services/nowPaymentsService')];
+  resetSupabaseClientForTests();
+  restoreEnv(supabaseSnap);
+  console.log('ok');
 }
 
 main().catch((err) => {

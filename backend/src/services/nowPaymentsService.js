@@ -574,7 +574,7 @@ async function findSupabaseTransactionByPaymentId(paymentId) {
   return data;
 }
 
-async function markSupabaseTransactionFinished(paymentId, { paymentStatus, ipnPayload } = {}) {
+async function markSupabaseTransactionFinished(paymentId, { paymentStatus, ipnPayload, existingMetadata } = {}) {
   const sb = getSupabase();
   if (!sb || !paymentId) return null;
 
@@ -584,7 +584,10 @@ async function markSupabaseTransactionFinished(paymentId, { paymentStatus, ipnPa
     updated_at: new Date().toISOString(),
   };
   if (ipnPayload) {
-    updatePayload.metadata = { ipn: ipnPayload };
+    const prior = existingMetadata && typeof existingMetadata === 'object' && !Array.isArray(existingMetadata)
+      ? existingMetadata
+      : {};
+    updatePayload.metadata = { ...prior, ipn: ipnPayload };
   }
 
   const { data, error } = await sb
@@ -599,6 +602,24 @@ async function markSupabaseTransactionFinished(paymentId, { paymentStatus, ipnPa
     return null;
   }
   return data;
+}
+
+/**
+ * Resolve the Supabase transactions row for an IPN (payment_id / order_id / invoice_id)
+ * and mark it finished. Used after local deposit credit so invoice vs payment id mismatches
+ * still update the row created at checkout.
+ */
+async function syncSupabaseTransactionAfterLocalDeposit(body, { paymentStatus } = {}) {
+  if (!isSupabaseEnabled() || !body || typeof body !== 'object') return null;
+
+  const { transaction } = await resolveSupabaseTransactionForIpn(body);
+  if (!transaction) return null;
+
+  return markSupabaseTransactionFinished(transaction.payment_id, {
+    paymentStatus,
+    ipnPayload: body,
+    existingMetadata: transaction.metadata,
+  });
 }
 
 /**
@@ -698,10 +719,7 @@ async function creditLocalNowPaymentsDeposit(deposit, {
   });
 
   if (isSupabaseEnabled()) {
-    await markSupabaseTransactionFinished(paymentId, {
-      paymentStatus,
-      ipnPayload: body,
-    }).catch((err) => {
+    await syncSupabaseTransactionAfterLocalDeposit(body, { paymentStatus }).catch((err) => {
       console.warn('[nowpayments] Optional Supabase finish skipped:', err.message);
     });
   }
@@ -840,6 +858,7 @@ async function handleNowPaymentsWebhook(req) {
   const updated = await markSupabaseTransactionFinished(existing.payment_id, {
     paymentStatus,
     ipnPayload: body,
+    existingMetadata: existing.metadata,
   });
 
   const creditResult = await creditUserBalanceFromNowPayment({
@@ -873,6 +892,7 @@ module.exports = {
   handleNowPaymentsWebhook,
   creditUserBalanceFromNowPayment,
   resolveSupabaseTransactionForIpn,
+  syncSupabaseTransactionAfterLocalDeposit,
   findDepositByNowPaymentsIds,
   DEFAULT_PAY_CURRENCY,
   FINISHED_STATUS,
