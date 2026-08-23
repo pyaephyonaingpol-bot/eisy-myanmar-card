@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { uploadKycFields, publicKycUploadPath } = require('../middleware/upload');
+const { uploadKycFields, persistKycUpload } = require('../middleware/upload');
 const {
   getKycStatusForUser,
   submitKyc,
@@ -28,9 +28,9 @@ router.post('/submit', requireAuth, uploadKycFields, async (req, res) => {
       full_name: req.body.full_name,
       id_type: req.body.id_type,
       id_number: req.body.id_number,
-      front_photo_path: front ? publicKycUploadPath(front.filename) : null,
-      back_photo_path: back ? publicKycUploadPath(back.filename) : null,
-      selfie_photo_path: selfie ? publicKycUploadPath(selfie.filename) : null,
+      front_photo_path: front ? await persistKycUpload(front) : null,
+      back_photo_path: back ? await persistKycUpload(back) : null,
+      selfie_photo_path: selfie ? await persistKycUpload(selfie) : null,
     });
 
     res.json({ success: true, ...result });

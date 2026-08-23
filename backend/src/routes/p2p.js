@@ -2,7 +2,7 @@ const express = require('express');
 const P2PBuyOrder = require('../models/P2PBuyOrder');
 const P2PSellOrder = require('../models/P2PSellOrder');
 const { requireAuth } = require('../middleware/auth');
-const { uploadP2pAttachment, publicP2pUploadPath, saveP2pProofFromBase64 } = require('../middleware/upload');
+const { uploadP2pAttachment, persistP2pUpload, saveP2pProofFromBase64 } = require('../middleware/upload');
 const { listP2pMarket } = require('../services/p2pMarketService');
 const {
   createP2pBuyOrder,
@@ -128,7 +128,7 @@ router.post('/orders/:orderType/:id/messages', requireAuth, uploadP2pAttachment.
     if (!['buy', 'sell'].includes(orderType)) {
       return res.status(400).json({ error: 'Invalid order type' });
     }
-    const attachmentPath = req.file ? publicP2pUploadPath(req.file.filename) : null;
+    const attachmentPath = req.file ? await persistP2pUpload(req.file) : null;
     const message = await postOrderMessage(orderType, parseInt(id, 10), req.user.id, {
       message: req.body.message,
       attachmentPath,
@@ -145,7 +145,7 @@ router.post('/orders/:orderType/:id/dispute', requireAuth, uploadP2pAttachment.s
   try {
     const { orderType, id } = req.params;
     const orderId = parseInt(id, 10);
-    const proofPath = req.file ? publicP2pUploadPath(req.file.filename) : null;
+    const proofPath = req.file ? await persistP2pUpload(req.file) : null;
     const payload = {
       reason: req.body.reason,
       proofPath,
@@ -209,13 +209,13 @@ router.post('/buy-orders/:id/confirm-transfer', requireAuth, uploadP2pAttachment
     let proofMimeType;
 
     if (req.file) {
-      proofPath = publicP2pUploadPath(req.file.filename);
+      proofPath = await persistP2pUpload(req.file);
       proofOriginalName = req.file.originalname;
       proofMimeType = req.file.mimetype;
     } else {
       const base64 = req.body.proof_base64 || req.body.payment_proof_base64;
       if (base64) {
-        const saved = saveP2pProofFromBase64(base64, {
+        const saved = await saveP2pProofFromBase64(base64, {
           originalName: req.body.proof_filename || req.body.payment_proof_filename || 'receipt.jpg',
         });
         proofPath = saved.proofPath;

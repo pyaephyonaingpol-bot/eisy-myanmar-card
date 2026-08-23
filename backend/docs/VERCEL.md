@@ -20,6 +20,15 @@ Static files (`.js`, `.css`, `/assets/**`) are served from `public/` by Vercel C
 Extensionless routes (`/`, `/admin`, `/dashboard`) rewrite to the Express function.
 Deposit QR images use `GET /api/qr?data=…` (PNG) so they do not rely on third-party hosts.
 
+User-uploaded deposit receipts, P2P payment proofs, and KYC images are stored in
+**Supabase Storage** when `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`
+are set (see `supabase/upload_storage.sql`). Public URLs look like:
+
+`https://YOUR_PROJECT.supabase.co/storage/v1/object/public/uploads/deposits/...`
+
+Legacy `/uploads/*` paths are still served by Express for local dev and older rows;
+`vercel.json` rewrites `/uploads/*` to the API function for same-origin fallback.
+
 ## Required Vercel Environment Variables
 
 | Variable | Purpose |
@@ -30,6 +39,10 @@ Deposit QR images use `GET /api/qr?data=…` (PNG) so they do not rely on third-
 | `DATABASE_URL` | **Turso / LibSQL URL** (`libsql://…`) — required for persistent production data |
 | `DATABASE_AUTH_TOKEN` | Turso auth token |
 | `PUBLIC_BASE_URL` | Canonical site URL (e.g. `https://eisymyanmar.com`) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (persistent upload storage + optional wallet sync) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for server-side Storage uploads |
+| `SUPABASE_UPLOAD_BUCKET` | Storage bucket name (default `uploads`; run `supabase/upload_storage.sql`) |
+| `SUPABASE_UPLOAD_STORAGE` | Set `false` to force local `/uploads` disk only |
 | `AUTH_SECRET` | Session signing secret |
 | `MASTER_PRIVATE_KEY` | TRON hex key for USDT TRC20 withdrawal payouts (fallback) |
 | `NOWPAYMENTS_API_KEY` | NOWPayments API key (deposits + payouts) |

@@ -76,7 +76,7 @@ const {
   listOrderMessagesForAdmin,
   postAdminOrderMessage,
 } = require('../services/p2pOrderChatService');
-const { uploadP2pAttachment, publicP2pUploadPath } = require('../middleware/upload');
+const { uploadP2pAttachment, persistP2pUpload } = require('../middleware/upload');
 const {
   listPendingReloadRequests,
   approvePendingReload,
@@ -1505,7 +1505,7 @@ router.get('/p2p-orders/:orderType/:id/messages', requirePermission('p2p'), asyn
 router.post('/p2p-orders/:orderType/:id/messages', requirePermission('p2p'), uploadP2pAttachment.single('attachment'), async (req, res) => {
   try {
     const { orderType, id } = req.params;
-    const attachmentPath = req.file ? publicP2pUploadPath(req.file.filename) : null;
+    const attachmentPath = req.file ? await persistP2pUpload(req.file) : null;
     const message = await postAdminOrderMessage(orderType, parseInt(id, 10), {
       message: req.body.message,
       attachmentPath,
