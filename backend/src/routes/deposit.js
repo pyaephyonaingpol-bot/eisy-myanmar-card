@@ -7,7 +7,7 @@ const {
   requireAdminAuth,
   requirePermission,
 } = require('../middleware/auth');
-const { uploadDepositScreenshot, publicUploadPath, saveDepositScreenshotFromBase64 } = require('../middleware/upload');
+const { uploadDepositScreenshot, persistDepositUpload, saveDepositScreenshotFromBase64 } = require('../middleware/upload');
 const DepositRequest = require('../models/DepositRequest');
 const {
   createDepositRequest,
@@ -256,25 +256,25 @@ router.post('/submit', requireAuth, requireSensitive, (req, res, next) => {
     const user_note = req.body.user_note?.trim();
 
     if (!deposit_id) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file?.path) fs.unlink(req.file.path, () => {});
       return res.status(400).json({ error: 'deposit_id is required' });
     }
     if (!kpay_transaction_id && !txn_id && !tx_hash) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file?.path) fs.unlink(req.file.path, () => {});
       return res.status(400).json({ error: 'kpay_transaction_id, txn_id, or tx_hash is required' });
     }
 
     const deposit = await DepositRequest.findById(deposit_id);
     if (!deposit) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file?.path) fs.unlink(req.file.path, () => {});
       return res.status(404).json({ error: 'Deposit not found' });
     }
     if (deposit.user_id !== req.user.id) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file?.path) fs.unlink(req.file.path, () => {});
       return res.status(403).json({ error: 'Access denied' });
     }
     if (['VERIFIED', 'REJECTED', 'FAILED'].includes(deposit.status)) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file?.path) fs.unlink(req.file.path, () => {});
       return res.status(400).json({ error: `Cannot submit proof for status: ${deposit.status}` });
     }
 
@@ -333,7 +333,7 @@ router.post('/submit', requireAuth, requireSensitive, (req, res, next) => {
     let screenshotOriginalName;
     let screenshotMimeType;
     if (req.file) {
-      screenshotPath = publicUploadPath(req.file.filename);
+      screenshotPath = await persistDepositUpload(req.file);
       screenshotOriginalName = req.file.originalname;
       screenshotMimeType = req.file.mimetype;
     } else {
@@ -341,7 +341,7 @@ router.post('/submit', requireAuth, requireSensitive, (req, res, next) => {
         || req.body.proof_base64
         || req.body.receipt_base64;
       if (base64) {
-        const saved = saveDepositScreenshotFromBase64(base64, {
+        const saved = await saveDepositScreenshotFromBase64(base64, {
           originalName: req.body.screenshot_filename
             || req.body.proof_filename
             || req.body.receipt_filename
@@ -371,7 +371,7 @@ router.post('/submit', requireAuth, requireSensitive, (req, res, next) => {
       deposit: enrichDeposit(updated),
     });
   } catch (err) {
-    if (req.file) fs.unlink(req.file.path, () => {});
+    if (req.file?.path) fs.unlink(req.file.path, () => {});
     console.error('[deposit/submit]', err);
     const msg = err.message || 'Internal server error';
     if (err.code === 'DUPLICATE_DEPOSIT_REQUEST' || err.code === 'TX_HASH_REUSED') {
