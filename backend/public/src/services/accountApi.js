@@ -7,6 +7,15 @@
   root.EisyServices = root.EisyServices || {};
   const api = () => root.EisyServices.api;
 
+  root.EisyServices.account = {
+    getMe() {
+      return api().request('GET', '/api/user/me');
+    },
+    updateProfile(body) {
+      return api().request('PATCH', '/api/user/profile', body);
+    },
+  };
+
   root.EisyServices.kyc = {
     getStatus() {
       return api().request('GET', '/api/kyc/status');
