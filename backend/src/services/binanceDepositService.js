@@ -95,6 +95,7 @@ async function createBinancePayDeposit(userId, {
       gross_usdt: feeBreakdown.amount_usdt,
       fee_usdt: feeBreakdown.fee_usdt,
       net_usdt: feeBreakdown.net_usdt,
+      platform_profit_usd: feeBreakdown.fee_usdt,
       fee_percent: feeBreakdown.fee_percent,
       minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
       used_minimum_fee: feeBreakdown.used_minimum_fee,
@@ -105,6 +106,7 @@ async function createBinancePayDeposit(userId, {
       amount_usdt: feeBreakdown.amount_usdt,
       fee_usdt: feeBreakdown.fee_usdt,
       net_usdt: feeBreakdown.net_usdt,
+      platform_profit_usd: feeBreakdown.fee_usdt,
       fee_percent: feeBreakdown.fee_percent,
       minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
       used_minimum_fee: feeBreakdown.used_minimum_fee,
@@ -124,6 +126,7 @@ async function createBinancePayDeposit(userId, {
     depositCurrency: 'USDT',
     usdtNetwork: 'BINANCE_PAY',
     metadata,
+    platformProfitUsd: feeBreakdown.fee_usdt,
   });
 
   await TransactionLog.create({

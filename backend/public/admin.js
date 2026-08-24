@@ -3616,6 +3616,11 @@
             <div class="revenue-metric-sub">Today markup/fees · All-time $${Number(s.all_time_card_reload_profit_usd || 0).toFixed(2)}</div>
           </div>
           <div class="revenue-metric-card">
+            <div class="revenue-metric-label">Deposit Fees</div>
+            <div class="revenue-metric-value">$${Number(s.today_deposit_profit_usd || s.today_deposit_fees_usd || s.today_deposit_profit_usdt || 0).toFixed(2)}</div>
+            <div class="revenue-metric-sub">Today deposit markup · All-time $${Number(s.all_time_deposit_profit_usd || s.all_time_deposit_usd || s.all_time_deposit_profit_usdt || 0).toFixed(2)}</div>
+          </div>
+          <div class="revenue-metric-card">
             <div class="revenue-metric-label">Withdrawal Fees</div>
             <div class="revenue-metric-value">${Number(s.today_withdrawal_profit_usdt || 0).toFixed(2)} USDT</div>
             <div class="revenue-metric-sub">Today · All-time ${Number(s.all_time_withdrawal_profit_usdt || 0).toFixed(2)} USDT · Platform balance ${Number(s.platform_usdt_revenue_balance || 0).toFixed(2)} USDT</div>
@@ -3646,12 +3651,13 @@
             dailyEl.innerHTML =
               '<table class="data-table">' +
               '<thead><tr>' +
-              '<th>Date</th><th>P2P Fees (USDT)</th><th>Card Reload ($)</th><th>Withdrawal (USDT)</th><th>Card Issue ($)</th><th>Total ($)</th><th>Total (MMK)</th><th>Txns</th>' +
+              '<th>Date</th><th>P2P Fees (USDT)</th><th>Deposit Fees ($)</th><th>Card Reload ($)</th><th>Withdrawal (USDT)</th><th>Card Issue ($)</th><th>Total ($)</th><th>Total (MMK)</th><th>Txns</th>' +
               '</tr></thead><tbody>' +
               daily.map((row) =>
                 '<tr>' +
                 '<td><strong>' + this.esc(row.label || row.date) + '</strong><br><small>' + this.esc(row.date) + '</small></td>' +
                 '<td>' + Number(row.p2p_fees_usdt || 0).toFixed(2) + '</td>' +
+                '<td>$' + Number(row.deposit_fees_usd || row.deposit_fees_usdt || 0).toFixed(2) + '</td>' +
                 '<td>$' + Number(row.card_reload_fees_usd || 0).toFixed(2) + '</td>' +
                 '<td>' + Number(row.withdrawal_fees_usdt || 0).toFixed(2) + '</td>' +
                 '<td>$' + Number(row.card_issue_fees_usd || 0).toFixed(2) + '</td>' +

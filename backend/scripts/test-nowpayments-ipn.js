@@ -260,6 +260,7 @@ async function main() {
   assert.strictEqual(created.payment_id, '555001');
   assert.ok(created.order_id, 'order_id is required');
   assert.ok(created.deposit?.id, 'local deposit row is required');
+  assert.strictEqual(Number(created.deposit?.platform_profit_usd || 0), 1, 'deposit row should store fee profit');
   assert.strictEqual(created.transaction, null, 'supabase transaction must be skipped when disabled');
 
   assert.ok(invoiceRequest, 'NOWPayments /invoice must be called');
@@ -319,6 +320,7 @@ async function main() {
 
   const verified = await findDepositByNowPaymentsIds({ orderId: created.order_id });
   assert.strictEqual(verified.status, 'VERIFIED');
+  assert.strictEqual(Number(verified.platform_profit_usd || 0), 1, 'verified deposit keeps profit field');
 
   const replay = await handleNowPaymentsWebhook({
     headers: { 'x-nowpayments-sig': ipnSig },

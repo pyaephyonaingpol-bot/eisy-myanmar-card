@@ -11,7 +11,11 @@ const { formatMmk, formatUsdt } = require('./walletService');
 const { syncUserWalletById, syncDeposit } = require('./supabaseSyncService');
 const { verifyUsdtTransaction } = require('./usdtBlockchainService');
 const { assertValidPaymentAmount } = require('./paymentFeeService');
-const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
+const {
+  creditPlatformUsdtRevenue,
+  recordPlatformUsdFee,
+  PLATFORM_FEE_TYPES,
+} = require('./platformRevenueService');
 
 async function syncWalletAndDeposit(userId, depositRow) {
   try {
@@ -188,12 +192,14 @@ async function createDepositRequest(userId, {
   if (purpose === 'topup') {
     const feeBreakdown = calculateDepositFeeBreakdown(amountMmk, { currency: 'MMK', settings });
     assertValidPaymentAmount(feeBreakdown, { kind: 'MMK deposit' });
+    const platformProfitUsd = Math.round(((feeBreakdown.fee_mmk || 0) / rate) * 100) / 100;
     mergedMetadata.payment_fee = {
       operation: 'deposit',
       currency: 'MMK',
       gross_mmk: feeBreakdown.amount_mmk,
       fee_mmk: feeBreakdown.fee_mmk,
       net_mmk: feeBreakdown.net_mmk,
+      platform_profit_usd: platformProfitUsd,
       fee_percent: feeBreakdown.fee_percent,
       minimum_fee_mmk: feeBreakdown.minimum_fee_mmk,
       used_minimum_fee: feeBreakdown.used_minimum_fee,
@@ -203,10 +209,17 @@ async function createDepositRequest(userId, {
     mergedMetadata.pricing = {
       ...(mergedMetadata.pricing || {}),
       ...mergedMetadata.payment_fee,
+      platform_profit_usd: platformProfitUsd,
       is_wallet_topup: true,
       mmk_to_usd_rate: rate,
     };
   }
+
+  const platformProfitUsd = Number(
+    mergedMetadata?.pricing?.platform_profit_usd
+      ?? mergedMetadata?.payment_fee?.platform_profit_usd
+      ?? 0
+  ) || 0;
 
   const deposit = await DepositRequest.create({
     userId,
@@ -216,6 +229,7 @@ async function createDepositRequest(userId, {
     paymentMethod: payment_method || 'KBZPay',
     purpose,
     metadata: mergedMetadata,
+    platformProfitUsd,
   });
 
   await TransactionLog.create({
@@ -302,6 +316,7 @@ async function createUsdtDepositRequest(userId, {
       gross_usdt: feeBreakdown.amount_usdt,
       fee_usdt: feeBreakdown.fee_usdt,
       net_usdt: feeBreakdown.net_usdt,
+      platform_profit_usd: feeBreakdown.fee_usdt,
       fee_percent: feeBreakdown.fee_percent,
       minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
       used_minimum_fee: feeBreakdown.used_minimum_fee,
@@ -312,6 +327,7 @@ async function createUsdtDepositRequest(userId, {
       amount_usdt: grossAmount,
       fee_usdt: feeBreakdown.fee_usdt,
       net_usdt: feeBreakdown.net_usdt,
+      platform_profit_usd: feeBreakdown.fee_usdt,
       fee_percent: feeBreakdown.fee_percent,
       minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
       used_minimum_fee: feeBreakdown.used_minimum_fee,
@@ -330,6 +346,7 @@ async function createUsdtDepositRequest(userId, {
     depositCurrency: 'USDT',
     usdtNetwork: net,
     metadata: mergedMetadata,
+    platformProfitUsd: feeBreakdown.fee_usdt,
   });
 
   await TransactionLog.create({
@@ -937,6 +954,13 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
   const updatedUser = await User.findById(deposit.user_id);
   const updatedDeposit = await DepositRequest.findById(deposit.id);
   const balanceAfterMmk = Number(updatedUser.balance_mmk ?? 0);
+  const profitUsd = Number(
+    updatedDeposit?.platform_profit_usd
+      ?? feeMetaMmk.platform_profit_usd
+      ?? ((feeMmk > 0 && grossMmk > 0 && Number(deposit.amount_usd) > 0)
+        ? ((feeMmk / grossMmk) * Number(deposit.amount_usd))
+        : 0)
+  ) || 0;
 
   await TransactionLog.create({
     userId: deposit.user_id,
@@ -962,6 +986,28 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       net_mmk: netMmk,
     },
   });
+
+  if (isWalletTopup && profitUsd > 0) {
+    try {
+      await recordPlatformUsdFee(profitUsd, {
+        feeType: PLATFORM_FEE_TYPES.DEPOSIT,
+        description: `MMK deposit fee — ${deposit.ref_code} ($${profitUsd.toFixed(2)})`,
+        referenceType: 'deposit_requests_v2',
+        referenceId: deposit.id,
+        relatedUserId: deposit.user_id,
+        metadata: {
+          purpose: deposit.purpose,
+          gross_mmk: grossMmk,
+          fee_mmk: feeMmk,
+          net_mmk: netMmk,
+          mmk_to_usd_rate: grossMmk > 0 ? Number(deposit.amount_usd || 0) / grossMmk : null,
+          fee_rule: feeMetaMmk.fee_rule || 'Math.max(amount * feePercent/100, minimumFee)',
+        },
+      });
+    } catch (feeErr) {
+      console.warn('[deposit] platform MMK deposit fee credit failed:', feeErr.message);
+    }
+  }
 
   await TransactionLog.create({
     userId: deposit.user_id,
