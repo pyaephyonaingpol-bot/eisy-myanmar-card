@@ -4723,15 +4723,7 @@ const Dashboard = {
     if (Auth.user) {
       if ($('headerUser')) $('headerUser').textContent = Auth.user.name || Auth.user.email;
       if ($('headerEmail')) $('headerEmail').textContent = Auth.user.email || '';
-      if (acctInfo) {
-        const phoneLabel = this.formatUserPhone(Auth.user.phone || Auth.user.phone_display);
-        const parts = [
-          Auth.user.name || Auth.user.email || 'User',
-          Auth.user.email ? `(${Auth.user.email})` : null,
-          phoneLabel ? `· ${phoneLabel}` : null,
-        ].filter(Boolean);
-        acctInfo.textContent = `Signed in as ${parts.join(' ')}`;
-      }
+      // Account info line lives in Settings; updateProfileFormUI owns #settingsAccountInfo.
       this.updateProfileFormUI();
       if (Auth.needsPinUnlock()) {
         $('pinUnlockModal')?.classList.remove('hidden');
