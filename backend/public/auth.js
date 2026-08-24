@@ -136,12 +136,25 @@ const Auth = {
 
   async api(method, path, body, opts = {}) {
     console.log(`[Auth.api] ${method} ${path}`, body || '');
+    const timeoutMs = Number.isFinite(opts.timeoutMs)
+      ? Math.max(1000, opts.timeoutMs)
+      : 25000;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    let timer = null;
+    if (controller) {
+      timer = setTimeout(() => {
+        try {
+          controller.abort();
+        } catch (_) { /* ignore */ }
+      }, timeoutMs);
+    }
     try {
       const res = await fetch(path, {
         method,
         headers: this.headers(opts),
         body: body ? JSON.stringify(body) : undefined,
         cache: opts.sensitive ? 'no-store' : 'default',
+        signal: controller?.signal,
       });
       const text = await res.text();
       let data = {};
@@ -164,10 +177,19 @@ const Auth = {
       }
       return data;
     } catch (err) {
+      if (err?.name === 'AbortError' || controller?.signal?.aborted) {
+        const timeoutErr = new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+        timeoutErr.code = 'REQUEST_TIMEOUT';
+        timeoutErr.status = 408;
+        console.error('[Auth.api] Timeout:', method, path);
+        throw timeoutErr;
+      }
       if (!err.message?.includes('HTTP')) {
         console.error('[Auth.api] Network or unexpected error:', err);
       }
       throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   },
 

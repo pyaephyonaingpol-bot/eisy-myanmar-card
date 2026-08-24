@@ -273,22 +273,26 @@ async function resolveUsdtBalancesForDisplay(userId, user = null) {
   const { getUsdtBalances } = require('./usdtLedgerService');
   const { overlayWalletPayloadFromSupabase } = require('./supabaseWalletReadService');
   let balances = await getUsdtBalances(userId);
-  const fromSb = await overlayWalletPayloadFromSupabase(userId, {
-    balance_usdt: balances.available_usdt,
-    balance_usdt_locked: balances.locked_usdt,
-    email: user?.email,
-  });
-  if (fromSb.source === 'supabase') {
-    balances = {
-      ...balances,
-      available_usdt: fromSb.balance_usdt,
-      locked_usdt: fromSb.balance_usdt_locked,
-      total_usdt: fromSb.balance_usdt_total,
-      available_formatted: fromSb.usdt_formatted,
-      locked_formatted: fromSb.usdt_locked_formatted,
-      total_formatted: fromSb.usdt_total_formatted,
-      source: 'supabase',
-    };
+  try {
+    const fromSb = await overlayWalletPayloadFromSupabase(userId, {
+      balance_usdt: balances.available_usdt,
+      balance_usdt_locked: balances.locked_usdt,
+      email: user?.email,
+    });
+    if (fromSb.source === 'supabase') {
+      balances = {
+        ...balances,
+        available_usdt: fromSb.balance_usdt,
+        locked_usdt: fromSb.balance_usdt_locked,
+        total_usdt: fromSb.balance_usdt_total,
+        available_formatted: fromSb.usdt_formatted,
+        locked_formatted: fromSb.usdt_locked_formatted,
+        total_formatted: fromSb.usdt_total_formatted,
+        source: 'supabase',
+      };
+    }
+  } catch (err) {
+    console.warn('[usdt-wallet] supabase overlay skipped:', err.message);
   }
   return balances;
 }
