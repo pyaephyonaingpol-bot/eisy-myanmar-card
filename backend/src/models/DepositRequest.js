@@ -28,6 +28,7 @@ const DepositRequest = {
     purpose = 'topup', metadata,
     depositCurrency = null,
     usdtNetwork = null,
+    platformProfitUsd = 0,
   }) {
     const db = getDb();
     const currency = depositCurrency
@@ -37,11 +38,11 @@ const DepositRequest = {
     const result = await db.run(`
       INSERT INTO ${this.TABLE} (
         user_id, amount_mmk, amount_usd, ref_code, payment_method,
-        deposit_currency, usdt_network,
+        deposit_currency, usdt_network, platform_profit_usd,
         status, expires_at, purpose, metadata, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, datetime('now'))
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, datetime('now'))
     `, userId, amountMmk ?? 0, amountUsd, refCode, paymentMethod,
-      currency, network, expiresAt || null,
+      currency, network, platformProfitUsd ?? 0, expiresAt || null,
       purpose, metadata ? JSON.stringify(metadata) : null);
 
     const row = await this.findById(result.lastID);

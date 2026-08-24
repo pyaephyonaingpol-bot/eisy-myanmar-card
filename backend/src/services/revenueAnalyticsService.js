@@ -41,6 +41,7 @@ function isThisMonth(key) {
 
 const FEE_TYPE_LABELS = {
   [PLATFORM_FEE_TYPES.P2P]: 'P2P Escrow Fee',
+  [PLATFORM_FEE_TYPES.DEPOSIT]: 'Deposit Service Fee',
   [PLATFORM_FEE_TYPES.CARD_RELOAD]: 'Card Reload Fee',
   [PLATFORM_FEE_TYPES.CARD_ISSUE]: 'Card Issue Fee',
   [PLATFORM_FEE_TYPES.WITHDRAWAL]: 'Withdrawal Fee',
@@ -60,6 +61,8 @@ function mapFeeEventToLedgerEntry(row) {
     orderRef = meta.deposit_ref || `CARD-${row.reference_id}`;
   } else if (row.reference_type === 'usdt_withdrawal_requests') {
     orderRef = meta.ref_code || `WD-${row.reference_id}`;
+  } else if (row.reference_type === 'deposit_requests_v2') {
+    orderRef = meta.deposit_ref || meta.ref_code || `DEP-${row.reference_id}`;
   }
 
   return {
@@ -96,6 +99,7 @@ function buildDailyBreakdown(entries, mmkRate) {
       byDate[key] = {
         date: key,
         p2p_fees_usdt: 0,
+        deposit_fees_usd: 0,
         card_issue_fees_usd: 0,
         card_reload_fees_usd: 0,
         withdrawal_fees_usdt: 0,
@@ -110,6 +114,9 @@ function buildDailyBreakdown(entries, mmkRate) {
     if (e.fee_type === PLATFORM_FEE_TYPES.P2P) {
       bucket.p2p_fees_usdt += e.amount_usdt || 0;
       bucket.total_usd_equivalent += e.amount_usdt || 0;
+    } else if (e.fee_type === PLATFORM_FEE_TYPES.DEPOSIT) {
+      bucket.deposit_fees_usd += e.amount_usd || e.amount_usdt || 0;
+      bucket.total_usd_equivalent += e.amount_usd || e.amount_usdt || 0;
     } else if (e.fee_type === PLATFORM_FEE_TYPES.CARD_ISSUE) {
       bucket.card_issue_fees_usd += e.amount_usd || 0;
       bucket.total_usd_equivalent += e.amount_usd || 0;
@@ -126,6 +133,7 @@ function buildDailyBreakdown(entries, mmkRate) {
     .map((r) => ({
       ...r,
       p2p_fees_usdt: round2(r.p2p_fees_usdt),
+      deposit_fees_usd: round2(r.deposit_fees_usd),
       card_issue_fees_usd: round2(r.card_issue_fees_usd),
       card_reload_fees_usd: round2(r.card_reload_fees_usd),
       withdrawal_fees_usdt: round2(r.withdrawal_fees_usdt),
@@ -151,6 +159,8 @@ function sumByType(entries, predicate) {
   return filtered.reduce((acc, e) => {
     if (e.fee_type === PLATFORM_FEE_TYPES.P2P) {
       acc.p2p_usdt += e.amount_usdt || 0;
+    } else if (e.fee_type === PLATFORM_FEE_TYPES.DEPOSIT) {
+      acc.deposit_usd += e.amount_usd || e.amount_usdt || 0;
     } else if (e.fee_type === PLATFORM_FEE_TYPES.CARD_RELOAD) {
       acc.card_reload_usd += e.amount_usd || 0;
     } else if (e.fee_type === PLATFORM_FEE_TYPES.CARD_ISSUE) {
@@ -161,6 +171,7 @@ function sumByType(entries, predicate) {
     return acc;
   }, {
     p2p_usdt: 0,
+    deposit_usd: 0,
     card_reload_usd: 0,
     card_issue_usd: 0,
     withdrawal_usdt: 0,
@@ -170,6 +181,7 @@ function sumByType(entries, predicate) {
 function netAdminProfitUsd(totals) {
   return round2(
     totals.p2p_usdt
+    + totals.deposit_usd
     + totals.card_reload_usd
     + totals.withdrawal_usdt
   );
@@ -206,6 +218,7 @@ async function getRevenueDashboard() {
 
   const subBalances = {
     p2p_usdt: await getSubBalance(PLATFORM_FEE_TYPES.P2P),
+    deposit_usdt: await getSubBalance(PLATFORM_FEE_TYPES.DEPOSIT),
     withdrawal_usdt: await getSubBalance(PLATFORM_FEE_TYPES.WITHDRAWAL),
     card_reload_usd: await getSubBalance(PLATFORM_FEE_TYPES.CARD_RELOAD),
     card_issue_usd: await getSubBalance(PLATFORM_FEE_TYPES.CARD_ISSUE),
@@ -214,6 +227,8 @@ async function getRevenueDashboard() {
   return {
     summary: {
       today_p2p_profit_usdt: round2(todayTotals.p2p_usdt),
+      today_deposit_profit_usd: round2(todayTotals.deposit_usd),
+      today_deposit_profit_usdt: round2(todayTotals.deposit_usd),
       today_card_reload_profit_usd: round2(todayTotals.card_reload_usd),
       today_withdrawal_profit_usdt: round2(todayTotals.withdrawal_usdt),
       today_card_issue_profit_usd: round2(todayTotals.card_issue_usd),
@@ -221,6 +236,8 @@ async function getRevenueDashboard() {
       today_net_admin_profit_mmk: round2(netAdminProfitUsd(todayTotals) * mmkRate),
 
       all_time_p2p_profit_usdt: round2(allTimeTotals.p2p_usdt),
+      all_time_deposit_profit_usd: round2(allTimeTotals.deposit_usd),
+      all_time_deposit_profit_usdt: round2(allTimeTotals.deposit_usd),
       all_time_card_reload_profit_usd: round2(allTimeTotals.card_reload_usd),
       all_time_withdrawal_profit_usdt: round2(allTimeTotals.withdrawal_usdt),
       all_time_card_issue_profit_usd: round2(allTimeTotals.card_issue_usd),
@@ -235,11 +252,15 @@ async function getRevenueDashboard() {
       today_profit_usd: netAdminProfitUsd(todayTotals),
       today_profit_mmk: round2(netAdminProfitUsd(todayTotals) * mmkRate),
       today_p2p_fees_usdt: round2(todayTotals.p2p_usdt),
+      today_deposit_fees_usd: round2(todayTotals.deposit_usd),
+      today_deposit_fees_usdt: round2(todayTotals.deposit_usd),
       today_card_fees_usd: round2(todayTotals.card_reload_usd + todayTotals.card_issue_usd),
       today_card_fees_mmk: round2((todayTotals.card_reload_usd + todayTotals.card_issue_usd) * mmkRate),
       all_time_profit_usd: netAdminProfitUsd(allTimeTotals),
       all_time_profit_mmk: round2(netAdminProfitUsd(allTimeTotals) * mmkRate),
       all_time_p2p_usdt: round2(allTimeTotals.p2p_usdt),
+      all_time_deposit_usd: round2(allTimeTotals.deposit_usd),
+      all_time_deposit_usdt: round2(allTimeTotals.deposit_usd),
       all_time_card_fees_usd: round2(allTimeTotals.card_reload_usd + allTimeTotals.card_issue_usd),
     },
     daily_breakdown: daily.by_date.slice(0, 31),
@@ -253,6 +274,7 @@ async function getRevenueDashboard() {
     counts: {
       total_fee_events: ledger.length,
       p2p_fee_events: ledger.filter((e) => e.fee_type === PLATFORM_FEE_TYPES.P2P).length,
+      deposit_fee_events: ledger.filter((e) => e.fee_type === PLATFORM_FEE_TYPES.DEPOSIT).length,
       card_reload_fee_events: ledger.filter((e) => e.fee_type === PLATFORM_FEE_TYPES.CARD_RELOAD).length,
       card_issue_fee_events: ledger.filter((e) => e.fee_type === PLATFORM_FEE_TYPES.CARD_ISSUE).length,
       withdrawal_fee_events: ledger.filter((e) => e.fee_type === PLATFORM_FEE_TYPES.WITHDRAWAL).length,

@@ -57,6 +57,10 @@ function inferPricingBreakdown(deposit, metadata, settings) {
       gross_usdt: metadata.payment_fee?.gross_usdt ?? metadata.pricing?.gross_usdt ?? metadata.amount_usdt ?? amountUsd,
       fee_usdt: metadata.payment_fee?.fee_usdt ?? metadata.pricing?.fee_usdt ?? null,
       net_usdt: metadata.payment_fee?.net_usdt ?? metadata.pricing?.net_usdt ?? null,
+      platform_profit_usd: metadata.payment_fee?.platform_profit_usd
+        ?? metadata.pricing?.platform_profit_usd
+        ?? deposit.platform_profit_usd
+        ?? null,
       fee_percent: metadata.payment_fee?.fee_percent ?? metadata.pricing?.fee_percent ?? null,
       fee_label: metadata.payment_fee?.fee_label ?? metadata.pricing?.fee_label ?? null,
       fee_rule: metadata.payment_fee?.fee_rule || 'Math.max(amount * 0.02, 1)',
@@ -82,6 +86,10 @@ function inferPricingBreakdown(deposit, metadata, settings) {
       gross_mmk: metadata.payment_fee.gross_mmk ?? amountMmk,
       fee_mmk: metadata.payment_fee.fee_mmk,
       net_mmk: metadata.payment_fee.net_mmk,
+      platform_profit_usd: metadata.payment_fee.platform_profit_usd
+        ?? metadata.pricing?.platform_profit_usd
+        ?? deposit.platform_profit_usd
+        ?? null,
       fee_percent: metadata.payment_fee.fee_percent,
       fee_label: metadata.payment_fee.fee_label,
       fee_rule: metadata.payment_fee.fee_rule || 'Math.max(amount * 0.02, 1)',
@@ -160,6 +168,7 @@ function enrichDeposit(deposit, settings) {
     proof_type: proofType,
     proof_mime_type: deposit.screenshot_mime_type || null,
     pricing_breakdown: pricingBreakdown,
+    platform_profit_usd: deposit.platform_profit_usd ?? pricingBreakdown?.platform_profit_usd ?? null,
     rate_snapshot: rateSnapshot,
     metadata,
     deposit_channel: metadata.deposit_channel || null,
