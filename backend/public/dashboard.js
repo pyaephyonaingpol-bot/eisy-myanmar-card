@@ -38,13 +38,15 @@ const Dashboard = {
     return (Date.now() - at) < (ttlMs ?? this.FETCH_TTL_MS[key] ?? 20000);
   },
 
-  _withInflight(key, fn) {
-    if (this._inflight[key]) return this._inflight[key];
+  _withInflight(key, fn, { force = false } = {}) {
+    if (!force && this._inflight[key]) return this._inflight[key];
+    const generation = (this._inflightGen = (this._inflightGen || 0) + 1);
     const pending = Promise.resolve()
       .then(fn)
       .finally(() => {
         if (this._inflight[key] === pending) delete this._inflight[key];
       });
+    pending._generation = generation;
     this._inflight[key] = pending;
     return pending;
   },
@@ -52,7 +54,8 @@ const Dashboard = {
   invalidateFetch(...keys) {
     for (const key of keys) {
       delete this._fetchMeta[key];
-      delete this._inflight[key];
+      // Do not delete in-flight promises mid-request — that orphans hang recovery.
+      // Force refresh starts a new request via _withInflight(..., { force: true }).
     }
   },
 
@@ -851,6 +854,37 @@ const Dashboard = {
   },
 
   /**
+   * Clear every USDT wallet section that may be stuck on the HTML "Loading…"
+   * placeholder so a hang/timeout/PIN gate never leaves the page spinning.
+   */
+  clearUsdtWalletLoadingState({
+    depositMessage = null,
+    linkedMessage = null,
+    escrowMessage = null,
+    txMessage = null,
+  } = {}) {
+    const depositEl = $('usdtWalletDepositAddresses');
+    if (depositEl && depositMessage != null) {
+      depositEl.innerHTML = `<p class="hint">${depositMessage}</p>`;
+    }
+
+    const linkedEl = $('usdtLinkedWalletsList');
+    if (linkedEl && linkedMessage != null) {
+      linkedEl.innerHTML = `<p class="hint">${linkedMessage}</p>`;
+    }
+
+    const escrowEl = $('usdtEscrowHoldsList');
+    if (escrowEl && escrowMessage != null) {
+      escrowEl.innerHTML = `<p class="hint">${escrowMessage}</p>`;
+    }
+
+    const txEl = $('usdtWalletTxHistory');
+    if (txEl && txMessage != null) {
+      txEl.innerHTML = `<p class="hint">${txMessage}</p>`;
+    }
+  },
+
+  /**
    * Map /api/user/wallet (or partial) payloads into USDT wallet page balance fields.
    */
   syncUsdtWalletBalancesFromPayload(data) {
@@ -874,20 +908,42 @@ const Dashboard = {
   async loadUsdtWalletPage(forceRefresh = false) {
     if (!Auth.isLoggedIn()) return;
     const depositEl = $('usdtWalletDepositAddresses');
-    const linkedEl = $('usdtLinkedWalletsList');
 
     if (!forceRefresh && this._usdtWalletCache && this._isFresh('usdtWallet')) {
       this.renderUsdtWalletPage(this._usdtWalletCache);
       return;
     }
 
+    // PIN gate: sensitive overview will 403 — show unlock UI instead of spinning forever.
+    if (typeof Auth.needsPinUnlock === 'function' && Auth.needsPinUnlock()) {
+      if (this.walletUsdt != null) {
+        this.syncUsdtWalletBalancesFromPayload({
+          balance_usdt: this.walletUsdt,
+          balance_usdt_locked: this.walletUsdtLocked || 0,
+        });
+      } else {
+        this.setUsdtWalletBalancePlaceholders('🔒 Locked');
+      }
+      this.clearUsdtWalletLoadingState({
+        depositMessage: 'Unlock with PIN to view your USDT wallet.',
+        linkedMessage: 'PIN required.',
+        escrowMessage: 'Unlock with PIN to view escrow holds.',
+        txMessage: 'Unlock with PIN to view transaction history.',
+      });
+      $('pinUnlockModal')?.classList.remove('hidden');
+      return;
+    }
+
     return this._withInflight('usdtWallet', async () => {
       this.setUsdtWalletBalancePlaceholders('Loading…');
+      if (depositEl && !this._usdtWalletCache) {
+        depositEl.innerHTML = '<p class="hint">Loading…</p>';
+      }
 
       try {
         const data = await (window.EisyServices?.usdtWallet?.getOverview
           ? window.EisyServices.usdtWallet.getOverview()
-          : Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true }));
+          : Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true, timeoutMs: 20000 }));
         this._usdtWalletCache = data;
         this.walletUsdt = data.balance_usdt ?? data.available_usdt;
         this.walletUsdtLocked = data.balance_usdt_locked ?? data.locked_usdt ?? 0;
@@ -898,6 +954,9 @@ const Dashboard = {
           await this.loadUsdtWalletTransactions();
         } catch (txErr) {
           console.warn('[usdt-wallet] transactions:', txErr.message);
+          this.clearUsdtWalletLoadingState({
+            txMessage: txErr.message || 'Failed to load transactions',
+          });
         }
       } catch (err) {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
@@ -909,15 +968,22 @@ const Dashboard = {
           } else {
             this.setUsdtWalletBalancePlaceholders('🔒 Locked');
           }
-          if (depositEl) depositEl.innerHTML = '<p class="hint">Unlock with PIN to view your USDT wallet.</p>';
-          if (linkedEl) linkedEl.innerHTML = '<p class="hint">PIN required.</p>';
+          this.clearUsdtWalletLoadingState({
+            depositMessage: 'Unlock with PIN to view your USDT wallet.',
+            linkedMessage: 'PIN required.',
+            escrowMessage: 'Unlock with PIN to view escrow holds.',
+            txMessage: 'Unlock with PIN to view transaction history.',
+          });
           $('pinUnlockModal')?.classList.remove('hidden');
           return;
         }
 
         // Overview failed — still try the wallet balance endpoint so Available/Locked/Total populate.
         try {
-          const wallet = await Auth.api('GET', '/api/user/wallet', null, { sensitive: true });
+          const wallet = await Auth.api('GET', '/api/user/wallet', null, {
+            sensitive: true,
+            timeoutMs: 12000,
+          });
           this.walletUsdt = wallet.balance_usdt;
           this.walletUsdtLocked = wallet.balance_usdt_locked || 0;
           this._markFetched('wallet');
@@ -934,11 +1000,18 @@ const Dashboard = {
           console.warn('[usdt-wallet] balance fallback failed:', walletErr.message);
         }
 
-        if (depositEl) {
-          depositEl.innerHTML = `<p class="hint">${err.message || 'Failed to load USDT wallet'}</p>`;
-        }
+        const failMsg = err.code === 'REQUEST_TIMEOUT'
+          ? 'USDT wallet request timed out. Tap Refresh to try again.'
+          : (err.message || 'Failed to load USDT wallet');
+        this.clearUsdtWalletLoadingState({
+          depositMessage: failMsg,
+          linkedMessage: 'Could not load linked wallets.',
+          escrowMessage: 'Could not load escrow holds.',
+          txMessage: 'Could not load transactions.',
+        });
+        console.warn('[usdt-wallet] overview failed:', err.message);
       }
-    });
+    }, { force: forceRefresh });
   },
 
   async submitUsdtTransfer(e) {
@@ -1108,10 +1181,18 @@ const Dashboard = {
     const el = $('usdtWalletTxHistory');
     if (!el) return;
 
+    if (typeof Auth.needsPinUnlock === 'function' && Auth.needsPinUnlock()) {
+      el.innerHTML = '<p class="hint">Unlock with PIN to view transaction history.</p>';
+      return;
+    }
+
     try {
       const { transactions } = await (window.EisyServices?.usdtWallet?.getTransactions
         ? window.EisyServices.usdtWallet.getTransactions()
-        : Auth.api('GET', '/api/user/usdt-wallet/transactions', null, { sensitive: true }));
+        : Auth.api('GET', '/api/user/usdt-wallet/transactions', null, {
+          sensitive: true,
+          timeoutMs: 15000,
+        }));
       el.innerHTML = transactions?.length ? `
         <table class="data-table">
           <thead><tr><th>Time</th><th>Type</th><th>Network</th><th>Amount</th><th>Balance</th><th>Details</th></tr></thead>
@@ -1127,9 +1208,13 @@ const Dashboard = {
           `).join('')}</tbody>
         </table>` : '<p class="hint">No USDT transactions yet.</p>';
     } catch (err) {
-      if (err.code !== 'SENSITIVE_AUTH_REQUIRED') {
-        el.innerHTML = `<p class="hint">${err.message || 'Failed to load transactions'}</p>`;
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+        el.innerHTML = '<p class="hint">Unlock with PIN to view transaction history.</p>';
+        return;
       }
+      el.innerHTML = `<p class="hint">${err.code === 'REQUEST_TIMEOUT'
+        ? 'Transaction history timed out. Tap Refresh to try again.'
+        : (err.message || 'Failed to load transactions')}</p>`;
     }
   },
 
@@ -4061,6 +4146,9 @@ const Dashboard = {
           this.log('PIN verified — sensitive access unlocked', 'ok');
           this.invalidateFetch('wallet', 'deposits', 'usdtWallet', 'cards');
           this.refreshAuthUI();
+          if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+            this.loadUsdtWalletPage(true);
+          }
         } catch (err) {
           $('pinUnlockError').textContent = err.message;
         }
@@ -4080,6 +4168,9 @@ const Dashboard = {
           this.log('PIN reset to default test PIN (123456)', 'ok');
           this.invalidateFetch('wallet', 'deposits', 'usdtWallet', 'cards');
           this.refreshAuthUI();
+          if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+            this.loadUsdtWalletPage(true);
+          }
         } catch (err) {
           $('pinUnlockError').textContent = err.message;
           this.toast(err.message || 'Failed to reset PIN', 'error');

@@ -12,7 +12,25 @@
 const { getSupabase, isSupabaseEnabled } = require('../lib/supabase');
 
 const ROW_CACHE_TTL_MS = parseInt(process.env.SUPABASE_WALLET_CACHE_TTL_MS || '4000', 10);
+const SUPABASE_READ_TIMEOUT_MS = parseInt(process.env.SUPABASE_WALLET_READ_TIMEOUT_MS || '4000', 10);
 const _rowCache = new Map(); // key → { expiresAt, row }
+
+function withTimeout(promise, ms, label = 'operation') {
+  const timeoutMs = Math.max(500, Number(ms) || 4000);
+  let timer = null;
+  return Promise.race([
+    Promise.resolve(promise).finally(() => {
+      if (timer) clearTimeout(timer);
+    }),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const err = new Error(`${label} timed out after ${timeoutMs}ms`);
+        err.code = 'SUPABASE_READ_TIMEOUT';
+        reject(err);
+      }, timeoutMs);
+    }),
+  ]);
+}
 
 function formatMmk(amount) {
   const n = Number(amount) || 0;
@@ -77,60 +95,71 @@ async function fetchFreshUserWalletRow(userId, { email, bypassCache = false } = 
   const sb = getSupabase();
   if (!sb) return null;
 
-  const selectCols = 'user_id, email, name, balance_mmk, balance_usdt, updated_at';
-  const wantedEmail = normalizeEmail(email);
+  try {
+    return await withTimeout(
+      (async () => {
+        const selectCols = 'user_id, email, name, balance_mmk, balance_usdt, updated_at';
+        const wantedEmail = normalizeEmail(email);
 
-  const { data, error } = await sb
-    .from('user_wallets')
-    .select(selectCols)
-    .eq('user_id', String(userId))
-    .maybeSingle();
+        const { data, error } = await sb
+          .from('user_wallets')
+          .select(selectCols)
+          .eq('user_id', String(userId))
+          .maybeSingle();
 
-  if (error) {
-    console.warn('[supabase/wallet-read]', error.message);
+        if (error) {
+          console.warn('[supabase/wallet-read]', error.message);
+        }
+
+        let row = (!error && data) ? data : null;
+        const rowEmail = normalizeEmail(row?.email);
+        const idMiss = !row;
+        const emailMismatch = Boolean(wantedEmail && rowEmail && rowEmail !== wantedEmail);
+
+        if ((idMiss || emailMismatch) && wantedEmail) {
+          const byEmail = await sb
+            .from('user_wallets')
+            .select(selectCols)
+            .ilike('email', wantedEmail)
+            .maybeSingle();
+
+          if (byEmail.error) {
+            console.warn('[supabase/wallet-read] email lookup:', byEmail.error.message);
+          } else if (byEmail.data) {
+            if (emailMismatch || idMiss) {
+              console.info(
+                `[supabase/wallet-read] Resolved user ${userId} via email ${wantedEmail}`
+                + ` (mirror user_id=${byEmail.data.user_id})`
+              );
+            }
+            row = byEmail.data;
+          }
+        }
+
+        // If caller did not pass email and id lookup missed, try Turso email.
+        if (!row && !wantedEmail) {
+          try {
+            const User = require('../models/User');
+            const user = await User.findById(userId);
+            const fallbackEmail = normalizeEmail(user?.email);
+            if (fallbackEmail) {
+              return fetchFreshUserWalletRow(userId, { email: fallbackEmail, bypassCache });
+            }
+          } catch (err) {
+            console.warn('[supabase/wallet-read] turso email fallback:', err.message);
+          }
+        }
+
+        writeRowCache(key, row || null);
+        return row || null;
+      })(),
+      SUPABASE_READ_TIMEOUT_MS,
+      'Supabase wallet read'
+    );
+  } catch (err) {
+    console.warn('[supabase/wallet-read] skipped:', err.message);
+    return null;
   }
-
-  let row = (!error && data) ? data : null;
-  const rowEmail = normalizeEmail(row?.email);
-  const idMiss = !row;
-  const emailMismatch = Boolean(wantedEmail && rowEmail && rowEmail !== wantedEmail);
-
-  if ((idMiss || emailMismatch) && wantedEmail) {
-    const byEmail = await sb
-      .from('user_wallets')
-      .select(selectCols)
-      .ilike('email', wantedEmail)
-      .maybeSingle();
-
-    if (byEmail.error) {
-      console.warn('[supabase/wallet-read] email lookup:', byEmail.error.message);
-    } else if (byEmail.data) {
-      if (emailMismatch || idMiss) {
-        console.info(
-          `[supabase/wallet-read] Resolved user ${userId} via email ${wantedEmail}`
-          + ` (mirror user_id=${byEmail.data.user_id})`
-        );
-      }
-      row = byEmail.data;
-    }
-  }
-
-  // If caller did not pass email and id lookup missed, try Turso email.
-  if (!row && !wantedEmail) {
-    try {
-      const User = require('../models/User');
-      const user = await User.findById(userId);
-      const fallbackEmail = normalizeEmail(user?.email);
-      if (fallbackEmail) {
-        return fetchFreshUserWalletRow(userId, { email: fallbackEmail, bypassCache });
-      }
-    } catch (err) {
-      console.warn('[supabase/wallet-read] turso email fallback:', err.message);
-    }
-  }
-
-  writeRowCache(key, row || null);
-  return row || null;
 }
 
 /**
