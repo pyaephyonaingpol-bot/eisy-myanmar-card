@@ -92,7 +92,23 @@ router.post('/login/pin', async (req, res) => {
     });
     res.json({ success: true, ...result });
   } catch (err) {
-    res.status(401).json({ error: err.message, code: 'PIN_LOGIN_FAILED' });
+    const code = err.code || 'PIN_LOGIN_FAILED';
+    const rawMessage = String(err.message || 'PIN login failed');
+    // Never leak ReferenceError / misconfig internals to the UI
+    const message = /User is not defined/i.test(rawMessage)
+      ? 'Sign-in is temporarily unavailable. Please try again or use email OTP.'
+      : rawMessage;
+    const status =
+      code === 'EMAIL_REQUIRED' ||
+      code === 'INVALID_PIN_FORMAT' ||
+      code === 'USER_NOT_FOUND' ||
+      code === 'PIN_NOT_SET'
+        ? 400
+        : code === 'USER_LOOKUP_FAILED' || /User is not defined/i.test(rawMessage)
+          ? 500
+          : 401;
+    console.warn('[auth] PIN login failed:', code, rawMessage);
+    res.status(status).json({ error: message, code });
   }
 });
 

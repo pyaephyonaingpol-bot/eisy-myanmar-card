@@ -251,7 +251,33 @@ const Auth = {
   },
 
   async loginWithPin(email, pin) {
-    const data = await this.api('POST', '/api/auth/login/pin', { email, pin });
+    if (!email || !String(email).trim()) {
+      throw Object.assign(new Error('Email is required'), { code: 'EMAIL_REQUIRED' });
+    }
+    if (!pin || !String(pin).trim()) {
+      throw Object.assign(new Error('PIN is required'), { code: 'PIN_REQUIRED' });
+    }
+    let data;
+    try {
+      data = await this.api('POST', '/api/auth/login/pin', {
+        email: String(email).trim().toLowerCase(),
+        pin: String(pin).trim(),
+      });
+    } catch (err) {
+      if (/User is not defined/i.test(String(err?.message || ''))) {
+        throw Object.assign(
+          new Error('Sign-in is temporarily unavailable. Please try again or use email OTP.'),
+          { code: err.code || 'AUTH_SERVICE_ERROR', status: err.status }
+        );
+      }
+      throw err;
+    }
+    if (!data?.user || !data?.sessionToken) {
+      throw Object.assign(
+        new Error(data?.error || 'PIN login succeeded but no user session was returned'),
+        { code: 'SESSION_INCOMPLETE' }
+      );
+    }
     const user = {
       ...data.user,
       has_pin: data.has_pin ?? Boolean(data.user?.has_pin),
