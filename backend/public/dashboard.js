@@ -3972,8 +3972,14 @@ const Dashboard = {
           $('pinUnlockModal')?.classList.add('hidden');
           this.refreshAuthUI();
         } catch (err) {
-          this.toast(err.message || 'PIN login failed', 'error');
-          this.log(err.message, 'error');
+          const msg = err.message || 'PIN login failed';
+          // Surface missing-user / undefined ReferenceErrors clearly (never show raw "User is not defined").
+          const friendly = /User is not defined/i.test(msg)
+            ? 'Sign-in is temporarily unavailable. Please try again or use email OTP.'
+            : msg;
+          this.toast(friendly, 'error');
+          this.log(friendly, 'error');
+          this.setInlineError?.('loginPinError', friendly);
         } finally {
           if (btn) btn.disabled = false;
         }

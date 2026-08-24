@@ -1,3 +1,4 @@
+const User = require('../models/User');
 const { mapPublicUser } = require('./profileService');
 const OtpCode = require('../models/OtpCode');
 const UserSession = require('../models/UserSession');
@@ -202,24 +203,37 @@ async function sendLoginOtp(email, ipAddress) {
 
 async function loginWithPin({ email, pin, ipAddress, deviceName, devicePlatform }) {
   const normalized = normalizeEmail(email);
+  if (!normalized) {
+    const err = new Error('Email is required');
+    err.code = 'EMAIL_REQUIRED';
+    throw err;
+  }
   if (!validatePinFormat(pin)) {
-    throw new Error('PIN must be exactly 6 digits');
+    const err = new Error('PIN must be exactly 6 digits');
+    err.code = 'INVALID_PIN_FORMAT';
+    throw err;
   }
 
   const user = await User.findByEmail(normalized);
   if (!user) {
     const info = require('../db').getDatabaseInfo();
     console.warn('[auth] PIN login — no user for email:', normalized, 'db:', info.mode, info.warning || info.filePath || info.url);
-    throw new Error('No account found for this email');
+    const err = new Error('No account found for this email. Register first or use email OTP after signing up.');
+    err.code = 'USER_NOT_FOUND';
+    throw err;
   }
 
   if (!user.pin_hash) {
     if (!isDefaultTestPin(pin)) {
-      throw new Error('PIN not set for this account. Use email OTP login or the default test PIN 123456.');
+      const err = new Error('PIN not set for this account. Use email OTP login or the default test PIN 123456.');
+      err.code = 'PIN_NOT_SET';
+      throw err;
     }
     await User.updatePin(user.id, hashPin(DEFAULT_TEST_PIN));
   } else if (!verifyPin(pin, user.pin_hash)) {
-    throw new Error('Invalid PIN');
+    const err = new Error('Invalid PIN');
+    err.code = 'INVALID_PIN';
+    throw err;
   }
 
   await User.recordLogin(user.id);
@@ -237,9 +251,24 @@ async function loginWithPin({ email, pin, ipAddress, deviceName, devicePlatform 
     description: 'User logged in via PIN',
     ipAddress,
     createdBy: 'user',
+  }).catch((err) => {
+    console.warn('[auth] PIN login transaction log skipped:', err.message);
   });
 
+  // Optional Supabase wallet mirror — never block PIN login if sync fails.
+  try {
+    syncUserWalletById(user.id);
+  } catch (err) {
+    console.warn('[auth] Supabase wallet sync skipped after PIN login:', err.message);
+  }
+
   const freshUser = await User.findById(user.id);
+  if (!freshUser) {
+    const err = new Error('Account could not be loaded after PIN verification. Please try again.');
+    err.code = 'USER_LOOKUP_FAILED';
+    throw err;
+  }
+
   return {
     user: mapPublicUser(freshUser),
     sessionToken,
