@@ -17,7 +17,7 @@ const {
   setSetting,
 } = require('./settingsService');
 const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
-const { transferUsdtTrc20 } = require('./tronMasterWalletService');
+const { transferUsdtTrc20, isLikelyTronAddress } = require('./tronMasterWalletService');
 const { getFixedWithdrawFeeUsdt } = require('./withdrawCryptoService');
 // NOWPayments payout helpers are retained for legacy IPN / admin tools only —
 // user-facing crypto withdrawals use master-wallet TronWeb + energy rental.
@@ -64,6 +64,9 @@ function validateWalletAddress(network, address) {
   if (network === 'TRC20') {
     if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(addr)) {
       throw new Error('Invalid TRC20 address — must start with T and be 34 characters');
+    }
+    if (!isLikelyTronAddress(addr)) {
+      throw new Error('Invalid TRC20 address — checksum failed');
     }
     return addr;
   }

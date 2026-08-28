@@ -62,6 +62,11 @@ function calculateFixedFeeWithdraw({ customerAddress, withdrawAmount }) {
     err.code = 'WITHDRAW_ADDRESS_INVALID';
     throw err;
   }
+  if (!tronMasterWalletService.isLikelyTronAddress(address)) {
+    const err = new Error('customerAddress failed TRON Base58Check validation');
+    err.code = 'WITHDRAW_ADDRESS_INVALID';
+    throw err;
+  }
 
   const amount = Number(withdrawAmount);
   if (!Number.isFinite(amount)) {
