@@ -56,7 +56,7 @@ router.post('/check/pending', async (req, res) => {
  */
 router.post('/', requireAuth, requireSensitive, async (req, res) => {
   try {
-    const result = await createTronOrder(req.body || {});
+    const result = await createTronOrder(req.user.id, req.body || {});
     return res.status(201).json({
       success: true,
       ...result,
@@ -65,7 +65,7 @@ router.post('/', requireAuth, requireSensitive, async (req, res) => {
     console.error('[tron/orders POST]', err.message, err.code || '');
     const status = err.code === 'SUPABASE_NOT_CONFIGURED'
       ? 503
-      : (err.code === 'TRON_ORDER_INVALID_AMOUNT' ? 400 : 500);
+      : (['TRON_ORDER_INVALID_AMOUNT', 'TRON_ORDER_AMOUNT_TOO_LOW'].includes(err.code) ? 400 : 500);
     return res.status(status).json({
       success: false,
       error: err.message || 'Failed to create TRON order',
@@ -86,6 +86,13 @@ router.get('/:orderId', requireAuth, async (req, res) => {
         success: false,
         error: 'Order not found',
         code: 'TRON_ORDER_NOT_FOUND',
+      });
+    }
+    if (order.user_id != null && Number(order.user_id) !== Number(req.user.id)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        code: 'TRON_ORDER_FORBIDDEN',
       });
     }
     return res.json({ success: true, order });
