@@ -1,5 +1,10 @@
--- NOWPayments: Supabase transactions table (run in Supabase SQL Editor)
--- Tracks pending crypto payments by NOWPayments payment_id; IPN sets status = finished.
+-- DEPRECATED — NOWPayments integration removed in favour of the custom TRON gateway.
+-- Use supabase/orders.sql (or the `orders` table in supabase/schema.sql) instead.
+--
+-- If this legacy table already exists in your project, you may drop it after migrating data:
+--   DROP TABLE IF EXISTS transactions;
+
+-- Legacy NOWPayments transactions table (do not run for new deployments).
 
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -25,6 +30,3 @@ CREATE POLICY "service_role_transactions" ON transactions
   FOR ALL
   USING (true)
   WITH CHECK (true);
-
--- Optional Realtime:
--- ALTER PUBLICATION supabase_realtime ADD TABLE transactions;
