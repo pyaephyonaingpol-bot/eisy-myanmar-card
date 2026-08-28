@@ -89,6 +89,7 @@ app.use('/api/config', require('./routes/config'));
 app.use('/api/qr', require('./routes/qr'));
 app.use('/api/auth', authRoutes);
 app.use('/api/deposit', depositRoutes);
+app.use('/api/tron/orders', require('./routes/tronOrders'));
 app.use('/api/webhook', require('./routes/webhook'));
 const nowPaymentsRoutes = require('../../server/routes/nowpayments');
 app.use('/api/nowpayments', nowPaymentsRoutes);
@@ -162,6 +163,9 @@ async function start() {
     });
   }, 60 * 1000);
   expiryInterval.unref?.();
+
+  const { startTronOrderPoller } = require('./services/tronOrderService');
+  startTronOrderPoller();
 
   await new Promise((resolve, reject) => {
     server = app.listen(PORT, '0.0.0.0', () => {
