@@ -23,8 +23,8 @@ const DEFAULTS = {
   usdt_erc20_address: process.env.USDT_ERC20_ADDRESS || '',
   usdt_withdraw_fee_trc20: '2',
   usdt_withdraw_fee_bep20: '2',
-  usdt_withdraw_fee_trc20_type: 'percent',
-  usdt_withdraw_fee_bep20_type: 'percent',
+  usdt_withdraw_fee_trc20_type: 'fixed',
+  usdt_withdraw_fee_bep20_type: 'fixed',
   usdt_withdraw_fee_bank: '2',
   usdt_withdraw_fee_bank_type: 'percent',
   minimum_usdt_withdrawal: '10',
@@ -346,10 +346,37 @@ function calculateNetworkWithdrawalFee(amountUsdt, network, settings) {
   const net = String(network || 'TRC20').toUpperCase();
   const isBank = net === 'BANK';
   const isBep20 = net === 'BEP20';
+  const isTrc20 = !isBank && !isBep20;
+
+  // TRC20 master-wallet withdrawals use a fixed fee (default 2 USDT).
+  if (isTrc20) {
+    const envFee = Number(process.env.WITHDRAW_FIXED_FEE_USDT);
+    const configuredFee = Number(settings?.usdt_withdraw_fee_trc20);
+    const feeUsdt = Math.round(
+      (Number.isFinite(envFee) && envFee >= 0
+        ? envFee
+        : (Number.isFinite(configuredFee) ? configuredFee : 2)) * 100
+    ) / 100;
+    const netUsdt = Math.round((amount - feeUsdt) * 100) / 100;
+    return {
+      network: 'TRC20',
+      amount_usdt: amount,
+      fee_usdt: feeUsdt,
+      net_usdt: netUsdt,
+      fee_type: 'fixed',
+      fee_value: feeUsdt,
+      fee_percent: 0,
+      minimum_fee_usdt: feeUsdt,
+      used_minimum_fee: false,
+      fee_rule: 'fixed_usdt',
+      fee_label: `fixed $${feeUsdt.toFixed(2)}`,
+    };
+  }
+
   const feeBreakdown = calculateUsdtPaymentFeeBreakdown(amount, settings);
 
   return {
-    network: isBank ? 'BANK' : (isBep20 ? 'BEP20' : 'TRC20'),
+    network: isBank ? 'BANK' : 'BEP20',
     amount_usdt: feeBreakdown.amount_usdt,
     fee_usdt: feeBreakdown.fee_usdt,
     net_usdt: feeBreakdown.net_usdt,

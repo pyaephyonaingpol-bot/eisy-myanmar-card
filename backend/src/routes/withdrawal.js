@@ -67,84 +67,83 @@ function mapMmkWithdrawal(row) {
 router.get('/fees', requireAuth, async (_req, res) => {
   try {
     const settings = await getWithdrawalFeeSettings();
+    const trc20Sample = calculateWithdrawalBreakdown(
+      Math.max(Number(settings.minimum_usdt_withdrawal) || 10, 10),
+      'TRC20',
+      settings
+    );
     const mode = settings.payment_service_fee_mode || 'max_percent_or_min';
-    const feeRule = mode === 'off'
-      ? 'fee = 0'
-      : mode === 'percent'
-        ? 'fee = amount * percent/100'
-        : mode === 'fixed'
-          ? 'fee = fixedUsdt'
-          : 'Math.max(amount * percent/100, minimum)';
-    const pct = settings.payment_service_fee_percent ?? 2;
-    const minUsdt = settings.payment_service_fee_minimum_usdt ?? 1;
-    const feeLabel = mode === 'off'
-      ? 'No service fee'
-      : mode === 'fixed'
-        ? `fixed $${Number(minUsdt).toFixed(2)}`
-        : mode === 'percent'
-          ? `${pct}%`
-          : `${pct}% (min $${Number(minUsdt).toFixed(2)})`;
+    const feeRule = 'fixed_usdt';
+    const fixedFee = Number(trc20Sample.fee_usdt) || 2;
+    const feeLabel = `fixed $${fixedFee.toFixed(2)}`;
     res.json({
-      fees: settings,
+      fees: {
+        ...settings,
+        usdt_withdraw_fee_trc20: fixedFee,
+        usdt_withdraw_fee_trc20_type: 'fixed',
+        // Client TRC20 preview uses these for the fixed $2 master-wallet fee.
+        payment_service_fee_mode: 'fixed',
+        payment_service_fee_minimum_usdt: fixedFee,
+        payment_service_fee_percent: 0,
+      },
       policy: {
         mmk_to_usdt_allowed: false,
         mmk_bank_withdraw_allowed: true,
         usdt_crypto_withdraw_allowed: true,
         usdt_bank_withdraw_allowed: true,
+        trc20_auto_send: true,
+        payout_provider: 'tron_master_wallet',
         service_fee_rule: feeRule,
-        service_fee_mode: mode,
-        service_fee_percent: pct,
-        service_fee_minimum_usdt: minUsdt,
+        service_fee_mode: 'fixed',
+        service_fee_percent: 0,
+        service_fee_minimum_usdt: fixedFee,
       },
       networks: [
         {
           network: 'TRC20',
-          payout_method: 'nowpayments',
-          label: 'NOWPayments (USDT TRC20)',
-          fee_rule: feeRule,
-          fee_mode: mode,
-          fee_percent: pct,
-          minimum_fee_usdt: minUsdt,
-          fee_label: feeLabel,
-        },
-        {
-          network: 'TRC20',
           payout_method: 'crypto',
-          label: 'TRC20 (TRON Network)',
+          label: 'USDT TRC20 (Master Wallet)',
           fee_rule: feeRule,
-          fee_mode: mode,
-          fee_percent: pct,
-          minimum_fee_usdt: minUsdt,
+          fee_mode: 'fixed',
+          fee_percent: 0,
+          minimum_fee_usdt: fixedFee,
           fee_label: feeLabel,
+          auto_send: true,
         },
         {
           network: 'BEP20',
           payout_method: 'crypto',
-          label: 'BEP20 (BSC Network)',
-          fee_rule: feeRule,
+          label: 'BEP20 (BSC Network — manual)',
+          fee_rule: mode === 'off' ? 'fee = 0' : 'payment_service_fee',
           fee_mode: mode,
-          fee_percent: pct,
-          minimum_fee_usdt: minUsdt,
-          fee_label: feeLabel,
+          fee_percent: settings.payment_service_fee_percent ?? 2,
+          minimum_fee_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
+          fee_label: mode === 'fixed'
+            ? `fixed $${Number(settings.payment_service_fee_minimum_usdt ?? 1).toFixed(2)}`
+            : `${settings.payment_service_fee_percent ?? 2}%`,
+          auto_send: false,
         },
         {
           network: 'BANK',
           payout_method: 'bank',
           label: 'Bank Account (USDT → MMK)',
-          fee_rule: feeRule,
+          fee_rule: 'payment_service_fee',
           fee_mode: mode,
-          fee_percent: pct,
-          minimum_fee_usdt: minUsdt,
-          fee_label: feeLabel,
+          fee_percent: settings.payment_service_fee_percent ?? 2,
+          minimum_fee_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
+          fee_label: mode === 'fixed'
+            ? `fixed $${Number(settings.payment_service_fee_minimum_usdt ?? 1).toFixed(2)}`
+            : `${settings.payment_service_fee_percent ?? 2}%`,
           exchange_rate: settings.mmk_to_usd_rate,
+          auto_send: false,
         },
       ],
       minimum_usdt_withdrawal: settings.minimum_usdt_withdrawal,
       minimum_mmk_withdrawal: settings.minimum_mmk_withdrawal,
       mmk_withdraw_fee_percent: settings.payment_service_fee_percent ?? 2,
-      payment_service_fee_percent: settings.payment_service_fee_percent ?? 2,
-      payment_service_fee_minimum_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
-      payment_service_fee_mode: mode,
+      payment_service_fee_percent: 0,
+      payment_service_fee_minimum_usdt: fixedFee,
+      payment_service_fee_mode: 'fixed',
       mmk_to_usd_rate: settings.mmk_to_usd_rate,
     });
   } catch (err) {
@@ -204,19 +203,22 @@ router.post('/usdt', requireAuth, requireSensitive, async (req, res) => {
   try {
     const result = await createUsdtWithdrawalRequest(req.user.id, req.body || {});
     const user = await User.findById(req.user.id);
-    res.status(201).json({
+    const payout = result.payout;
+    res.status(payout?.status === 'completed' ? 200 : 201).json({
       success: true,
-      payout_submitted: Boolean(result.payout && !result.payout.alreadyTriggered),
+      payout_submitted: Boolean(payout && payout.status === 'completed'),
       ref_code: result.withdrawal.ref_code,
       withdrawal: mapUsdtWithdrawal(result.withdrawal),
       breakdown: result.breakdown,
-      payout: result.payout
+      payout: payout
         ? {
-            provider: 'nowpayments',
-            payout_id: result.payout.payout_id,
-            status: result.payout.status,
-            currency: result.payout.currency,
-            message: result.payout.message,
+            provider: payout.provider || 'tron_master_wallet',
+            payout_id: payout.payout_id || payout.tx_hash || null,
+            status: payout.status || null,
+            currency: payout.currency || 'usdttrc20',
+            tx_hash: payout.tx_hash || payout.payout_id || null,
+            energy_rental: payout.energy_rental || null,
+            message: payout.message,
           }
         : null,
       message: result.message,
@@ -229,8 +231,8 @@ router.post('/usdt', requireAuth, requireSensitive, async (req, res) => {
       return res.status(err.status && Number.isFinite(err.status) ? err.status : 502).json({
         success: false,
         payout_submitted: false,
-        error: err.message || 'NOWPayments payout failed',
-        code: err.code || 'NOWPAYMENTS_PAYOUT_FAILED',
+        error: err.message || 'Withdrawal payout failed',
+        code: err.code || 'WITHDRAWAL_PAYOUT_FAILED',
         ref_code: err.withdrawal.ref_code,
         withdrawal: mapUsdtWithdrawal(err.withdrawal),
         breakdown: err.breakdown || undefined,
