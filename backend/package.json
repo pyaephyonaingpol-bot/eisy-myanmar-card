@@ -26,7 +26,8 @@
     "test:usdt-wallet-loading": "node scripts/test-usdt-wallet-loading.js",
     "test:pin-login": "node scripts/test-pin-login.js",
     "test:acctinfo-guard": "node scripts/test-acctinfo-guard.js",
-    "test:tron-orders": "node scripts/test-tron-orders.js"
+    "test:tron-orders": "node scripts/test-tron-orders.js",
+    "test:withdraw-energy": "node scripts/test-withdraw-energy.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",

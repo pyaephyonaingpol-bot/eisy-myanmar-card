@@ -54,10 +54,41 @@ If a manual `tx_hash` is provided, the on-chain / NOWPayments send is skipped.
 - TRC20 / NOWPayments payouts never debit/credit MMK
 - USDT→bank and MMK bank withdrawals stay manual/admin bank rails
 
+## Automated withdraw API (energy rental)
+
+`POST /api/withdraw` (auth + PIN) accepts:
+
+```json
+{ "customerAddress": "T…", "withdrawAmount": 25 }
+```
+
+Flow:
+
+1. Validate `withdrawAmount > 2.0` (fixed fee)
+2. Debit full amount from the user’s in-app USDT wallet
+3. Rent ~65,000 energy for the master wallet via Feee.io
+4. Wait ~2s for delegation
+5. Transfer **net** USDT (`withdrawAmount - 2`) via TronWeb (`amount * 10^6` base units)
+6. Return `txId`, `netPayout`, `feeCollected`
+
+| Variable | Required | Notes |
+|----------|----------|--------|
+| `ENERGY_RENTAL_API_KEY` | for rental | Feee.io API key (`key` header) |
+| `ENERGY_RENTAL_API_BASE` | no | default `https://feee.io/open` |
+| `ENERGY_RENTAL_AMOUNT` | no | default `65000` |
+| `ENERGY_RENTAL_WAIT_MS` | no | default `2000` |
+| `ENERGY_RENTAL_REQUIRED` | no | if `true`, abort transfer when rental fails |
+| `WITHDRAW_FIXED_FEE_USDT` | no | default `2` |
+
+Energy rental also runs automatically inside `transferUsdtTrc20` (admin master-wallet completes).
+
 ## Key files
 
 - `backend/src/services/nowPaymentsPayoutService.js` — auth, create/verify payout, IPN
-- `backend/src/services/tronMasterWalletService.js` — TronWeb transfer + balance checks
+- `backend/src/services/tronMasterWalletService.js` — TronWeb transfer + balance checks + energy rental hook
+- `backend/src/services/energyRentalService.js` — Feee.io energy rental
+- `backend/src/services/withdrawCryptoService.js` — fixed-fee `/api/withdraw` flow
+- `backend/src/routes/withdraw.js` — `POST /api/withdraw`
 - `backend/src/services/withdrawalService.js` — create / complete / reject
 - `backend/src/services/walletService.js` — MMK debit allow-list
 - `server/routes/nowpayments.js` — `/payout`, `/payout-webhook`
