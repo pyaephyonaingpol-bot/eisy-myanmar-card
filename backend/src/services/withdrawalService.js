@@ -18,13 +18,9 @@ const {
 } = require('./settingsService');
 const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { transferUsdtTrc20 } = require('./tronMasterWalletService');
-const {
-  isNowPaymentsPayoutsEnabled,
-  isLivePayoutRequired,
-  assertNowPaymentsPayoutsReady,
-  triggerNowPaymentsPayoutForWithdrawal,
-  getAutoWithdrawMaxUsdt,
-} = require('./nowPaymentsPayoutService');
+const { getFixedWithdrawFeeUsdt } = require('./withdrawCryptoService');
+// NOWPayments payout helpers are retained for legacy IPN / admin tools only —
+// user-facing crypto withdrawals use master-wallet TronWeb + energy rental.
 
 function generateRefCode(prefix = 'WD') {
   const num = Math.floor(1000 + Math.random() * 9000);
@@ -143,18 +139,6 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     throw new Error('Enter a valid USDT withdrawal amount');
   }
 
-  const requireLive = isLivePayoutRequired();
-  if (requireLive) {
-    assertNowPaymentsPayoutsReady();
-    if (!payoutCurrencySupported(normalizedNetwork)) {
-      const err = new Error(
-        `NOWPayments live payouts require TRC20 or BEP20 (got ${normalizedNetwork})`
-      );
-      err.code = 'NOWPAYMENTS_PAYOUT_UNSUPPORTED_NETWORK';
-      throw err;
-    }
-  }
-
   const settings = await getWithdrawalFeeSettings();
   const breakdown = calculateWithdrawalBreakdown(requestedAmount, normalizedNetwork, settings);
 
@@ -162,22 +146,21 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     throw new Error(`Minimum withdrawal is ${formatUsdt(settings.minimum_usdt_withdrawal)}`);
   }
 
+  if (normalizedNetwork === 'TRC20') {
+    const fixedFee = getFixedWithdrawFeeUsdt();
+    if (!(requestedAmount > fixedFee)) {
+      const err = new Error(
+        `withdrawAmount must be strictly greater than the ${fixedFee.toFixed(1)} USDT fee`
+      );
+      err.code = 'WITHDRAW_AMOUNT_TOO_LOW';
+      throw err;
+    }
+  }
+
   if (breakdown.net_usdt <= 0) {
     throw new Error(
       `Amount too small — after ${formatUsdt(breakdown.fee_usdt)} network fee, nothing would be sent. Increase the amount.`
     );
-  }
-
-  if (requireLive) {
-    const maxUsdt = getAutoWithdrawMaxUsdt();
-    const net = Number(breakdown.net_usdt);
-    if (maxUsdt != null && net > maxUsdt) {
-      const err = new Error(
-        `Net amount ${formatUsdt(net)} exceeds auto-payout max ${formatUsdt(maxUsdt)}. Raise USDT_AUTO_WITHDRAW_MAX_USDT or lower the amount.`
-      );
-      err.code = 'NOWPAYMENTS_PAYOUT_ABOVE_MAX';
-      throw err;
-    }
   }
 
   const refCode = await uniqueRefCode('usdt_withdrawal_requests', 'WD');
@@ -197,21 +180,30 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     feeType: feeTypeForDb,
   });
 
-  await debitUsdt(userId, breakdown.amount_usdt, {
-    description: `USDT withdrawal ${refCode} — ${formatUsdt(breakdown.net_usdt)} net to ${normalizedNetwork} (fee ${formatUsdt(breakdown.fee_usdt)})`,
-    referenceType: 'usdt_withdrawal',
-    referenceId: withdrawal.id,
-    createdBy: 'user',
-    metadata: {
-      purpose: 'usdt_withdrawal',
-      payout_method: 'crypto',
-      ref_code: refCode,
-      network: normalizedNetwork,
-      wallet_address: walletAddress,
-      fee_usdt: breakdown.fee_usdt,
-      net_usdt: breakdown.net_usdt,
-    },
-  });
+  try {
+    await debitUsdt(userId, breakdown.amount_usdt, {
+      description: `USDT withdrawal ${refCode} — ${formatUsdt(breakdown.net_usdt)} net to ${normalizedNetwork} (fee ${formatUsdt(breakdown.fee_usdt)})`,
+      referenceType: 'usdt_withdrawal',
+      referenceId: withdrawal.id,
+      createdBy: 'user',
+      metadata: {
+        purpose: 'usdt_withdrawal',
+        payout_method: 'crypto',
+        payout_provider: normalizedNetwork === 'TRC20' ? 'tron_master_wallet' : 'manual',
+        ref_code: refCode,
+        network: normalizedNetwork,
+        wallet_address: walletAddress,
+        fee_usdt: breakdown.fee_usdt,
+        net_usdt: breakdown.net_usdt,
+      },
+    });
+  } catch (err) {
+    await UsdtWithdrawal.updateStatus(withdrawal.id, {
+      status: 'cancelled',
+      adminNote: `Debit failed: ${err.message}`,
+    }).catch(() => {});
+    throw err;
+  }
 
   if (breakdown.fee_usdt > 0) {
     try {
@@ -230,67 +222,83 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
         },
       });
     } catch (feeErr) {
-      // Do not fail the withdrawal after the user was debited — fee ledger is best-effort.
       console.warn('[withdrawal] platform withdrawal fee credit failed:', feeErr.message);
     }
   }
 
-  let payout = null;
-  let refreshed = withdrawal;
-  const shouldAutoPayout = isNowPaymentsPayoutsEnabled() || requireLive;
-  if (shouldAutoPayout) {
-    const maxUsdt = getAutoWithdrawMaxUsdt();
-    const net = Number(breakdown.net_usdt);
-    const withinMax = maxUsdt == null || net <= maxUsdt;
-    if (withinMax && payoutCurrencySupported(normalizedNetwork)) {
-      try {
-        payout = await triggerNowPaymentsPayoutForWithdrawal(withdrawal, { force: requireLive });
-        refreshed = payout.withdrawal || (await UsdtWithdrawal.findById(withdrawal.id));
-      } catch (err) {
-        console.warn(
-          `[withdrawal] NOWPayments auto-payout failed for ${refCode}:`,
-          err.code || '',
-          err.message
-        );
-        await UsdtWithdrawal.updateStatus(withdrawal.id, {
-          status: 'pending',
-          adminNote: `Queued for manual/admin payout — NOWPayments: ${err.message}`,
-        }).catch(() => {});
-        refreshed = await UsdtWithdrawal.findById(withdrawal.id);
+  // TRC20: send immediately from master wallet (Feee energy rental happens inside transferUsdtTrc20).
+  if (normalizedNetwork === 'TRC20') {
+    await UsdtWithdrawal.updateStatus(withdrawal.id, {
+      status: 'processing',
+      adminNote: 'Automated TRC20 withdraw — energy rental + master wallet transfer',
+    });
 
-        if (requireLive) {
-          const liveErr = new Error(
-            `Withdrawal ${refCode} was recorded but the live NOWPayments payout failed: ${err.message}`
-          );
-          liveErr.code = err.code || 'NOWPAYMENTS_PAYOUT_FAILED';
-          liveErr.status = err.status || 502;
-          liveErr.withdrawal = refreshed;
-          liveErr.breakdown = breakdown;
-          liveErr.cause = err;
-          throw liveErr;
-        }
-      }
-    } else if (requireLive) {
-      const err = new Error(
-        withinMax
-          ? `NOWPayments live payouts require TRC20 or BEP20 (got ${normalizedNetwork})`
-          : `Net amount exceeds auto-payout max — cannot skip live payout`
-      );
-      err.code = withinMax ? 'NOWPAYMENTS_PAYOUT_UNSUPPORTED_NETWORK' : 'NOWPAYMENTS_PAYOUT_ABOVE_MAX';
-      err.withdrawal = refreshed;
-      err.breakdown = breakdown;
-      throw err;
+    let transfer;
+    try {
+      transfer = await transferUsdtTrc20({
+        toAddress: walletAddress,
+        amountUsdt: breakdown.net_usdt,
+      });
+    } catch (err) {
+      await UsdtWithdrawal.updateStatus(withdrawal.id, {
+        status: 'rejected',
+        adminNote: `On-chain transfer failed: ${err.message}`,
+      }).catch(() => {});
+
+      await creditUsdt(userId, breakdown.amount_usdt, {
+        purpose: 'usdt_withdrawal_refund',
+        description: `USDT withdrawal ${refCode} failed — ${formatUsdt(breakdown.amount_usdt)} refunded`,
+        referenceType: 'usdt_withdrawal',
+        referenceId: withdrawal.id,
+        createdBy: 'system',
+        metadata: {
+          purpose: 'usdt_withdrawal_refund',
+          reason: err.message,
+        },
+      }).catch((refundErr) => {
+        console.error('[withdrawal] refund after transfer failure:', refundErr.message);
+      });
+
+      const wrapped = new Error(err.message || 'USDT transfer failed');
+      wrapped.code = err.code || 'TRANSFER_FAILED';
+      wrapped.status = 502;
+      wrapped.cause = err;
+      wrapped.withdrawal = await UsdtWithdrawal.findById(withdrawal.id);
+      wrapped.breakdown = breakdown;
+      throw wrapped;
     }
+
+    const completed = await UsdtWithdrawal.updateStatus(withdrawal.id, {
+      status: 'completed',
+      txHash: transfer.txId,
+      adminNote: transfer.energyRental && !transfer.energyRental.skipped
+        ? `On-chain TRC20 transfer after energy rental (${transfer.fromAddress})`
+        : `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
+    });
+
+    return {
+      withdrawal: completed,
+      breakdown,
+      payout: {
+        provider: 'tron_master_wallet',
+        payout_id: transfer.txId,
+        status: 'completed',
+        currency: 'usdttrc20',
+        tx_hash: transfer.txId,
+        energy_rental: transfer.energyRental || null,
+        message: `Sent ${formatUsdt(breakdown.net_usdt)} via master wallet`,
+      },
+      message: `Withdrawal ${refCode} completed. ${formatUsdt(breakdown.net_usdt)} USDT sent to your TRC20 address.`,
+    };
   }
 
-  const autoStarted = Boolean(payout && !payout.alreadyTriggered);
+  // BEP20 (and other non-TRC20 crypto): queue for manual/admin processing.
+  const refreshed = await UsdtWithdrawal.findById(withdrawal.id);
   return {
     withdrawal: refreshed,
     breakdown,
-    payout,
-    message: autoStarted
-      ? `Withdrawal ${refCode} submitted. ${formatUsdt(breakdown.net_usdt)} is being sent to your ${normalizedNetwork} address via NOWPayments.`
-      : `Withdrawal ${refCode} submitted. ${formatUsdt(breakdown.net_usdt)} will be sent to your ${normalizedNetwork} address after processing.`,
+    payout: null,
+    message: `Withdrawal ${refCode} submitted. ${formatUsdt(breakdown.net_usdt)} will be sent to your ${normalizedNetwork} address after processing.`,
   };
 }
 
@@ -472,7 +480,7 @@ async function processUsdtTrc20Withdrawal(row) {
   }
 
   // Transfer USDT TRC20 from master wallet (reads MASTER_PRIVATE_KEY from env).
-  // Includes USDT balance + TRX fee checks before broadcasting.
+  // Includes energy rental (Feee.io) + USDT balance + TRX fee checks before broadcasting.
   const transfer = await transferUsdtTrc20({
     toAddress: row.wallet_address,
     amountUsdt: netUsdt,
@@ -485,7 +493,10 @@ async function processUsdtTrc20Withdrawal(row) {
     amountUsdt: transfer.amountUsdt,
     network: 'TRC20',
     currency: 'USDT',
-    note: `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
+    energyRental: transfer.energyRental || null,
+    note: transfer.energyRental && !transfer.energyRental.skipped
+      ? `On-chain TRC20 transfer after energy rental (${transfer.fromAddress})`
+      : `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
   };
 }
 
@@ -500,45 +511,17 @@ async function completeUsdtWithdrawal(id, { adminNote, txHash, adminId, skipOnCh
   let note = adminNote || null;
 
   const network = normalizeNetwork(row.network);
-  const preferNowPayments = !skipOnChain
-    && !resolvedTxHash
-    && row.payout_method === 'crypto'
-    && payoutCurrencySupported(network)
-    && isNowPaymentsPayoutsEnabled();
-
-  if (preferNowPayments) {
-    try {
-      const payout = await triggerNowPaymentsPayoutForWithdrawal(row, { force: true });
-      if (payout?.withdrawal?.status === 'completed') {
-        return payout.withdrawal;
-      }
-      // Still processing via IPN — return current row (processing)
-      return payout.withdrawal || UsdtWithdrawal.findById(id);
-    } catch (err) {
-      console.warn('[withdrawal] NOWPayments complete failed, falling back:', err.message);
-      // Fall through to master-wallet TRC20 path when available
-      if (network !== 'TRC20') {
-        await UsdtWithdrawal.updateStatus(id, {
-          status: 'pending',
-          adminNote: `NOWPayments payout failed: ${err.message}`,
-          processedBy: adminId || null,
-        });
-        throw err;
-      }
-    }
-  }
 
   const shouldSendOnChain = !skipOnChain
     && row.payout_method === 'crypto'
     && network === 'TRC20'
-    && !resolvedTxHash
-    && !row.nowpayments_payout_id;
+    && !resolvedTxHash;
 
   if (shouldSendOnChain) {
     // Mark processing so concurrent completes do not double-send.
     await UsdtWithdrawal.updateStatus(id, {
       status: 'processing',
-      adminNote: note || 'Broadcasting TRC20 USDT from master wallet…',
+      adminNote: note || 'Broadcasting TRC20 USDT from master wallet (energy rental)…',
       processedBy: adminId || null,
     });
 

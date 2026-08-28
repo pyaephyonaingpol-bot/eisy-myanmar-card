@@ -159,25 +159,24 @@
         <h3 id="withdrawUsdtModalTitle" data-i18n="withdraw_usdt_title">Withdraw USDT</h3>
         <button type="button" id="withdrawUsdtModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">Withdraw USDT via NOWPayments to a TRC20 wallet, to another crypto network, or convert at the platform rate to MMK in your bank account. MMK wallet → USDT exchange is not available.</p>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">Withdraw USDT on TRC20 from our master wallet (automated, fixed $2 fee), to BEP20 (manual), or convert at the platform rate to MMK in your bank account. MMK wallet → USDT exchange is not available.</p>
 
       <form id="withdrawUsdtForm" class="form">
         <div class="field">
           <label for="withdrawPayoutMethod" data-i18n="withdraw_payout_method">Payout Method</label>
           <select id="withdrawPayoutMethod" required>
-            <option value="nowpayments" data-i18n="withdraw_method_nowpayments" selected>NOWPayments (USDT TRC20)</option>
-            <option value="crypto" data-i18n="withdraw_method_crypto">Crypto Wallet (USDT)</option>
+            <option value="crypto" data-i18n="withdraw_method_crypto" selected>USDT TRC20 (Master Wallet)</option>
             <option value="bank" data-i18n="withdraw_method_bank">Bank Account (USDT → MMK)</option>
           </select>
-          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_nowpayments_hint">Automated payout to your TRC20 wallet via NOWPayments.</small>
+          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Automated TRC20 payout from our master wallet with Feee.io energy rental. Fixed $2 USDT fee.</small>
         </div>
 
         <div id="withdrawCryptoFields">
           <div class="field" id="withdrawNetworkField">
             <label for="withdrawNetwork" data-i18n="withdraw_network">Network</label>
             <select id="withdrawNetwork">
-              <option value="TRC20">TRC20 (TRON Network)</option>
-              <option value="BEP20">BEP20 (BSC Network)</option>
+              <option value="TRC20">TRC20 (TRON — automated)</option>
+              <option value="BEP20">BEP20 (BSC — manual)</option>
             </select>
           </div>
           <div class="field">
@@ -220,7 +219,7 @@
           <p id="withdrawPreviewSummary" class="reload-preview-receive">Fee is deducted from your requested amount.</p>
         </div>
 
-        <button type="submit" class="btn btn-primary" id="btnSubmitWithdrawUsdt" data-i18n="btn_withdraw_nowpayments">Withdraw with NOWPayments</button>
+        <button type="submit" class="btn btn-primary" id="btnSubmitWithdrawUsdt" data-i18n="btn_submit_withdraw">Withdraw USDT</button>
       </form>
 
       <div id="withdrawSuccessBox" class="ref-box hidden">
@@ -1486,6 +1485,6 @@
   <script src="/src/components/index.js?v=20260817m2"></script>
   <script src="/nav.js?v=20260816kb2"></script>
   <script src="/viewport.js?v=20260821scroll"></script>
-  <script src="/dashboard.js?v=20260828tron"></script>
+  <script src="/dashboard.js?v=20260828withdraw"></script>
 </body>
 </html>
