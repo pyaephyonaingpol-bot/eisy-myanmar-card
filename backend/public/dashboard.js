@@ -677,18 +677,120 @@ const Dashboard = {
   resetUsdtDepositForm() {
     this._usdtDepositRequestInFlight = false;
     this._usdtDepositSubmitInFlight = false;
+    this._tronDepositCreateInFlight = false;
     this.setSubmitBusy($('btnSubmitUsdtDeposit'), false, { idleLabel: 'Generate Deposit Request' });
     this.setSubmitBusy($('btnSubmitUsdtProof'), false, { idleLabel: 'Submit USDT Deposit' });
+    this.setSubmitBusy($('btnCreateTronDeposit'), false, {
+      idleLabel: window.EisyI18n?.t?.('btn_deposit_tron') || 'Create TRON Deposit',
+    });
     $('usdtDepositForm')?.reset();
     $('usdtDepositSubmitForm')?.reset();
     $('usdtAddressBox')?.classList.add('hidden');
+    $('usdtOrderRefBox')?.classList.add('hidden');
     $('usdtDepositSubmitForm')?.classList.add('hidden');
     if ($('usdtActiveDepositId')) $('usdtActiveDepositId').value = '';
+    if ($('usdtOrderAmount')) $('usdtOrderAmount').textContent = '—';
+    if ($('usdtOrderIdDisplay')) $('usdtOrderIdDisplay').textContent = '—';
+    if ($('usdtOrderStatus')) {
+      $('usdtOrderStatus').textContent = window.EisyI18n?.t?.('usdt_order_status_pending')
+        || 'Waiting for USDT transfer — verifying automatically…';
+      $('usdtOrderStatus').className = 'status-line';
+    }
+    if ($('usdtAmount')) $('usdtAmount').disabled = false;
     if ($('usdtQrCode')) {
       $('usdtQrCode').classList.add('hidden');
       $('usdtQrCode').removeAttribute('src');
     }
     this._usdtDepositAddress = '';
+    this._activeTronOrderId = '';
+    if (typeof this._tronPollStop === 'function') {
+      this._tronPollStop();
+      this._tronPollStop = null;
+    }
+    if (this._tronPollTimer) {
+      clearInterval(this._tronPollTimer);
+      this._tronPollTimer = null;
+    }
+  },
+
+  setUsdtOrderStatus(status) {
+    const el = $('usdtOrderStatus');
+    if (!el) return;
+    const t = window.EisyI18n?.t;
+    const s = String(status || '').toUpperCase();
+    if (s === 'COMPLETED') {
+      el.textContent = t?.('usdt_order_status_completed') || 'Payment verified on TRON!';
+      el.className = 'status-line ok';
+    } else if (s === 'VERIFYING') {
+      el.textContent = t?.('usdt_order_status_verifying') || 'Payment detected — confirming on chain…';
+      el.className = 'status-line';
+    } else {
+      el.textContent = t?.('usdt_order_status_pending') || 'Waiting for USDT transfer — verifying automatically…';
+      el.className = 'status-line';
+    }
+  },
+
+  startTronOrderPolling(orderId) {
+    if (!orderId) return;
+    if (typeof this._tronPollStop === 'function') {
+      this._tronPollStop();
+      this._tronPollStop = null;
+    }
+    if (this._tronPollTimer) {
+      clearInterval(this._tronPollTimer);
+      this._tronPollTimer = null;
+    }
+    this._activeTronOrderId = orderId;
+
+    const getOrder = (id) => (window.EisyServices?.deposit?.getTronOrder
+      ? window.EisyServices.deposit.getTronOrder(id)
+      : Auth.api('GET', `/api/tron/orders/${encodeURIComponent(id)}`));
+
+    if (window.EisyHooks?.depositPolling?.startTronOrderStatusPolling) {
+      const handle = window.EisyHooks.depositPolling.startTronOrderStatusPolling({
+        orderId,
+        intervalMs: 5000,
+        getOrder,
+        onPending: () => this.setUsdtOrderStatus('PENDING'),
+        onCompleted: (order) => this.onTronOrderCompleted(order),
+        onError: (err) => console.warn('[tron/deposit poll]', err.message || err),
+      });
+      this._tronPollTimer = handle.timerRef?.() || null;
+      this._tronPollStop = handle.stop;
+      return;
+    }
+
+    const tick = async () => {
+      try {
+        const { order } = await getOrder(orderId);
+        const status = String(order?.status || '').toUpperCase();
+        if (status === 'COMPLETED') {
+          if (this._tronPollTimer) clearInterval(this._tronPollTimer);
+          this._tronPollTimer = null;
+          this.onTronOrderCompleted(order);
+        } else if (status === 'PENDING') {
+          this.setUsdtOrderStatus('PENDING');
+        }
+      } catch (err) {
+        console.warn('[tron/deposit poll]', err.message || err);
+      }
+    };
+    tick();
+    this._tronPollTimer = setInterval(tick, 5000);
+  },
+
+  async onTronOrderCompleted(order) {
+    this.setUsdtOrderStatus('COMPLETED');
+    this.toast(
+      window.EisyI18n?.t?.('usdt_deposit_success_toast') || 'USDT deposit verified on TRON!',
+      'ok'
+    );
+    this.log(`TRON deposit completed: ${order?.order_id || this._activeTronOrderId}`, 'ok');
+    this.invalidateFetch('wallet', 'deposits', 'transactions');
+    await this.loadWallet({ force: true });
+    this.loadDepositHistory({ force: true });
+    this.loadTransactions();
+    setTimeout(() => this.resetUsdtDepositForm(), 2500);
   },
 
   /** Disable a submit button and show an inline spinner while a request is in flight. */
@@ -1276,15 +1378,6 @@ const Dashboard = {
 
       this.populateCardPaymentMethodOptions();
       this.populateReloadPaymentMethodOptions();
-
-      // Prefill TRC20 master wallet address for USDT deposits
-      if (this._usdtMasterDeposit?.address && ($('usdtNetwork')?.value || 'TRC20') === 'TRC20') {
-        this.showUsdtDepositAddress('TRC20', this._usdtMasterDeposit.address);
-        if ($('usdtMerchantName')) {
-          $('usdtMerchantName').textContent = this._usdtMasterDeposit.label || 'Master wallet (TRC20)';
-          $('usdtMerchantName').classList.remove('hidden');
-        }
-      }
     } catch (err) {
       if (select) {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED' || err.status === 401) {
@@ -3454,50 +3547,82 @@ const Dashboard = {
       }
     });
 
+    $('usdtAmount')?.addEventListener('input', () => this.updateUsdtDepositFeePreview());
+    $('amountMmk')?.addEventListener('input', () => this.updateMmkDepositFeePreview());
+
     this.updateUsdtDepositFeePreview();
     this.updateMmkDepositFeePreview();
 
-    $('btnCreateNowPayments')?.addEventListener('click', async () => {
-      if (this._nowPaymentsCreateInFlight) return;
+    $('btnCreateTronDeposit')?.addEventListener('click', async () => {
+      if (this._tronDepositCreateInFlight || this._activeTronOrderId) return;
       try {
         const amountUsdt = parseFloat($('usdtAmount')?.value);
         if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) {
-          console.warn('[NOWPayments] Invalid deposit amount entered:', $('usdtAmount')?.value);
+          console.warn('[tron/deposit] Invalid deposit amount entered:', $('usdtAmount')?.value);
           this.toast('Enter a valid USDT amount', 'error');
           return;
         }
-        const btn = $('btnCreateNowPayments');
-        this._nowPaymentsCreateInFlight = true;
-        this.setSubmitBusy(btn, true, { loadingLabel: 'Redirecting to checkout…' });
+        const btn = $('btnCreateTronDeposit');
+        this._tronDepositCreateInFlight = true;
+        this.setSubmitBusy(btn, true, { loadingLabel: 'Creating deposit order…' });
 
-        console.log('[NOWPayments] Requesting payment invoice for amount:', amountUsdt, 'USDT');
-        const data = await (window.EisyServices?.deposit?.createNowPayments
-          ? window.EisyServices.deposit.createNowPayments({ amount_usdt: amountUsdt, pay_currency: 'usdttrc20' })
-          : Auth.api('POST', '/api/create-payment', { amount_usdt: amountUsdt, pay_currency: 'usdttrc20' }, { sensitive: true }));
+        console.log('[tron/deposit] Creating order for amount:', amountUsdt, 'USDT');
+        const data = await (window.EisyServices?.deposit?.createTronOrder
+          ? window.EisyServices.deposit.createTronOrder({ amount_usdt: amountUsdt })
+          : Auth.api('POST', '/api/tron/orders', { amount_usdt: amountUsdt }, { sensitive: true }));
 
-        console.log('[NOWPayments] Invoice response received:', data);
-        const invoiceUrl = data?.invoice_url || data?.checkout_url;
-        if (!invoiceUrl) {
-          console.error('[NOWPayments] Missing invoice_url in response:', data);
-          throw new Error('No checkout URL returned from server');
+        console.log('[tron/deposit] Order response:', data);
+        const order = data?.order;
+        const payment = data?.payment;
+        if (!order?.deposit_address || !order?.order_id) {
+          throw new Error(data?.error || 'Invalid TRON order response from server');
         }
 
-        console.log('[NOWPayments] Redirecting to invoice URL:', invoiceUrl);
-        this.toast('Redirecting to NowPayments checkout…', 'ok');
-        window.location.href = invoiceUrl;
+        const network = payment?.network || 'TRC20';
+        this.showUsdtDepositAddress(network, order.deposit_address);
+        if ($('usdtMerchantName')) {
+          $('usdtMerchantName').textContent = `${payment?.token || 'USDT'} · ${network}`;
+          $('usdtMerchantName').classList.remove('hidden');
+        }
+        if ($('usdtOrderAmount')) {
+          $('usdtOrderAmount').textContent = `$${Number(order.amount).toFixed(2)} USDT`;
+        }
+        if ($('usdtOrderIdDisplay')) {
+          $('usdtOrderIdDisplay').textContent = order.order_id;
+        }
+        $('usdtOrderRefBox')?.classList.remove('hidden');
+        $('usdtAddressBox')?.classList.remove('hidden');
+        this.setUsdtOrderStatus(order.status || 'PENDING');
+        if ($('usdtAmount')) $('usdtAmount').disabled = true;
+
+        this.toast(
+          data.message || 'Send the exact USDT amount to the deposit address below',
+          'ok'
+        );
+        this.startTronOrderPolling(order.order_id);
       } catch (err) {
-        console.error('[NOWPayments] Payment creation failed:', err);
+        console.error('[tron/deposit] Order creation failed:', err);
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
-        this.toast(err.message || 'NowPayments checkout failed', 'error');
+        this.toast(err.message || 'TRON deposit order failed', 'error');
       } finally {
-        this._nowPaymentsCreateInFlight = false;
-        this.setSubmitBusy($('btnCreateNowPayments'), false, { idleLabel: 'Deposit with NowPayments' });
+        this._tronDepositCreateInFlight = false;
+        const btn = $('btnCreateTronDeposit');
+        if (this._activeTronOrderId) {
+          this.setSubmitBusy(btn, false, {
+            idleLabel: window.EisyI18n?.t?.('btn_deposit_tron_waiting') || 'Waiting for payment…',
+          });
+          if (btn) btn.disabled = true;
+        } else {
+          this.setSubmitBusy(btn, false, {
+            idleLabel: window.EisyI18n?.t?.('btn_deposit_tron') || 'Create TRON Deposit',
+          });
+        }
       }
     });
 
     $('usdtDepositForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      $('btnCreateNowPayments')?.click();
+      $('btnCreateTronDeposit')?.click();
     });
 
     $('usdtDepositSubmitForm')?.addEventListener('submit', async (e) => {
@@ -3587,6 +3712,13 @@ const Dashboard = {
       if (!addr || addr === '—') return;
       await this.copyToClipboard(addr);
       this.copyToast('Address copied to clipboard!');
+    });
+
+    $('btnCopyUsdtOrderId')?.addEventListener('click', async () => {
+      const orderId = $('usdtOrderIdDisplay')?.textContent?.trim();
+      if (!orderId || orderId === '—') return;
+      await this.copyToClipboard(orderId);
+      this.copyToast('Order ID copied to clipboard!');
     });
   },
 

@@ -79,11 +79,13 @@ function main() {
   ].forEach((f) => loadScript(f, sandbox));
 
   assert.ok(sandbox.EisyServices.ready);
+  assert.ok(sandbox.EisyServices.deposit.createTronOrder);
+  assert.ok(sandbox.EisyServices.deposit.getTronOrder);
   assert.ok(sandbox.EisyServices.deposit.createRequest);
   assert.ok(sandbox.EisyServices.usdtWallet.getOverview);
   assert.ok(sandbox.EisyServices.withdrawal.getFees);
   assert.ok(sandbox.EisyHooks.ready);
-  assert.ok(sandbox.EisyHooks.depositFees.calculateUsdtDepositFeePreview(50, {}));
+  assert.ok(sandbox.EisyHooks.depositPolling.startTronOrderStatusPolling);
   assert.strictEqual(
     sandbox.EisyHooks.depositFees.calculateUsdtDepositFeePreview(50, {
       payment_service_fee_percent: 2,
