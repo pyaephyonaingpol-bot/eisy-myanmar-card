@@ -1,5 +1,6 @@
 /**
- * Automated TRC20 USDT withdrawal with fixed fee + energy rental + master-wallet send.
+ * Automated TRC20 USDT withdrawal with fixed fee + master-wallet send.
+ * Manual energy mode — no Feee.io / external energy rental APIs.
  *
  * POST /api/withdraw body: { customerAddress, withdrawAmount }
  * Fee: fixed 2.0 USDT (Net Payout = withdrawAmount - 2.0)
@@ -100,7 +101,7 @@ function calculateFixedFeeWithdraw({ customerAddress, withdrawAmount }) {
 }
 
 /**
- * Debit user wallet, rent energy (via transfer helper), send net USDT on-chain.
+ * Debit user wallet and send net USDT on-chain from the master wallet.
  */
 async function executeFixedFeeTrc20Withdraw(userId, { customerAddress, withdrawAmount }) {
   if (!userId) {
@@ -170,7 +171,7 @@ async function executeFixedFeeTrc20Withdraw(userId, { customerAddress, withdrawA
 
   await UsdtWithdrawal.updateStatus(withdrawal.id, {
     status: 'processing',
-    adminNote: 'Automated TRC20 withdraw — energy rental + master wallet transfer',
+    adminNote: 'Automated TRC20 withdraw — master wallet transfer (manual energy)',
   });
 
   let transfer;
@@ -209,9 +210,7 @@ async function executeFixedFeeTrc20Withdraw(userId, { customerAddress, withdrawA
   const completed = await UsdtWithdrawal.updateStatus(withdrawal.id, {
     status: 'completed',
     txHash: transfer.txId,
-    adminNote: transfer.energyRental && !transfer.energyRental.skipped
-      ? `On-chain TRC20 transfer after energy rental (${transfer.fromAddress})`
-      : `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
+    adminNote: `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
   });
 
   return {
@@ -228,7 +227,6 @@ async function executeFixedFeeTrc20Withdraw(userId, { customerAddress, withdrawA
     network: 'TRC20',
     token: 'USDT',
     fromAddress: transfer.fromAddress,
-    energyRental: transfer.energyRental || null,
     withdrawal: {
       id: completed.id,
       ref_code: completed.ref_code,

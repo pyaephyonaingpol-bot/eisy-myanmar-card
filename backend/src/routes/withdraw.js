@@ -1,5 +1,5 @@
 /**
- * POST /api/withdraw — automated TRC20 USDT withdrawal with energy rental.
+ * POST /api/withdraw — automated TRC20 USDT withdrawal (master wallet, manual energy).
  *
  * Body: { customerAddress, withdrawAmount }
  * Fee: fixed 2.0 USDT → Net Payout = withdrawAmount - 2.0
@@ -41,7 +41,6 @@ router.post('/', requireAuth, requireSensitive, async (req, res) => {
       network: result.network,
       token: result.token,
       fromAddress: result.fromAddress,
-      energyRental: result.energyRental,
       withdrawal: result.withdrawal,
       wallet: walletPayload(user),
       fee: {
@@ -66,7 +65,7 @@ router.post('/', requireAuth, requireSensitive, async (req, res) => {
       if (['INSUFFICIENT_USDT', 'INSUFFICIENT_BALANCE', 'INSUFFICIENT_FUNDS'].includes(err.code)) {
         return 400;
       }
-      if (['MASTER_KEY_MISSING', 'ENERGY_RENTAL_NOT_CONFIGURED'].includes(err.code)) {
+      if (['MASTER_KEY_MISSING', 'MASTER_KEY_INVALID', 'MASTER_ADDRESS_INVALID'].includes(err.code)) {
         return 503;
       }
       return 500;
