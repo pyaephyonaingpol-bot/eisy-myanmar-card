@@ -20,6 +20,12 @@
     createNowPayments(body) {
       return api().request('POST', '/api/create-payment', body, { sensitive: true });
     },
+    createTronOrder(body) {
+      return api().request('POST', '/api/tron/orders', body, { sensitive: true });
+    },
+    getTronOrder(orderId) {
+      return api().request('GET', `/api/tron/orders/${encodeURIComponent(orderId)}`);
+    },
     createRequest(body) {
       return api().request('POST', '/api/deposit/request', body, { sensitive: true });
     },
