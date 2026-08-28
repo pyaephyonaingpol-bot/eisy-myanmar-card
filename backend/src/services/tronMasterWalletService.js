@@ -27,6 +27,8 @@ function getTrxLowThreshold() {
     : 30;
 }
 
+// TronWeb Method._send calls stateMutability.toLowerCase() — omitting it
+// throws "Cannot read properties of undefined (reading 'toLowerCase')".
 const USDT_TRC20_ABI = [
   {
     constant: true,
@@ -34,6 +36,7 @@ const USDT_TRC20_ABI = [
     name: 'balanceOf',
     outputs: [{ name: '', type: 'uint256' }],
     type: 'function',
+    stateMutability: 'view',
   },
   {
     constant: false,
@@ -44,6 +47,7 @@ const USDT_TRC20_ABI = [
     name: 'transfer',
     outputs: [{ name: '', type: 'bool' }],
     type: 'function',
+    stateMutability: 'nonpayable',
   },
 ];
 
@@ -170,17 +174,34 @@ async function assertMasterHasFunds(tronWeb, { ownerAddress, amountUsdt }) {
  * @param {boolean} [opts.skipEnergyRental=false]
  * @returns {Promise<{ txId: string, fromAddress: string, toAddress: string, amountUsdt: number, energyRental: object|null }>}
  */
+function assertValidTronAddress(tronWeb, address, label) {
+  const s = String(address || '').trim();
+  if (!s || !tronWeb.isAddress(s)) {
+    const err = new Error(`Invalid TRON ${label}: ${s || '(empty)'}`);
+    err.code = label === 'destination address' ? 'INVALID_DESTINATION' : 'INVALID_TRON_ADDRESS';
+    throw err;
+  }
+  return s;
+}
+
 async function transferUsdtTrc20({ toAddress, amountUsdt, skipEnergyRental = false }) {
   const privateKey = getMasterPrivateKey();
   const tronWeb = createTronWeb(privateKey);
-  const fromAddress = getMasterAddress(tronWeb, privateKey);
-  const to = String(toAddress || '').trim();
-
-  if (!tronWeb.isAddress(to)) {
-    const err = new Error(`Invalid TRON destination address: ${to}`);
-    err.code = 'INVALID_DESTINATION';
+  const fromAddressRaw = getMasterAddress(tronWeb, privateKey);
+  if (!fromAddressRaw || fromAddressRaw === false) {
+    const err = new Error(
+      'Could not derive master wallet address from MASTER_PRIVATE_KEY'
+    );
+    err.code = 'MASTER_ADDRESS_INVALID';
     throw err;
   }
+  const fromAddress = assertValidTronAddress(tronWeb, fromAddressRaw, 'master wallet address');
+  const contractAddress = assertValidTronAddress(
+    tronWeb,
+    String(USDT_TRC20_CONTRACT || '').trim(),
+    'USDT TRC20 contract address'
+  );
+  const to = assertValidTronAddress(tronWeb, toAddress, 'destination address');
 
   if (to === fromAddress) {
     const err = new Error('Destination address cannot be the master wallet');
@@ -225,7 +246,7 @@ async function transferUsdtTrc20({ toAddress, amountUsdt, skipEnergyRental = fal
     }
   }
 
-  const contract = await tronWeb.contract(USDT_TRC20_ABI, USDT_TRC20_CONTRACT);
+  const contract = await tronWeb.contract(USDT_TRC20_ABI, contractAddress);
 
   let txId;
   try {
@@ -236,9 +257,12 @@ async function transferUsdtTrc20({ toAddress, amountUsdt, skipEnergyRental = fal
       keepTxID: true,
     });
   } catch (err) {
-    const wrapped = new Error(
-      `USDT TRC20 transfer failed: ${err.message || String(err)}`
-    );
+    const msg = err?.message || String(err);
+    // Surface the known TronWeb ABI footgun clearly if it regresses.
+    const hint = /toLowerCase/.test(msg)
+      ? ' (TronWeb ABI likely missing stateMutability on transfer)'
+      : '';
+    const wrapped = new Error(`USDT TRC20 transfer failed: ${msg}${hint}`);
     wrapped.code = 'TRANSFER_FAILED';
     wrapped.cause = err;
     throw wrapped;
@@ -510,6 +534,7 @@ async function getMasterWalletInfo() {
 
 module.exports = {
   USDT_TRC20_CONTRACT,
+  USDT_TRC20_ABI,
   getMasterPrivateKey,
   getMasterWalletAddress,
   getTrxLowThreshold,

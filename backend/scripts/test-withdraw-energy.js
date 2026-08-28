@@ -17,6 +17,9 @@ function section(title) {
 }
 
 async function main() {
+  // Valid Base58Check TRON address (derived from a dummy key — not a real wallet in use).
+  const validTrc20 = 'TNTU3x2BLuJg3MQCnk6hne43NpgphMK2NJ';
+
   section('calculateFixedFeeWithdraw');
   const {
     calculateFixedFeeWithdraw,
@@ -24,7 +27,7 @@ async function main() {
   } = require('../src/services/withdrawCryptoService');
 
   const ok = calculateFixedFeeWithdraw({
-    customerAddress: 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH',
+    customerAddress: validTrc20,
     withdrawAmount: 25,
   });
   assert.strictEqual(ok.feeUsdt, 2);
@@ -33,7 +36,7 @@ async function main() {
 
   assert.throws(
     () => calculateFixedFeeWithdraw({
-      customerAddress: 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH',
+      customerAddress: validTrc20,
       withdrawAmount: 2,
     }),
     (err) => err.code === 'WITHDRAW_AMOUNT_TOO_LOW'
@@ -41,6 +44,14 @@ async function main() {
   assert.throws(
     () => calculateFixedFeeWithdraw({
       customerAddress: 'not-a-tron-address',
+      withdrawAmount: 10,
+    }),
+    (err) => err.code === 'WITHDRAW_ADDRESS_INVALID'
+  );
+  // Regex-shaped but checksum-invalid
+  assert.throws(
+    () => calculateFixedFeeWithdraw({
+      customerAddress: 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH',
       withdrawAmount: 10,
     }),
     (err) => err.code === 'WITHDRAW_ADDRESS_INVALID'
@@ -67,7 +78,7 @@ async function main() {
     };
   };
 
-  const rental = await energy.rentEnergyForAddress('TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH');
+  const rental = await energy.rentEnergyForAddress(validTrc20);
   assert.strictEqual(rental.skipped, false);
   assert.strictEqual(rental.energy_amount, 65000);
   assert.strictEqual(rental.order_no, 'ORDER-ENERGY-1');
@@ -76,7 +87,7 @@ async function main() {
   const body = JSON.parse(captured.options.body);
   assert.strictEqual(body.resource_type, 1);
   assert.strictEqual(body.resource_value, 65000);
-  assert.strictEqual(body.receive_address, 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH');
+  assert.strictEqual(body.receive_address, validTrc20);
   global.fetch = originalFetch;
   console.log('ok');
 
@@ -127,7 +138,7 @@ async function main() {
   // Re-require withdraw service so it picks up? It already required transferUsdtTrc20 by reference
   // from module.exports — mutating tron.transferUsdtTrc20 updates the same export object.
   const result = await executeFixedFeeTrc20Withdraw(userId, {
-    customerAddress: 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH',
+    customerAddress: validTrc20,
     withdrawAmount: 25,
   });
 
