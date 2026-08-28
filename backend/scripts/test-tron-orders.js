@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 /**
- * TRON gateway order service smoke tests (no live Supabase / TronGrid required).
+ * TRON gateway order service smoke tests (Supabase mock + local wallet credit).
  * Run: node backend/scripts/test-tron-orders.js
  */
 'use strict';
 
 const assert = require('assert');
 const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
-process.chdir(require('path').join(__dirname, '..'));
+process.chdir(path.join(__dirname, '..'));
 
 const tronOrders = require('../src/services/tronOrderService');
 
@@ -65,7 +68,7 @@ function makeSupabaseMock(rows) {
               const row = state.rows.find((candidate) => (
                 filters.every(([field, value]) => candidate[field] === value)
               ));
-              if (row && payload.status) row.status = payload.status;
+              if (row) Object.assign(row, payload);
               return { data: row || null, error: null };
             },
           };
@@ -91,6 +94,22 @@ function makeSupabaseMock(rows) {
   };
 }
 
+async function withTempDb(fn) {
+  const dbFile = path.join(os.tmpdir(), `eisy-tron-orders-${Date.now()}.db`);
+  process.env.DATABASE_URL = `file:${dbFile}`;
+  process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+
+  const { initDb, closeDb } = require('../src/db');
+  await initDb();
+
+  try {
+    await fn();
+  } finally {
+    await closeDb?.();
+    try { fs.unlinkSync(dbFile); } catch (_) {}
+  }
+}
+
 async function main() {
   section('parseTrc20TransferAmount');
   assert.strictEqual(
@@ -108,65 +127,84 @@ async function main() {
   assert.ok(!tronOrders.amountWithinTolerance(26, 25));
   console.log('ok');
 
-  section('createTronOrder writes master deposit address');
+  section('createTronOrder + verifyPendingTronOrders credits wallet');
   const supabase = require('../src/lib/supabase');
   const originalEnabled = supabase.isSupabaseEnabled;
   const originalGet = supabase.getSupabase;
 
-  supabase.isSupabaseEnabled = () => true;
-  const mock = makeSupabaseMock([]);
-  supabase.getSupabase = () => mock;
+  await withTempDb(async () => {
+    const { getDb } = require('../src/db');
+    const db = getDb();
+    const phone = `09${String(Date.now()).slice(-8)}`;
+    const userIns = await db.run(
+      `INSERT INTO users (name, phone, balance_usdt) VALUES (?, ?, 0)`,
+      'TRON Order Test',
+      phone
+    );
+    const userId = Number(userIns.lastID);
 
-  process.env.TRON_GATEWAY_DEPOSIT_ADDRESS = 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH';
-  const created = await tronOrders.createTronOrder({ amount_usdt: 50 });
-  assert.strictEqual(created.order.deposit_address, 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH');
-  assert.strictEqual(created.order.status, 'PENDING');
-  assert.strictEqual(created.order.amount, 50);
-  assert.ok(created.order.order_id.startsWith('TRON'));
-  console.log('ok');
+    supabase.isSupabaseEnabled = () => true;
+    const mock = makeSupabaseMock([]);
+    supabase.getSupabase = () => mock;
 
-  section('verifyPendingTronOrders completes matching inbound transfer');
-  const orderCreatedAt = new Date(Date.now() - 60_000).toISOString();
-  mock.state.rows.push({
-    id: '11111111-1111-1111-1111-111111111111',
-    order_id: 'TRONTESTORDER001',
-    amount: 10,
-    deposit_address: 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH',
-    status: 'PENDING',
-    created_at: orderCreatedAt,
-  });
+    process.env.TRON_GATEWAY_DEPOSIT_ADDRESS = 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH';
+    const created = await tronOrders.createTronOrder(userId, { amount_usdt: 10 });
+    assert.strictEqual(created.order.deposit_address, 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH');
+    assert.strictEqual(created.order.status, 'PENDING');
+    assert.strictEqual(created.order.amount, 10);
+    assert.strictEqual(created.order.user_id, userId);
+    assert.ok(created.order.local_deposit_id);
+    assert.ok(created.order.order_id.startsWith('TRON'));
+    assert.ok(created.deposit?.id);
 
-  const originalFetch = global.fetch;
-  global.fetch = async (url) => {
-    assert.match(String(url), /transactions\/trc20/);
-    assert.match(String(url), /only_to=true/);
-    assert.match(String(url), /contract_address=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t/);
-    return {
-      ok: true,
-      json: async () => ({
-        data: [{
-          transaction_id: 'abc123txhash',
-          type: 'Transfer',
-          to: 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH',
-          from: 'TSenderExample111111111111111111111',
-          value: '10000000',
-          block_timestamp: Date.now(),
-          token_info: { decimals: 6, symbol: 'USDT' },
-        }],
-      }),
+    const originalFetch = global.fetch;
+    global.fetch = async (url) => {
+      assert.match(String(url), /transactions\/trc20/);
+      assert.match(String(url), /only_to=true/);
+      assert.match(String(url), /contract_address=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t/);
+      return {
+        ok: true,
+        json: async () => ({
+          data: [{
+            transaction_id: 'abc123txhash',
+            type: 'Transfer',
+            to: 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH',
+            from: 'TSenderExample111111111111111111111',
+            value: '10000000',
+            block_timestamp: Date.now(),
+            token_info: { decimals: 6, symbol: 'USDT' },
+          }],
+        }),
+      };
     };
-  };
 
-  const verifyResult = await tronOrders.verifyPendingTronOrders();
-  assert.strictEqual(verifyResult.completed, 1);
-  const completedRow = mock.state.rows.find((row) => row.order_id === 'TRONTESTORDER001');
-  assert.strictEqual(completedRow.status, 'COMPLETED');
+    const verifyResult = await tronOrders.verifyPendingTronOrders();
+    assert.strictEqual(verifyResult.completed, 1);
+    assert.strictEqual(verifyResult.credited, 1);
+    assert.strictEqual(verifyResult.matches[0].wallet_credited, true);
+    assert.strictEqual(verifyResult.matches[0].net_usdt, 9);
 
-  global.fetch = originalFetch;
-  supabase.isSupabaseEnabled = originalEnabled;
-  supabase.getSupabase = originalGet;
-  delete process.env.TRON_GATEWAY_DEPOSIT_ADDRESS;
-  console.log('ok');
+    const completedRow = mock.state.rows.find((row) => row.order_id === created.order.order_id);
+    assert.strictEqual(completedRow.status, 'COMPLETED');
+    assert.strictEqual(completedRow.tx_hash, 'abc123txhash');
+    assert.ok(completedRow.credited_at);
+
+    const creditedDeposit = await db.get(
+      'SELECT * FROM deposit_requests_v2 WHERE id = ?',
+      created.deposit.id
+    );
+    assert.strictEqual(creditedDeposit.status, 'VERIFIED');
+    assert.strictEqual(creditedDeposit.tx_hash, 'abc123txhash');
+
+    const user = await db.get('SELECT balance_usdt FROM users WHERE id = ?', userId);
+    assert.strictEqual(Number(user.balance_usdt), 9);
+
+    global.fetch = originalFetch;
+    supabase.isSupabaseEnabled = originalEnabled;
+    supabase.getSupabase = originalGet;
+    delete process.env.TRON_GATEWAY_DEPOSIT_ADDRESS;
+    console.log('ok');
+  });
 
   console.log('\nTRON order service checks passed.');
 }

@@ -4,6 +4,16 @@
 const crypto = require('crypto');
 const supabaseLib = require('../lib/supabase');
 const { getMasterWalletAddress } = require('./tronMasterWalletService');
+const { getDb } = require('../db');
+const DepositRequest = require('../models/DepositRequest');
+const TransactionLog = require('../models/TransactionLog');
+const {
+  calculateUsdtPaymentFeeBreakdown,
+  assertValidPaymentAmount,
+} = require('./paymentFeeService');
+const { getCardPricingSettings } = require('./settingsService');
+const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require('./depositService');
+const { formatUsdt } = require('./walletService');
 
 const DEFAULT_MASTER_DEPOSIT_ADDRESS = 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH';
 const USDT_TRC20_CONTRACT = process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
@@ -82,10 +92,66 @@ function mapOrderRow(row) {
   return {
     id: row.id,
     order_id: row.order_id,
+    user_id: row.user_id != null ? Number(row.user_id) : null,
+    local_deposit_id: row.local_deposit_id != null ? Number(row.local_deposit_id) : null,
+    ref_code: row.ref_code || null,
     amount: Number(row.amount),
     deposit_address: row.deposit_address,
     status: row.status,
+    tx_hash: row.tx_hash || null,
+    credited_at: row.credited_at || null,
     created_at: row.created_at,
+  };
+}
+
+async function findDepositByTronOrderId(orderId) {
+  const id = String(orderId || '').trim();
+  if (!id) return null;
+
+  const db = getDb();
+  const byMeta = await db.get(`
+    SELECT * FROM deposit_requests_v2
+    WHERE json_extract(metadata, '$.tron_order_id') = ?
+       OR json_extract(metadata, '$.order_id') = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `, id, id);
+
+  if (byMeta) return byMeta;
+  return null;
+}
+
+async function creditTronOrderWallet(order, txHash) {
+  const deposit = order.local_deposit_id
+    ? await DepositRequest.findById(order.local_deposit_id)
+    : await findDepositByTronOrderId(order.order_id);
+
+  if (!deposit) {
+    console.error('[tron/orders] local deposit missing for order', order.order_id);
+    return { ok: false, reason: 'deposit_not_found' };
+  }
+
+  if (order.user_id != null && Number(deposit.user_id) !== Number(order.user_id)) {
+    console.error('[tron/orders] user mismatch for order', order.order_id);
+    return { ok: false, reason: 'user_mismatch' };
+  }
+
+  await assertTxHashAvailable(txHash, deposit.id);
+
+  const result = await creditDepositAndVerify(deposit, {
+    txnId: txHash,
+    createdBy: 'tron-indexer',
+    adminNote: `TRON TRC20 auto-verified — order ${order.order_id}`,
+  });
+
+  return {
+    ok: true,
+    credited: !result.alreadyVerified,
+    alreadyVerified: Boolean(result.alreadyVerified),
+    net_usdt: result.net_usdt,
+    user_id: deposit.user_id,
+    deposit_id: deposit.id,
+    balance_usdt: Number(result.user?.balance_usdt ?? 0),
   };
 }
 
@@ -105,9 +171,15 @@ function assertSupabaseConfigured() {
 }
 
 /**
- * Create a TRON gateway order in Supabase and return details for the frontend.
+ * Create a TRON gateway order in Supabase and a matching local pending deposit.
  */
-async function createTronOrder({ amount_usdt, amount } = {}) {
+async function createTronOrder(userId, { amount_usdt, amount } = {}) {
+  if (!userId) {
+    const err = new Error('Authenticated user is required');
+    err.code = 'TRON_ORDER_USER_REQUIRED';
+    throw err;
+  }
+
   const gross = parseFloat(amount_usdt != null ? amount_usdt : amount);
   if (!Number.isFinite(gross) || gross <= 0) {
     const err = new Error('Positive amount_usdt is required');
@@ -115,13 +187,100 @@ async function createTronOrder({ amount_usdt, amount } = {}) {
     throw err;
   }
 
+  const settings = await getCardPricingSettings();
+  const minUsdt = settings.minimum_usdt_deposit ?? 5;
+  if (gross < minUsdt) {
+    const err = new Error(`Minimum TRON deposit is $${Number(minUsdt).toFixed(2)} USDT`);
+    err.code = 'TRON_ORDER_AMOUNT_TOO_LOW';
+    throw err;
+  }
+
+  const feeBreakdown = calculateUsdtPaymentFeeBreakdown(gross, settings);
+  assertValidPaymentAmount(feeBreakdown, { kind: 'TRON deposit' });
+
   const sb = assertSupabaseConfigured();
   const depositAddress = getGatewayDepositAddress();
   const orderId = generateBusinessOrderId();
+  const refCode = await uniqueRefCode();
   const normalizedAmount = roundUsdt(gross);
+
+  const metadata = {
+    deposit_currency: 'USDT',
+    deposit_channel: 'tron_trc20',
+    payment_provider: 'tron_trc20',
+    tron_order_id: orderId,
+    order_id: orderId,
+    usdt_network: 'TRC20',
+    deposit_address: depositAddress,
+    amount_usdt: feeBreakdown.amount_usdt,
+    gross_usdt: feeBreakdown.amount_usdt,
+    fee_usdt: feeBreakdown.fee_usdt,
+    net_usdt: feeBreakdown.net_usdt,
+    payment_fee: {
+      operation: 'deposit',
+      currency: 'USDT',
+      provider: 'tron_trc20',
+      gross_usdt: feeBreakdown.amount_usdt,
+      fee_usdt: feeBreakdown.fee_usdt,
+      net_usdt: feeBreakdown.net_usdt,
+      platform_profit_usd: feeBreakdown.fee_usdt,
+      fee_percent: feeBreakdown.fee_percent,
+      minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
+      used_minimum_fee: feeBreakdown.used_minimum_fee,
+      fee_rule: feeBreakdown.fee_rule,
+      fee_label: feeBreakdown.fee_label,
+    },
+    pricing: {
+      amount_usdt: feeBreakdown.amount_usdt,
+      fee_usdt: feeBreakdown.fee_usdt,
+      net_usdt: feeBreakdown.net_usdt,
+      platform_profit_usd: feeBreakdown.fee_usdt,
+      fee_percent: feeBreakdown.fee_percent,
+      minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
+      used_minimum_fee: feeBreakdown.used_minimum_fee,
+      fee_label: feeBreakdown.fee_label,
+      is_usdt_topup: true,
+      deposit_channel: 'tron_trc20',
+    },
+  };
+
+  const deposit = await DepositRequest.create({
+    userId,
+    amountMmk: 0,
+    amountUsd: feeBreakdown.amount_usdt,
+    refCode,
+    paymentMethod: 'USDT-TRC20',
+    purpose: 'usdt_topup',
+    depositCurrency: 'USDT',
+    usdtNetwork: 'TRC20',
+    metadata,
+    platformProfitUsd: feeBreakdown.fee_usdt,
+  });
+
+  await TransactionLog.create({
+    userId,
+    type: 'deposit_request',
+    direction: 'neutral',
+    amountUsd: feeBreakdown.amount_usdt,
+    referenceType: 'deposit_requests_v2',
+    referenceId: deposit.id,
+    description: `[usdt_topup] TRON deposit ${refCode} — gross ${formatUsdt(feeBreakdown.amount_usdt)}, fee ${formatUsdt(feeBreakdown.fee_usdt)}, net ${formatUsdt(feeBreakdown.net_usdt)}`,
+    createdBy: 'user',
+    metadata: {
+      purpose: 'usdt_topup',
+      deposit_channel: 'tron_trc20',
+      tron_order_id: orderId,
+      payment_fee: metadata.payment_fee,
+    },
+  }).catch((err) => {
+    console.warn('[tron/orders] deposit_request log skipped:', err.message);
+  });
 
   const row = {
     order_id: orderId,
+    user_id: userId,
+    local_deposit_id: deposit.id,
+    ref_code: refCode,
     amount: normalizedAmount,
     deposit_address: depositAddress,
     status: ORDER_STATUS_PENDING,
@@ -144,6 +303,12 @@ async function createTronOrder({ amount_usdt, amount } = {}) {
     message: 'TRON USDT deposit order created',
     provider: 'tron_trc20',
     order: mapOrderRow(data),
+    deposit: {
+      id: deposit.id,
+      ref_code: refCode,
+      status: deposit.status,
+    },
+    fee_breakdown: feeBreakdown,
     payment: {
       network: 'TRC20',
       token: 'USDT',
@@ -279,6 +444,7 @@ async function verifyPendingTronOrders() {
 
   const usedTransactionIds = new Set();
   let completed = 0;
+  let credited = 0;
   const matches = [];
 
   for (const order of pending) {
@@ -306,9 +472,26 @@ async function verifyPendingTronOrders() {
     const txId = String(match.transaction_id);
     usedTransactionIds.add(txId);
 
+    let creditResult;
+    try {
+      creditResult = await creditTronOrderWallet(order, txId);
+    } catch (err) {
+      console.error('[tron/orders] wallet credit failed:', order.order_id, err.message);
+      continue;
+    }
+
+    if (!creditResult.ok) {
+      console.error('[tron/orders] wallet credit skipped:', order.order_id, creditResult.reason);
+      continue;
+    }
+
     const { data: updated, error } = await sb
       .from('orders')
-      .update({ status: ORDER_STATUS_COMPLETED })
+      .update({
+        status: ORDER_STATUS_COMPLETED,
+        tx_hash: txId,
+        credited_at: new Date().toISOString(),
+      })
       .eq('id', order.id)
       .eq('status', ORDER_STATUS_PENDING)
       .select('*')
@@ -321,13 +504,24 @@ async function verifyPendingTronOrders() {
 
     if (updated) {
       completed += 1;
+      if (creditResult.credited) credited += 1;
       matches.push({
         order_id: order.order_id,
         amount_usdt: order.amount,
         tx_hash: txId,
         status: ORDER_STATUS_COMPLETED,
+        wallet_credited: Boolean(creditResult.credited),
+        already_verified: Boolean(creditResult.alreadyVerified),
+        net_usdt: creditResult.net_usdt,
+        user_id: creditResult.user_id,
       });
-      console.log('[tron/orders] completed', order.order_id, 'via', txId);
+      console.log(
+        '[tron/orders] completed',
+        order.order_id,
+        'via',
+        txId,
+        creditResult.credited ? `(credited ${formatUsdt(creditResult.net_usdt || 0)})` : '(already credited)'
+      );
     }
   }
 
@@ -335,6 +529,7 @@ async function verifyPendingTronOrders() {
     ok: true,
     checked: pending.length,
     completed,
+    credited,
     deposit_address: depositAddress,
     transfers_scanned: transfers.length,
     matches,
@@ -392,6 +587,8 @@ module.exports = {
   getGatewayDepositAddress,
   createTronOrder,
   findTronOrderByOrderId,
+  findDepositByTronOrderId,
+  creditTronOrderWallet,
   fetchIncomingUsdtTransfers,
   listPendingTronOrders,
   verifyPendingTronOrders,
