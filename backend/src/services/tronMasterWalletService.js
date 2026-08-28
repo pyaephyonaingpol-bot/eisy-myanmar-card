@@ -161,12 +161,16 @@ async function assertMasterHasFunds(tronWeb, { ownerAddress, amountUsdt }) {
 /**
  * Transfer USDT (TRC20) from the master wallet to a destination address.
  *
+ * Optionally rents ~65k energy for the master wallet first (Feee.io) to avoid
+ * burning large TRX for contract energy.
+ *
  * @param {object} opts
  * @param {string} opts.toAddress - TRON Base58 destination
  * @param {number|string} opts.amountUsdt - USDT amount to send (net payout)
- * @returns {Promise<{ txId: string, fromAddress: string, toAddress: string, amountUsdt: number }>}
+ * @param {boolean} [opts.skipEnergyRental=false]
+ * @returns {Promise<{ txId: string, fromAddress: string, toAddress: string, amountUsdt: number, energyRental: object|null }>}
  */
-async function transferUsdtTrc20({ toAddress, amountUsdt }) {
+async function transferUsdtTrc20({ toAddress, amountUsdt, skipEnergyRental = false }) {
   const privateKey = getMasterPrivateKey();
   const tronWeb = createTronWeb(privateKey);
   const fromAddress = getMasterAddress(tronWeb, privateKey);
@@ -186,6 +190,40 @@ async function transferUsdtTrc20({ toAddress, amountUsdt }) {
 
   const amountSun = usdtToSun(amountUsdt);
   await assertMasterHasFunds(tronWeb, { ownerAddress: fromAddress, amountUsdt });
+
+  let energyRental = null;
+  if (!skipEnergyRental) {
+    try {
+      const { rentEnergyForAddress } = require('./energyRentalService');
+      energyRental = await rentEnergyForAddress(fromAddress);
+      if (energyRental?.skipped) {
+        console.log('[tron] energy rental skipped:', energyRental.reason);
+      } else {
+        console.log(
+          `[tron] energy rented for ${fromAddress}: ${energyRental.energy_amount} `
+          + `(order ${energyRental.order_no || 'n/a'})`
+        );
+      }
+    } catch (err) {
+      // Fail closed when rental is explicitly required; otherwise warn and continue.
+      const requireRental = String(process.env.ENERGY_RENTAL_REQUIRED || '')
+        .trim()
+        .toLowerCase() === 'true';
+      if (requireRental) {
+        const wrapped = new Error(`Energy rental required before USDT transfer: ${err.message}`);
+        wrapped.code = err.code || 'ENERGY_RENTAL_FAILED';
+        wrapped.cause = err;
+        throw wrapped;
+      }
+      console.warn('[tron] energy rental failed — continuing with TRX burn fallback:', err.message);
+      energyRental = {
+        skipped: true,
+        reason: 'rental_failed',
+        error: err.message,
+        code: err.code,
+      };
+    }
+  }
 
   const contract = await tronWeb.contract(USDT_TRC20_ABI, USDT_TRC20_CONTRACT);
 
@@ -226,6 +264,7 @@ async function transferUsdtTrc20({ toAddress, amountUsdt }) {
     fromAddress,
     toAddress: to,
     amountUsdt: Number(amountUsdt),
+    energyRental,
   };
 }
 
