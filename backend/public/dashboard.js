@@ -5308,7 +5308,7 @@ const Dashboard = {
       if (method === 'crypto') {
         methodHint.textContent = t
           ? t('withdraw_method_crypto_hint')
-          : 'Automated TRC20 payout from our master wallet with Feee.io energy rental. Fixed $2 USDT fee. BEP20 remains manual.';
+          : 'Automated TRC20 payout from our master wallet (manual energy). Fixed $2 USDT fee. BEP20 remains manual.';
         methodHint.dataset.i18n = 'withdraw_method_crypto_hint';
       } else {
         methodHint.textContent = t

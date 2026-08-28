@@ -217,7 +217,6 @@ router.post('/usdt', requireAuth, requireSensitive, async (req, res) => {
             status: payout.status || null,
             currency: payout.currency || 'usdttrc20',
             tx_hash: payout.tx_hash || payout.payout_id || null,
-            energy_rental: payout.energy_rental || null,
             message: payout.message,
           }
         : null,

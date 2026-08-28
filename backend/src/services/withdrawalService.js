@@ -20,7 +20,7 @@ const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRev
 const { transferUsdtTrc20, isLikelyTronAddress } = require('./tronMasterWalletService');
 const { getFixedWithdrawFeeUsdt } = require('./withdrawCryptoService');
 // NOWPayments payout helpers are retained for legacy IPN / admin tools only —
-// user-facing crypto withdrawals use master-wallet TronWeb + energy rental.
+// user-facing crypto withdrawals use master-wallet TronWeb (manual energy).
 
 function generateRefCode(prefix = 'WD') {
   const num = Math.floor(1000 + Math.random() * 9000);
@@ -229,11 +229,11 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     }
   }
 
-  // TRC20: send immediately from master wallet (Feee energy rental happens inside transferUsdtTrc20).
+  // TRC20: send immediately from master wallet (manual energy — no rental APIs).
   if (normalizedNetwork === 'TRC20') {
     await UsdtWithdrawal.updateStatus(withdrawal.id, {
       status: 'processing',
-      adminNote: 'Automated TRC20 withdraw — energy rental + master wallet transfer',
+      adminNote: 'Automated TRC20 withdraw — master wallet transfer (manual energy)',
     });
 
     let transfer;
@@ -274,9 +274,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     const completed = await UsdtWithdrawal.updateStatus(withdrawal.id, {
       status: 'completed',
       txHash: transfer.txId,
-      adminNote: transfer.energyRental && !transfer.energyRental.skipped
-        ? `On-chain TRC20 transfer after energy rental (${transfer.fromAddress})`
-        : `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
+      adminNote: `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
     });
 
     return {
@@ -288,7 +286,6 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
         status: 'completed',
         currency: 'usdttrc20',
         tx_hash: transfer.txId,
-        energy_rental: transfer.energyRental || null,
         message: `Sent ${formatUsdt(breakdown.net_usdt)} via master wallet`,
       },
       message: `Withdrawal ${refCode} completed. ${formatUsdt(breakdown.net_usdt)} USDT sent to your TRC20 address.`,
@@ -482,8 +479,7 @@ async function processUsdtTrc20Withdrawal(row) {
     throw new Error('Withdrawal is missing destination wallet address');
   }
 
-  // Transfer USDT TRC20 from master wallet (reads MASTER_PRIVATE_KEY from env).
-  // Includes energy rental (Feee.io) + USDT balance + TRX fee checks before broadcasting.
+  // Transfer USDT TRC20 from master wallet (manual energy; MASTER_PRIVATE_KEY from env).
   const transfer = await transferUsdtTrc20({
     toAddress: row.wallet_address,
     amountUsdt: netUsdt,
@@ -496,10 +492,7 @@ async function processUsdtTrc20Withdrawal(row) {
     amountUsdt: transfer.amountUsdt,
     network: 'TRC20',
     currency: 'USDT',
-    energyRental: transfer.energyRental || null,
-    note: transfer.energyRental && !transfer.energyRental.skipped
-      ? `On-chain TRC20 transfer after energy rental (${transfer.fromAddress})`
-      : `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
+    note: `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
   };
 }
 
@@ -524,7 +517,7 @@ async function completeUsdtWithdrawal(id, { adminNote, txHash, adminId, skipOnCh
     // Mark processing so concurrent completes do not double-send.
     await UsdtWithdrawal.updateStatus(id, {
       status: 'processing',
-      adminNote: note || 'Broadcasting TRC20 USDT from master wallet (energy rental)…',
+      adminNote: note || 'Broadcasting TRC20 USDT from master wallet (manual energy)…',
       processedBy: adminId || null,
     });
 
