@@ -34,6 +34,25 @@ Existing routes remain: `/api/tron/orders`, `/api/withdraw`, `/api/withdrawal/us
 1. **Register** → background HD address provision → Supabase `user_wallets` / `user_tron_deposit_addresses`
 2. **Deposit** → `POST /deposits` → user pays unique address → poller / `sync-deposits` credits `balance_usdt`
 3. **Withdraw** → `POST /withdraw` → debit ledger → `transferUsdtTrc20` from `MASTER_PRIVATE_KEY`
+4. **Sweep (ops)** → master sends a little TRX for gas → deposit address sends all USDT back to master
+
+## Sweep script
+
+```bash
+# Dry-run all custodial HD addresses
+npm run sweep:tron-deposits -- --dry-run --all
+
+# Sweep one user
+npm run sweep:tron-deposits -- --user-id=42
+
+# Live sweep all (funds TRX gas from master first)
+npm run sweep:tron-deposits -- --all
+```
+
+Service: `backend/src/services/tronSweepService.js`  
+CLI: `backend/scripts/sweep-tron-deposits.js`
+
+Env: `TRON_SWEEP_GAS_TRX` (default `1.1`), `TRON_SWEEP_GAS_WAIT_MS`, `TRON_SWEEP_MIN_USDT`.
 
 ## Env
 

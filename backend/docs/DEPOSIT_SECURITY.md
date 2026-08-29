@@ -15,6 +15,10 @@ Sweeping HD deposits → master is a separate ops step (not automated here).
 When HD is disabled (`TRON_HD_ENABLED=false`) or unconfigured, deposits fall back
 to the shared gateway address (`TRON_GATEWAY_DEPOSIT_ADDRESS` / master wallet).
 
+**Sweep:** `npm run sweep:tron-deposits -- --all` sends a small TRX gas top-up from
+the master wallet to each deposit address, then sweeps all USDT back to master
+(`tronSweepService.js`).
+
 ## Guarantees (after hardening)
 
 1. **On-chain verification required** for USDT auto-approve  
