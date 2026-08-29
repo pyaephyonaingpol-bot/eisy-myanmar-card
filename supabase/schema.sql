@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS user_wallets (
   name TEXT,
   balance_mmk NUMERIC(18, 2) NOT NULL DEFAULT 0,
   balance_usdt NUMERIC(18, 4) NOT NULL DEFAULT 0,
+  tron_deposit_address TEXT,
+  tron_derivation_index INTEGER,
+  tron_derivation_path TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

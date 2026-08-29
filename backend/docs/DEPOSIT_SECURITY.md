@@ -1,8 +1,19 @@
 # Deposit approval & master-wallet security
 
 ## Architecture note
-USDT TRC20 deposits are paid **to** the shared master wallet address. There is no
-post-deposit “sweep.” Withdrawals pay **from** the same master wallet.
+USDT TRC20 deposits prefer **per-user HD deposit addresses** derived from
+`TRON_HD_MNEMONIC` / `TRON_HD_SEED_HEX` (BIP44 `m/44'/195'/0'/0/{userId}`).
+Each user gets a unique TRC-20 address stored in:
+- local `user_usdt_wallet_addresses` (with `derivation_index` / `derivation_path`)
+- Supabase `user_wallets.tron_deposit_address` + `user_tron_deposit_addresses`
+
+The TronGrid poller watches **each pending order’s** `deposit_address`.
+
+Withdrawals still pay **from** the hot master wallet (`MASTER_PRIVATE_KEY`).
+Sweeping HD deposits → master is a separate ops step (not automated here).
+
+When HD is disabled (`TRON_HD_ENABLED=false`) or unconfigured, deposits fall back
+to the shared gateway address (`TRON_GATEWAY_DEPOSIT_ADDRESS` / master wallet).
 
 ## Guarantees (after hardening)
 
