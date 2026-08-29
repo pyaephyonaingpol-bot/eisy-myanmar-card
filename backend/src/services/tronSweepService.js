@@ -1,6 +1,10 @@
 /**
  * Sweep USDT from per-user HD deposit addresses → master wallet.
  *
+ * MANUAL ONLY — not started by cron or server boot. Trigger via:
+ *   - POST /api/admin/sweep-deposits (admin API)
+ *   - npm run sweep:tron-deposits (CLI)
+ *
  * Because deposit addresses hold no TRX by default, each sweep:
  *   1. Sends a small TRX gas top-up from the master wallet → deposit address
  *   2. Waits briefly for confirmation
@@ -461,6 +465,70 @@ async function sweepAllCustodialDeposits({
   };
 }
 
+/** Prevent overlapping manual sweeps (admin API / CLI). Not a cron — invoke explicitly. */
+let sweepInFlight = false;
+
+async function runManualSweep({
+  userId = null,
+  dryRun = false,
+  forceGas = false,
+  limit = 500,
+  createTw,
+  waitFn,
+} = {}) {
+  if (sweepInFlight) {
+    const err = new Error('A TRON deposit sweep is already in progress');
+    err.code = 'SWEEP_IN_PROGRESS';
+    throw err;
+  }
+  sweepInFlight = true;
+  const startedAt = new Date().toISOString();
+  try {
+    const inject = {};
+    if (createTw) inject.createTw = createTw;
+    if (waitFn) inject.waitFn = waitFn;
+
+    let summary;
+    if (userId != null && userId !== '') {
+      const id = Number(userId);
+      if (!Number.isInteger(id) || id <= 0) {
+        const err = new Error('user_id must be a positive integer');
+        err.code = 'SWEEP_INVALID_USER';
+        throw err;
+      }
+      const result = await sweepUserDeposit(id, { dryRun, forceGas, ...inject });
+      summary = {
+        ok: result.ok !== false,
+        mode: 'user',
+        dryRun: Boolean(dryRun),
+        checked: 1,
+        swept: result.skipped ? 0 : (result.ok === false ? 0 : 1),
+        skipped: result.skipped ? 1 : 0,
+        failed: result.ok === false ? 1 : 0,
+        gasTrx: getSweepGasTrx(),
+        minUsdt: getMinSweepUsdt(),
+        results: [result],
+      };
+    } else {
+      summary = await sweepAllCustodialDeposits({ dryRun, forceGas, limit, ...inject });
+      summary.mode = 'all';
+    }
+    return {
+      ...summary,
+      manual: true,
+      scheduled: false,
+      started_at: startedAt,
+      finished_at: new Date().toISOString(),
+    };
+  } finally {
+    sweepInFlight = false;
+  }
+}
+
+function isSweepInFlight() {
+  return sweepInFlight;
+}
+
 module.exports = {
   getSweepGasTrx,
   getMinSweepUsdt,
@@ -471,6 +539,8 @@ module.exports = {
   sweepUserDeposit,
   sweepAllCustodialDeposits,
   listSweepableDepositAddresses,
+  runManualSweep,
+  isSweepInFlight,
   trxToSun,
   sunToTrx,
 };

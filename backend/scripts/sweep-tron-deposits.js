@@ -2,22 +2,19 @@
 /**
  * Sweep USDT from per-user HD deposit addresses → master wallet.
  *
+ * MANUAL ONLY (no cron / no auto job). Prefer the admin API:
+ *   POST /api/admin/sweep-deposits
+ *   Body: { "dry_run": true } | { "user_id": 42 } | {}
+ *
+ * CLI alternative:
+ *   node backend/scripts/sweep-tron-deposits.js --dry-run --all
+ *   node backend/scripts/sweep-tron-deposits.js --user-id=42
+ *   node backend/scripts/sweep-tron-deposits.js --all
+ *
  * Flow per address:
  *   1. Master wallet sends a small TRX top-up (gas) to the deposit address
  *   2. Wait briefly
  *   3. Deposit address sends all USDT TRC-20 back to the master wallet
- *
- * Usage:
- *   node backend/scripts/sweep-tron-deposits.js --dry-run
- *   node backend/scripts/sweep-tron-deposits.js --user-id=42
- *   node backend/scripts/sweep-tron-deposits.js --all
- *   node backend/scripts/sweep-tron-deposits.js --all --force-gas
- *
- * Env:
- *   MASTER_PRIVATE_KEY, TRON_HD_MNEMONIC (or TRON_HD_SEED_HEX)
- *   TRON_SWEEP_GAS_TRX=1.1
- *   TRON_SWEEP_GAS_WAIT_MS=3000
- *   TRON_SWEEP_MIN_USDT=0.01
  */
 'use strict';
 
@@ -61,49 +58,37 @@ Env: MASTER_PRIVATE_KEY, TRON_HD_MNEMONIC, TRON_SWEEP_GAS_TRX (default 1.1)`);
   await initDb();
 
   const sweep = require('../src/services/tronSweepService');
-  console.log('[sweep] gas TRX=', sweep.getSweepGasTrx(), 'min USDT=', sweep.getMinSweepUsdt(),
+  console.log('[sweep] MANUAL run — gas TRX=', sweep.getSweepGasTrx(), 'min USDT=', sweep.getMinSweepUsdt(),
     'dryRun=', opts.dryRun);
 
   try {
-    let summary;
+    const summary = await sweep.runManualSweep({
+      userId: opts.userId || null,
+      dryRun: opts.dryRun,
+      forceGas: opts.forceGas,
+      limit: opts.limit,
+    });
+
     if (opts.userId) {
-      if (!Number.isInteger(opts.userId) || opts.userId <= 0) {
-        throw new Error('--user-id must be a positive integer');
-      }
-      const result = await sweep.sweepUserDeposit(opts.userId, {
-        dryRun: opts.dryRun,
-        forceGas: opts.forceGas,
-      });
-      summary = {
-        ok: result.ok !== false,
-        checked: 1,
-        swept: result.skipped ? 0 : 1,
-        skipped: result.skipped ? 1 : 0,
-        failed: 0,
-        results: [result],
-      };
-      console.log(JSON.stringify(result, null, 2));
+      console.log(JSON.stringify(summary.results?.[0] || summary, null, 2));
     } else {
-      summary = await sweep.sweepAllCustodialDeposits({
-        dryRun: opts.dryRun,
-        limit: opts.limit,
-        forceGas: opts.forceGas,
-        onProgress: (r) => {
-          if (r.ok === false) {
-            console.log(`FAIL user=${r.userId} ${r.error}`);
-          } else if (r.skipped) {
-            console.log(`SKIP user=${r.userId} addr=${r.depositAddress} reason=${r.reason}`);
-          } else {
-            console.log(
-              `OK user=${r.userId} usdt=${r.usdt?.amountUsdt ?? r.usdtBalance}`
-              + ` gasTx=${r.gas?.txId || (r.gas?.skipped ? 'skipped' : 'dry')} `
-              + `usdtTx=${r.usdt?.txId || 'dry'}`
-            );
-          }
-        },
-      });
+      for (const r of summary.results || []) {
+        if (r.ok === false) {
+          console.log(`FAIL user=${r.userId} ${r.error}`);
+        } else if (r.skipped) {
+          console.log(`SKIP user=${r.userId} addr=${r.depositAddress} reason=${r.reason}`);
+        } else {
+          console.log(
+            `OK user=${r.userId} usdt=${r.usdt?.amountUsdt ?? r.usdtBalance}`
+            + ` gasTx=${r.gas?.txId || (r.gas?.skipped ? 'skipped' : 'dry')} `
+            + `usdtTx=${r.usdt?.txId || 'dry'}`
+          );
+        }
+      }
       console.log(JSON.stringify({
         ok: summary.ok,
+        manual: summary.manual,
+        scheduled: summary.scheduled,
         dryRun: summary.dryRun,
         checked: summary.checked,
         swept: summary.swept,

@@ -1581,6 +1581,13 @@ const {
 } = require('../services/nowPaymentsPayoutService');
 const { walletPayload: adminWalletPayload } = require('../services/walletService');
 const { getMasterWalletInfo } = require('../services/tronMasterWalletService');
+const {
+  runManualSweep,
+  listSweepableDepositAddresses,
+  getSweepGasTrx,
+  getMinSweepUsdt,
+  isSweepInFlight,
+} = require('../services/tronSweepService');
 
 /** Non-secret NOWPayments payout config readiness (for Vercel env debugging). */
 router.get('/nowpayments/payout-config', requirePermission('withdrawals'), async (_req, res) => {
@@ -1630,6 +1637,121 @@ router.get('/master-wallet-balance', requirePermission('master_wallet'), async (
       error: err.message || 'Failed to query master wallet balance',
       code: code || undefined,
       details: err.details || undefined,
+    });
+  }
+});
+
+/**
+ * POST /api/admin/sweep-deposits
+ * Manual-only TRON HD deposit sweep (no cron).
+ * Body: { dry_run?: boolean, user_id?: number, force_gas?: boolean, limit?: number }
+ *
+ * 1) Master sends small TRX gas → user deposit address
+ * 2) Deposit address sends all USDT → master wallet
+ */
+router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    if (isSweepInFlight()) {
+      return res.status(409).json({
+        success: false,
+        error: 'A TRON deposit sweep is already in progress',
+        code: 'SWEEP_IN_PROGRESS',
+      });
+    }
+
+    const body = req.body || {};
+    const dryRun = Boolean(body.dry_run ?? body.dryRun);
+    const forceGas = Boolean(body.force_gas ?? body.forceGas);
+    const userId = body.user_id ?? body.userId ?? null;
+    const limit = body.limit != null ? Number(body.limit) : 500;
+
+    const summary = await runManualSweep({
+      userId,
+      dryRun,
+      forceGas,
+      limit,
+    });
+
+    TransactionLog.create({
+      userId: req.user?.id || null,
+      type: 'other',
+      direction: 'neutral',
+      description: dryRun
+        ? `Admin dry-run TRON deposit sweep (${summary.mode})`
+        : `Admin manual TRON deposit sweep (${summary.mode})`,
+      createdBy: 'admin',
+      metadata: {
+        action: 'sweep_deposits',
+        dry_run: dryRun,
+        mode: summary.mode,
+        checked: summary.checked,
+        swept: summary.swept,
+        skipped: summary.skipped,
+        failed: summary.failed,
+        user_id: userId,
+      },
+    }).catch((err) => {
+      console.warn('[admin/sweep-deposits] audit log skipped:', err.message);
+    });
+
+    const status = summary.failed > 0 ? 207 : 200;
+    res.status(status).json({
+      success: summary.ok,
+      message: dryRun
+        ? 'Dry-run complete — no on-chain transfers were broadcast'
+        : 'Manual TRON deposit sweep finished',
+      manual: true,
+      scheduled: false,
+      gas_trx: summary.gasTrx ?? getSweepGasTrx(),
+      min_usdt: summary.minUsdt ?? getMinSweepUsdt(),
+      sweep: summary,
+    });
+  } catch (err) {
+    console.error('[admin/sweep-deposits]', err.code || '', err.message);
+    const status = (() => {
+      if (err.code === 'SWEEP_IN_PROGRESS') return 409;
+      if (err.code === 'SWEEP_INVALID_USER') return 400;
+      if (['MASTER_KEY_MISSING', 'MASTER_KEY_INVALID', 'MASTER_ADDRESS_INVALID', 'TRON_HD_NOT_CONFIGURED'].includes(err.code)) {
+        return 503;
+      }
+      if (err.code === 'SWEEP_INSUFFICIENT_MASTER_TRX') return 422;
+      return 500;
+    })();
+    res.status(status).json({
+      success: false,
+      error: err.message || 'Sweep failed',
+      code: err.code || 'SWEEP_FAILED',
+      details: err.details || undefined,
+    });
+  }
+});
+
+/** GET /api/admin/sweep-deposits — list HD addresses eligible for manual sweep (no transfers). */
+router.get('/sweep-deposits', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    const limit = req.query.limit != null ? Number(req.query.limit) : 500;
+    const addresses = await listSweepableDepositAddresses({ limit });
+    res.json({
+      success: true,
+      manual: true,
+      scheduled: false,
+      gas_trx: getSweepGasTrx(),
+      min_usdt: getMinSweepUsdt(),
+      in_flight: isSweepInFlight(),
+      count: addresses.length,
+      addresses: addresses.map((row) => ({
+        user_id: row.user_id,
+        address: row.address,
+        derivation_index: row.derivation_index,
+        derivation_path: row.derivation_path,
+        updated_at: row.updated_at,
+      })),
+    });
+  } catch (err) {
+    console.error('[admin/sweep-deposits GET]', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to list sweepable addresses',
     });
   }
 });
