@@ -30,6 +30,7 @@ const {
   reloadCardFromUsdtWallet,
 } = require('../services/cardWalletService');
 const { assignCardToUser, isSupabaseAdminEnabled } = require('../services/cardPoolService');
+const { issueCardForUser, publicUserCard } = require('../services/cardIssueService');
 const { resolveActivePaymentMethod } = require('../services/depositPaymentMethodService');
 const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
@@ -179,6 +180,77 @@ router.post('/cards/purchase', requireAuth, requireSensitive, async (req, res) =
         : code === 'POOL_EMPTY' || code === 'POOL_RACE' || code === 'ALREADY_ASSIGNED' ? 409
           : 500;
     res.status(status).json({ error: err.message || 'Purchase failed', code });
+  }
+});
+
+/**
+ * Real-time Kripicard issuance after payment.
+ * Mirrors Next.js route: app/api/cards/issue/route.js
+ * Provider: POST /api/external/cards/createcard (name_on_card, bin, amount, api_key)
+ */
+router.post('/cards/issue', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    if (!isSupabaseAdminEnabled()) {
+      return res.status(503).json({
+        error: 'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.',
+        code: 'SUPABASE_NOT_CONFIGURED',
+      });
+    }
+    if (!String(process.env.KRIPICARD_API_KEY || '').trim()) {
+      return res.status(503).json({
+        error: 'KRIPICARD_API_KEY is not configured',
+        code: 'KRIPICARD_NOT_CONFIGURED',
+      });
+    }
+
+    const body = req.body || {};
+    const result = await issueCardForUser({
+      userId: req.user.id,
+      nameOnCard: body.name_on_card || body.cardholder_name || body.cardHolderName || req.user.name,
+      bin: body.bin ?? body.bank_bin ?? body.bankBin,
+      amount: body.amount ?? body.purchase_amount ?? body.initial_amount,
+      currency: body.currency || body.purchase_currency || 'USD',
+      paymentRef: body.payment_ref || body.paymentRef || body.deposit_id || null,
+      idempotencyKey: body.idempotency_key || body.idempotencyKey || null,
+      metadata: {
+        ...(body.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
+        source: 'user/cards/issue',
+        issued_via: 'user',
+      },
+    });
+
+    res.json({
+      success: true,
+      message: result.reused
+        ? 'Card already issued for this payment'
+        : 'Card issued successfully',
+      reused: Boolean(result.reused),
+      card: publicUserCard(result.user_card),
+    });
+  } catch (err) {
+    console.error('[user/cards/issue]', err);
+    const code = err.code || 'INTERNAL_ERROR';
+    const status =
+      code === 'USER_REQUIRED'
+      || code === 'INVALID_NAME_ON_CARD'
+      || code === 'INVALID_BIN'
+      || code === 'INVALID_AMOUNT'
+        ? 400
+        : code === 'KRIPICARD_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED'
+          ? 503
+          : code === 'KRIPICARD_HTTP_ERROR'
+            || code === 'KRIPICARD_API_ERROR'
+            || code === 'KRIPICARD_TIMEOUT'
+            || code === 'KRIPICARD_BAD_RESPONSE'
+            || code === 'KRIPICARD_MISSING_CARD_ID'
+            ? 502
+            : 500;
+    res.status(status).json({
+      error: err.message || 'Card issue failed',
+      code,
+      errors: err.errors || undefined,
+      provider_status: err.status || undefined,
+    });
   }
 });
 

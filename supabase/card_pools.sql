@@ -1,9 +1,11 @@
--- Eisy Myanmar — Kripicard Pool Model
+-- Eisy Myanmar — Kripicard card inventory + issued cards
 -- Run in Supabase SQL Editor (after supabase/schema.sql if starting fresh).
 --
--- Flow:
--- 1) Admin fetches blank/pre-issued cards from Kripicard → upsert into card_pools (status=available)
--- 2) On purchase, assign_card_from_pool() atomically marks one pool row assigned + inserts user_cards
+-- Flows:
+-- A) Pool Model: admin fetches blank cards → card_pools (available)
+--    → purchase assigns one row + inserts user_cards
+-- B) Real-time issue: POST createcard (name_on_card, bin, amount, api_key)
+--    → store directly in user_cards (pool_id null)
 
 CREATE TABLE IF NOT EXISTS card_pools (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
