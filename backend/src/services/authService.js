@@ -149,6 +149,14 @@ async function completeRegistration({ email, otp, name, phone, pin, ipAddress, d
     console.warn('[auth] Supabase wallet sync after register:', err.message);
   });
 
+  // Provision unique TRC-20 HD deposit address (non-blocking).
+  try {
+    const { provisionDepositAddressInBackground } = require('./tronWalletService');
+    provisionDepositAddressInBackground(user.id);
+  } catch (err) {
+    console.warn('[auth] TRON address provision hook failed:', err.message);
+  }
+
   const { sessionToken, session } = await createSession({
     userId: user.id,
     ipAddress,

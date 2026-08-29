@@ -90,6 +90,7 @@ app.use('/api/qr', require('./routes/qr'));
 app.use('/api/auth', authRoutes);
 app.use('/api/deposit', depositRoutes);
 app.use('/api/tron/orders', require('./routes/tronOrders'));
+app.use('/api/tron/wallet', require('./routes/tronWallet'));
 app.use('/api/webhook', require('./routes/webhook'));
 const nowPaymentsRoutes = require('../../server/routes/nowpayments');
 app.use('/api/nowpayments', nowPaymentsRoutes);

@@ -342,11 +342,22 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
     rows.filter((r) => r.address_type === 'custodial').map((r) => r.network)
   );
   const needsProvision = SUPPORTED_NETWORKS.some((net) => !custodialNetworks.has(net));
+  const trc20Custodial = rows.find((r) => r.address_type === 'custodial' && r.network === 'TRC20');
+  const needsHdUpgrade = Boolean(trc20Custodial && trc20Custodial.derivation_index == null);
 
-  // Only provision when at least one custodial network is missing.
-  if (needsProvision) {
+  // Provision missing networks and/or upgrade shared TRC20 → per-user HD address.
+  if (needsProvision || needsHdUpgrade) {
     try {
-      await provisionCustodialAddresses(userId);
+      if (needsHdUpgrade) {
+        const { ensureUserTronDepositAddress } = require('./tronDepositAddressService');
+        const { isHdEnabled } = require('./tronHdWalletService');
+        if (isHdEnabled()) {
+          await ensureUserTronDepositAddress(userId);
+        }
+      }
+      if (needsProvision) {
+        await provisionCustodialAddresses(userId);
+      }
       rows = await UserUsdtWalletAddress.findByUserId(userId);
     } catch (err) {
       console.warn('[usdt-wallet/overview] provision skipped:', err.message);
