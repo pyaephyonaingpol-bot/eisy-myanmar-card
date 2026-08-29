@@ -278,16 +278,30 @@ async function createUsdtDepositRequest(userId, {
     throw new Error('network must be TRC20 or BEP20');
   }
 
-  const depositAddress = net === 'BEP20'
-    ? settings.usdt_bep20_address
-    : (() => {
+  let depositAddress;
+  let addressSource = 'shared';
+  if (net === 'BEP20') {
+    depositAddress = settings.usdt_bep20_address;
+  } else {
+    const { resolveUserTrc20DepositAddress } = require('./tronDepositAddressService');
+    const sharedGateway = () => {
+      const explicit = String(
+        process.env.TRON_GATEWAY_DEPOSIT_ADDRESS
+        || process.env.MASTER_WALLET_ADDRESS
+        || ''
+      ).trim();
+      if (explicit) return explicit;
       try {
         const { getMasterWalletAddress } = require('./tronMasterWalletService');
         return getMasterWalletAddress();
       } catch (_) {
-        return settings.usdt_trc20_address;
+        return settings.usdt_trc20_address || null;
       }
-    })();
+    };
+    const resolved = await resolveUserTrc20DepositAddress(userId, sharedGateway);
+    depositAddress = resolved.address;
+    addressSource = resolved.source;
+  }
 
   if (!depositAddress) {
     throw new Error('USDT deposit address is not configured');
@@ -305,6 +319,7 @@ async function createUsdtDepositRequest(userId, {
     deposit_currency: 'USDT',
     usdt_network: net,
     deposit_address: depositAddress,
+    deposit_address_source: addressSource,
     amount_usdt: grossAmount,
     gross_usdt: grossAmount,
     fee_usdt: feeBreakdown.fee_usdt,

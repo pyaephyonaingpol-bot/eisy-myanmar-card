@@ -199,7 +199,11 @@ async function createTronOrder(userId, { amount_usdt, amount } = {}) {
   assertValidPaymentAmount(feeBreakdown, { kind: 'TRON deposit' });
 
   const sb = assertSupabaseConfigured();
-  const depositAddress = getGatewayDepositAddress();
+  const resolvedAddress = await (async () => {
+    const { resolveUserTrc20DepositAddress } = require('./tronDepositAddressService');
+    return resolveUserTrc20DepositAddress(userId, getGatewayDepositAddress);
+  })();
+  const depositAddress = resolvedAddress.address;
   const orderId = generateBusinessOrderId();
   const refCode = await uniqueRefCode();
   const normalizedAmount = roundUsdt(gross);
@@ -212,6 +216,9 @@ async function createTronOrder(userId, { amount_usdt, amount } = {}) {
     order_id: orderId,
     usdt_network: 'TRC20',
     deposit_address: depositAddress,
+    deposit_address_source: resolvedAddress.source,
+    derivation_index: resolvedAddress.index,
+    derivation_path: resolvedAddress.path,
     amount_usdt: feeBreakdown.amount_usdt,
     gross_usdt: feeBreakdown.amount_usdt,
     fee_usdt: feeBreakdown.fee_usdt,
@@ -314,6 +321,8 @@ async function createTronOrder(userId, { amount_usdt, amount } = {}) {
       token: 'USDT',
       contract_address: USDT_TRC20_CONTRACT,
       deposit_address: depositAddress,
+      deposit_address_source: resolvedAddress.source,
+      derivation_index: resolvedAddress.index,
       amount_usdt: normalizedAmount,
     },
   };
@@ -405,7 +414,8 @@ async function listPendingTronOrders() {
 }
 
 /**
- * Poll TronGrid for inbound USDT transfers and mark matching orders COMPLETED.
+ * Poll TronGrid for inbound USDT transfers to each pending order's deposit
+ * address (per-user HD addresses) and mark matching orders COMPLETED.
  */
 async function verifyPendingTronOrders() {
   if (!supabaseLib.isSupabaseEnabled()) {
@@ -419,7 +429,6 @@ async function verifyPendingTronOrders() {
   }
 
   const sb = assertSupabaseConfigured();
-  const depositAddress = normalizeTronAddress(getGatewayDepositAddress());
   const pending = await listPendingTronOrders();
 
   if (!pending.length) {
@@ -427,101 +436,127 @@ async function verifyPendingTronOrders() {
       ok: true,
       checked: 0,
       completed: 0,
-      deposit_address: depositAddress,
+      addresses_watched: 0,
     };
   }
 
-  const oldestCreatedMs = pending.reduce((min, order) => {
-    const ts = new Date(order.created_at).getTime();
-    return Number.isFinite(ts) && ts < min ? ts : min;
-  }, Date.now());
-  const minTimestampMs = Math.max(0, oldestCreatedMs - 60_000);
-
-  const transfers = await fetchIncomingUsdtTransfers({
-    address: depositAddress,
-    minTimestampMs,
-  });
+  // Group pending orders by their unique deposit address.
+  const ordersByAddress = new Map();
+  for (const order of pending) {
+    const addr = normalizeTronAddress(order.deposit_address);
+    if (!addr) continue;
+    if (!ordersByAddress.has(addr)) ordersByAddress.set(addr, []);
+    ordersByAddress.get(addr).push(order);
+  }
 
   const usedTransactionIds = new Set();
   let completed = 0;
   let credited = 0;
+  let transfersScanned = 0;
   const matches = [];
+  const addressErrors = [];
 
-  for (const order of pending) {
-    const orderCreatedMs = new Date(order.created_at).getTime();
-    const match = transfers.find((transfer) => {
-      const txId = String(transfer?.transaction_id || '').trim();
-      if (!txId || usedTransactionIds.has(txId)) return false;
+  for (const [depositAddress, orders] of ordersByAddress.entries()) {
+    const oldestCreatedMs = orders.reduce((min, order) => {
+      const ts = new Date(order.created_at).getTime();
+      return Number.isFinite(ts) && ts < min ? ts : min;
+    }, Date.now());
+    const minTimestampMs = Math.max(0, oldestCreatedMs - 60_000);
 
-      const toAddress = normalizeTronAddress(transfer?.to);
-      if (toAddress !== depositAddress) return false;
+    let transfers;
+    try {
+      transfers = await fetchIncomingUsdtTransfers({
+        address: depositAddress,
+        minTimestampMs,
+      });
+    } catch (err) {
+      console.error('[tron/orders] TronGrid fetch failed for', depositAddress, err.message);
+      addressErrors.push({ address: depositAddress, error: err.message, code: err.code });
+      continue;
+    }
 
-      const txMs = Number(transfer?.block_timestamp || 0);
-      if (Number.isFinite(orderCreatedMs) && txMs > 0 && txMs < orderCreatedMs) {
-        return false;
+    transfersScanned += transfers.length;
+
+    for (const order of orders) {
+      const orderCreatedMs = new Date(order.created_at).getTime();
+      const orderAddress = normalizeTronAddress(order.deposit_address);
+      const match = transfers.find((transfer) => {
+        const txId = String(transfer?.transaction_id || '').trim();
+        if (!txId || usedTransactionIds.has(txId)) return false;
+
+        const toAddress = normalizeTronAddress(transfer?.to);
+        if (toAddress !== orderAddress) return false;
+
+        const txMs = Number(transfer?.block_timestamp || 0);
+        if (Number.isFinite(orderCreatedMs) && txMs > 0 && txMs < orderCreatedMs) {
+          return false;
+        }
+
+        const amountUsdt = parseTrc20TransferAmount(transfer);
+        if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) return false;
+
+        return amountWithinTolerance(amountUsdt, order.amount);
+      });
+
+      if (!match) continue;
+
+      const txId = String(match.transaction_id);
+      usedTransactionIds.add(txId);
+
+      let creditResult;
+      try {
+        creditResult = await creditTronOrderWallet(order, txId);
+      } catch (err) {
+        console.error('[tron/orders] wallet credit failed:', order.order_id, err.message);
+        continue;
       }
 
-      const amountUsdt = parseTrc20TransferAmount(transfer);
-      if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) return false;
+      if (!creditResult.ok) {
+        console.error('[tron/orders] wallet credit skipped:', order.order_id, creditResult.reason);
+        continue;
+      }
 
-      return amountWithinTolerance(amountUsdt, order.amount);
-    });
+      const { data: updated, error } = await sb
+        .from('orders')
+        .update({
+          status: ORDER_STATUS_COMPLETED,
+          tx_hash: txId,
+          credited_at: new Date().toISOString(),
+        })
+        .eq('id', order.id)
+        .eq('status', ORDER_STATUS_PENDING)
+        .select('*')
+        .maybeSingle();
 
-    if (!match) continue;
+      if (error) {
+        console.error('[tron/orders] complete update failed:', order.order_id, error.message);
+        continue;
+      }
 
-    const txId = String(match.transaction_id);
-    usedTransactionIds.add(txId);
-
-    let creditResult;
-    try {
-      creditResult = await creditTronOrderWallet(order, txId);
-    } catch (err) {
-      console.error('[tron/orders] wallet credit failed:', order.order_id, err.message);
-      continue;
-    }
-
-    if (!creditResult.ok) {
-      console.error('[tron/orders] wallet credit skipped:', order.order_id, creditResult.reason);
-      continue;
-    }
-
-    const { data: updated, error } = await sb
-      .from('orders')
-      .update({
-        status: ORDER_STATUS_COMPLETED,
-        tx_hash: txId,
-        credited_at: new Date().toISOString(),
-      })
-      .eq('id', order.id)
-      .eq('status', ORDER_STATUS_PENDING)
-      .select('*')
-      .maybeSingle();
-
-    if (error) {
-      console.error('[tron/orders] complete update failed:', order.order_id, error.message);
-      continue;
-    }
-
-    if (updated) {
-      completed += 1;
-      if (creditResult.credited) credited += 1;
-      matches.push({
-        order_id: order.order_id,
-        amount_usdt: order.amount,
-        tx_hash: txId,
-        status: ORDER_STATUS_COMPLETED,
-        wallet_credited: Boolean(creditResult.credited),
-        already_verified: Boolean(creditResult.alreadyVerified),
-        net_usdt: creditResult.net_usdt,
-        user_id: creditResult.user_id,
-      });
-      console.log(
-        '[tron/orders] completed',
-        order.order_id,
-        'via',
-        txId,
-        creditResult.credited ? `(credited ${formatUsdt(creditResult.net_usdt || 0)})` : '(already credited)'
-      );
+      if (updated) {
+        completed += 1;
+        if (creditResult.credited) credited += 1;
+        matches.push({
+          order_id: order.order_id,
+          amount_usdt: order.amount,
+          deposit_address: orderAddress,
+          tx_hash: txId,
+          status: ORDER_STATUS_COMPLETED,
+          wallet_credited: Boolean(creditResult.credited),
+          already_verified: Boolean(creditResult.alreadyVerified),
+          net_usdt: creditResult.net_usdt,
+          user_id: creditResult.user_id,
+        });
+        console.log(
+          '[tron/orders] completed',
+          order.order_id,
+          'addr',
+          orderAddress,
+          'via',
+          txId,
+          creditResult.credited ? `(credited ${formatUsdt(creditResult.net_usdt || 0)})` : '(already credited)'
+        );
+      }
     }
   }
 
@@ -530,8 +565,9 @@ async function verifyPendingTronOrders() {
     checked: pending.length,
     completed,
     credited,
-    deposit_address: depositAddress,
-    transfers_scanned: transfers.length,
+    addresses_watched: ordersByAddress.size,
+    transfers_scanned: transfersScanned,
+    address_errors: addressErrors.length ? addressErrors : undefined,
     matches,
   };
 }

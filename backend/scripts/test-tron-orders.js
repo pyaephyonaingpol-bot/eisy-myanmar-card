@@ -24,7 +24,15 @@ function makeSupabaseMock(rows) {
   return {
     state,
     from(table) {
-      assert.strictEqual(table, 'orders');
+      if (table !== 'orders') {
+        return {
+          upsert: async () => ({ error: null }),
+          insert: async () => ({ error: null }),
+          select() { return this; },
+          eq() { return this; },
+          maybeSingle: async () => ({ data: null, error: null }),
+        };
+      }
       const api = {
         _filters: [],
         _pendingOnly: false,
@@ -131,6 +139,10 @@ async function main() {
   const supabase = require('../src/lib/supabase');
   const originalEnabled = supabase.isSupabaseEnabled;
   const originalGet = supabase.getSupabase;
+  const previousHdEnabled = process.env.TRON_HD_ENABLED;
+  const previousMnemonic = process.env.TRON_HD_MNEMONIC;
+  process.env.TRON_HD_ENABLED = 'false';
+  delete process.env.TRON_HD_MNEMONIC;
 
   await withTempDb(async () => {
     const { getDb } = require('../src/db');
@@ -203,6 +215,10 @@ async function main() {
     supabase.isSupabaseEnabled = originalEnabled;
     supabase.getSupabase = originalGet;
     delete process.env.TRON_GATEWAY_DEPOSIT_ADDRESS;
+    if (previousHdEnabled == null) delete process.env.TRON_HD_ENABLED;
+    else process.env.TRON_HD_ENABLED = previousHdEnabled;
+    if (previousMnemonic == null) delete process.env.TRON_HD_MNEMONIC;
+    else process.env.TRON_HD_MNEMONIC = previousMnemonic;
     console.log('ok');
   });
 

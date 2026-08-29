@@ -76,6 +76,8 @@ function mapAddressRow(row) {
     deposit_reference: row.deposit_reference || null,
     label: row.label || null,
     is_primary: Boolean(row.is_primary),
+    derivation_index: row.derivation_index != null ? Number(row.derivation_index) : null,
+    derivation_path: row.derivation_path || null,
     created_at: row.created_at,
   };
 }
@@ -109,6 +111,19 @@ function mapTransactionRow(row) {
 }
 
 async function provisionCustodialAddress(userId, network, settings) {
+  if (network === 'TRC20') {
+    try {
+      const { ensureUserTronDepositAddress } = require('./tronDepositAddressService');
+      const { isHdEnabled } = require('./tronHdWalletService');
+      if (isHdEnabled()) {
+        const assigned = await ensureUserTronDepositAddress(userId);
+        if (assigned?.row) return assigned.row;
+      }
+    } catch (err) {
+      console.warn('[usdt-wallet] HD TRC20 provision failed, using shared address:', err.message);
+    }
+  }
+
   const existing = await UserUsdtWalletAddress.findCustodial(userId, network);
   if (existing) return existing;
 

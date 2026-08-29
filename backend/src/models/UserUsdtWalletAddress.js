@@ -27,6 +27,18 @@ const UserUsdtWalletAddress = {
     );
   },
 
+  async findCustodialByAddress(address) {
+    const db = getDb();
+    const addr = String(address || '').trim();
+    if (!addr) return null;
+    return db.get(
+      `SELECT * FROM ${this.TABLE}
+       WHERE address = ? AND network = 'TRC20' AND address_type = 'custodial'
+       LIMIT 1`,
+      addr
+    );
+  },
+
   async findLinkedByAddress(userId, network, address) {
     const db = getDb();
     return db.get(
@@ -46,14 +58,53 @@ const UserUsdtWalletAddress = {
     depositReference = null,
     label = null,
     isPrimary = 1,
+    derivationIndex = null,
+    derivationPath = null,
   }) {
     const db = getDb();
     const result = await db.run(`
       INSERT INTO ${this.TABLE} (
-        user_id, network, address, address_type, deposit_reference, label, is_primary, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    `, userId, network, address, addressType, depositReference, label, isPrimary ? 1 : 0);
+        user_id, network, address, address_type, deposit_reference, label, is_primary,
+        derivation_index, derivation_path, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `,
+    userId,
+    network,
+    address,
+    addressType,
+    depositReference,
+    label,
+    isPrimary ? 1 : 0,
+    derivationIndex,
+    derivationPath);
     return this.findById(result.lastID);
+  },
+
+  async updateCustodialTrc20(userId, {
+    address,
+    derivationIndex = null,
+    derivationPath = null,
+    depositReference = null,
+    label = null,
+  }) {
+    const db = getDb();
+    await db.run(`
+      UPDATE ${this.TABLE}
+      SET address = ?,
+          derivation_index = ?,
+          derivation_path = ?,
+          deposit_reference = COALESCE(?, deposit_reference),
+          label = COALESCE(?, label),
+          updated_at = datetime('now')
+      WHERE user_id = ? AND network = 'TRC20' AND address_type = 'custodial'
+    `,
+    address,
+    derivationIndex,
+    derivationPath,
+    depositReference,
+    label,
+    userId);
+    return this.findCustodial(userId, 'TRC20');
   },
 
   async deleteLinked(id, userId) {

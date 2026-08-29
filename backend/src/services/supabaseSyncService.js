@@ -37,6 +37,20 @@ async function upsertUserWallet(user) {
     balance_usdt: Number(user.balance_usdt ?? 0),
     updated_at: nowIso(),
   };
+
+  // Include HD deposit address when already provisioned locally.
+  try {
+    const { UserUsdtWalletAddress } = require('../models/UserUsdtWalletAddress');
+    const custodial = await UserUsdtWalletAddress.findCustodial(user.id, 'TRC20');
+    if (custodial?.address && custodial.derivation_index != null) {
+      row.tron_deposit_address = custodial.address;
+      row.tron_derivation_index = Number(custodial.derivation_index);
+      row.tron_derivation_path = custodial.derivation_path || null;
+    }
+  } catch (_) {
+    // Non-fatal — wallet sync should still update balances.
+  }
+
   const sb = getSupabase();
   const { error } = await sb.from('user_wallets').upsert(row, { onConflict: 'user_id' });
   if (error) console.error('[supabase/sync] user_wallets upsert failed:', error.message);

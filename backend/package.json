@@ -27,12 +27,15 @@
     "test:pin-login": "node scripts/test-pin-login.js",
     "test:acctinfo-guard": "node scripts/test-acctinfo-guard.js",
     "test:tron-orders": "node scripts/test-tron-orders.js",
+    "test:tron-hd-addresses": "node scripts/test-tron-hd-addresses.js",
     "test:withdraw-energy": "node scripts/test-withdraw-energy.js",
     "test:tron-transfer-abi": "node scripts/test-tron-transfer-abi.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
     "@libsql/linux-x64-gnu": "^0.5.29",
+    "@scure/bip32": "^1.7.0",
+    "@scure/bip39": "^1.6.0",
     "@supabase/supabase-js": "^2.112.1",
     "browser-image-compression": "^2.0.2",
     "cors": "^2.8.5",
