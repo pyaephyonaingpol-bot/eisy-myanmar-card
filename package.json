@@ -9,6 +9,7 @@
     "start": "npm start --prefix backend",
     "dev": "npm run dev --prefix backend",
     "migrate": "npm run migrate --prefix backend",
+    "test:card-pool": "node backend/scripts/test-card-pool.js",
     "vercel-build": "mkdir -p public && cp -R backend/public/. public/"
   },
   "engines": {
@@ -22,7 +23,7 @@
   "dependencies": {
     "@libsql/client": "^0.17.4",
     "@libsql/linux-x64-gnu": "^0.5.29",
-    "@supabase/supabase-js": "^2.112.1",
+    "@supabase/supabase-js": "^2.112.4",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

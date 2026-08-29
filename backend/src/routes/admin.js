@@ -48,6 +48,12 @@ const {
   getCardBalance,
 } = require('../services/cardBalanceService');
 const { approvePendingCardRequest } = require('../services/cardApprovalService');
+const {
+  fetchAndStorePoolCards,
+  getPoolStats,
+  assignCardToUser,
+  isSupabaseAdminEnabled,
+} = require('../services/cardPoolService');
 const { approveP2pUsdtDeposit, isP2pDeposit } = require('../services/p2pDepositService');
 const {
   releaseP2pBuyOrder,
@@ -731,6 +737,131 @@ router.post('/deposits/:id/review', requirePermission('deposits'), async (req, r
       return res.status(400).json({ error: err.message, code: err.code || 'DEPOSIT_REVIEW_FAILED' });
     }
     res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+/**
+ * Pool Model — fetch blank/pre-issued Kripicard cards into Supabase card_pools.
+ * Mirrors Next.js route: app/api/admin/fetch-cards/route.js
+ */
+router.post('/fetch-cards', requirePermission('cards'), async (req, res) => {
+  try {
+    if (!isSupabaseAdminEnabled()) {
+      return res.status(503).json({
+        error: 'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.',
+        code: 'SUPABASE_NOT_CONFIGURED',
+      });
+    }
+    if (!String(process.env.KRIPICARD_API_KEY || '').trim()) {
+      return res.status(503).json({
+        error: 'KRIPICARD_API_KEY is not configured',
+        code: 'KRIPICARD_NOT_CONFIGURED',
+      });
+    }
+
+    const body = req.body || {};
+    const query = body.query && typeof body.query === 'object' ? { ...body.query } : {};
+    if (body.status) query.status = body.status;
+    if (body.limit) query.limit = body.limit;
+
+    const result = await fetchAndStorePoolCards({ query });
+    let pool = null;
+    try {
+      pool = await getPoolStats();
+    } catch (_) {
+      pool = null;
+    }
+
+    res.json({
+      success: true,
+      message: `Synced ${result.upserted} card(s) into pool (${result.inserted} new, ${result.updated} updated)`,
+      ...result,
+      pool,
+    });
+  } catch (err) {
+    console.error('[admin/fetch-cards]', err);
+    const code = err.code || 'INTERNAL_ERROR';
+    const status =
+      code === 'KRIPICARD_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED'
+        ? 503
+        : code === 'KRIPICARD_HTTP_ERROR' || code === 'KRIPICARD_TIMEOUT' || code === 'KRIPICARD_BAD_RESPONSE'
+          ? 502
+          : 500;
+    res.status(status).json({
+      error: err.message || 'Failed to fetch cards',
+      code,
+      provider_status: err.status || undefined,
+    });
+  }
+});
+
+router.get('/card-pool', requirePermission('cards'), async (_req, res) => {
+  try {
+    if (!isSupabaseAdminEnabled()) {
+      return res.status(503).json({
+        error: 'Supabase is not configured',
+        code: 'SUPABASE_NOT_CONFIGURED',
+      });
+    }
+    const pool = await getPoolStats();
+    res.json({ success: true, pool });
+  } catch (err) {
+    console.error('[admin/card-pool]', err);
+    res.status(500).json({ error: err.message || 'Internal server error', code: err.code });
+  }
+});
+
+/**
+ * Admin-assisted pool assignment (links available card_pools row → user_cards).
+ */
+router.post('/cards/assign-from-pool', requirePermission('cards'), async (req, res) => {
+  try {
+    if (!isSupabaseAdminEnabled()) {
+      return res.status(503).json({
+        error: 'Supabase is not configured',
+        code: 'SUPABASE_NOT_CONFIGURED',
+      });
+    }
+
+    const userId = req.body?.user_id ?? req.body?.userId;
+    if (userId === undefined || userId === null || String(userId).trim() === '') {
+      return res.status(400).json({ error: 'user_id is required', code: 'USER_REQUIRED' });
+    }
+
+    const purchaseAmount =
+      req.body?.purchase_amount != null
+        ? Number(req.body.purchase_amount)
+        : req.body?.amount != null
+          ? Number(req.body.amount)
+          : null;
+
+    const result = await assignCardToUser({
+      userId,
+      purchaseAmount: Number.isFinite(purchaseAmount) ? purchaseAmount : null,
+      purchaseCurrency: req.body?.purchase_currency || req.body?.currency || null,
+      cardholderName: req.body?.cardholder_name || req.body?.cardHolderName || null,
+      metadata: {
+        ...(req.body?.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : {}),
+        source: 'admin/cards/assign-from-pool',
+        assigned_via: 'admin',
+        admin_id: req.user?.id || null,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Card assigned from pool',
+      card: result.user_card,
+      pool_card_id: result.pool_card?.id || null,
+    });
+  } catch (err) {
+    console.error('[admin/cards/assign-from-pool]', err);
+    const code = err.code || 'INTERNAL_ERROR';
+    const status =
+      code === 'USER_REQUIRED' ? 400
+        : code === 'POOL_EMPTY' || code === 'POOL_RACE' || code === 'ALREADY_ASSIGNED' ? 409
+          : 500;
+    res.status(status).json({ error: err.message || 'Assignment failed', code });
   }
 });
 
