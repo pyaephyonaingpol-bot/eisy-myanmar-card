@@ -239,6 +239,37 @@ async function main() {
     console.log('ok');
   }
 
+  section('runManualSweep is manual (not cron) and single-flight');
+  {
+    const userId = 11;
+    const derived = hd.deriveTronAddressForUser(userId);
+    const createTw = (pk) => {
+      const isMaster = pk === 'b'.repeat(64);
+      const fake = makeFakeTw({
+        address: isMaster ? masterAddress : derived.address,
+        trxSun: 0,
+        masterTrxSun: 100_000_000,
+        usdtSun: '5000000',
+      });
+      fake.tw.trx.getBalance = async () => (isMaster ? 100_000_000 : 0);
+      return fake.tw;
+    };
+
+    const summary = await sweep.runManualSweep({
+      userId,
+      dryRun: true,
+      forceGas: true,
+      createTw,
+      waitFn: async () => {},
+    });
+    assert.strictEqual(summary.manual, true);
+    assert.strictEqual(summary.scheduled, false);
+    assert.strictEqual(summary.mode, 'user');
+    assert.ok(summary.started_at);
+    assert.ok(summary.finished_at);
+    console.log('ok');
+  }
+
   master.getMasterWalletAddress = originalGetMaster;
   delete process.env.TRON_HD_MNEMONIC;
   delete process.env.TRON_HD_ENABLED;

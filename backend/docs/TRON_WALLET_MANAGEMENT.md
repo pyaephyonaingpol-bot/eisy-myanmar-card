@@ -36,16 +36,24 @@ Existing routes remain: `/api/tron/orders`, `/api/withdraw`, `/api/withdrawal/us
 3. **Withdraw** → `POST /withdraw` → debit ledger → `transferUsdtTrc20` from `MASTER_PRIVATE_KEY`
 4. **Sweep (ops)** → master sends a little TRX for gas → deposit address sends all USDT back to master
 
-## Sweep script
+## Sweep (manual only — no cron)
+
+Trigger when you want to collect USDT from HD deposit addresses into the master wallet:
+
+```http
+POST /api/admin/sweep-deposits
+Authorization: admin session / X-Admin-Key
+Permission: master_wallet (super_admin)
+
+{ "dry_run": true }
+{ "user_id": 42 }
+{ "force_gas": true, "limit": 100 }
+```
 
 ```bash
-# Dry-run all custodial HD addresses
+# Optional CLI (also manual — not scheduled)
 npm run sweep:tron-deposits -- --dry-run --all
-
-# Sweep one user
 npm run sweep:tron-deposits -- --user-id=42
-
-# Live sweep all (funds TRX gas from master first)
 npm run sweep:tron-deposits -- --all
 ```
 
