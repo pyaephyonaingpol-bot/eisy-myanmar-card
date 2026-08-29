@@ -29,6 +29,7 @@ const {
   purchaseCardFromUsdtWallet,
   reloadCardFromUsdtWallet,
 } = require('../services/cardWalletService');
+const { assignCardToUser, isSupabaseAdminEnabled } = require('../services/cardPoolService');
 const { resolveActivePaymentMethod } = require('../services/depositPaymentMethodService');
 const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
@@ -112,6 +113,72 @@ router.get('/cards', requireAuth, requireSensitive, async (req, res) => {
   } catch (err) {
     console.error('[user/cards]', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Pool Model — assign an available Kripicard from card_pools → user_cards.
+ * Mirrors Next.js route: app/api/cards/purchase/route.js
+ */
+router.post('/cards/purchase', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    if (!isSupabaseAdminEnabled()) {
+      return res.status(503).json({
+        error: 'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.',
+        code: 'SUPABASE_NOT_CONFIGURED',
+      });
+    }
+
+    const body = req.body || {};
+    const purchaseAmount =
+      body.purchase_amount != null
+        ? Number(body.purchase_amount)
+        : body.amount != null
+          ? Number(body.amount)
+          : null;
+
+    const result = await assignCardToUser({
+      userId: req.user.id,
+      purchaseAmount: Number.isFinite(purchaseAmount) ? purchaseAmount : null,
+      purchaseCurrency: body.purchase_currency || body.currency || null,
+      cardholderName: body.cardholder_name || body.cardHolderName || req.user.name || null,
+      metadata: {
+        ...(body.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
+        source: 'user/cards/purchase',
+        assigned_via: 'user',
+      },
+    });
+
+    const card = result.user_card || {};
+    res.json({
+      success: true,
+      message: 'Card assigned successfully',
+      card: {
+        id: card.id,
+        user_id: card.user_id,
+        card_id: card.card_id,
+        card_number: card.card_number,
+        cvv: card.cvv,
+        exp_date: card.exp_date,
+        cardholder_name: card.cardholder_name,
+        brand: card.brand,
+        currency: card.currency,
+        balance: card.balance,
+        status: card.status,
+        purchase_amount: card.purchase_amount,
+        purchase_currency: card.purchase_currency,
+        created_at: card.created_at,
+      },
+      pool_card_id: result.pool_card?.id || null,
+    });
+  } catch (err) {
+    console.error('[user/cards/purchase]', err);
+    const code = err.code || 'INTERNAL_ERROR';
+    const status =
+      code === 'USER_REQUIRED' ? 400
+        : code === 'POOL_EMPTY' || code === 'POOL_RACE' || code === 'ALREADY_ASSIGNED' ? 409
+          : 500;
+    res.status(status).json({ error: err.message || 'Purchase failed', code });
   }
 });
 
