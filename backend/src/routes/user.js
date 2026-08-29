@@ -166,15 +166,28 @@ router.patch('/profile', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/wallet/deposit-addresses', requireAuth, async (_req, res) => {
+router.get('/wallet/deposit-addresses', requireAuth, async (req, res) => {
   try {
     const settings = await getUsdtDepositSettings();
+    let trc20Address = settings.usdt_trc20_address;
+    let trc20Source = 'shared';
+    try {
+      const { generateUserDepositAddress } = require('../services/tronWalletService');
+      const assigned = await generateUserDepositAddress(req.user.id);
+      if (assigned?.address) {
+        trc20Address = assigned.address;
+        trc20Source = assigned.source || 'hd';
+      }
+    } catch (err) {
+      console.warn('[user/wallet/deposit-addresses] HD resolve skipped:', err.message);
+    }
     res.json({
-      usdt_trc20_address: settings.usdt_trc20_address,
+      usdt_trc20_address: trc20Address,
       usdt_bep20_address: settings.usdt_bep20_address,
       minimum_usdt_deposit: settings.minimum_usdt_deposit,
+      trc20_address_source: trc20Source,
       networks: [
-        { id: 'TRC20', label: 'TRC20 (Tron)', address: settings.usdt_trc20_address },
+        { id: 'TRC20', label: 'TRC20 (Tron)', address: trc20Address, source: trc20Source },
         { id: 'BEP20', label: 'BEP20 (BSC)', address: settings.usdt_bep20_address },
       ],
     });

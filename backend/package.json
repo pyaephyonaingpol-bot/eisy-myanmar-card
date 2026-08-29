@@ -28,6 +28,7 @@
     "test:acctinfo-guard": "node scripts/test-acctinfo-guard.js",
     "test:tron-orders": "node scripts/test-tron-orders.js",
     "test:tron-hd-addresses": "node scripts/test-tron-hd-addresses.js",
+    "test:tron-wallet": "node scripts/test-tron-wallet-service.js",
     "test:withdraw-energy": "node scripts/test-withdraw-energy.js",
     "test:tron-transfer-abi": "node scripts/test-tron-transfer-abi.js"
   },
