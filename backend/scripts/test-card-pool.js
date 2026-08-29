@@ -495,19 +495,187 @@ async function testRouteWiring() {
     path.join(ROOT, 'app/api/cards/purchase/route.js'),
     'utf8'
   );
+  const issueRoute = fs.readFileSync(
+    path.join(ROOT, 'app/api/cards/issue/route.js'),
+    'utf8'
+  );
 
   assert.ok(adminSrc.includes("router.post('/fetch-cards'"));
   assert.ok(adminSrc.includes("router.post('/cards/assign-from-pool'"));
   assert.ok(userSrc.includes("router.post('/cards/purchase'"));
+  assert.ok(userSrc.includes("router.post('/cards/issue'"));
   assert.ok(fetchRoute.includes('fetchAndStorePoolCards'));
   assert.ok(purchaseRoute.includes('assignCardToUser'));
+  assert.ok(issueRoute.includes('issueCardForUser'));
+  assert.ok(issueRoute.includes('createcard') || issueRoute.includes('createExternalCard') || issueRoute.includes('name_on_card'));
   assert.ok(fs.existsSync(path.join(ROOT, 'supabase/card_pools.sql')));
+  assert.ok(fs.existsSync(path.join(ROOT, 'lib/cardIssue.js')));
   console.log('ok');
+}
+
+async function testCreateExternalCard() {
+  section('createExternalCard posts name_on_card, bin, amount, api_key');
+  process.env.KRIPICARD_API_KEY = 'test-kripicard-key';
+  delete require.cache[require.resolve(path.join(ROOT, 'lib/kripicard'))];
+
+  const originalFetch = global.fetch;
+  let captured = null;
+  global.fetch = async (url, opts) => {
+    captured = { url: String(url), opts };
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return JSON.stringify({
+          success: true,
+          message: 'Card created',
+          data: {
+            card_id: 'created-99',
+            card_number: '4111111111111111',
+            cvv: '321',
+            exp_date: '11/30',
+            name_on_card: 'Aung Min',
+            bin: 428803,
+            balance: 25,
+          },
+        });
+      },
+    };
+  };
+
+  try {
+    const { createExternalCard } = require(path.join(ROOT, 'lib/kripicard'));
+    const result = await createExternalCard({
+      nameOnCard: 'Aung Min',
+      bin: '428803',
+      amount: 25,
+    });
+
+    assert.ok(captured.url.includes('/api/external/cards/createcard'));
+    assert.strictEqual(captured.opts.method, 'POST');
+    const body = JSON.parse(captured.opts.body);
+    assert.strictEqual(body.api_key, 'test-kripicard-key');
+    assert.strictEqual(body.name_on_card, 'Aung Min');
+    assert.strictEqual(body.bin, 428803);
+    assert.strictEqual(body.amount, 25);
+    assert.strictEqual(result.card.card_id, 'created-99');
+    assert.strictEqual(result.card.cardholder_name, 'Aung Min');
+    console.log('ok');
+  } finally {
+    global.fetch = originalFetch;
+  }
+}
+
+async function testIssueCardForUser() {
+  section('issueCardForUser stores into user_cards');
+  process.env.KRIPICARD_API_KEY = 'test-kripicard-key';
+  delete require.cache[require.resolve(path.join(ROOT, 'lib/kripicard'))];
+  delete require.cache[require.resolve(path.join(ROOT, 'lib/cardIssue'))];
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async text() {
+      return JSON.stringify({
+        success: true,
+        card_id: 'live-1',
+        pan: '4000000000000002',
+        cvc: '111',
+        expiry: '12/31',
+        brand: 'visa',
+      });
+    },
+  });
+
+  const userCards = [];
+  const supabase = {
+    from(table) {
+      assert.strictEqual(table, 'user_cards');
+      const state = { mode: 'select', filters: [], payload: null };
+      const api = {
+        select() { return api; },
+        contains() { return api; },
+        eq(col, val) { state.filters.push({ col, val }); return api; },
+        order() { return api; },
+        limit() { return api; },
+        upsert(payload) {
+          state.mode = 'upsert';
+          state.payload = payload;
+          return api;
+        },
+        insert(payload) {
+          state.mode = 'insert';
+          state.payload = payload;
+          return api;
+        },
+        maybeSingle() {
+          return Promise.resolve({ data: null, error: null });
+        },
+        single() {
+          return api.exec().then((r) => {
+            if (r.error) return r;
+            const data = Array.isArray(r.data) ? r.data[0] : r.data;
+            return { data, error: null };
+          });
+        },
+        then(resolve, reject) {
+          return api.exec().then(resolve, reject);
+        },
+        async exec() {
+          if (state.mode === 'upsert' || state.mode === 'insert') {
+            const row = {
+              id: `user_cards-${userCards.length + 1}`,
+              created_at: new Date().toISOString(),
+              ...state.payload,
+            };
+            userCards.push(row);
+            return { data: row, error: null };
+          }
+          return { data: null, error: null };
+        },
+      };
+      return api;
+    },
+  };
+
+  try {
+    const { issueCardForUser, validateIssueInput } = require(path.join(ROOT, 'lib/cardIssue'));
+
+    let validationErr = null;
+    try {
+      validateIssueInput({ userId: '1', nameOnCard: 'A', bin: '1', amount: 10 });
+    } catch (err) {
+      validationErr = err;
+    }
+    assert.ok(validationErr);
+    assert.strictEqual(validationErr.code, 'INVALID_NAME_ON_CARD');
+
+    const result = await issueCardForUser({
+      userId: '7',
+      nameOnCard: 'Maung Maung',
+      bin: '428803',
+      amount: 20,
+      paymentRef: 'pay-100',
+      supabase,
+    });
+
+    assert.strictEqual(result.reused, false);
+    assert.strictEqual(result.user_card.user_id, '7');
+    assert.strictEqual(result.user_card.card_id, 'live-1');
+    assert.strictEqual(result.user_card.metadata.idempotency_key, 'pay-100');
+    assert.strictEqual(userCards.length, 1);
+    console.log('ok');
+  } finally {
+    global.fetch = originalFetch;
+  }
 }
 
 async function main() {
   await testNormalizeAndUnwrap();
   await testFetchVirtualCards();
+  await testCreateExternalCard();
+  await testIssueCardForUser();
   await testUpsertAndAssign();
   await testRouteWiring();
   console.log('\nAll card pool tests passed.');
