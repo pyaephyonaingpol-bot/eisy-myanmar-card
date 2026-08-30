@@ -44,6 +44,7 @@ function testUiUsdtOnly() {
   assert.ok(dash.includes('populateCardBinOptions'), 'BIN population helper');
   assert.ok(dash.includes("wallet_type: 'usdt'"), 'submit forces usdt');
   assert.ok(!dash.includes("pay_from_wallet && walletType === 'mmk'"), 'no MMK wallet branch in submit');
+  assert.ok(!dash.includes('populateDepositFromCardRequest'), 'orphan MMK deposit-from-card helper removed');
   const cardPayFn = dash.slice(
     dash.indexOf('populateCardPaymentMethodOptions() {'),
     dash.indexOf('populateCardBinOptions() {')
@@ -63,8 +64,13 @@ function testUiUsdtOnly() {
 
   assert.ok(i18n.includes('usdt_parity_rate'), 'i18n has USDT parity rate');
   assert.ok(!i18n.includes('pay_mmk_wallet_issuance'), 'i18n MMK issuance option removed');
+  assert.ok(!i18n.includes('card_wallet_ok_mmk'), 'dead MMK card-wallet i18n removed');
   assert.ok(i18n.includes('Issue Card Instantly') || i18n.includes('instant issue'));
   assert.ok(i18n.includes('Kripicard'));
+  assert.ok(
+    !html.includes('virtual card issuance and card reloads'),
+    'HTML no longer claims MMK is for card issuance'
+  );
   console.log('ok');
 }
 
@@ -72,6 +78,10 @@ function testBackendUsdtOnly() {
   section('Backend rejects MMK / manual card issuance');
   const route = fs.readFileSync(path.join(ROOT, 'backend/src/routes/user.js'), 'utf8');
   const wallet = fs.readFileSync(path.join(ROOT, 'backend/src/services/cardWalletService.js'), 'utf8');
+  const settings = fs.readFileSync(path.join(ROOT, 'backend/src/services/settingsService.js'), 'utf8');
+  const walletSvc = fs.readFileSync(path.join(ROOT, 'backend/src/services/walletService.js'), 'utf8');
+  const depositSvc = fs.readFileSync(path.join(ROOT, 'backend/src/services/depositService.js'), 'utf8');
+  const cardIssue = fs.readFileSync(path.join(ROOT, 'lib/cardIssue.js'), 'utf8');
 
   assert.ok(route.includes('USDT_ONLY_CARD_ISSUANCE'));
   assert.ok(route.includes('purchaseCardFromUsdtWallet'));
@@ -79,7 +89,6 @@ function testBackendUsdtOnly() {
   assert.ok(route.includes('card_issuance_rate'));
   assert.ok(route.includes('exchange_rate_applied: false'));
   assert.ok(!route.includes("walletType === 'mmk'"), 'card/request no longer branches on mmk');
-  // Manual KBZ path removed from card/request (purpose card_issuance deposit create)
   const requestIdx = route.indexOf("router.post('/card/request'");
   const reloadIdx = route.indexOf("router.post('/card/reload'");
   assert.ok(requestIdx >= 0 && reloadIdx > requestIdx);
@@ -90,27 +99,50 @@ function testBackendUsdtOnly() {
   assert.ok(requestBlock.includes('name_on_card') || requestBlock.includes('card_holder_name'));
 
   assert.ok(wallet.includes('issueCardForUser'));
-  assert.ok(wallet.includes('MMK_CARD_ISSUANCE_DISABLED'));
+  assert.ok(!wallet.includes('purchaseCardFromWallet'), 'MMK purchaseCardFromWallet stub removed');
   assert.ok(wallet.includes('creditUsdt'), 'refunds on provider failure');
   assert.ok(wallet.includes('CARD_ISSUED_MESSAGE'));
+
+  assert.ok(!settings.includes('function calculateCardRequestPricing('), 'MMK FX card pricing removed');
+  assert.ok(settings.includes('function calculateCardRequestPricingUsdt('), 'USDT pricing retained');
+
+  const allowList = walletSvc.slice(
+    walletSvc.indexOf('MMK_WALLET_ALLOWED_DEBIT_PURPOSES'),
+    walletSvc.indexOf('function assertMmkDebitAllowed')
+  );
+  assert.ok(allowList.includes("'card_reload'"), 'MMK debit allow-list still allows reloads');
+  assert.ok(!allowList.includes("'card_issuance'"), 'MMK debit allow-list excludes card_issuance');
+  assert.ok(walletSvc.includes("purpose === 'card_issuance'"), 'explicit reject of MMK card_issuance debit');
+
+  assert.ok(depositSvc.includes("purpose === 'card_issuance'"), 'createDepositRequest blocks card_issuance');
+  assert.ok(depositSvc.includes('USDT_ONLY_CARD_ISSUANCE'), 'deposit create rejects MMK issuance');
+
+  assert.ok(cardIssue.includes('resolveIssuanceCurrency'), 'Next/lib rejects MMK currency');
+  assert.ok(cardIssue.includes("value === 'MMK'"), 'MMK currency rejected in lib/cardIssue');
   console.log('ok');
 }
 
-async function testPurchaseCardFromWalletThrows() {
-  section('purchaseCardFromWallet throws MMK_CARD_ISSUANCE_DISABLED');
+async function testIssuanceHelpers() {
+  section('Issuance helpers reject MMK and resolve BINs');
   delete require.cache[require.resolve(path.join(ROOT, 'backend/src/services/cardWalletService'))];
-  const { purchaseCardFromWallet, resolveKripicardBin, getKripicardBinOptions } = require(
+  delete require.cache[require.resolve(path.join(ROOT, 'lib/cardIssue'))];
+
+  const { resolveKripicardBin, getKripicardBinOptions, purchaseCardFromUsdtWallet } = require(
     path.join(ROOT, 'backend/src/services/cardWalletService')
   );
+  const { resolveIssuanceCurrency } = require(path.join(ROOT, 'lib/cardIssue'));
 
-  let err = null;
+  assert.strictEqual(typeof purchaseCardFromUsdtWallet, 'function');
+  assert.strictEqual(resolveIssuanceCurrency('USDT'), 'USD');
+  assert.strictEqual(resolveIssuanceCurrency('usd'), 'USD');
+  let currencyErr = null;
   try {
-    await purchaseCardFromWallet(1, { initialLoadUsd: 10 });
+    resolveIssuanceCurrency('MMK');
   } catch (e) {
-    err = e;
+    currencyErr = e;
   }
-  assert.ok(err);
-  assert.strictEqual(err.code, 'MMK_CARD_ISSUANCE_DISABLED');
+  assert.ok(currencyErr);
+  assert.strictEqual(currencyErr.code, 'USDT_ONLY_CARD_ISSUANCE');
 
   process.env.KRIPICARD_DEFAULT_BIN = '428803';
   process.env.KRIPICARD_ALLOWED_BINS = '428803,411111';
@@ -127,7 +159,6 @@ async function testPurchaseCardFromWalletThrows() {
   const opts = getKripicardBinOptions();
   assert.deepStrictEqual(opts.bins, ['428803', '411111']);
 
-  // Without env allow-list, built-in catalog is returned (not empty).
   delete process.env.KRIPICARD_ALLOWED_BINS;
   delete process.env.KRIPICARD_DEFAULT_BIN;
   delete require.cache[require.resolve(path.join(ROOT, 'backend/src/services/cardWalletService'))];
@@ -141,10 +172,31 @@ async function testPurchaseCardFromWalletThrows() {
   console.log('ok');
 }
 
+async function testCreateDepositBlocksCardIssuance() {
+  section('createDepositRequest rejects purpose=card_issuance');
+  delete require.cache[require.resolve(path.join(ROOT, 'backend/src/services/depositService'))];
+  const { createDepositRequest } = require(path.join(ROOT, 'backend/src/services/depositService'));
+
+  let err = null;
+  try {
+    await createDepositRequest(1, {
+      amount_mmk: 50000,
+      payment_method: 'kbzpay',
+      purpose: 'card_issuance',
+    });
+  } catch (e) {
+    err = e;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.code, 'USDT_ONLY_CARD_ISSUANCE');
+  console.log('ok');
+}
+
 async function main() {
   testUiUsdtOnly();
   testBackendUsdtOnly();
-  await testPurchaseCardFromWalletThrows();
+  await testIssuanceHelpers();
+  await testCreateDepositBlocksCardIssuance();
   console.log('\nAll USDT-only card issuance tests passed.');
 }
 

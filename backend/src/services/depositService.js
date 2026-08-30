@@ -172,6 +172,15 @@ async function createDepositRequest(userId, {
   metadata,
   amount_usd,
 }) {
+  // New cards are USDT-only via Kripicard. Block creating MMK/KBZ/Wave deposits for issuance.
+  if (purpose === 'card_issuance') {
+    const err = new Error(
+      'Card issuance no longer accepts MMK or bank deposits. Pay with USDT wallet for instant Kripicard issue.'
+    );
+    err.code = 'USDT_ONLY_CARD_ISSUANCE';
+    throw err;
+  }
+
   const refCode = await uniqueRefCode();
   const settings = await getCardPricingSettings();
   const rate = settings.mmk_to_usd_rate;

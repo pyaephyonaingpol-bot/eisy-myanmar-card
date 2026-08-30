@@ -475,8 +475,7 @@ router.post('/card/request', requireAuth, requireSensitive, async (req, res) => 
       });
     }
     if (
-      err.code === 'MMK_CARD_ISSUANCE_DISABLED'
-      || err.code === 'USDT_ONLY_CARD_ISSUANCE'
+      err.code === 'USDT_ONLY_CARD_ISSUANCE'
       || err.code === 'INVALID_BIN'
       || err.code === 'INVALID_NAME_ON_CARD'
       || err.code === 'INVALID_AMOUNT'
