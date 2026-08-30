@@ -201,7 +201,7 @@
 
       // Deposits page
       deposits_page_title: 'Deposit & Reload History',
-      deposits_page_desc: 'Reload a virtual card or top up your MMK wallet (for card reloads & bank withdrawals) via KBZPay/WavePay.',
+      deposits_page_desc: 'Reload a virtual card or top up your USDT wallet via TRC20. Payment is verified automatically on TRON.',
       reload_topup_card: 'Reload / Top-Up Card',
       reload_topup_hint: 'Select a card and pay from your wallet. Funds are deducted immediately and held until admin approves the reload.',
       start_card_reload: 'Start Card Reload',
@@ -515,7 +515,7 @@
       cvv: 'CVV',
 
       deposits_page_title: 'ငွေသွင်း & Reload မှတ်တမ်း',
-      deposits_page_desc: 'Virtual card reload သို့မဟုတ် MMK ပိုက်ဆံအိတ် (ကဒ် reload & ဘဏ်ထုတ်ယူခြင်းအတွက်) KBZPay/WavePay ဖြင့် ငွေဖြည့်ပါ။',
+      deposits_page_desc: 'Virtual card reload သို့မဟုတ် USDT ပိုက်ဆံအိတ်ကို TRC20 ဖြင့် ငွေဖြည့်ပါ။ TRON တွင် အလိုအလျောက် အတည်ပြုမည်။',
       reload_topup_card: 'Reload / ကဒ်ထဲ ငွေဖြည့်ရန်',
       reload_topup_hint: 'ကဒ်ရွေးချယ်၍ ပိုက်ဆံအိတ်မှ ပေးချေပါ။ Admin အတည်ပြုသည်အထိ ငွေကို ချက်ချင်း နှုတ်ယူပြီး ထားရှိမည်။',
       start_card_reload: 'ကဒ် Reload စတင်မည်',
