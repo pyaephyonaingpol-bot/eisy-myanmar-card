@@ -8,15 +8,12 @@ const DepositRequest = require('../models/DepositRequest');
 const { enrichDeposit } = require('../services/depositEnrichment');
 const {
   getCardPricingSettings,
-  calculateCardRequestPricing,
   calculateCardReloadPricing,
-  calculateCardRequestPricingUsdt,
   calculateCardReloadPricingUsdt,
   getUsdtDepositSettings,
   getWithdrawalFeeSettings,
   parseRecordMetadata,
   getCurrentRateSummary,
-  buildRateSnapshot,
 } = require('../services/settingsService');
 const CardReloadRequest = require('../models/CardReloadRequest');
 const { createDepositRequest } = require('../services/depositService');
@@ -24,10 +21,10 @@ const { RELOAD_PENDING_MESSAGE } = require('../services/cardReloadApprovalServic
 const { walletPayload, formatMmk, formatUsdt, migrateLegacyUsdToMmk } = require('../services/walletService');
 const { overlayWalletPayloadFromSupabase } = require('../services/supabaseWalletReadService');
 const {
-  purchaseCardFromWallet,
   reloadCardFromWallet,
   purchaseCardFromUsdtWallet,
   reloadCardFromUsdtWallet,
+  getKripicardBinOptions,
 } = require('../services/cardWalletService');
 const { assignCardToUser, isSupabaseAdminEnabled } = require('../services/cardPoolService');
 const { issueCardForUser, publicUserCard } = require('../services/cardIssueService');
@@ -394,6 +391,7 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
   try {
     const settings = await getCardPricingSettings();
     const currentRate = await getCurrentRateSummary();
+    const bins = getKripicardBinOptions();
     res.json({
       card_issuance_fee_usd: settings.card_issuance_fee_usd,
       minimum_initial_deposit_usd: settings.minimum_initial_deposit_usd,
@@ -407,6 +405,11 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
       rate_effective_date: currentRate.effective_date,
       rate_label: "Today's Daily Exchange Rate",
       currency: 'USD',
+      payment_currency: 'USDT',
+      card_issuance_payment: 'usdt_wallet',
+      auto_issue: true,
+      kripicard_default_bin: bins.default_bin,
+      kripicard_bins: bins.bins,
       withdrawal_fees: await getWithdrawalFeeSettings(),
     });
   } catch (err) {
@@ -419,193 +422,80 @@ router.post('/card/request', requireAuth, requireSensitive, async (req, res) => 
   try {
     const user = await User.findById(req.user.id);
     const payFromWallet = Boolean(req.body.pay_from_wallet);
-    const walletType = (req.body.wallet_type || 'mmk').toLowerCase();
+    const walletType = String(req.body.wallet_type || 'usdt').toLowerCase();
 
-    if (payFromWallet && walletType === 'usdt') {
-      const result = await purchaseCardFromUsdtWallet(req.user.id, {
-        initialLoadUsd: parseFloat(req.body.initial_load_usd),
-        cardHolderName: req.body.card_holder_name || user.name,
-        note: req.body.note,
-      });
-      return res.json({
-        success: true,
-        paid_from_wallet: true,
-        pending: true,
-        wallet_type: 'usdt',
-        message: result.message,
-        card: mapCardForClient(result.card),
-        card_request_id: result.card?.id,
-        pricing_breakdown: {
-          ...result.pricing,
-          payment_method: 'USDT Wallet',
-        },
-        wallet: {
-          debited_usdt: result.wallet_debit_usdt,
-          balance_usdt: result.balance_usdt,
-          usdt_formatted: formatUsdt(result.balance_usdt),
-        },
-      });
-    }
-
-    if (payFromWallet) {
-      const result = await purchaseCardFromWallet(req.user.id, {
-        initialLoadUsd: parseFloat(req.body.initial_load_usd),
-        cardHolderName: req.body.card_holder_name || user.name,
-        note: req.body.note,
-      });
-      return res.json({
-        success: true,
-        paid_from_wallet: true,
-        pending: true,
-        wallet_type: 'mmk',
-        message: result.message,
-        card: mapCardForClient(result.card),
-        card_request_id: result.card?.id,
-        pricing_breakdown: {
-          initial_load_usd: result.pricing.initial_load_usd,
-          issuance_fee_usd: result.pricing.issuance_fee_usd,
-          total_usd_required: result.pricing.total_usd_required,
-          total_mmk: result.pricing.total_mmk,
-          mmk_to_usd_rate: result.pricing.mmk_to_usd_rate,
-          payment_method: 'Main MMK Wallet',
-        },
-        wallet: {
-          debited_mmk: result.wallet_debit_mmk,
-          balance_mmk: result.balance_mmk,
-          mmk_formatted: formatMmk(result.balance_mmk),
-        },
-      });
-    }
-
-    const pending = await Card.findByUserId(req.user.id, { status: 'pending' });
-
-    if (pending.length) {
-      const existing = pending[0];
-      const meta = parseRecordMetadata(existing.metadata);
+    // Card issuance is USDT / USD only — automated via Kripicard.
+    if (!payFromWallet || walletType !== 'usdt') {
       return res.status(400).json({
-        error: 'You already have a pending card request',
-        card: { id: existing.id, status: existing.status, created_at: existing.created_at },
-        deposit_id: meta.deposit_id || null,
-        pricing: meta.pricing || null,
+        error: 'Card issuance accepts USDT wallet payment only. MMK wallet and KBZPay/WavePay are not supported for new cards.',
+        code: 'USDT_ONLY_CARD_ISSUANCE',
       });
     }
 
-    const settings = await getCardPricingSettings();
-    const initialLoadUsd = parseFloat(req.body.initial_load_usd);
-
-    let methodRow;
-    try {
-      methodRow = await resolveActivePaymentMethod({
-        paymentMethodId: req.body.payment_method_id,
-        paymentMethod: req.body.payment_method,
-      });
-    } catch (resolveErr) {
-      return res.status(400).json({ error: resolveErr.message || 'Payment method unavailable' });
-    }
-    const paymentMethod = methodRow.bank_name;
-
-    const pricing = calculateCardRequestPricing(initialLoadUsd, settings);
-    const rateSnapshot = await buildRateSnapshot();
-
-    const cardMetadata = {
-      pricing,
-      payment_method: paymentMethod,
-      payment_method_id: methodRow.id,
-      bank_account: {
-        bank_name: methodRow.bank_name,
-        account_name: methodRow.account_name,
-        account_number: methodRow.account_number,
-        method_type: methodRow.method_type,
-      },
-      requested_at: new Date().toISOString(),
-      rate_snapshot: rateSnapshot,
-    };
-
-    const card = await Card.requestPending({
-      userId: req.user.id,
-      cardHolderName: req.body.card_holder_name || user.name,
-      userNote: req.body.note,
-      metadata: cardMetadata,
+    const result = await purchaseCardFromUsdtWallet(req.user.id, {
+      initialLoadUsd: parseFloat(req.body.initial_load_usd),
+      cardHolderName: req.body.name_on_card || req.body.card_holder_name || user.name,
+      note: req.body.note,
+      bin: req.body.bin ?? req.body.bank_bin ?? req.body.bankBin,
+      paymentRef: req.body.payment_ref || req.body.idempotency_key || null,
     });
 
-    const depositMetadata = {
-      purpose: 'card_issuance',
-      card_request_id: card.id,
-      pricing,
-      rate_snapshot: rateSnapshot,
-      payment_method_id: methodRow.id,
-      bank_name: methodRow.bank_name,
-      account_name: methodRow.account_name,
-      account_number: methodRow.account_number,
-      method_type: methodRow.method_type,
-      qr_code_image_url: methodRow.qr_code_image_url,
-    };
-
-    const deposit = await createDepositRequest(req.user.id, {
-      amount_mmk: pricing.total_mmk,
-      amount_usd: pricing.total_usd_required,
-      payment_method: paymentMethod,
-      purpose: 'card_issuance',
-      metadata: depositMetadata,
-    });
-
-    cardMetadata.deposit_id = deposit.id;
-    cardMetadata.deposit_ref = deposit.ref_code;
-
-    const db = getDb();
-    await db.run(
-      `UPDATE cards_v2 SET metadata = ?, updated_at = datetime('now') WHERE id = ?`,
-      JSON.stringify(cardMetadata),
-      card.id
-    );
-
-    await TransactionLog.create({
-      userId: req.user.id,
-      type: 'card_request',
-      direction: 'neutral',
-      referenceType: 'cards_v2',
-      referenceId: card.id,
-      description: `New card request — load $${pricing.initial_load_usd.toFixed(2)} + fee $${pricing.issuance_fee_usd.toFixed(2)}`,
-      createdBy: 'user',
-      metadata: { pricing, deposit_id: deposit.id, deposit_ref: deposit.ref_code, payment_method_id: methodRow.id },
-    });
-
-    res.json({
+    return res.json({
       success: true,
-      message: 'Card request created — complete payment using the reference code below',
-      card: { id: card.id, status: card.status, created_at: card.created_at },
-      deposit: enrichDeposit(deposit),
+      paid_from_wallet: true,
+      pending: Boolean(result.pending),
+      issued: Boolean(result.issued),
+      wallet_type: 'usdt',
+      message: result.message,
+      card: mapCardForClient(result.card),
+      card_request_id: result.card?.id,
+      provider_card_id: result.provider_card_id || null,
+      bin: result.bin || null,
       pricing_breakdown: {
-        initial_load_usd: pricing.initial_load_usd,
-        issuance_fee_usd: pricing.issuance_fee_usd,
-        total_usd_required: pricing.total_usd_required,
-        total_mmk: pricing.total_mmk,
-        mmk_to_usd_rate: pricing.mmk_to_usd_rate,
-        payment_method: paymentMethod,
+        ...result.pricing,
+        payment_method: 'USDT Wallet',
       },
-      payment_method: methodRow,
-      payment_instructions: {
-        ref_code: deposit.ref_code,
-        amount_mmk: pricing.total_mmk,
-        message: `Send exactly ${pricing.total_mmk.toLocaleString()} MMK via ${paymentMethod}`,
-        bank_name: methodRow.bank_name,
-        account_name: methodRow.account_name,
-        account_number: methodRow.account_number,
-        method_type: methodRow.method_type,
-        qr_code_image_url: methodRow.qr_code_image_url,
-        qr_code_url: methodRow.qr_code_image_url
-          || `/api/qr?size=200&data=${encodeURIComponent(methodRow.account_number)}`,
+      wallet: {
+        debited_usdt: result.wallet_debit_usdt,
+        balance_usdt: result.balance_usdt,
+        usdt_formatted: formatUsdt(result.balance_usdt),
       },
     });
   } catch (err) {
-    if (err.code === 'INSUFFICIENT_MMK_BALANCE' || err.code === 'INSUFFICIENT_USDT_BALANCE') {
+    if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
       return res.status(400).json({
         error: err.message,
         code: err.code,
-        required_mmk: err.required_mmk,
-        available_mmk: err.available_mmk,
         required_usdt: err.required_usdt,
         available_usdt: err.available_usdt,
+      });
+    }
+    if (
+      err.code === 'MMK_CARD_ISSUANCE_DISABLED'
+      || err.code === 'USDT_ONLY_CARD_ISSUANCE'
+      || err.code === 'INVALID_BIN'
+      || err.code === 'INVALID_NAME_ON_CARD'
+      || err.code === 'INVALID_AMOUNT'
+      || err.code === 'KRIPICARD_NOT_CONFIGURED'
+      || err.code === 'SUPABASE_NOT_CONFIGURED'
+    ) {
+      const status = (err.code === 'KRIPICARD_NOT_CONFIGURED' || err.code === 'SUPABASE_NOT_CONFIGURED')
+        ? 503
+        : 400;
+      return res.status(status).json({ error: err.message, code: err.code });
+    }
+    if (
+      err.code === 'KRIPICARD_HTTP_ERROR'
+      || err.code === 'KRIPICARD_API_ERROR'
+      || err.code === 'KRIPICARD_TIMEOUT'
+      || err.code === 'KRIPICARD_BAD_RESPONSE'
+      || err.code === 'KRIPICARD_MISSING_CARD_ID'
+    ) {
+      return res.status(502).json({
+        error: err.message || 'Card provider issuance failed',
+        code: err.code,
+        provider_status: err.status,
+        refunded: !err.refund_failed,
       });
     }
     if (err.message.includes('Minimum initial deposit') || err.message.includes('must be') || err.message.includes('pending')) {

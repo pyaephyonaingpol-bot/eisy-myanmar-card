@@ -1,92 +1,68 @@
 const Card = require('../models/Card');
 const User = require('../models/User');
 const TransactionLog = require('../models/TransactionLog');
-const { getDb } = require('../db');
 const {
   getCardPricingSettings,
-  calculateCardRequestPricing,
   calculateCardReloadPricing,
   calculateCardRequestPricingUsdt,
   calculateCardReloadPricingUsdt,
-  buildRateSnapshot,
-  parseRecordMetadata,
 } = require('./settingsService');
-const { debitMmk, debitUsdt, formatMmk, formatUsdt } = require('./walletService');
+const { debitMmk, debitUsdt, creditUsdt, formatMmk, formatUsdt } = require('./walletService');
 const CardReloadRequest = require('../models/CardReloadRequest');
 const { RELOAD_PENDING_MESSAGE } = require('./cardReloadApprovalService');
+const { recordPlatformUsdFee, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
+const { issueCardForUser, isSupabaseAdminEnabled } = require('./cardIssueService');
 
 const CARD_REQUEST_PENDING_MESSAGE =
   'Card request submitted. An admin will process your card shortly (usually within 15-30 mins).';
 
-async function purchaseCardFromWallet(userId, {
-  initialLoadUsd,
-  cardHolderName,
-  note,
-}) {
-  const user = await User.findById(userId);
-  if (!user) throw new Error('User not found');
+const CARD_ISSUED_MESSAGE =
+  'Card issued successfully. Your virtual card is ready to use.';
 
-  const pending = await Card.findByUserId(userId, { status: 'pending' });
-  if (pending.length) {
-    throw new Error('You already have a pending card request');
+function resolveKripicardBin(requestedBin) {
+  const requested = String(requestedBin || '').trim();
+  const defaultBin = String(process.env.KRIPICARD_DEFAULT_BIN || '').trim();
+  const allowedRaw = String(process.env.KRIPICARD_ALLOWED_BINS || '').trim();
+  const allowed = allowedRaw
+    ? allowedRaw.split(/[,\s]+/).map((b) => b.trim()).filter(Boolean)
+    : [];
+
+  const bin = requested || defaultBin;
+  if (!bin) {
+    const err = new Error(
+      'Card BIN is required. Set KRIPICARD_DEFAULT_BIN or pass bin in the request.'
+    );
+    err.code = 'INVALID_BIN';
+    throw err;
   }
 
-  const settings = await getCardPricingSettings();
-  const pricing = calculateCardRequestPricing(initialLoadUsd, settings);
-  const requiredMmk = pricing.total_mmk;
+  if (allowed.length && !allowed.includes(String(bin))) {
+    const err = new Error(`BIN ${bin} is not allowed. Allowed: ${allowed.join(', ')}`);
+    err.code = 'INVALID_BIN';
+    throw err;
+  }
 
-  await debitMmk(userId, requiredMmk, {
-    description: `New card purchase — ${formatMmk(requiredMmk)} (${pricing.total_usd_required} USD incl. fee)`,
-    createdBy: 'user',
-    metadata: { purpose: 'card_issuance', pricing },
-  });
+  return String(bin);
+}
 
-  const rateSnapshot = await buildRateSnapshot();
-  const cardMetadata = {
-    pricing,
-    payment_method: 'wallet',
-    paid_from_wallet: true,
-    wallet_debit_mmk: requiredMmk,
-    requested_at: new Date().toISOString(),
-    rate_snapshot: rateSnapshot,
-  };
-
-  const card = await Card.requestPending({
-    userId,
-    cardHolderName: cardHolderName || user.name,
-    userNote: note || 'Paid from MMK wallet',
-    metadata: cardMetadata,
-  });
-
-  await TransactionLog.create({
-    userId,
-    type: 'deposit_request',
-    direction: 'neutral',
-    amountMmk: requiredMmk,
-    amountUsd: pricing.total_usd_required,
-    referenceType: 'cards_v2',
-    referenceId: card.id,
-    description: `Card application submitted — ${formatMmk(requiredMmk)} deducted from MMK wallet (pending admin issuance)`,
-    createdBy: 'user',
-    metadata: {
-      purpose: 'card_issuance',
-      pricing,
-      paid_from_wallet: true,
-      pending: true,
-      card_request_id: card.id,
-    },
-  });
-
-  const updatedUser = await User.findById(userId);
-
+function getKripicardBinOptions() {
+  const defaultBin = String(process.env.KRIPICARD_DEFAULT_BIN || '').trim();
+  const allowedRaw = String(process.env.KRIPICARD_ALLOWED_BINS || '').trim();
+  const allowed = allowedRaw
+    ? allowedRaw.split(/[,\s]+/).map((b) => b.trim()).filter(Boolean)
+    : (defaultBin ? [defaultBin] : []);
   return {
-    card,
-    pricing,
-    wallet_debit_mmk: requiredMmk,
-    balance_mmk: Number(updatedUser.balance_mmk ?? 0),
-    pending: true,
-    message: CARD_REQUEST_PENDING_MESSAGE,
+    default_bin: defaultBin || (allowed[0] || null),
+    bins: allowed.length ? allowed : (defaultBin ? [defaultBin] : []),
   };
+}
+
+async function purchaseCardFromWallet() {
+  const err = new Error(
+    'MMK wallet is no longer supported for card issuance. Pay with USDT wallet.'
+  );
+  err.code = 'MMK_CARD_ISSUANCE_DISABLED';
+  throw err;
 }
 
 async function reloadCardFromWallet(userId, { cardId, amountMmk }) {
@@ -146,10 +122,16 @@ async function reloadCardFromWallet(userId, { cardId, amountMmk }) {
   };
 }
 
+/**
+ * USDT wallet purchase → debit → Kripicard createcard → activate local card.
+ * Refunds USDT if provider issuance fails after debit.
+ */
 async function purchaseCardFromUsdtWallet(userId, {
   initialLoadUsd,
   cardHolderName,
   note,
+  bin,
+  paymentRef,
 }) {
   const user = await User.findById(userId);
   if (!user) throw new Error('User not found');
@@ -159,15 +141,83 @@ async function purchaseCardFromUsdtWallet(userId, {
     throw new Error('You already have a pending card request');
   }
 
+  const resolvedBin = resolveKripicardBin(bin);
+  const nameOnCard = String(cardHolderName || user.name || '').trim();
+  if (nameOnCard.length < 2) {
+    const err = new Error('Cardholder name must be at least 2 characters');
+    err.code = 'INVALID_NAME_ON_CARD';
+    throw err;
+  }
+
   const settings = await getCardPricingSettings();
   const pricing = calculateCardRequestPricingUsdt(initialLoadUsd, settings);
   const requiredUsdt = pricing.total_usdt;
+  const idempotencyKey = paymentRef
+    || `usdt-issue-${userId}-${pricing.initial_load_usd}-${resolvedBin}-${Date.now()}`;
 
   await debitUsdt(userId, requiredUsdt, {
     description: `New card purchase — ${formatUsdt(requiredUsdt)} (${pricing.total_usd_required} USD incl. fee)`,
     createdBy: 'user',
-    metadata: { purpose: 'card_issuance', pricing, wallet: 'usdt' },
+    metadata: { purpose: 'card_issuance', pricing, wallet: 'usdt', auto_issue: true },
   });
+
+  let issued;
+  try {
+    if (!isSupabaseAdminEnabled()) {
+      const err = new Error(
+        'Card issuance requires Supabase. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.'
+      );
+      err.code = 'SUPABASE_NOT_CONFIGURED';
+      throw err;
+    }
+    if (!String(process.env.KRIPICARD_API_KEY || '').trim()) {
+      const err = new Error('KRIPICARD_API_KEY is not configured');
+      err.code = 'KRIPICARD_NOT_CONFIGURED';
+      throw err;
+    }
+
+    issued = await issueCardForUser({
+      userId,
+      nameOnCard,
+      bin: resolvedBin,
+      amount: pricing.initial_load_usd,
+      currency: 'USD',
+      paymentRef: idempotencyKey,
+      idempotencyKey,
+      metadata: {
+        source: 'purchaseCardFromUsdtWallet',
+        wallet_type: 'usdt',
+        pricing,
+        note: note || null,
+      },
+    });
+  } catch (issueErr) {
+    try {
+      await creditUsdt(userId, requiredUsdt, {
+        description: `Card issuance refund — ${formatUsdt(requiredUsdt)} (provider issue failed)`,
+        createdBy: 'system',
+        metadata: {
+          purpose: 'card_issuance_refund',
+          reason: issueErr.message,
+          code: issueErr.code || null,
+        },
+      });
+    } catch (refundErr) {
+      console.error('[cardWallet] USDT refund failed after issue error:', refundErr);
+      issueErr.refund_failed = true;
+      issueErr.refund_error = refundErr.message;
+    }
+    throw issueErr;
+  }
+
+  const providerCard = issued.provider_card || {};
+  const userCard = issued.user_card || {};
+  const cardNumber = providerCard.card_number || userCard.card_number;
+  const expDate = providerCard.exp_date || userCard.exp_date || '—';
+  const cvv = providerCard.cvv || userCard.cvv || '—';
+  const balanceUsd = Number(
+    providerCard.balance ?? userCard.balance ?? pricing.initial_load_usd
+  );
 
   const cardMetadata = {
     pricing,
@@ -176,31 +226,83 @@ async function purchaseCardFromUsdtWallet(userId, {
     wallet_type: 'usdt',
     wallet_debit_usdt: requiredUsdt,
     requested_at: new Date().toISOString(),
+    activated_at: new Date().toISOString(),
+    request_status: 'approved',
+    balance_usd: balanceUsd,
+    provider: 'kripicard',
+    provider_card_id: providerCard.card_id || userCard.card_id,
+    bin: resolvedBin,
+    supabase_user_card_id: userCard.id || null,
+    auto_issued: true,
+    issuance_mode: 'realtime_createcard',
   };
 
-  const card = await Card.requestPending({
-    userId,
-    cardHolderName: cardHolderName || user.name,
-    userNote: note || 'Paid from USDT wallet',
-    metadata: cardMetadata,
-  });
+  let card;
+  if (cardNumber) {
+    card = await Card.issue({
+      userId,
+      cardNumber,
+      expDate,
+      cvv,
+      cardHolderName: nameOnCard,
+      cardType: 'virtual',
+      currency: 'USD',
+      status: 'active',
+      isPrimary: true,
+      adminNotes: note || 'Auto-issued via Kripicard (USDT wallet)',
+      metadata: cardMetadata,
+    });
+  } else {
+    card = await Card.requestPending({
+      userId,
+      cardHolderName: nameOnCard,
+      userNote: note || 'Awaiting card details from Kripicard',
+      metadata: {
+        ...cardMetadata,
+        request_status: 'pending_provider_details',
+      },
+    });
+  }
+
+  try {
+    await recordPlatformUsdFee(pricing.issuance_fee_usd, {
+      feeType: PLATFORM_FEE_TYPES.CARD_ISSUE,
+      userId,
+      referenceType: 'cards_v2',
+      referenceId: card.id,
+      description: `Card issuance fee $${pricing.issuance_fee_usd.toFixed(2)} (USDT auto-issue)`,
+      metadata: {
+        pricing,
+        provider_card_id: cardMetadata.provider_card_id,
+        bin: resolvedBin,
+      },
+    });
+  } catch (feeErr) {
+    console.warn('[cardWallet] platform fee record skipped:', feeErr.message);
+  }
 
   await TransactionLog.create({
     userId,
-    type: 'deposit_request',
+    type: 'card_issued',
     direction: 'neutral',
     amountUsd: pricing.total_usd_required,
     referenceType: 'cards_v2',
     referenceId: card.id,
-    description: `Card application submitted — ${formatUsdt(requiredUsdt)} deducted from USDT wallet (pending admin issuance)`,
+    description: card.status === 'active'
+      ? `Virtual card issued via Kripicard — ${formatUsdt(requiredUsdt)} from USDT wallet`
+      : `Card purchase paid — ${formatUsdt(requiredUsdt)}; awaiting provider card details`,
     createdBy: 'user',
     metadata: {
       purpose: 'card_issuance',
       pricing,
       paid_from_wallet: true,
       wallet: 'usdt',
-      pending: true,
+      auto_issued: true,
+      provider: 'kripicard',
+      provider_card_id: cardMetadata.provider_card_id,
+      bin: resolvedBin,
       card_request_id: card.id,
+      pending: card.status !== 'active',
     },
   });
 
@@ -211,8 +313,11 @@ async function purchaseCardFromUsdtWallet(userId, {
     pricing,
     wallet_debit_usdt: requiredUsdt,
     balance_usdt: Number(updatedUser.balance_usdt ?? 0),
-    pending: true,
-    message: CARD_REQUEST_PENDING_MESSAGE,
+    pending: card.status !== 'active',
+    issued: card.status === 'active',
+    provider_card_id: cardMetadata.provider_card_id,
+    bin: resolvedBin,
+    message: card.status === 'active' ? CARD_ISSUED_MESSAGE : CARD_REQUEST_PENDING_MESSAGE,
   };
 }
 
@@ -277,4 +382,7 @@ module.exports = {
   reloadCardFromWallet,
   purchaseCardFromUsdtWallet,
   reloadCardFromUsdtWallet,
+  resolveKripicardBin,
+  getKripicardBinOptions,
+  CARD_ISSUED_MESSAGE,
 };
