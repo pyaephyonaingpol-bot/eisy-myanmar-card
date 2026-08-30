@@ -1156,6 +1156,7 @@ a.btn { text-decoration: none; }
   .actions-cell { flex-wrap: wrap; min-width: 0; }
   .badge-rate { max-width: 100%; }
   .wallet-dual-grid,
+  .wallet-overview-grid,
   .ledger-summary-grid,
   .rates-hero,
   .settings-grid {
@@ -1900,7 +1901,8 @@ a.btn { text-decoration: none; }
 
 pre.output.hidden { display: none !important; }
 
-.wallet-dual-grid {
+.wallet-dual-grid,
+.wallet-overview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 1rem;
@@ -1910,6 +1912,10 @@ pre.output.hidden { display: none !important; }
   min-width: 0;
   max-width: 100%;
   width: 100%;
+}
+.wallet-overview-grid {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 36rem;
 }
 .wallet-hero-card {
   padding: 1.25rem 1.35rem;
@@ -2679,7 +2685,8 @@ body.sidebar-scroll-lock {
   }
 
   /* Wallet overview: stack cards with clear gap; never clip action buttons */
-  .wallet-dual-grid {
+  .wallet-dual-grid,
+  .wallet-overview-grid {
     display: flex !important;
     flex-direction: column !important;
     gap: 1.15rem !important;
@@ -3090,6 +3097,7 @@ html.app-hydrating .wallet-hero-actions-row {
 
   .summary-grid,
   .wallet-dual-grid,
+  .wallet-overview-grid,
   .ledger-summary-grid,
   .rates-hero,
   .settings-grid,
@@ -3163,6 +3171,7 @@ html.app-hydrating .wallet-hero-actions-row {
   .page-header,
   .grid-2,
   .wallet-dual-grid,
+  .wallet-overview-grid,
   .usdt-balance-split,
   .summary-grid,
   .panel,

@@ -11,6 +11,7 @@
     "migrate": "npm run migrate --prefix backend",
     "test:card-pool": "node backend/scripts/test-card-pool.js",
     "test:usdt-card-issue": "node backend/scripts/test-usdt-only-card-issue.js",
+    "test:dashboard-usdt-wallet": "node backend/scripts/test-dashboard-usdt-wallet-only.js",
     "vercel-build": "mkdir -p public && cp -R backend/public/. public/"
   },
   "engines": {

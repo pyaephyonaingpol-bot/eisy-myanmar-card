@@ -507,14 +507,12 @@ const Dashboard = {
     this.walletUsdt = usdt;
     this.walletUsdtLocked = usdtLocked;
 
-    const mmkText = data?.mmk_formatted || this.formatMmk(mmk);
     let usdtText = data?.usdt_formatted || this.formatUsdt(usdt);
     if (usdtLocked > 0.001) {
       usdtText += ` (${data?.usdt_locked_formatted || this.formatUsdt(usdtLocked)} locked)`;
     }
 
-    // Balances live only in Wallet Overview (not duplicated in the header).
-    if ($('sumBalanceMmk')) $('sumBalanceMmk').textContent = mmkText;
+    // Dashboard Wallet Overview shows USDT only (MMK wallet card removed).
     if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = usdtText;
 
     if (data?.legacy_migration?.migrated) {
