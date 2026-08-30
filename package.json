@@ -13,6 +13,7 @@
     "test:usdt-card-issue": "node backend/scripts/test-usdt-only-card-issue.js",
     "test:dashboard-usdt-wallet": "node backend/scripts/test-dashboard-usdt-wallet-only.js",
     "test:deposits-usdt-only": "node backend/scripts/test-deposits-usdt-only.js",
+    "test:admin-usdt-mmk-wd": "node backend/scripts/test-admin-usdt-mmk-withdrawals.js",
     "vercel-build": "mkdir -p public && cp -R backend/public/. public/"
   },
   "engines": {

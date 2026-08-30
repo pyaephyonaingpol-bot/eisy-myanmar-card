@@ -2588,22 +2588,31 @@
         }
         table.innerHTML =
           '<table class="data-table"><thead><tr>' +
-            '<th>ID</th><th>User</th><th>Ref</th><th>Method</th><th>Destination</th><th>Amount</th><th>Fee</th><th>Payout</th><th>NP ID</th><th>Status</th><th>Actions</th>' +
+            '<th>ID</th><th>User</th><th>Ref</th><th>Method</th><th>Destination</th>' +
+            '<th>USDT</th><th>Fee</th><th>Rate</th><th>MMK to Send</th><th>NP ID</th><th>Status</th><th>Actions</th>' +
           '</tr></thead><tbody>' +
           rows.map((w) => {
             const status = String(w.status || '').toLowerCase();
             const actionable = status === 'pending' || status === 'processing';
-            const method = w.payout_method === 'bank' ? 'Bank (USDT→MMK)' : (w.network || 'Crypto');
-            const dest = w.payout_method === 'bank'
+            const isBank = w.payout_method === 'bank';
+            const method = isBank ? 'Bank (USDT→MMK)' : (w.network || 'Crypto');
+            const dest = isBank
               ? this.esc((w.bank_name || '') + ' · ' + (w.account_name || '') + ' · ' + (w.account_number || ''))
               : this.esc((w.network || '') + ' · ' + (w.wallet_address || ''));
-            const payout = w.payout_method === 'bank'
-              ? (Math.round(Number(w.amount_mmk || 0)).toLocaleString() + ' MMK @ ' + Number(w.exchange_rate || 0).toLocaleString())
+            const rate = Number(w.exchange_rate || 0);
+            const mmkAmount = Math.round(Number(w.amount_mmk || 0));
+            const rateLabel = isBank && rate > 0
+              ? ('1 USDT = ' + rate.toLocaleString() + ' MMK')
+              : '—';
+            const mmkLabel = isBank
+              ? ('<strong>' + mmkAmount.toLocaleString() + ' MMK</strong>' +
+                '<br><small>Send via bank / KPay / WavePay</small>')
               : ('$' + Number(w.net_usdt || 0).toFixed(2) + ' USDT');
             const npId = w.nowpayments_payout_id || w.nowpayments_withdrawal_id || '';
             const npLabel = npId
               ? this.esc(String(npId)) + (w.payout_provider ? '<br><small>' + this.esc(w.payout_provider) + '</small>' : '')
               : '—';
+            const completeLabel = isBank ? 'Mark MMK Sent' : 'Complete';
             return '<tr>' +
               '<td>' + w.id + '</td>' +
               '<td>' + this.esc(w.user_name || w.user_email || ('#' + w.user_id)) + '<br><small>#' + w.user_id + '</small></td>' +
@@ -2612,12 +2621,18 @@
               '<td style="max-width:220px;word-break:break-all">' + dest + '</td>' +
               '<td>$' + Number(w.amount_usdt || 0).toFixed(2) + '</td>' +
               '<td>$' + Number(w.fee_usdt || 0).toFixed(2) + '</td>' +
-              '<td>' + payout + '</td>' +
+              '<td>' + rateLabel + '</td>' +
+              '<td>' + mmkLabel + '</td>' +
               '<td style="max-width:140px;word-break:break-all;font-size:0.85em">' + npLabel + '</td>' +
               '<td>' + this.statusBadge(w.status) + '</td>' +
               '<td class="actions-cell">' +
                 (actionable
-                  ? '<button type="button" class="btn btn-sm btn-approve" data-action="complete-usdt-wd" data-id="' + w.id + '">Complete</button>' +
+                  ? '<button type="button" class="btn btn-sm btn-approve" data-action="complete-usdt-wd" data-id="' + w.id + '"' +
+                    ' data-method="' + (isBank ? 'bank' : 'crypto') + '"' +
+                    ' data-mmk="' + mmkAmount + '"' +
+                    ' data-rate="' + rate + '"' +
+                    ' data-usdt="' + Number(w.net_usdt || 0).toFixed(2) + '"' +
+                    '>' + completeLabel + '</button>' +
                     '<button type="button" class="btn btn-sm btn-reject" data-action="reject-usdt-wd" data-id="' + w.id + '">Reject</button>'
                   : '') +
               '</td></tr>';
@@ -2674,14 +2689,29 @@
       const wdId = id != null ? String(id) : '';
       if (!wdId) return;
 
+      const btn = options.triggerBtn || null;
+      const isBank = btn && btn.getAttribute('data-method') === 'bank';
+      const mmkAmount = btn ? Number(btn.getAttribute('data-mmk') || 0) : 0;
+      const rate = btn ? Number(btn.getAttribute('data-rate') || 0) : 0;
+      const netUsdt = btn ? btn.getAttribute('data-usdt') : '';
+
       let note = action === 'reject' ? 'Rejected by admin' : 'Completed by admin';
       let txHash = '';
       try {
         if (action === 'complete') {
-          const entered = window.prompt('Admin note / TX hash (optional):', 'Completed');
+          const defaultNote = isBank && mmkAmount > 0
+            ? ('MMK sent via bank/KPay/WavePay — ' + mmkAmount.toLocaleString() + ' MMK @ ' + rate.toLocaleString())
+            : 'Completed';
+          const promptMsg = isBank && mmkAmount > 0
+            ? ('Confirm MMK payout of ' + mmkAmount.toLocaleString() + ' MMK'
+              + (rate > 0 ? (' (rate 1 USDT = ' + rate.toLocaleString() + ' MMK)') : '')
+              + (netUsdt ? (' from $' + netUsdt + ' USDT net') : '')
+              + '. Admin note / transfer ref (optional):')
+            : 'Admin note / TX hash (optional):';
+          const entered = window.prompt(promptMsg, defaultNote);
           if (entered === null) return;
-          note = String(entered).trim() || 'Completed by admin';
-          if (/^(0x)?[a-fA-F0-9]{16,}$/.test(note) || /^[A-Za-z0-9]{20,}$/.test(note)) {
+          note = String(entered).trim() || defaultNote;
+          if (!isBank && (/^(0x)?[a-fA-F0-9]{16,}$/.test(note) || /^[A-Za-z0-9]{20,}$/.test(note))) {
             txHash = note;
           }
         } else {
@@ -2691,7 +2721,6 @@
         }
       } catch (_) {}
 
-      const btn = options.triggerBtn || null;
       const prevLabel = btn ? btn.textContent : '';
       if (btn) {
         btn.disabled = true;
@@ -2709,7 +2738,7 @@
         alert(err.message || 'Failed to update USDT withdrawal');
         if (btn) {
           btn.disabled = false;
-          btn.textContent = prevLabel || (action === 'complete' ? 'Complete' : 'Reject');
+          btn.textContent = prevLabel || (action === 'complete' ? (isBank ? 'Mark MMK Sent' : 'Complete') : 'Reject');
         }
       }
     },
@@ -3333,34 +3362,23 @@
 
         table.innerHTML =
           '<table class="data-table">' +
-            '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>MMK Wallet</th><th>USDT Wallet</th><th>Status</th><th>Actions</th></tr></thead>' +
+            '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>USDT Wallet</th><th>Status</th><th>Actions</th></tr></thead>' +
             '<tbody>' +
             users.map((u) =>
               '<tr>' +
                 '<td>' + u.id + '</td>' +
                 '<td>' + this.esc(u.name || '—') + '</td>' +
                 '<td>' + this.esc(u.email || '—') + '</td>' +
-                '<td><strong>Ks ' + Number(u.balance_mmk || 0).toLocaleString() + '</strong></td>' +
                 '<td><strong>$' + Number(u.balance_usdt || 0).toFixed(2) + ' USDT</strong></td>' +
                 '<td>' + this.esc(u.auth_status || 'active') + '</td>' +
                 '<td class="actions-cell">' +
                   '<button type="button" class="btn btn-sm btn-secondary view-card-requests">Card Requests</button>' +
-                  '<button type="button" class="btn btn-sm btn-secondary adj-mmk-wallet" data-uid="' + u.id + '" data-mmk="' + Number(u.balance_mmk || 0) + '">Adjust MMK</button>' +
                   '<button type="button" class="btn btn-sm btn-secondary adj-usdt-wallet" data-uid="' + u.id + '" data-usdt="' + Number(u.balance_usdt || 0) + '">Adjust USDT</button>' +
                 '</td>' +
               '</tr>'
             ).join('') +
             '</tbody>' +
           '</table>';
-
-        table.querySelectorAll('.adj-mmk-wallet').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            if ($('adjUserId')) $('adjUserId').value = btn.dataset.uid;
-            if ($('adjAmountMmk')) $('adjAmountMmk').value = '';
-            if ($('adjReason')) $('adjReason').value = 'Manual MMK wallet adjustment for user #' + btn.dataset.uid + ' (current: Ks ' + Number(btn.dataset.mmk).toLocaleString() + ')';
-            $('balanceAdjustForm')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          });
-        });
 
         table.querySelectorAll('.adj-usdt-wallet').forEach((btn) => {
           btn.addEventListener('click', () => {

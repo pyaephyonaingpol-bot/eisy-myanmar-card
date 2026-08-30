@@ -641,8 +641,8 @@
         <p class="hint" style="margin-bottom:0.75rem">Sellers escrowed USDT. Buyer sends MMK externally. Seller confirms MMK receipt and releases escrow — admin can reject and refund escrow.</p>
         <div id="p2pSellOrdersTable" class="data-table-wrap"><p class="hint">Loading P2P sell orders…</p></div>
 
-        <h2 style="margin-top:2rem">USDT Withdrawals — Crypto &amp; Bank</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Complete on-chain payouts or USDT→MMK bank transfers. Reject to refund the user's USDT balance. TRC20 withdrawals auto-send from the master wallet (TronWeb, manual energy). BEP20 / bank remain manual Complete.</p>
+        <h2 style="margin-top:2rem">USDT Withdrawals — Crypto &amp; Bank (USDT→MMK)</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Crypto payouts send USDT on-chain. <strong>Bank (USDT→MMK)</strong> rows show the MMK amount at the locked daily rate — send that MMK via the user's bank / KPay / WavePay account, then Complete. Reject refunds USDT to the user. TRC20 crypto auto-sends from the master wallet; BEP20 remains manual.</p>
         <div id="nowpaymentsPayoutConfigStatus" class="hint hidden" style="margin-bottom:0.75rem" aria-live="polite"></div>
 
         <div class="master-wallet-panel" id="masterWalletPanel" data-admin-perm="master_wallet">
@@ -723,16 +723,8 @@
 
       <section id="tabUsers" class="panel app-page" data-page="users">
         <h2>Users &amp; Wallet Adjustments</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Users hold a USDT wallet balance only. Use Adjust USDT for manual corrections.</p>
         <div id="usersTable" class="data-table-wrap"><p class="hint">Loading users…</p></div>
-        <form id="balanceAdjustForm" class="form" style="margin-top:1rem">
-          <h3 style="margin:0 0 0.75rem">Manual MMK Wallet Adjustment</h3>
-          <div class="field-row">
-            <div class="field"><label for="adjUserId">User ID</label><input id="adjUserId" type="number" required /></div>
-            <div class="field"><label for="adjAmountMmk">Amount MMK (+/-)</label><input id="adjAmountMmk" type="number" step="1" required placeholder="50000" /></div>
-          </div>
-          <div class="field"><label for="adjReason">Reason / Note</label><input id="adjReason" placeholder="Manual top-up correction" required /></div>
-          <button type="submit" class="btn btn-primary">Adjust MMK Wallet</button>
-        </form>
         <form id="balanceAdjustUsdtForm" class="form" style="margin-top:1rem">
           <h3 style="margin:0 0 0.75rem">Manual USDT Wallet Adjustment</h3>
           <div class="field-row">
@@ -743,7 +735,16 @@
           <button type="submit" class="btn btn-primary">Adjust USDT Wallet</button>
         </form>
         <details style="margin-top:1rem">
-          <summary class="hint">Legacy USD wallet adjustment (deprecated)</summary>
+          <summary class="hint">Legacy wallet adjustments (deprecated)</summary>
+          <form id="balanceAdjustForm" class="form" style="margin-top:0.75rem">
+            <h3 style="margin:0 0 0.75rem;font-size:0.95rem">Manual MMK Wallet Adjustment</h3>
+            <div class="field-row">
+              <div class="field"><label for="adjUserId">User ID</label><input id="adjUserId" type="number" /></div>
+              <div class="field"><label for="adjAmountMmk">Amount MMK (+/-)</label><input id="adjAmountMmk" type="number" step="1" placeholder="50000" /></div>
+            </div>
+            <div class="field"><label for="adjReason">Reason / Note</label><input id="adjReason" placeholder="Legacy MMK correction" /></div>
+            <button type="submit" class="btn btn-secondary">Adjust MMK Wallet</button>
+          </form>
           <form id="balanceAdjustUsdForm" class="form" style="margin-top:0.75rem">
             <div class="field-row">
               <div class="field"><label for="adjUsdUserId">User ID</label><input id="adjUsdUserId" type="number" /></div>
