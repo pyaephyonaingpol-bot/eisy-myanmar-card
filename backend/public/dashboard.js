@@ -1409,31 +1409,36 @@ const Dashboard = {
     const select = $('cardBinSelect');
     const input = $('cardBinInput');
     if (!select) return;
-    const bins = Array.isArray(this.cardPricing?.kripicard_bins)
-      ? this.cardPricing.kripicard_bins.filter(Boolean)
-      : [];
-    const defaultBin = this.cardPricing?.kripicard_default_bin || bins[0] || '';
 
-    if (bins.length) {
-      select.classList.remove('hidden');
-      if (input) input.classList.add('hidden');
-      select.innerHTML = bins.map((bin) =>
-        `<option value="${this.esc(bin)}">${this.esc(bin)}</option>`
-      ).join('');
-      select.value = defaultBin || bins[0];
-      select.required = true;
-      if (input) input.required = false;
-      return;
+    // Client fallback so the dropdown never renders empty / "No Options"
+    // when pricing hasn't loaded or env BINs are unset.
+    const FALLBACK_BINS = ['539502', '525847', '441357', '493875', '428803', '493728'];
+    const fromApi = Array.isArray(this.cardPricing?.kripicard_bins)
+      ? this.cardPricing.kripicard_bins.map((b) => String(b || '').trim()).filter(Boolean)
+      : [];
+    const bins = fromApi.length ? fromApi : FALLBACK_BINS;
+    const defaultBin = String(
+      this.cardPricing?.kripicard_default_bin || bins[0] || ''
+    ).trim();
+
+    select.classList.remove('hidden');
+    select.required = true;
+    if (input) {
+      input.classList.add('hidden');
+      input.required = false;
     }
 
-    // No configured BIN list — allow free-form entry (still required by API).
-    select.classList.add('hidden');
-    select.required = false;
-    select.innerHTML = '';
-    if (input) {
-      input.classList.remove('hidden');
-      input.required = true;
-      if (defaultBin && !input.value) input.value = defaultBin;
+    const prev = select.value;
+    select.innerHTML = bins.map((bin) =>
+      `<option value="${this.esc(bin)}">${this.esc(bin)}</option>`
+    ).join('');
+
+    if (prev && bins.includes(prev)) {
+      select.value = prev;
+    } else if (defaultBin && bins.includes(defaultBin)) {
+      select.value = defaultBin;
+    } else {
+      select.value = bins[0];
     }
   },
 
@@ -4892,6 +4897,7 @@ const Dashboard = {
   async loadCardPricing() {
     if (!Auth.isLoggedIn()) return;
     if (this.cardPricing && this._isFresh('pricing')) {
+      this.populateCardBinOptions();
       this.updateCardPricingBreakdown();
       this.updateHomeRateSummary();
       return;

@@ -27,9 +27,14 @@ function testUiUsdtOnly() {
   assert.ok(!formHtml.includes('wallet_mmk'), 'MMK wallet option removed from apply form');
   assert.ok(formHtml.includes('cardHolderNameInput'), 'name on card field');
   assert.ok(formHtml.includes('cardBinSelect'), 'BIN select');
+  assert.ok(formHtml.includes('539502'), 'default BIN seeded in HTML');
+  assert.ok(formHtml.includes('525847'), 'second BIN seeded in HTML');
+  assert.ok(formHtml.includes('441357'), 'third BIN seeded in HTML');
+  assert.ok(!formHtml.includes('Loading BINs'), 'no loading placeholder');
   assert.ok(!formHtml.includes('id="pbMmkRow"'), 'MMK pricing row removed from apply form');
   assert.ok(formHtml.includes('id="pbUsdtRow"'), 'USDT pricing row present');
 
+  assert.ok(dash.includes('FALLBACK_BINS'), 'client fallback BIN list');
   assert.ok(dash.includes('populateCardBinOptions'), 'BIN population helper');
   assert.ok(dash.includes("wallet_type: 'usdt'"), 'submit forces usdt');
   assert.ok(!dash.includes("pay_from_wallet && walletType === 'mmk'"), 'no MMK wallet branch in submit');
@@ -100,6 +105,18 @@ async function testPurchaseCardFromWalletThrows() {
   assert.strictEqual(binErr.code, 'INVALID_BIN');
   const opts = getKripicardBinOptions();
   assert.deepStrictEqual(opts.bins, ['428803', '411111']);
+
+  // Without env allow-list, built-in catalog is returned (not empty).
+  delete process.env.KRIPICARD_ALLOWED_BINS;
+  delete process.env.KRIPICARD_DEFAULT_BIN;
+  delete require.cache[require.resolve(path.join(ROOT, 'backend/src/services/cardWalletService'))];
+  const refreshed = require(path.join(ROOT, 'backend/src/services/cardWalletService'));
+  const catalog = refreshed.getKripicardBinOptions();
+  assert.ok(catalog.bins.length >= 3, 'default BIN catalog must be non-empty');
+  assert.ok(catalog.bins.includes('539502'));
+  assert.ok(catalog.bins.includes('525847'));
+  assert.ok(catalog.bins.includes('441357'));
+  assert.strictEqual(catalog.source, 'default_catalog');
   console.log('ok');
 }
 
