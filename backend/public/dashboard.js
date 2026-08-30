@@ -1506,12 +1506,6 @@ const Dashboard = {
     }
   },
 
-  updateCardManualPaymentDetails() {
-    // Manual KBZPay / WavePay details are not used for card issuance.
-    const box = $('cardPaymentMethodDetails');
-    if (box) box.classList.add('hidden');
-  },
-
   updateReloadManualPaymentDetails() {
     const selected = this.parseSelectedPaymentMethod($('reloadPaymentMethod')?.value);
     this.renderPaymentAccountDetails(selected.kind === 'bank' ? selected.method : null, {
