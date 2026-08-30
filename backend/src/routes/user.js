@@ -401,12 +401,15 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
       minimum_card_reload_mmk: settings.minimum_card_reload_mmk,
       minimum_usdt_deposit: settings.minimum_usdt_deposit,
       minimum_usdt_reload: settings.minimum_usdt_reload,
+      // MMK rate is for reloads/deposits/home rates — not used for card issuance.
       mmk_to_usd_rate: settings.mmk_to_usd_rate,
       rate_effective_date: currentRate.effective_date,
       rate_label: "Today's Daily Exchange Rate",
       currency: 'USD',
       payment_currency: 'USDT',
       card_issuance_payment: 'usdt_wallet',
+      card_issuance_rate: '1 USDT ≈ 1 USD',
+      exchange_rate_applied: false,
       auto_issue: true,
       kripicard_default_bin: bins.default_bin,
       kripicard_bins: bins.bins,
@@ -422,11 +425,11 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
 router.post('/card/request', requireAuth, requireSensitive, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    const payFromWallet = Boolean(req.body.pay_from_wallet);
     const walletType = String(req.body.wallet_type || 'usdt').toLowerCase();
 
-    // Card issuance is USDT / USD only — automated via Kripicard.
-    if (!payFromWallet || walletType !== 'usdt') {
+    // Card purchase always debits USDT and auto-issues via Kripicard.
+    // Reject any leftover MMK / bank payment flags from older clients.
+    if (walletType && walletType !== 'usdt') {
       return res.status(400).json({
         error: 'Card issuance accepts USDT wallet payment only. MMK wallet and KBZPay/WavePay are not supported for new cards.',
         code: 'USDT_ONLY_CARD_ISSUANCE',

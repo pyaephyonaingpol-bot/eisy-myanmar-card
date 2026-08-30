@@ -23,8 +23,13 @@ function testUiUsdtOnly() {
   assert.ok(formStart >= 0 && formEnd > formStart, 'card request form markers');
   const formHtml = html.slice(formStart, formEnd);
 
-  assert.ok(formHtml.includes('wallet_usdt'), 'USDT option present');
+  assert.ok(formHtml.includes('wallet_usdt'), 'USDT payment value present');
+  assert.ok(formHtml.includes('cardPayFromUsdt'), 'static USDT pay-from label');
+  assert.ok(formHtml.includes('type="hidden" id="cardPaymentMethod"'), 'hidden USDT payment field (no dropdown)');
+  assert.ok(!/<select[^>]*id="cardPaymentMethod"/.test(formHtml), 'no cardPaymentMethod dropdown');
   assert.ok(!formHtml.includes('wallet_mmk'), 'MMK wallet option removed from apply form');
+  assert.ok(!formHtml.includes('KBZPay') && !formHtml.includes('WavePay'), 'no KBZ/Wave options in apply form');
+  assert.ok(!formHtml.includes('cardPaymentMethodDetails'), 'no manual bank QR details block');
   assert.ok(formHtml.includes('cardHolderNameInput'), 'name on card field');
   assert.ok(formHtml.includes('cardBinSelect'), 'BIN select');
   assert.ok(formHtml.includes('539502'), 'default BIN seeded in HTML');
@@ -33,6 +38,7 @@ function testUiUsdtOnly() {
   assert.ok(!formHtml.includes('Loading BINs'), 'no loading placeholder');
   assert.ok(!formHtml.includes('id="pbMmkRow"'), 'MMK pricing row removed from apply form');
   assert.ok(formHtml.includes('id="pbUsdtRow"'), 'USDT pricing row present');
+  assert.ok(formHtml.includes('usdt_parity_rate') || formHtml.includes('1 USDT'), 'USDT parity rate label');
 
   assert.ok(dash.includes('FALLBACK_BINS'), 'client fallback BIN list');
   assert.ok(dash.includes('populateCardBinOptions'), 'BIN population helper');
@@ -45,6 +51,18 @@ function testUiUsdtOnly() {
   assert.ok(cardPayFn.includes('wallet_usdt'), 'card pay options include USDT');
   assert.ok(!cardPayFn.includes('wallet_mmk'), 'card pay options exclude MMK');
   assert.ok(!cardPayFn.includes('bankOpts'), 'card pay options exclude bank/KBZ/Wave');
+  assert.ok(!cardPayFn.includes('<option'), 'no payment dropdown options built for card purchase');
+
+  const pricingFn = dash.slice(
+    dash.indexOf('updateCardPricingBreakdown() {'),
+    dash.indexOf('formatPricingReceiptHtml(')
+  );
+  assert.ok(pricingFn.includes("payment_currency: 'USDT'"), 'pricing breakdown is USDT');
+  assert.ok(pricingFn.includes('exchange_rate_applied: false'), 'no FX applied in card pricing UI');
+  assert.ok(!pricingFn.includes('total_mmk') && !pricingFn.includes('pbTotalMmk'), 'no MMK total in card pricing UI');
+
+  assert.ok(i18n.includes('usdt_parity_rate'), 'i18n has USDT parity rate');
+  assert.ok(!i18n.includes('pay_mmk_wallet_issuance'), 'i18n MMK issuance option removed');
   assert.ok(i18n.includes('Issue Card Instantly') || i18n.includes('instant issue'));
   assert.ok(i18n.includes('Kripicard'));
   console.log('ok');
@@ -58,6 +76,8 @@ function testBackendUsdtOnly() {
   assert.ok(route.includes('USDT_ONLY_CARD_ISSUANCE'));
   assert.ok(route.includes('purchaseCardFromUsdtWallet'));
   assert.ok(route.includes('kripicard_default_bin'));
+  assert.ok(route.includes('card_issuance_rate'));
+  assert.ok(route.includes('exchange_rate_applied: false'));
   assert.ok(!route.includes("walletType === 'mmk'"), 'card/request no longer branches on mmk');
   // Manual KBZ path removed from card/request (purpose card_issuance deposit create)
   const requestIdx = route.indexOf("router.post('/card/request'");
@@ -66,6 +86,7 @@ function testBackendUsdtOnly() {
   const requestBlock = route.slice(requestIdx, reloadIdx);
   assert.ok(!requestBlock.includes('createDepositRequest'), 'no MMK deposit creation in card/request');
   assert.ok(!requestBlock.includes('calculateCardRequestPricing('), 'no MMK FX pricing in card/request');
+  assert.ok(!requestBlock.includes('payFromWallet'), 'no pay_from_wallet gate — always USDT issue');
   assert.ok(requestBlock.includes('name_on_card') || requestBlock.includes('card_holder_name'));
 
   assert.ok(wallet.includes('issueCardForUser'));
