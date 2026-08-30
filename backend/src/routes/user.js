@@ -410,6 +410,7 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
       auto_issue: true,
       kripicard_default_bin: bins.default_bin,
       kripicard_bins: bins.bins,
+      kripicard_bins_source: bins.source,
       withdrawal_fees: await getWithdrawalFeeSettings(),
     });
   } catch (err) {

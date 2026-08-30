@@ -19,23 +19,53 @@ const CARD_REQUEST_PENDING_MESSAGE =
 const CARD_ISSUED_MESSAGE =
   'Card issued successfully. Your virtual card is ready to use.';
 
+/**
+ * Built-in Kripicard BIN catalog shown in the Apply Card dropdown when
+ * KRIPICARD_ALLOWED_BINS is unset. Override via env for account-specific BINs.
+ */
+const DEFAULT_KRIPICARD_BINS = [
+  '539502',
+  '525847',
+  '441357',
+  '493875',
+  '428803',
+  '493728',
+];
+
+function parseBinList(raw) {
+  return String(raw || '')
+    .split(/[,\s]+/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+}
+
+function uniqueBins(list) {
+  const seen = new Set();
+  const out = [];
+  for (const bin of list) {
+    const key = String(bin);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
 function resolveKripicardBin(requestedBin) {
   const requested = String(requestedBin || '').trim();
-  const defaultBin = String(process.env.KRIPICARD_DEFAULT_BIN || '').trim();
-  const allowedRaw = String(process.env.KRIPICARD_ALLOWED_BINS || '').trim();
-  const allowed = allowedRaw
-    ? allowedRaw.split(/[,\s]+/).map((b) => b.trim()).filter(Boolean)
-    : [];
+  const { default_bin: defaultBin, bins: allowed } = getKripicardBinOptions();
 
   const bin = requested || defaultBin;
   if (!bin) {
     const err = new Error(
-      'Card BIN is required. Set KRIPICARD_DEFAULT_BIN or pass bin in the request.'
+      'Card BIN is required. Set KRIPICARD_DEFAULT_BIN / KRIPICARD_ALLOWED_BINS or pass bin in the request.'
     );
     err.code = 'INVALID_BIN';
     throw err;
   }
 
+  // When an explicit allow-list is configured, enforce it.
+  // Built-in catalog (no env override) still accepts any requested catalog BIN.
   if (allowed.length && !allowed.includes(String(bin))) {
     const err = new Error(`BIN ${bin} is not allowed. Allowed: ${allowed.join(', ')}`);
     err.code = 'INVALID_BIN';
@@ -46,14 +76,24 @@ function resolveKripicardBin(requestedBin) {
 }
 
 function getKripicardBinOptions() {
-  const defaultBin = String(process.env.KRIPICARD_DEFAULT_BIN || '').trim();
-  const allowedRaw = String(process.env.KRIPICARD_ALLOWED_BINS || '').trim();
-  const allowed = allowedRaw
-    ? allowedRaw.split(/[,\s]+/).map((b) => b.trim()).filter(Boolean)
-    : (defaultBin ? [defaultBin] : []);
+  const envDefault = String(process.env.KRIPICARD_DEFAULT_BIN || '').trim();
+  const envAllowed = parseBinList(process.env.KRIPICARD_ALLOWED_BINS);
+  const bins = uniqueBins(
+    envAllowed.length ? envAllowed : [...DEFAULT_KRIPICARD_BINS]
+  );
+  const defaultBin = envDefault && bins.includes(envDefault)
+    ? envDefault
+    : (envDefault || bins[0] || null);
+
+  // If env default is outside allow-list, still surface it first for operators.
+  const withDefault = uniqueBins(
+    defaultBin ? [defaultBin, ...bins] : bins
+  );
+
   return {
-    default_bin: defaultBin || (allowed[0] || null),
-    bins: allowed.length ? allowed : (defaultBin ? [defaultBin] : []),
+    default_bin: defaultBin || withDefault[0] || null,
+    bins: withDefault,
+    source: envAllowed.length ? 'env' : 'default_catalog',
   };
 }
 
@@ -384,5 +424,6 @@ module.exports = {
   reloadCardFromUsdtWallet,
   resolveKripicardBin,
   getKripicardBinOptions,
+  DEFAULT_KRIPICARD_BINS,
   CARD_ISSUED_MESSAGE,
 };
