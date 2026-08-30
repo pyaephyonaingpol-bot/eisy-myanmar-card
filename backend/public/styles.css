@@ -2913,6 +2913,14 @@ body.sidebar-scroll-lock {
   margin-bottom: 0.65rem;
   font-size: 0.95rem;
 }
+.home-card-purchase .hint {
+  margin-bottom: 0.85rem;
+}
+.home-card-purchase .action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
 .settings-card p {
   font-size: 0.8125rem;
   color: var(--text-secondary);

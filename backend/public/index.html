@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="192x192" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="512x512" href="/icons/Icon-512.png" />
-  <link rel="stylesheet" href="/styles.css?v=20260821scroll" />
+  <link rel="stylesheet" href="/styles.css?v=20260830profile" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
     /* Early paint lock: avoid auth↔dashboard flash before JS mounts */
@@ -752,6 +752,10 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 5 5-9"/></svg>
             <span data-i18n="nav_rates">Exchange Rates &amp; Fees</span>
           </button>
+          <button type="button" class="nav-item" data-page="profile">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 19.5c1.6-3.2 4.2-4.8 6.5-4.8s4.9 1.6 6.5 4.8"/></svg>
+            <span data-i18n="nav_profile">Profile</span>
+          </button>
           <button type="button" class="nav-item" data-page="settings">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             <span data-i18n="nav_settings">Settings &amp; Security</span>
@@ -804,6 +808,7 @@
                   <p class="account-menu-heading" data-i18n="account_security_heading">Account &amp; security</p>
                   <button type="button" role="menuitem" id="unlockBtn" class="account-menu-item" data-i18n="btn_unlock_pin">Unlock PIN</button>
                   <button type="button" role="menuitem" id="registerBioBtn" class="account-menu-item" data-i18n="btn_register_bio">Register Biometrics</button>
+                  <button type="button" role="menuitem" class="account-menu-item" data-goto="profile" data-i18n="nav_profile">Profile</button>
                   <button type="button" role="menuitem" class="account-menu-item" data-goto="settings" data-i18n="nav_settings">Settings &amp; Security</button>
                   <div class="account-menu-divider" role="separator"></div>
                   <button type="button" role="menuitem" id="logoutBtn" class="account-menu-item danger" data-i18n="btn_logout">Logout</button>
@@ -821,6 +826,7 @@
           <span class="hidden" data-page-title="usdt-wallet" data-i18n="usdt_wallet_page_title">USDT Wallet</span>
           <span class="hidden" data-page-title="p2p" data-i18n="nav_p2p">P2P Express</span>
           <span class="hidden" data-page-title="rates" data-i18n="nav_rates">Exchange Rates &amp; Fees</span>
+          <span class="hidden" data-page-title="profile" data-i18n="nav_profile">Profile</span>
           <span class="hidden" data-page-title="settings" data-i18n="nav_settings">Settings &amp; Security</span>
 
           <!-- ══ PAGE: Dashboard / Home ══ -->
@@ -835,7 +841,6 @@
                   <div class="wallet-hero-actions" role="group" aria-label="USDT wallet actions">
                     <span class="wallet-actions-label" data-i18n="wallet_actions_label">Wallet actions</span>
                     <div class="wallet-hero-actions-row">
-                      <button type="button" class="btn btn-primary btn-sm" data-goto="cards" data-i18n="issue_card">Issue Card</button>
                       <button type="button" class="btn btn-secondary btn-sm" data-goto="usdt-wallet" data-i18n="btn_manage_usdt_wallet">Manage Wallet</button>
                       <button type="button" class="btn btn-secondary btn-sm" data-goto="deposits" data-deposit-tab="usdt" data-i18n="btn_top_up_usdt">Top Up USDT</button>
                       <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdt" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
@@ -843,13 +848,6 @@
                     </div>
                   </div>
                 </div>
-              </div>
-              <div class="summary-grid">
-                <div class="summary-item"><span class="label" data-i18n="name">Name</span><span class="value" id="sumName">—</span></div>
-                <div class="summary-item"><span class="label" data-i18n="email">Email</span><span class="value" id="sumEmail">—</span></div>
-                <div class="summary-item"><span class="label" data-i18n="phone">Phone</span><span class="value" id="sumPhone">—</span></div>
-                <div class="summary-item"><span class="label" data-i18n="selected_card">Selected Card</span><span class="value" id="sumCard">—</span></div>
-                <div class="summary-item highlight"><span class="label" data-i18n="card_status">Card Status</span><span class="value" id="sumCardStatus">—</span></div>
               </div>
             </section>
 
@@ -863,11 +861,20 @@
                   <button type="button" class="btn btn-secondary btn-sm" data-goto="rates" data-i18n="view_rates_fees">View Rates &amp; Fees</button>
                 </div>
               </section>
-              <section class="panel">
-                <h2 data-i18n="todays_exchange_rate">Today's Exchange Rate</h2>
-                <p id="homeRateSummary" class="hint" data-i18n="loading">Loading rate…</p>
+              <section class="panel home-card-purchase">
+                <h2 data-i18n="home_card_purchase_heading">Get a Virtual Card</h2>
+                <p class="hint" data-i18n="home_card_purchase_hint">Issue a new card or manage existing cards from My Cards.</p>
+                <div class="action-row">
+                  <button type="button" class="btn btn-primary btn-sm" data-goto="cards" data-i18n="issue_card">Issue Card</button>
+                  <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="view_my_cards">View My Cards</button>
+                </div>
               </section>
             </div>
+
+            <section class="panel">
+              <h2 data-i18n="todays_exchange_rate">Today's Exchange Rate</h2>
+              <p id="homeRateSummary" class="hint" data-i18n="loading">Loading rate…</p>
+            </section>
 
             <section class="panel">
               <h2 data-i18n="activity_log">Activity Log</h2>
@@ -1306,6 +1313,53 @@
             </section>
           </section>
 
+          <!-- ══ PAGE: Profile ══ -->
+          <section id="pageProfile" class="app-page" data-page="profile">
+            <div class="page-header">
+              <div>
+                <h2 class="page-heading" data-i18n="nav_profile">Profile</h2>
+                <p class="page-desc" data-i18n="profile_page_desc">Your account details, contact info, and selected card status.</p>
+              </div>
+            </div>
+
+            <section class="panel summary-panel">
+              <h2 data-i18n="profile_overview_heading">Account Overview</h2>
+              <div class="summary-grid">
+                <div class="summary-item"><span class="label" data-i18n="name">Name</span><span class="value" id="sumName">—</span></div>
+                <div class="summary-item"><span class="label" data-i18n="email">Email</span><span class="value" id="sumEmail">—</span></div>
+                <div class="summary-item"><span class="label" data-i18n="phone">Phone</span><span class="value" id="sumPhone">—</span></div>
+                <div class="summary-item"><span class="label" data-i18n="selected_card">Selected Card</span><span class="value" id="sumCard">—</span></div>
+                <div class="summary-item highlight"><span class="label" data-i18n="card_status">Card Status</span><span class="value" id="sumCardStatus">—</span></div>
+              </div>
+              <div class="action-row" style="margin-top:1rem">
+                <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="view_my_cards">View My Cards</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-goto="settings" data-i18n="nav_settings">Settings &amp; Security</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h2 data-i18n="profile_heading">Profile</h2>
+              <p class="hint" style="margin-bottom:0.75rem" data-i18n="profile_hint">Update your display name and phone number alongside your sign-in email.</p>
+              <form id="profileForm" class="form form-compact">
+                <div class="field">
+                  <label for="profileName" data-i18n="name">Name</label>
+                  <input id="profileName" name="name" type="text" required autocomplete="name" />
+                </div>
+                <div class="field">
+                  <label for="profileEmail" data-i18n="email">Email</label>
+                  <input id="profileEmail" type="email" readonly disabled aria-readonly="true" />
+                  <small class="hint" data-i18n="profile_email_readonly">Email is used for sign-in and cannot be changed here.</small>
+                </div>
+                <div class="field">
+                  <label for="profilePhone"><span data-i18n="phone">Phone</span> <span class="hint" data-i18n="profile_phone_optional">(optional)</span></label>
+                  <input id="profilePhone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+959..." />
+                </div>
+                <p id="profileFormError" class="error-text hidden"></p>
+                <button type="submit" id="profileFormSubmit" class="btn btn-primary btn-sm" data-i18n="btn_save_profile">Save Profile</button>
+              </form>
+            </section>
+          </section>
+
           <!-- ══ PAGE: Settings & Security ══ -->
           <section id="pageSettings" class="app-page" data-page="settings">
             <div class="page-header">
@@ -1316,26 +1370,10 @@
             </div>
 
             <div class="settings-grid">
-              <div class="settings-card settings-card-wide">
+              <div class="settings-card">
                 <h3 data-i18n="profile_heading">Profile</h3>
-                <p class="hint" style="margin-bottom:0.75rem" data-i18n="profile_hint">Update your display name and phone number alongside your sign-in email.</p>
-                <form id="profileForm" class="form form-compact">
-                  <div class="field">
-                    <label for="profileName" data-i18n="name">Name</label>
-                    <input id="profileName" name="name" type="text" required autocomplete="name" />
-                  </div>
-                  <div class="field">
-                    <label for="profileEmail" data-i18n="email">Email</label>
-                    <input id="profileEmail" type="email" readonly disabled aria-readonly="true" />
-                    <small class="hint" data-i18n="profile_email_readonly">Email is used for sign-in and cannot be changed here.</small>
-                  </div>
-                  <div class="field">
-                    <label for="profilePhone"><span data-i18n="phone">Phone</span> <span class="hint" data-i18n="profile_phone_optional">(optional)</span></label>
-                    <input id="profilePhone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+959..." />
-                  </div>
-                  <p id="profileFormError" class="error-text hidden"></p>
-                  <button type="submit" id="profileFormSubmit" class="btn btn-primary btn-sm" data-i18n="btn_save_profile">Save Profile</button>
-                </form>
+                <p class="hint" data-i18n="settings_profile_link_hint">Name, email, phone, and card status are on your Profile page.</p>
+                <button type="button" class="btn btn-secondary btn-sm" data-goto="profile" data-i18n="btn_open_profile">Open Profile</button>
               </div>
               <div class="settings-card">
                 <h3>Security PIN</h3>
@@ -1397,7 +1435,7 @@
   <script src="/vendor/browser-image-compression.js?v=20260812a"></script>
   <script type="module" src="/supabaseBridge.js?v=20260821fresh"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260821npwd1"></script>
+  <script src="/i18n.js?v=20260830profile"></script>
   <script src="/auth.js?v=20260824pinuser"></script>
   <script src="/src/services/apiClient.js?v=20260817m2"></script>
   <script src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1418,6 +1456,6 @@
   <script src="/src/components/index.js?v=20260817m2"></script>
   <script src="/nav.js?v=20260816kb2"></script>
   <script src="/viewport.js?v=20260821scroll"></script>
-  <script src="/dashboard.js?v=20260828withdraw"></script>
+  <script src="/dashboard.js?v=20260830profile"></script>
 </body>
 </html>
