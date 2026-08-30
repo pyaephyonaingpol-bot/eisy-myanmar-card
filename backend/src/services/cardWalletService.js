@@ -97,14 +97,6 @@ function getKripicardBinOptions() {
   };
 }
 
-async function purchaseCardFromWallet() {
-  const err = new Error(
-    'MMK wallet is no longer supported for card issuance. Pay with USDT wallet.'
-  );
-  err.code = 'MMK_CARD_ISSUANCE_DISABLED';
-  throw err;
-}
-
 async function reloadCardFromWallet(userId, { cardId, amountMmk }) {
   const user = await User.findById(userId);
   if (!user) throw new Error('User not found');
@@ -418,7 +410,6 @@ async function reloadCardFromUsdtWallet(userId, { cardId, amountUsdt }) {
 }
 
 module.exports = {
-  purchaseCardFromWallet,
   reloadCardFromWallet,
   purchaseCardFromUsdtWallet,
   reloadCardFromUsdtWallet,

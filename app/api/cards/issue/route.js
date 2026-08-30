@@ -16,7 +16,7 @@
  *     name_on_card: string,          // min 2 chars
  *     bin: string|number,            // chosen BIN
  *     amount: number,                // initial load / purchase amount
- *     currency?: string,             // default USD
+ *     currency?: string,             // USD or USDT only (MMK rejected)
  *     payment_ref?: string,          // optional idempotency / payment id
  *     idempotency_key?: string,
  *     metadata?: object

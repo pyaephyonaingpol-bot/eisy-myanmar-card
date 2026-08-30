@@ -5009,23 +5009,11 @@ const Dashboard = {
     }
     el.classList.remove('hidden');
     el.innerHTML = this.formatPricingReceiptHtml(p, deposit?.ref_code, {
-      title: deposit?.purpose === 'card_issuance' ? 'New Card Payment Receipt' : 'Deposit Summary',
-      note: 'Include this reference in your KBZPay/WavePay payment note.',
+      title: deposit?.purpose === 'card_issuance' ? 'Legacy Card Deposit (closed)' : 'Deposit Summary',
+      note: deposit?.purpose === 'card_issuance'
+        ? 'New cards are issued via USDT wallet only. This is a historical MMK deposit record.'
+        : 'Include this reference in your KBZPay/WavePay payment note.',
     });
-  },
-
-  populateDepositFromCardRequest(data) {
-    if (!data.deposit) return;
-    $('refCodeBox')?.classList.remove('hidden');
-    if ($('refCodeDisplay')) $('refCodeDisplay').textContent = data.deposit.ref_code;
-    if ($('activeDepositId')) $('activeDepositId').value = data.deposit.id;
-    if ($('amountMmk')) $('amountMmk').value = data.deposit.amount_mmk;
-    if ($('paymentMethod') && data.pricing_breakdown?.payment_method) {
-      $('paymentMethod').value = data.pricing_breakdown.payment_method;
-    }
-    $('depositSubmitForm')?.classList.remove('hidden');
-    this.renderDepositReceiptSummary(data.deposit, data.pricing_breakdown);
-    this.startPolling(data.deposit.ref_code);
   },
 
   getActiveCards() {
@@ -5969,7 +5957,9 @@ const Dashboard = {
       return;
     }
     const eff = p.rate_effective_date ? ` (Effective: ${p.rate_effective_date})` : '';
-    el.textContent = `1 USD = ${Number(p.mmk_to_usd_rate || 4500).toLocaleString()} MMK${eff} · Card fee $${Number(p.card_issuance_fee_usd || 0).toFixed(2)} · Min deposit $${Number(p.minimum_initial_deposit_usd || 0).toFixed(2)}`;
+    const cardFee = Number(p.card_issuance_fee_usd || 0).toFixed(2);
+    const minDep = Number(p.minimum_initial_deposit_usd || 0).toFixed(2);
+    el.textContent = `Card issue: 1 USDT ≈ 1 USD · Fee $${cardFee} · Min $${minDep} · Reload FX: 1 USD = ${Number(p.mmk_to_usd_rate || 4500).toLocaleString()} MMK${eff}`;
   },
 
   renderRatesPage() {

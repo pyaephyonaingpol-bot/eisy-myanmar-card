@@ -22,12 +22,21 @@ export interface DepositFeeBreakdown {
   used_minimum_fee?: boolean;
 }
 
+export type DepositPurpose =
+  | 'topup'
+  | 'card_reload'
+  | 'usdt_topup'
+  /** @deprecated Legacy MMK bank deposits for card issuance — new issuance is USDT-only */
+  | 'card_issuance'
+  | string;
+
 export interface DepositRequest {
   id: number;
   ref_code: string;
   user_id: number;
   status: DepositStatus;
-  purpose?: string;
+  /** New card issuance must not use MMK deposits; prefer USDT wallet auto-issue. */
+  purpose?: DepositPurpose;
   deposit_currency?: 'USDT' | 'MMK' | string;
   usdt_network?: UsdtNetwork | string | null;
   amount_usd?: number;

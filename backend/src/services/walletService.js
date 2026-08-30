@@ -21,12 +21,11 @@ function formatUsdt(amount) {
 
 /**
  * MMK wallet debits are allowed for:
- * - virtual card issuance / reloads
+ * - card reloads
  * - MMK bank withdrawals
- * MMK → USDT conversion is never allowed.
+ * Card issuance is USDT-only. MMK → USDT conversion is never allowed.
  */
 const MMK_WALLET_ALLOWED_DEBIT_PURPOSES = new Set([
-  'card_issuance',
   'card_reload',
   'mmk_bank_withdrawal',
 ]);
@@ -43,10 +42,18 @@ function assertMmkDebitAllowed({ createdBy, metadata } = {}) {
     err.code = 'MMK_TO_USDT_FORBIDDEN';
     throw err;
   }
+  if (purpose === 'card_issuance') {
+    const err = new Error(
+      'MMK wallet cannot be used for card issuance. Pay with your USDT wallet for instant Kripicard issue.'
+    );
+    err.code = 'USDT_ONLY_CARD_ISSUANCE';
+    throw err;
+  }
   if (purpose && MMK_WALLET_ALLOWED_DEBIT_PURPOSES.has(purpose)) return;
   const err = new Error(
-    'MMK wallet can only be used for virtual card issuance, card reloads, and bank withdrawals. '
-    + 'MMK → USDT exchange is not available. P2P USDT trades use external KPay/WavePay/Bank transfers.'
+    'MMK wallet can only be used for card reloads and bank withdrawals. '
+    + 'New cards require USDT wallet payment. MMK → USDT exchange is not available. '
+    + 'P2P USDT trades use external KPay/WavePay/Bank transfers.'
   );
   err.code = 'MMK_WALLET_RESTRICTED';
   throw err;

@@ -650,32 +650,6 @@ function calculateCardReloadPricing(topUpMmk, settings) {
   };
 }
 
-function calculateCardRequestPricing(initialLoadUsd, settings) {
-  const initial = parseFloat(initialLoadUsd);
-  const fee = settings.card_issuance_fee_usd;
-  const min = settings.minimum_initial_deposit_usd;
-  const rate = settings.mmk_to_usd_rate;
-
-  if (!Number.isFinite(initial) || initial <= 0) {
-    throw new Error('Initial card load amount must be a positive number');
-  }
-  if (initial < min) {
-    throw new Error(`Minimum initial deposit is $${min.toFixed(2)} USD`);
-  }
-
-  const totalUsd = initial + fee;
-  const totalMmk = Math.ceil(totalUsd * rate);
-
-  return {
-    initial_load_usd: Math.round(initial * 100) / 100,
-    issuance_fee_usd: Math.round(fee * 100) / 100,
-    total_usd_required: Math.round(totalUsd * 100) / 100,
-    total_mmk: totalMmk,
-    mmk_to_usd_rate: rate,
-    rate_effective_date: settings.rate_effective_date || todayDateString(),
-  };
-}
-
 function calculateCardRequestPricingUsdt(initialLoadUsd, settings) {
   const initial = parseFloat(initialLoadUsd);
   const fee = settings.card_issuance_fee_usd;
@@ -755,7 +729,6 @@ module.exports = {
   buildRateSnapshot,
   listExchangeRateHistory,
   updateSettings,
-  calculateCardRequestPricing,
   calculateCardReloadPricing,
   calculateCardRequestPricingUsdt,
   calculateCardReloadPricingUsdt,
