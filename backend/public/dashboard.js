@@ -788,27 +788,20 @@ const Dashboard = {
   },
 
   switchDepositTab(tab) {
+    // Wallet top-up is USDT (TRC20) only — ignore legacy MMK tab requests.
     if (window.EisyComponents?.usdtAddressBox?.switchDepositTab) {
-      return window.EisyComponents.usdtAddressBox.switchDepositTab(tab);
+      return window.EisyComponents.usdtAddressBox.switchDepositTab('usdt');
     }
-    const t = tab === 'usdt' ? 'usdt' : 'mmk';
-    document.querySelectorAll('.deposit-tab').forEach((btn) => {
-      btn.classList.toggle('is-active', btn.dataset.depositTab === t);
-    });
-    $('depositMmkPanel')?.classList.toggle('hidden', t !== 'mmk');
-    $('depositUsdtPanel')?.classList.toggle('hidden', t !== 'usdt');
+    $('depositUsdtPanel')?.classList.remove('hidden');
+    $('depositMmkPanel')?.classList.add('hidden');
   },
 
   bindDepositTabs() {
-    document.querySelectorAll('.deposit-tab').forEach((btn) => {
-      btn.addEventListener('click', () => this.switchDepositTab(btn.dataset.depositTab));
-    });
+    // No MMK/USDT tab strip — keep USDT panel visible; honor deep-links as USDT.
     document.querySelectorAll('[data-deposit-tab]').forEach((btn) => {
-      if (btn.classList.contains('deposit-tab')) return;
       btn.addEventListener('click', () => {
-        const tab = btn.dataset.depositTab;
-        if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true, depositTab: tab });
-        else this.switchDepositTab(tab);
+        if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true, depositTab: 'usdt' });
+        else this.switchDepositTab('usdt');
       });
     });
   },
@@ -1317,12 +1310,13 @@ const Dashboard = {
   },
 
   async loadDepositPaymentMethods() {
-    const select = $('paymentMethod');
+    // Bank payment methods are still used for card reload (manual), not wallet top-up.
     if (
       Array.isArray(this._depositPaymentMethods)
       && this._depositPaymentMethods.length
       && this._isFresh('paymentMethods')
     ) {
+      this.populateReloadPaymentMethodOptions();
       return;
     }
     return this._withInflight('paymentMethods', async () => {
@@ -1333,29 +1327,9 @@ const Dashboard = {
       this._depositPaymentMethods = Array.isArray(data.payment_methods) ? data.payment_methods : [];
       this._usdtMasterDeposit = data.usdt || null;
       this._markFetched('paymentMethods');
-
-      if (select) {
-        if (!this._depositPaymentMethods.length) {
-          select.innerHTML = '<option value="">No bank accounts configured — contact support</option>';
-          this.renderMmkPaymentDetails(null);
-        } else {
-          select.innerHTML = this._depositPaymentMethods.map((m) =>
-            `<option value="${m.id}">${this.esc(m.bank_name)} — ${this.esc(m.account_name)}</option>`
-          ).join('');
-          this.renderMmkPaymentDetails(this._depositPaymentMethods[0]);
-        }
-      }
-
       this.populateCardPaymentMethodOptions();
       this.populateReloadPaymentMethodOptions();
     } catch (err) {
-      if (select) {
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED' || err.status === 401) {
-          select.innerHTML = '<option value="">Sign in to load payment methods</option>';
-          return;
-        }
-        select.innerHTML = '<option value="">Failed to load payment methods</option>';
-      }
       console.warn('[deposit] payment-methods', err.message);
     }
     });
@@ -3543,10 +3517,8 @@ const Dashboard = {
     });
 
     $('usdtAmount')?.addEventListener('input', () => this.updateUsdtDepositFeePreview());
-    $('amountMmk')?.addEventListener('input', () => this.updateMmkDepositFeePreview());
 
     this.updateUsdtDepositFeePreview();
-    this.updateMmkDepositFeePreview();
 
     $('btnCreateTronDeposit')?.addEventListener('click', async () => {
       if (this._tronDepositCreateInFlight || this._activeTronOrderId) return;
@@ -4701,71 +4673,33 @@ const Dashboard = {
     $('btnLoadCard').onclick = () => this.loadAllCards({ forceRefresh: true });
     $('btnShowCardDetails')?.addEventListener('click', () => this.toggleCardDetails());
 
-    $('depositForm').onsubmit = async (e) => {
-      e.preventDefault();
-      try {
-        const methodId = $('paymentMethod')?.value;
-        if (!methodId) {
-          this.toast('Select a bank payment method', 'error');
-          return;
-        }
-        const data = await Auth.api('POST', '/api/deposit/request', {
-          deposit_type: 'mmk',
-          amount_mmk: parseFloat($('amountMmk').value),
-          payment_method_id: parseInt(methodId, 10),
-        }, { sensitive: true });
-        $('refCodeBox').classList.remove('hidden');
-        $('refCodeDisplay').textContent = data.deposit.ref_code;
-        $('activeDepositId').value = data.deposit.id;
-        $('depositSubmitForm').classList.remove('hidden');
-        this.clearDepositScreenshotPreview();
-        this.renderDepositReceiptSummary(data.deposit, data.pricing_breakdown);
-        this.renderMmkPaymentDetails(data.payment_method || data.payment_instructions);
-        const bank = data.payment_instructions?.bank_name || data.payment_method?.bank_name || 'bank';
-        $('depositStatus').textContent = `Send payment to ${bank}, include ref ${data.deposit.ref_code}, then submit your transaction ID.`;
-        this.toast(`Ref code generated: ${data.deposit.ref_code}`, 'ok');
-        this.startPolling(data.deposit.ref_code);
-        this.log(`Deposit requested: ${data.deposit.ref_code}`, 'ok');
-        this.loadTransactions();
-        this.loadDepositHistory();
-      } catch (err) {
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
-        this.toast(err.message || 'Deposit request failed', 'error');
-      }
-    };
+    if ($('depositForm')) {
+      $('depositForm').onsubmit = async (e) => {
+        e.preventDefault();
+        this.toast('MMK deposits are no longer available. Top up with USDT (TRC20).', 'error');
+        this.switchDepositTab('usdt');
+      };
+    }
 
-    $('depositSubmitForm').onsubmit = async (e) => {
-      e.preventDefault();
-      try {
-        await this.submitDepositProof({
-          depositId: $('activeDepositId').value,
-          txnId: $('depositTxnId').value.trim(),
-          userNote: $('depositNote').value.trim(),
-          fileInput: $('depositScreenshot'),
-          base64: this._depositReceiptBase64,
-          filename: this._depositReceiptFile?.name || 'receipt.jpg',
-          requireReceipt: true,
-        });
-        this.resetWalletDepositForm();
-        await this.onPaymentProofSubmitted('Payment Proof Submitted Successfully!');
-      } catch (err) {
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
-        this.toast(err.message || 'Failed to submit payment proof', 'error');
-        this.log(err.message, 'error');
-      }
-    };
+    if ($('depositSubmitForm')) {
+      $('depositSubmitForm').onsubmit = async (e) => {
+        e.preventDefault();
+      };
+    }
 
-    $('depositScreenshot').onchange = () => this.previewDepositScreenshot();
-    $('btnClearScreenshot').onclick = () => this.clearDepositScreenshotPreview();
-    $('btnExpandProofPreview').onclick = () => {
+    $('depositScreenshot')?.addEventListener('change', () => this.previewDepositScreenshot());
+    $('btnClearScreenshot')?.addEventListener('click', () => this.clearDepositScreenshotPreview());
+    $('btnExpandProofPreview')?.addEventListener('click', () => {
       if (!this._proofPreviewUrl || !this._proofPreviewType) return;
       this.openProofLightbox(this._proofPreviewUrl, this._proofPreviewName, this._proofPreviewType);
-    };
+    });
 
-    $('btnCopyRef').onclick = () => {
-      navigator.clipboard.writeText($('refCodeDisplay').textContent);
+    $('btnCopyRef')?.addEventListener('click', () => {
+      const ref = $('refCodeDisplay')?.textContent;
+      if (!ref) return;
+      navigator.clipboard.writeText(ref);
       this.log('Ref code copied', 'ok');
-    };
+    });
 
     this.bindDepositTabs();
     this.bindUsdtDepositForms();
@@ -4774,18 +4708,7 @@ const Dashboard = {
     this.bindP2pSellModal();
     this.bindP2pPostAdModal();
     this.bindKycModal();
-    this.loadDepositPaymentMethods();
-
-    $('paymentMethod')?.addEventListener('change', () => {
-      const id = parseInt($('paymentMethod').value, 10);
-      const method = (this._depositPaymentMethods || []).find((m) => Number(m.id) === id);
-      this.renderMmkPaymentDetails(method);
-    });
-    $('btnCopyMmkAccount')?.addEventListener('click', () => {
-      const num = $('mmkPayAccountNumber')?.textContent?.trim();
-      if (!num || num === '—') return;
-      navigator.clipboard.writeText(num).then(() => this.toast('Account number copied', 'ok'));
-    });
+    this.switchDepositTab('usdt');
 
     $('btnLoadTx')?.addEventListener('click', () => this.loadTransactions());
     $('btnLoadDeposits')?.addEventListener('click', () => this.loadDepositHistory());
@@ -5820,7 +5743,7 @@ const Dashboard = {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
         if (err.code === 'INSUFFICIENT_MMK_BALANCE' || err.code === 'INSUFFICIENT_USDT_BALANCE') {
           this.toast(err.message, 'error');
-          if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true, depositTab: err.code === 'INSUFFICIENT_USDT_BALANCE' ? 'usdt' : 'mmk' });
+          if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true, depositTab: 'usdt' });
           return;
         }
         this.toast(err.message || 'Reload request failed', 'error');

@@ -31,13 +31,10 @@
     $('usdtAddressBox')?.classList.remove('hidden');
   }
 
-  function switchDepositTab(tab) {
-    const t = tab === 'usdt' ? 'usdt' : 'mmk';
-    document.querySelectorAll('.deposit-tab').forEach((btn) => {
-      btn.classList.toggle('is-active', btn.dataset.depositTab === t);
-    });
-    $('depositMmkPanel')?.classList.toggle('hidden', t !== 'mmk');
-    $('depositUsdtPanel')?.classList.toggle('hidden', t !== 'usdt');
+  function switchDepositTab() {
+    // Deposits UI is USDT-only; always show the USDT panel.
+    $('depositUsdtPanel')?.classList.remove('hidden');
+    $('depositMmkPanel')?.classList.add('hidden');
   }
 
   root.EisyComponents.usdtAddressBox = { showUsdtDepositAddress, switchDepositTab };

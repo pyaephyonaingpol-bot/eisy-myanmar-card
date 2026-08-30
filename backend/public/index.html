@@ -1139,7 +1139,7 @@
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="deposits_page_title">Deposit &amp; Reload History</h2>
-                <p class="page-desc" data-i18n="deposits_page_desc">Reload a virtual card or top up your MMK wallet (for card reloads &amp; bank withdrawals) via KBZPay/WavePay.</p>
+                <p class="page-desc" data-i18n="deposits_page_desc">Reload a virtual card or top up your USDT wallet via TRC20. Payment is verified automatically on TRON.</p>
               </div>
               <button type="button" id="btnOpenReloadModal" class="btn btn-primary btn-sm" data-i18n="reload_card_action">Reload Card</button>
             </div>
@@ -1153,68 +1153,9 @@
 
               <section class="panel panel-wide">
                 <h2 data-i18n="top_up_wallet">Top Up Wallet</h2>
-                <div class="deposit-type-tabs" role="tablist">
-                  <button type="button" class="deposit-tab is-active" data-deposit-tab="mmk" role="tab" data-i18n="deposit_tab_mmk">MMK (Manual - KPay / WavePay)</button>
-                  <button type="button" class="deposit-tab" data-deposit-tab="usdt" role="tab" data-i18n="deposit_tab_usdt">USDT (TRC20)</button>
-                </div>
-
-                <div id="depositMmkPanel" class="deposit-tab-panel">
-                <p class="wallet-restriction-note" style="margin-bottom:0.5rem" data-i18n="mmk_wallet_restriction">MMK wallet is for card reloads and bank withdrawals only. New cards require USDT.</p>
-                <p class="hint" style="margin-bottom:0.75rem" data-i18n="deposit_mmk_hint">Top up via an admin-managed bank / KPay / WavePay account. Upload transaction proof &amp; TxID after payment.</p>
-                <form id="depositForm" class="form">
-                  <div class="field"><label data-i18n="amount_mmk">Amount (MMK)</label><input id="amountMmk" type="number" placeholder="50000" /></div>
-                  <div class="field"><label data-i18n="method">Bank / Payment Method</label>
-                    <select id="paymentMethod" required>
-                      <option value="">Loading payment methods…</option>
-                    </select>
-                  </div>
-                  <div id="mmkPaymentMethodDetails" class="usdt-address-box hidden" style="margin-bottom:0.75rem">
-                    <p class="usdt-network-label">Pay to <strong id="mmkPayBankName">—</strong></p>
-                    <img id="mmkPayQrImg" class="usdt-qr hidden" alt="Bank payment QR code" width="180" height="180" />
-                    <div class="usdt-address-display">
-                      <span class="usdt-address-label">Account Name</span>
-                      <code id="mmkPayAccountName" class="usdt-address-code">—</code>
-                      <span class="usdt-address-label">Account Number</span>
-                      <code id="mmkPayAccountNumber" class="usdt-address-code">—</code>
-                      <button type="button" id="btnCopyMmkAccount" class="btn btn-secondary btn-sm usdt-copy-btn">Copy Account Number</button>
-                    </div>
-                  </div>
-                  <div id="mmkDepositFeePreview" class="reload-preview-box" style="margin-bottom:0.75rem">
-                    <h4>Deposit Fee Preview</h4>
-                    <div class="reload-preview-row"><span>Gross Deposit</span><strong id="mmkDepositPreviewGross">—</strong></div>
-                    <div class="reload-preview-row"><span>Service Fee</span><strong id="mmkDepositPreviewFee">—</strong></div>
-                    <div class="reload-preview-row reload-preview-highlight"><span>Net Credited</span><strong id="mmkDepositPreviewNet">—</strong></div>
-                    <p class="hint" style="margin:0.5rem 0 0">Fee = max(2%, min $1 MMK-equivalent)</p>
-                  </div>
-                  <button type="submit" class="btn btn-primary" data-i18n="generate_ref_deposit">Generate Ref Code &amp; Deposit</button>
-                </form>
-                <div id="refCodeBox" class="ref-box hidden">
-                  <div class="ref-code" id="refCodeDisplay">REF-0000</div>
-                  <button id="btnCopyRef" class="btn btn-secondary btn-sm">Copy</button>
-                  <p class="status-line" id="depositStatus">Send payment, then submit transaction ID below.</p>
-                </div>
-                <form id="depositSubmitForm" class="form hidden" style="margin-top:1rem">
-                  <input type="hidden" id="activeDepositId" />
-                  <div id="depositReceiptSummary" class="pricing-receipt hidden"></div>
-                  <div class="field"><label>KPay / WavePay Transaction ID</label><input id="depositTxnId" placeholder="TXN123456" required /></div>
-                  <div class="field">
-                    <label>Payment Proof (Image or Video)</label>
-                    <input id="depositScreenshot" type="file" accept="image/*,video/*" />
-                    <small class="hint" style="margin-top:0.35rem;display:block">Upload a KBZPay/WavePay screenshot or screen-recording (max 50MB)</small>
-                  </div>
-                  <div id="depositScreenshotPreview" class="proof-preview hidden">
-                    <img id="depositScreenshotImg" class="proof-preview-media hidden" alt="Payment proof preview" />
-                    <video id="depositProofVideo" class="proof-preview-media hidden" controls playsinline preload="metadata"></video>
-                    <button type="button" id="btnExpandProofPreview" class="btn btn-secondary btn-sm hidden">View Full Size</button>
-                    <button type="button" id="btnClearScreenshot" class="btn btn-secondary btn-sm">Remove</button>
-                  </div>
-                  <div class="field"><label>Note (optional)</label><input id="depositNote" placeholder="Payment sent at 3pm" /></div>
-                  <button type="submit" class="btn btn-primary">Submit Payment Proof</button>
-                </form>
-                </div>
-
-                <div id="depositUsdtPanel" class="deposit-tab-panel hidden">
                 <p class="hint" style="margin-bottom:0.75rem" data-i18n="deposit_usdt_hint">Top up your USDT wallet by sending TRC20 USDT to our platform address. Payment is verified automatically on the TRON blockchain.</p>
+
+                <div id="depositUsdtPanel" class="deposit-tab-panel">
                 <form id="usdtDepositForm" class="form">
                   <input type="hidden" id="usdtNetwork" value="TRC20" />
                   <div class="field">
