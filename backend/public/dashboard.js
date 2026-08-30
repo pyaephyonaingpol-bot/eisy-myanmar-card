@@ -543,31 +543,26 @@ const Dashboard = {
   },
 
   updateCardWalletHint() {
-    const method = $('cardPaymentMethod')?.value || 'wallet_usdt';
-    if (method === 'wallet_usdt') {
-      const p = this.cardPricing;
-      const required = p?.total_usdt ?? p?.total_usd_required;
-      if (!required) return;
-      const available = Number(this.walletUsdt ?? 0);
-      if (available >= required) {
-        this.setWalletHint('cardWalletHint', 'cardWalletError', {
-          ok: true,
-          okMsg: t('card_wallet_ok_usdt', {
-            available: this.formatUsdt(available),
-            required: this.formatUsdt(required),
-          }),
-        });
-      } else {
-        this.setWalletHint('cardWalletHint', 'cardWalletError', {
-          errMsg: t('card_wallet_err_usdt', {
-            available: this.formatUsdt(available),
-            required: this.formatUsdt(required),
-          }),
-        });
-      }
-      return;
+    const p = this.cardPricing;
+    const required = p?.total_usdt ?? p?.total_usd_required;
+    if (!required) return;
+    const available = Number(this.walletUsdt ?? 0);
+    if (available >= required) {
+      this.setWalletHint('cardWalletHint', 'cardWalletError', {
+        ok: true,
+        okMsg: t('card_wallet_ok_usdt', {
+          available: this.formatUsdt(available),
+          required: this.formatUsdt(required),
+        }),
+      });
+    } else {
+      this.setWalletHint('cardWalletHint', 'cardWalletError', {
+        errMsg: t('card_wallet_err_usdt', {
+          available: this.formatUsdt(available),
+          required: this.formatUsdt(required),
+        }),
+      });
     }
-    this.setWalletHint('cardWalletHint', 'cardWalletError', {});
   },
 
   updateReloadWalletHint() {
@@ -1398,11 +1393,13 @@ const Dashboard = {
   },
 
   populateCardPaymentMethodOptions() {
-    const select = $('cardPaymentMethod');
-    if (!select) return;
-    select.innerHTML = `<option value="wallet_usdt" selected>${this.esc(typeof t === 'function' ? t('pay_usdt_wallet_issuance') : 'USDT Wallet (1 USDT ≈ 1 USD — instant issue)')}</option>`;
-    select.value = 'wallet_usdt';
-    this.updateCardManualPaymentDetails();
+    // Card issuance is USDT-only — no payment-method dropdown / bank options.
+    const hidden = $('cardPaymentMethod');
+    if (hidden) hidden.value = 'wallet_usdt';
+    const label = $('cardPayFromUsdt');
+    if (label && typeof t === 'function') {
+      label.textContent = t('pay_usdt_wallet_issuance');
+    }
   },
 
   populateCardBinOptions() {
@@ -1507,17 +1504,6 @@ const Dashboard = {
         qr.removeAttribute('src');
       }
     }
-  },
-
-  updateCardManualPaymentDetails() {
-    const selected = this.parseSelectedPaymentMethod($('cardPaymentMethod')?.value);
-    this.renderPaymentAccountDetails(selected.kind === 'bank' ? selected.method : null, {
-      boxId: 'cardPaymentMethodDetails',
-      bankId: 'cardPayBankName',
-      nameId: 'cardPayAccountName',
-      numberId: 'cardPayAccountNumber',
-      qrId: 'cardPayQrImg',
-    });
   },
 
   updateReloadManualPaymentDetails() {
@@ -4613,11 +4599,6 @@ const Dashboard = {
     if (cardInitialLoad) {
       cardInitialLoad.addEventListener('input', () => this.updateCardPricingBreakdown());
     }
-    $('cardPaymentMethod')?.addEventListener('change', () => {
-      this.updateCardPricingBreakdown();
-      this.updateCardWalletHint();
-      this.updateCardManualPaymentDetails();
-    });
 
     const cardRequestForm = $('cardRequestForm');
     if (cardRequestForm) {
@@ -4675,7 +4656,7 @@ const Dashboard = {
 
           const holder = nameOnCard;
           $('cardRequestForm')?.reset();
-          if ($('cardPaymentMethod')) $('cardPaymentMethod').value = 'wallet_usdt';
+          this.populateCardPaymentMethodOptions();
           if ($('cardHolderNameInput') && holder) $('cardHolderNameInput').value = holder;
           this.populateCardBinOptions();
           this.updateCardPricingBreakdown();
@@ -4971,11 +4952,10 @@ const Dashboard = {
     if ($('pbTotalUsd')) $('pbTotalUsd').textContent = `$${totalUsd.toFixed(2)}`;
     if ($('pbTotalUsdt')) $('pbTotalUsdt').textContent = `${totalUsdt.toFixed(2)} USDT`;
     if ($('pbUsdtRow')) $('pbUsdtRow').classList.remove('hidden');
-    if ($('pbMmkRow')) $('pbMmkRow').classList.add('hidden');
     if ($('pbRateLabel')) {
       $('pbRateLabel').textContent = typeof t === 'function'
-        ? t('usdt_no_mmk_rate')
-        : 'USDT wallet: 1 USDT ≈ 1 USD — no MMK exchange rate';
+        ? t('usdt_parity_rate')
+        : '1 USDT ≈ 1 USD';
     }
 
     this.cardPricing = {
@@ -4984,6 +4964,8 @@ const Dashboard = {
       issuance_fee_usd: fee,
       total_usd_required: totalUsd,
       total_usdt: totalUsdt,
+      payment_currency: 'USDT',
+      exchange_rate_applied: false,
     };
     this.updateCardWalletHint();
   },

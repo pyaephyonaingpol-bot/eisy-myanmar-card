@@ -944,19 +944,10 @@
                     <input id="cardBinInput" class="hidden" type="text" inputmode="numeric" placeholder="BIN" />
                     <small class="hint" data-i18n="card_bin_hint">Select a Kripicard BIN for your virtual card.</small>
                   </div>
-                  <div class="field"><label for="cardPaymentMethod" data-i18n="pay_from">Pay From</label>
-                    <select id="cardPaymentMethod">
-                      <option value="wallet_usdt" data-i18n="pay_usdt_wallet_issuance" selected>USDT Wallet (1 USDT ≈ 1 USD — instant issue)</option>
-                    </select>
-                  </div>
-                  <div id="cardPaymentMethodDetails" class="usdt-address-box hidden" style="margin-bottom:0.75rem" aria-live="polite">
-                    <p class="hint" style="margin:0 0 0.5rem">Send payment to this admin account after submitting your request:</p>
-                    <div class="summary-grid" style="margin:0;min-height:0">
-                      <div class="summary-item"><span class="label">Bank / Wallet</span><span class="value" id="cardPayBankName">—</span></div>
-                      <div class="summary-item"><span class="label">Account Name</span><span class="value" id="cardPayAccountName">—</span></div>
-                      <div class="summary-item"><span class="label">Account / Phone</span><span class="value" id="cardPayAccountNumber">—</span></div>
-                    </div>
-                    <img id="cardPayQrImg" class="hidden" alt="Payment QR code" style="margin-top:0.75rem;max-width:min(180px,100%);border-radius:8px" />
+                  <div class="field">
+                    <label data-i18n="pay_from">Pay From</label>
+                    <p id="cardPayFromUsdt" class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_usdt_wallet_issuance">USDT Wallet (1 USDT ≈ 1 USD — instant issue)</p>
+                    <input type="hidden" id="cardPaymentMethod" value="wallet_usdt" />
                   </div>
                   <p id="cardWalletHint" class="wallet-pay-hint ok hidden"></p>
                   <p id="cardWalletError" class="wallet-pay-hint err hidden"></p>
@@ -965,7 +956,7 @@
                     <div class="pricing-row"><span data-i18n="card_issuance_fee">+ Card Issuance Fee</span><strong id="pbIssuanceFee">$0.00</strong></div>
                     <div class="pricing-row pricing-total"><span data-i18n="total_usd_required">= Total USD Required</span><strong id="pbTotalUsd">$0.00</strong></div>
                     <div class="pricing-row pricing-usdt" id="pbUsdtRow"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="pbTotalUsdt">$0.00 USDT</strong></div>
-                    <p id="pbRateLabel" class="hint pricing-rate">USDT wallet: 1 USDT ≈ 1 USD — no MMK exchange rate</p>
+                    <p id="pbRateLabel" class="hint pricing-rate" data-i18n="usdt_parity_rate">1 USDT ≈ 1 USD</p>
                   </div>
                   <button type="submit" class="btn btn-primary" id="btnRequestCard" data-i18n="submit_card_request">Issue Card Instantly</button>
                 </form>

@@ -698,7 +698,7 @@ function calculateCardRequestPricingUsdt(initialLoadUsd, settings) {
     total_usdt: totalUsdt,
     payment_currency: 'USDT',
     exchange_rate_applied: false,
-    note: '1 USDT ≈ 1 USD — no MMK exchange rate applied',
+    note: '1 USDT ≈ 1 USD',
   };
 }
 
