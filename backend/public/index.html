@@ -923,16 +923,24 @@
             <div class="grid-2">
               <section class="panel">
                 <h2 data-i18n="apply_new_card">Apply for New Card</h2>
-                <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_new_card_hint">Pay from your MMK or USDT wallet, or via an admin-managed KBZPay / WavePay / bank account. Wallet payments are held until an admin issues your card (usually 15–30 mins).</p>
+                <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_new_card_hint">Pay from your USDT wallet. Your virtual card is issued automatically via Kripicard (1 USDT ≈ 1 USD).</p>
                 <form id="cardRequestForm" class="form">
+                  <div class="field"><label for="cardHolderNameInput" data-i18n="name_on_card">Name on Card</label>
+                    <input id="cardHolderNameInput" type="text" minlength="2" maxlength="50" autocomplete="name" placeholder="Cardholder name" required />
+                  </div>
                   <div class="field"><label for="cardInitialLoad" data-i18n="initial_card_load">Initial Card Load Amount (USD)</label>
                     <input id="cardInitialLoad" type="number" step="0.01" min="10" placeholder="10.00" required />
                     <small id="cardMinDepositHint" class="hint" data-i18n="min_initial_deposit">Minimum initial deposit: $10.00</small>
                   </div>
+                  <div class="field"><label for="cardBinSelect" data-i18n="card_bin">Card BIN</label>
+                    <select id="cardBinSelect" required>
+                      <option value="">Loading BINs…</option>
+                    </select>
+                    <input id="cardBinInput" class="hidden" type="text" inputmode="numeric" placeholder="BIN" />
+                  </div>
                   <div class="field"><label for="cardPaymentMethod" data-i18n="pay_from">Pay From</label>
                     <select id="cardPaymentMethod">
-                      <option value="wallet_mmk" data-i18n="pay_mmk_wallet_issuance">MMK Wallet — card issuance (admin processed)</option>
-                      <option value="wallet_usdt" data-i18n="pay_usdt_wallet_issuance">USDT Wallet (1 USDT ≈ 1 USD, admin processed)</option>
+                      <option value="wallet_usdt" data-i18n="pay_usdt_wallet_issuance" selected>USDT Wallet (1 USDT ≈ 1 USD — instant issue)</option>
                     </select>
                   </div>
                   <div id="cardPaymentMethodDetails" class="usdt-address-box hidden" style="margin-bottom:0.75rem" aria-live="polite">
@@ -950,11 +958,10 @@
                     <div class="pricing-row"><span data-i18n="initial_card_load_row">Initial Card Load</span><strong id="pbInitialLoad">$0.00</strong></div>
                     <div class="pricing-row"><span data-i18n="card_issuance_fee">+ Card Issuance Fee</span><strong id="pbIssuanceFee">$0.00</strong></div>
                     <div class="pricing-row pricing-total"><span data-i18n="total_usd_required">= Total USD Required</span><strong id="pbTotalUsd">$0.00</strong></div>
-                    <div class="pricing-row pricing-mmk" id="pbMmkRow"><span data-i18n="total_payable_mmk">Total Payable (MMK)</span><strong id="pbTotalMmk">0 MMK</strong></div>
-                    <div class="pricing-row pricing-usdt hidden" id="pbUsdtRow"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="pbTotalUsdt">$0.00 USDT</strong></div>
-                    <p id="pbRateLabel" class="hint pricing-rate">Today's rate: 1 USD = 4,500 MMK</p>
+                    <div class="pricing-row pricing-usdt" id="pbUsdtRow"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="pbTotalUsdt">$0.00 USDT</strong></div>
+                    <p id="pbRateLabel" class="hint pricing-rate">USDT wallet: 1 USDT ≈ 1 USD — no MMK exchange rate</p>
                   </div>
-                  <button type="submit" class="btn btn-primary" id="btnRequestCard" data-i18n="submit_card_request">Submit Card Request</button>
+                  <button type="submit" class="btn btn-primary" id="btnRequestCard" data-i18n="submit_card_request">Issue Card Instantly</button>
                 </form>
                 <div id="cardRequestReceipt" class="pricing-receipt hidden"></div>
                 <details style="margin-top:1rem" class="hint">

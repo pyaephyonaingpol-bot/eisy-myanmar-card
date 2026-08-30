@@ -543,30 +543,7 @@ const Dashboard = {
   },
 
   updateCardWalletHint() {
-    const method = $('cardPaymentMethod')?.value;
-    if (method === 'wallet_mmk') {
-      const p = this.cardPricing;
-      const required = p?.total_mmk;
-      if (!required) return;
-      const available = Number(this.walletMmk ?? 0);
-      if (available >= required) {
-        this.setWalletHint('cardWalletHint', 'cardWalletError', {
-          ok: true,
-          okMsg: t('card_wallet_ok_mmk', {
-            available: this.formatMmk(available),
-            required: this.formatMmk(required),
-          }),
-        });
-      } else {
-        this.setWalletHint('cardWalletHint', 'cardWalletError', {
-          errMsg: t('card_wallet_err_mmk', {
-            available: this.formatMmk(available),
-            required: this.formatMmk(required),
-          }),
-        });
-      }
-      return;
-    }
+    const method = $('cardPaymentMethod')?.value || 'wallet_usdt';
     if (method === 'wallet_usdt') {
       const p = this.cardPricing;
       const required = p?.total_usdt ?? p?.total_usd_required;
@@ -1423,20 +1400,49 @@ const Dashboard = {
   populateCardPaymentMethodOptions() {
     const select = $('cardPaymentMethod');
     if (!select) return;
-    const prev = select.value;
-    const walletOpts = [
-      `<option value="wallet_mmk">${this.esc(typeof t === 'function' ? t('pay_mmk_wallet_issuance') : 'MMK Wallet — card issuance (admin processed)')}</option>`,
-      `<option value="wallet_usdt">${this.esc(typeof t === 'function' ? t('pay_usdt_wallet_issuance') : 'USDT Wallet (1 USDT ≈ 1 USD, admin processed)')}</option>`,
-    ];
-    const bankOpts = (this._depositPaymentMethods || []).map((m) =>
-      `<option value="${this.paymentMethodOptionValue(m.id)}">${this.esc(m.bank_name)} — ${this.esc(m.account_name)} (Manual)</option>`
-    );
-    select.innerHTML = walletOpts.concat(bankOpts).join('')
-      || '<option value="">No payment methods available</option>';
-    if (prev && [...select.options].some((o) => o.value === prev)) {
-      select.value = prev;
-    }
+    select.innerHTML = `<option value="wallet_usdt" selected>${this.esc(typeof t === 'function' ? t('pay_usdt_wallet_issuance') : 'USDT Wallet (1 USDT ≈ 1 USD — instant issue)')}</option>`;
+    select.value = 'wallet_usdt';
     this.updateCardManualPaymentDetails();
+  },
+
+  populateCardBinOptions() {
+    const select = $('cardBinSelect');
+    const input = $('cardBinInput');
+    if (!select) return;
+    const bins = Array.isArray(this.cardPricing?.kripicard_bins)
+      ? this.cardPricing.kripicard_bins.filter(Boolean)
+      : [];
+    const defaultBin = this.cardPricing?.kripicard_default_bin || bins[0] || '';
+
+    if (bins.length) {
+      select.classList.remove('hidden');
+      if (input) input.classList.add('hidden');
+      select.innerHTML = bins.map((bin) =>
+        `<option value="${this.esc(bin)}">${this.esc(bin)}</option>`
+      ).join('');
+      select.value = defaultBin || bins[0];
+      select.required = true;
+      if (input) input.required = false;
+      return;
+    }
+
+    // No configured BIN list — allow free-form entry (still required by API).
+    select.classList.add('hidden');
+    select.required = false;
+    select.innerHTML = '';
+    if (input) {
+      input.classList.remove('hidden');
+      input.required = true;
+      if (defaultBin && !input.value) input.value = defaultBin;
+    }
+  },
+
+  getSelectedCardBin() {
+    const select = $('cardBinSelect');
+    if (select && !select.classList.contains('hidden') && select.value) {
+      return String(select.value).trim();
+    }
+    return String($('cardBinInput')?.value || '').trim();
   },
 
   populateReloadPaymentMethodOptions() {
@@ -4614,85 +4620,72 @@ const Dashboard = {
         e.preventDefault();
         try {
           const initialLoad = parseFloat($('cardInitialLoad').value);
-          const method = $('cardPaymentMethod').value;
-          const selected = this.parseSelectedPaymentMethod(method);
-          const payFromWallet = selected.kind === 'wallet';
-          const walletType = selected.walletType;
+          const nameOnCard = ($('cardHolderNameInput')?.value || $('holderName')?.value || '').trim();
+          const bin = this.getSelectedCardBin();
+          const required = this.cardPricing?.total_usdt ?? this.cardPricing?.total_usd_required ?? 0;
 
-          if (payFromWallet && walletType === 'mmk') {
-            const required = this.cardPricing?.total_mmk ?? 0;
-            if (Number(this.walletMmk ?? 0) < required) {
-              this.toast(`Insufficient MMK wallet. Need ${this.formatMmk(required)}. Top up first.`, 'error');
-              if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true });
-              return;
-            }
+          if (!nameOnCard || nameOnCard.length < 2) {
+            this.toast(typeof t === 'function' ? t('name_on_card_required') : 'Enter the name on card (min 2 characters)', 'error');
+            return;
           }
-          if (payFromWallet && walletType === 'usdt') {
-            const required = this.cardPricing?.total_usdt ?? this.cardPricing?.total_usd_required ?? 0;
-            if (Number(this.walletUsdt ?? 0) < required) {
-              this.toast(`Insufficient USDT wallet. Need ${this.formatUsdt(required)}. Top up first.`, 'error');
-              if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true, depositTab: 'usdt' });
-              return;
-            }
+          if (!bin) {
+            this.toast(typeof t === 'function' ? t('card_bin_required') : 'Select or enter a card BIN', 'error');
+            return;
           }
-
-          if (!payFromWallet && !selected.paymentMethodId && !selected.paymentMethodName) {
-            this.toast('Select a payment method', 'error');
+          if (Number(this.walletUsdt ?? 0) < required) {
+            this.toast(`Insufficient USDT wallet. Need ${this.formatUsdt(required)}. Top up first.`, 'error');
+            if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true, depositTab: 'usdt' });
             return;
           }
 
           const body = {
-            card_holder_name: $('holderName').value.trim() || undefined,
+            name_on_card: nameOnCard,
+            card_holder_name: nameOnCard,
             initial_load_usd: initialLoad,
-            pay_from_wallet: payFromWallet,
+            bin,
+            pay_from_wallet: true,
+            wallet_type: 'usdt',
           };
-          if (payFromWallet) body.wallet_type = walletType;
-          if (!payFromWallet) {
-            if (selected.paymentMethodId) body.payment_method_id = selected.paymentMethodId;
-            if (selected.method?.bank_name || selected.paymentMethodName) {
-              body.payment_method = selected.method?.bank_name || selected.paymentMethodName;
-            }
-          }
 
           const data = await Auth.api('POST', '/api/user/card/request', body, { sensitive: true });
 
-          if (data.paid_from_wallet) {
-            const debited = data.wallet_type === 'usdt'
-              ? (data.wallet?.usdt_formatted || this.formatUsdt(data.wallet?.debited_usdt))
-              : (data.wallet?.mmk_formatted || this.formatMmk(data.wallet?.debited_mmk));
-            this.toast(data.message || t('card_request_submitted'), 'ok');
-            this.log(t('card_request_submitted_log', { amount: debited }), 'ok');
-            const receipt = $('cardRequestReceipt');
-            if (receipt) {
-              receipt.classList.remove('hidden');
-              receipt.innerHTML = `
-                <p class="wallet-pay-hint ok" style="margin:0">
-                  ${t('card_request_pending_msg')}
-                  ${debited ? `<br><small>${t('card_request_deducted', { amount: debited })}</small>` : ''}
-                </p>`;
-            }
-            $('cardRequestForm')?.reset();
-            this.loadWallet();
-            this.loadUsdtWalletPage(true);
-            this.loadAllCards({ forceRefresh: true });
-            this.loadDepositHistory();
-            if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
-            return;
+          const debited = data.wallet?.usdt_formatted
+            || this.formatUsdt(data.wallet?.debited_usdt);
+          this.toast(data.message || (data.issued ? t('card_issued_ok') : t('card_request_submitted')), 'ok');
+          this.log(data.issued
+            ? (typeof t === 'function' ? t('card_issued_log', { amount: debited }) : `Card issued — ${debited}`)
+            : t('card_request_submitted_log', { amount: debited }), 'ok');
+
+          const receipt = $('cardRequestReceipt');
+          if (receipt) {
+            receipt.classList.remove('hidden');
+            receipt.innerHTML = `
+              <p class="wallet-pay-hint ok" style="margin:0">
+                ${data.issued
+                  ? (typeof t === 'function' ? t('card_issued_ok') : 'Your virtual card is ready.')
+                  : t('card_request_pending_msg')}
+                ${debited ? `<br><small>${t('card_request_deducted', { amount: debited })}</small>` : ''}
+              </p>`;
           }
 
-          this.renderCardRequestReceipt(data);
-          this.populateDepositFromCardRequest(data);
-          this.toast(`New card request created — ref ${data.deposit?.ref_code || ''}`, 'ok');
-          this.log('New card request + payment ref generated', 'ok');
-          this.loadTransactions();
-          this.loadDepositHistory();
+          const holder = nameOnCard;
+          $('cardRequestForm')?.reset();
+          if ($('cardPaymentMethod')) $('cardPaymentMethod').value = 'wallet_usdt';
+          if ($('cardHolderNameInput') && holder) $('cardHolderNameInput').value = holder;
+          this.populateCardBinOptions();
+          this.updateCardPricingBreakdown();
+          this.loadWallet();
+          this.loadUsdtWalletPage(true);
           this.loadAllCards({ forceRefresh: true });
-          if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true });
+          this.loadDepositHistory();
+          if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
         } catch (err) {
           if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
-          if (err.code === 'INSUFFICIENT_MMK_BALANCE' || err.code === 'INSUFFICIENT_USDT_BALANCE') {
+          if (err.code === 'INSUFFICIENT_USDT_BALANCE' || err.code === 'USDT_ONLY_CARD_ISSUANCE') {
             this.toast(err.message, 'error');
-            if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true });
+            if (err.code === 'INSUFFICIENT_USDT_BALANCE' && typeof AppNav !== 'undefined') {
+              AppNav.navigate('deposits', { pushHash: true, depositTab: 'usdt' });
+            }
             return;
           }
           this.toast(err.message || 'Card request failed', 'error');
@@ -4917,6 +4910,12 @@ const Dashboard = {
       }
       const hint = $('cardMinDepositHint');
       if (hint) hint.textContent = `Minimum initial deposit: $${min.toFixed(2)}`;
+      this.populateCardPaymentMethodOptions();
+      this.populateCardBinOptions();
+      const nameInput = $('cardHolderNameInput');
+      if (nameInput && !nameInput.value && this.user?.name) {
+        nameInput.value = this.user.name;
+      }
       this.updateCardPricingBreakdown();
       this.updateHomeRateSummary();
       this.renderRatesPage();
@@ -4958,25 +4957,19 @@ const Dashboard = {
 
     const initial = parseFloat($('cardInitialLoad')?.value) || 0;
     const fee = p.card_issuance_fee_usd || 0;
-    const rate = p.mmk_to_usd_rate || 4500;
     const totalUsd = initial + fee;
-    const totalMmk = Math.ceil(totalUsd * rate);
     const totalUsdt = Math.round(totalUsd * 100) / 100;
-    const method = $('cardPaymentMethod')?.value || 'wallet_mmk';
-    const isUsdtWallet = method === 'wallet_usdt';
 
     if ($('pbInitialLoad')) $('pbInitialLoad').textContent = `$${initial.toFixed(2)}`;
     if ($('pbIssuanceFee')) $('pbIssuanceFee').textContent = `$${fee.toFixed(2)}`;
     if ($('pbTotalUsd')) $('pbTotalUsd').textContent = `$${totalUsd.toFixed(2)}`;
-    if ($('pbTotalMmk')) $('pbTotalMmk').textContent = `${totalMmk.toLocaleString()} MMK`;
     if ($('pbTotalUsdt')) $('pbTotalUsdt').textContent = `${totalUsdt.toFixed(2)} USDT`;
-    if ($('pbMmkRow')) $('pbMmkRow').classList.toggle('hidden', isUsdtWallet);
-    if ($('pbUsdtRow')) $('pbUsdtRow').classList.toggle('hidden', !isUsdtWallet);
+    if ($('pbUsdtRow')) $('pbUsdtRow').classList.remove('hidden');
+    if ($('pbMmkRow')) $('pbMmkRow').classList.add('hidden');
     if ($('pbRateLabel')) {
-      const eff = p.rate_effective_date ? ` (Effective: ${p.rate_effective_date})` : '';
-      $('pbRateLabel').textContent = isUsdtWallet
-        ? 'USDT wallet: 1 USDT ≈ 1 USD — no MMK exchange rate applied'
-        : `${p.rate_label || "Today's Daily Exchange Rate"}: 1 USD = ${rate.toLocaleString()} MMK${eff}`;
+      $('pbRateLabel').textContent = typeof t === 'function'
+        ? t('usdt_no_mmk_rate')
+        : 'USDT wallet: 1 USDT ≈ 1 USD — no MMK exchange rate';
     }
 
     this.cardPricing = {
@@ -4984,21 +4977,20 @@ const Dashboard = {
       initial_load_usd: initial,
       issuance_fee_usd: fee,
       total_usd_required: totalUsd,
-      total_mmk: totalMmk,
       total_usdt: totalUsdt,
-      mmk_to_usd_rate: rate,
     };
     this.updateCardWalletHint();
   },
 
   formatPricingReceiptHtml(breakdown, refCode, extra) {
     if (!breakdown) return '';
+    const usdtTotal = breakdown.total_usdt ?? breakdown.total_usd_required;
     return `
       <h4>${extra?.title || 'Payment Summary'}</h4>
       <div class="pricing-row"><span>Initial Card Load</span><strong>$${Number(breakdown.initial_load_usd).toFixed(2)}</strong></div>
       <div class="pricing-row"><span>+ Card Issuance Fee</span><strong>$${Number(breakdown.issuance_fee_usd).toFixed(2)}</strong></div>
       <div class="pricing-row pricing-total"><span>= Total USD Required</span><strong>$${Number(breakdown.total_usd_required).toFixed(2)}</strong></div>
-      <div class="pricing-row pricing-mmk"><span>Total Payable (MMK)</span><strong>${Number(breakdown.total_mmk).toLocaleString()} MMK</strong></div>
+      <div class="pricing-row pricing-usdt"><span>Total Payable (USDT)</span><strong>${Number(usdtTotal).toFixed(2)} USDT</strong></div>
       ${refCode ? `<p class="receipt-ref">Ref: ${refCode}</p>` : ''}
       ${extra?.note ? `<p class="hint">${extra.note}</p>` : ''}
     `;
@@ -5012,8 +5004,8 @@ const Dashboard = {
       data.pricing_breakdown,
       data.payment_instructions?.ref_code || data.deposit?.ref_code,
       {
-        title: 'New Card Request — Payment Required',
-        note: `Send exactly ${Number(data.pricing_breakdown.total_mmk).toLocaleString()} MMK via ${data.pricing_breakdown.payment_method || 'KBZPay/WavePay'}, then submit proof below.`,
+        title: data.issued ? 'Card Issued' : 'Card Purchase',
+        note: data.message || 'Paid from USDT wallet.',
       }
     );
   },
