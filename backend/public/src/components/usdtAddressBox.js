@@ -32,9 +32,12 @@
   }
 
   function switchDepositTab() {
-    // Deposits UI is USDT-only; always show the USDT panel.
+    const dash = root.Dashboard;
+    if (dash && typeof dash.openUsdtTopUpModal === 'function') {
+      dash.openUsdtTopUpModal();
+      return;
+    }
     $('depositUsdtPanel')?.classList.remove('hidden');
-    $('depositMmkPanel')?.classList.add('hidden');
   }
 
   root.EisyComponents.usdtAddressBox = { showUsdtDepositAddress, switchDepositTab };

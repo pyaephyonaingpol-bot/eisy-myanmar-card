@@ -153,6 +153,54 @@
     </div>
   </div>
 
+  <!-- ═══ TOP UP USDT WALLET MODAL ═══ -->
+  <div id="usdtTopUpModal" class="modal hidden" role="dialog" aria-labelledby="usdtTopUpModalTitle" aria-modal="true">
+    <div class="modal-box modal-box-wide">
+      <div class="modal-header-row">
+        <h3 id="usdtTopUpModalTitle" data-i18n="top_up_wallet">Top Up Wallet</h3>
+        <button type="button" id="usdtTopUpModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="deposit_usdt_hint">Top up your USDT wallet by sending TRC20 USDT to our platform address. Payment is verified automatically on the TRON blockchain.</p>
+
+      <div id="depositUsdtPanel" class="deposit-tab-panel">
+        <form id="usdtDepositForm" class="form">
+          <input type="hidden" id="usdtNetwork" value="TRC20" />
+          <div class="field">
+            <label for="usdtAmount" data-i18n="amount_usdt">Amount (USDT)</label>
+            <input id="usdtAmount" type="number" step="0.01" min="5" placeholder="50.00" required />
+            <small id="usdtMinHint" class="hint">Minimum deposit: $5.00 USDT</small>
+            <small id="usdtFeeHint" class="hint" data-i18n="deposit_usdt_fee_hint">Service fee: max(2%, $1) — net credited automatically after on-chain confirmation</small>
+          </div>
+          <div id="usdtDepositFeePreview" class="reload-preview-box" style="margin-bottom:0.75rem">
+            <h4 data-i18n="deposit_fee_preview">Deposit Fee Preview</h4>
+            <div class="reload-preview-row"><span data-i18n="deposit_preview_gross">Gross Deposit</span><strong id="usdtDepositPreviewGross">—</strong></div>
+            <div class="reload-preview-row"><span data-i18n="deposit_preview_fee">Service Fee</span><strong id="usdtDepositPreviewFee">—</strong></div>
+            <div class="reload-preview-row reload-preview-highlight"><span data-i18n="deposit_preview_net">Net Credited</span><strong id="usdtDepositPreviewNet">—</strong></div>
+          </div>
+          <button type="submit" class="btn btn-primary" id="btnCreateTronDeposit" data-i18n="btn_deposit_tron">Create TRON Deposit</button>
+        </form>
+        <div id="usdtOrderRefBox" class="ref-box hidden" aria-live="polite">
+          <p class="hint" style="margin:0 0 0.35rem" data-i18n="deposit_usdt_order_label">Deposit Order ID</p>
+          <div class="ref-code" id="usdtOrderIdDisplay">—</div>
+          <button type="button" id="btnCopyUsdtOrderId" class="btn btn-secondary btn-sm" data-i18n="copy_order_id">Copy Order ID</button>
+        </div>
+        <div id="usdtAddressBox" class="usdt-address-box hidden" aria-live="polite">
+          <p class="usdt-network-label">Send <strong id="usdtNetworkLabel">TRC20</strong> USDT to:</p>
+          <p id="usdtMerchantName" class="usdt-merchant-name hidden"></p>
+          <img id="usdtQrCode" class="usdt-qr hidden" alt="USDT deposit QR code" width="180" height="180" />
+          <div class="usdt-address-display">
+            <span class="usdt-address-label" data-i18n="deposit_address_label">Deposit Address</span>
+            <code id="usdtDepositAddress" class="usdt-address-code">—</code>
+            <button type="button" id="btnCopyUsdtAddress" class="btn btn-secondary btn-sm usdt-copy-btn" data-i18n="copy_address">Copy Address</button>
+          </div>
+          <div class="reload-preview-row" style="margin-top:0.75rem"><span data-i18n="deposit_send_amount">Exact amount to send</span><strong id="usdtOrderAmount">—</strong></div>
+          <p class="status-line" id="usdtOrderStatus" data-i18n="usdt_order_status_pending">Waiting for USDT transfer — verifying automatically…</p>
+        </div>
+      </div>
+      <pre class="output hidden" id="depositOutput" aria-hidden="true"></pre>
+    </div>
+  </div>
+
   <!-- ═══ CARD DETAIL MODAL ═══ -->
   <div id="cardDetailModal" class="modal hidden" role="dialog" aria-labelledby="cardDetailModalTitle" aria-modal="true">
     <div class="modal-box modal-box-wide card-detail-modal-box">
@@ -983,7 +1031,7 @@
                     <span class="wallet-actions-label" data-i18n="wallet_actions_label">Wallet actions</span>
                     <div class="wallet-hero-actions-row">
                       <button type="button" class="btn btn-secondary btn-sm" data-goto="usdt-wallet" data-i18n="btn_manage_usdt_wallet">Manage Wallet</button>
-                      <button type="button" class="btn btn-secondary btn-sm" data-goto="deposits" data-deposit-tab="usdt" data-i18n="btn_top_up_usdt">Top Up USDT</button>
+                      <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="btn_top_up_usdt">Top Up USDT</button>
                       <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdt" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
                       <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawUsdt" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
                     </div>
@@ -1182,7 +1230,7 @@
                 <p class="page-desc" data-i18n="usdt_wallet_page_desc">View your platform balance, copy deposit addresses (TRC20 / BEP20 / ERC20), link external wallets, and track USDT activity.</p>
               </div>
               <div class="action-row">
-                <button type="button" class="btn btn-secondary btn-sm" data-goto="deposits" data-deposit-tab="usdt" data-i18n="btn_top_up_usdt">Top Up USDT</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="btn_top_up_usdt">Top Up USDT</button>
                 <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdtPage" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
                 <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawUsdtPage" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
               </div>
@@ -1301,44 +1349,7 @@
               <section class="panel panel-wide">
                 <h2 data-i18n="top_up_wallet">Top Up Wallet</h2>
                 <p class="hint" style="margin-bottom:0.75rem" data-i18n="deposit_usdt_hint">Top up your USDT wallet by sending TRC20 USDT to our platform address. Payment is verified automatically on the TRON blockchain.</p>
-
-                <div id="depositUsdtPanel" class="deposit-tab-panel">
-                <form id="usdtDepositForm" class="form">
-                  <input type="hidden" id="usdtNetwork" value="TRC20" />
-                  <div class="field">
-                    <label for="usdtAmount" data-i18n="amount_usdt">Amount (USDT)</label>
-                    <input id="usdtAmount" type="number" step="0.01" min="5" placeholder="50.00" required />
-                    <small id="usdtMinHint" class="hint">Minimum deposit: $5.00 USDT</small>
-                    <small id="usdtFeeHint" class="hint" data-i18n="deposit_usdt_fee_hint">Service fee: max(2%, $1) — net credited automatically after on-chain confirmation</small>
-                  </div>
-                  <div id="usdtDepositFeePreview" class="reload-preview-box" style="margin-bottom:0.75rem">
-                    <h4 data-i18n="deposit_fee_preview">Deposit Fee Preview</h4>
-                    <div class="reload-preview-row"><span data-i18n="deposit_preview_gross">Gross Deposit</span><strong id="usdtDepositPreviewGross">—</strong></div>
-                    <div class="reload-preview-row"><span data-i18n="deposit_preview_fee">Service Fee</span><strong id="usdtDepositPreviewFee">—</strong></div>
-                    <div class="reload-preview-row reload-preview-highlight"><span data-i18n="deposit_preview_net">Net Credited</span><strong id="usdtDepositPreviewNet">—</strong></div>
-                  </div>
-                  <button type="submit" class="btn btn-primary" id="btnCreateTronDeposit" data-i18n="btn_deposit_tron">Create TRON Deposit</button>
-                </form>
-                <div id="usdtOrderRefBox" class="ref-box hidden" aria-live="polite">
-                  <p class="hint" style="margin:0 0 0.35rem" data-i18n="deposit_usdt_order_label">Deposit Order ID</p>
-                  <div class="ref-code" id="usdtOrderIdDisplay">—</div>
-                  <button type="button" id="btnCopyUsdtOrderId" class="btn btn-secondary btn-sm" data-i18n="copy_order_id">Copy Order ID</button>
-                </div>
-                <div id="usdtAddressBox" class="usdt-address-box hidden" aria-live="polite">
-                  <p class="usdt-network-label">Send <strong id="usdtNetworkLabel">TRC20</strong> USDT to:</p>
-                  <p id="usdtMerchantName" class="usdt-merchant-name hidden"></p>
-                  <img id="usdtQrCode" class="usdt-qr hidden" alt="USDT deposit QR code" width="180" height="180" />
-                  <div class="usdt-address-display">
-                    <span class="usdt-address-label" data-i18n="deposit_address_label">Deposit Address</span>
-                    <code id="usdtDepositAddress" class="usdt-address-code">—</code>
-                    <button type="button" id="btnCopyUsdtAddress" class="btn btn-secondary btn-sm usdt-copy-btn" data-i18n="copy_address">Copy Address</button>
-                  </div>
-                  <div class="reload-preview-row" style="margin-top:0.75rem"><span data-i18n="deposit_send_amount">Exact amount to send</span><strong id="usdtOrderAmount">—</strong></div>
-                  <p class="status-line" id="usdtOrderStatus" data-i18n="usdt_order_status_pending">Waiting for USDT transfer — verifying automatically…</p>
-                </div>
-                </div>
-
-                <pre class="output hidden" id="depositOutput" aria-hidden="true"></pre>
+                <button type="button" class="btn btn-primary" data-open-usdt-topup data-i18n="btn_top_up_usdt">Top Up USDT</button>
               </section>
             </div>
 

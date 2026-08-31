@@ -23,6 +23,7 @@
     "test:admin-no-payment-methods": "node scripts/test-admin-no-payment-methods.js",
     "test:admin-split-fee-sections": "node scripts/test-admin-split-fee-sections.js",
     "test:admin-ledger-filter-cleanup": "node scripts/test-admin-ledger-filter-cleanup.js",
+    "test:usdt-topup-modal": "node scripts/test-usdt-topup-modal.js",
     "test:transaction-csv-export": "node scripts/test-transaction-csv-export.js",
     "test:upload-storage": "node scripts/test-upload-storage.js",
     "test:user-profile-phone": "node scripts/test-user-profile-phone.js",
