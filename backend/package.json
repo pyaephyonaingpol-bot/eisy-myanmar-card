@@ -30,6 +30,8 @@
     "test:card-detail-modal": "node scripts/test-card-detail-modal.js",
     "test:card-remove": "node scripts/test-card-remove.js",
     "test:card-bin-dropdown": "node scripts/test-card-bin-dropdown.js",
+    "test:sell-usdt-mmk-modal": "node scripts/test-sell-usdt-mmk-modal.js",
+    "test:sell-usdt-bank-validation": "node scripts/test-sell-usdt-bank-validation.js",
     "test:tron-orders": "node scripts/test-tron-orders.js",
     "test:tron-hd-addresses": "node scripts/test-tron-hd-addresses.js",
     "test:tron-wallet": "node scripts/test-tron-wallet-service.js",

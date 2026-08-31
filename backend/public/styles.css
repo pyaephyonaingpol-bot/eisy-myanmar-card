@@ -3427,3 +3427,36 @@ html.app-hydrating .wallet-hero-actions-row {
   }
 }
 
+.sell-usdt-mmk-modal-box {
+  max-width: min(520px, 100%);
+}
+.sell-usdt-notice {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--warning-border, rgba(245, 158, 11, 0.35));
+  background: var(--warning-bg, rgba(245, 158, 11, 0.12));
+  color: #fcd34d;
+}
+.sell-usdt-notice strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.sell-usdt-notice p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #fde68a;
+}
+.sell-usdt-notice-compact {
+  margin-top: 0.35rem;
+  margin-bottom: 0.85rem;
+  padding: 0.65rem 0.85rem;
+}
+.sell-usdt-notice-compact p {
+  font-size: 0.82rem;
+}
+
