@@ -7,7 +7,7 @@ const DepositRequest = require('../models/DepositRequest');
 const TransactionLog = require('../models/TransactionLog');
 const { getDb } = require('../db');
 const { joinPublicUrl } = require('../lib/publicUrl');
-const { getCardPricingSettings, parseRecordMetadata } = require('./settingsService');
+const { getDepositFeeSettings, parseRecordMetadata } = require('./settingsService');
 const {
   calculateUsdtPaymentFeeBreakdown,
   assertValidPaymentAmount,
@@ -312,7 +312,7 @@ async function createNowPaymentsPayment(userId, {
     throw err;
   }
 
-  const settings = await getCardPricingSettings();
+  const settings = await getDepositFeeSettings();
   const minUsdt = settings.minimum_usdt_deposit ?? 5;
   if (gross < minUsdt) {
     const err = new Error(`Minimum NOWPayments deposit is $${Number(minUsdt).toFixed(2)} USDT`);

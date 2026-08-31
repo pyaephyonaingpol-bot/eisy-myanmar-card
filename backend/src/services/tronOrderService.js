@@ -11,7 +11,7 @@ const {
   calculateUsdtPaymentFeeBreakdown,
   assertValidPaymentAmount,
 } = require('./paymentFeeService');
-const { getCardPricingSettings } = require('./settingsService');
+const { getDepositFeeSettings } = require('./settingsService');
 const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require('./depositService');
 const { formatUsdt } = require('./walletService');
 
@@ -187,7 +187,7 @@ async function createTronOrder(userId, { amount_usdt, amount } = {}) {
     throw err;
   }
 
-  const settings = await getCardPricingSettings();
+  const settings = await getDepositFeeSettings();
   const minUsdt = settings.minimum_usdt_deposit ?? 5;
   if (gross < minUsdt) {
     const err = new Error(`Minimum TRON deposit is $${Number(minUsdt).toFixed(2)} USDT`);

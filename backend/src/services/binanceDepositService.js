@@ -6,7 +6,7 @@ const {
   calculateUsdtPaymentFeeBreakdown,
   assertValidPaymentAmount,
 } = require('./paymentFeeService');
-const { getCardPricingSettings } = require('./settingsService');
+const { getDepositFeeSettings } = require('./settingsService');
 const {
   createBinancePayOrder,
   parseWebhookEvent,
@@ -62,7 +62,7 @@ async function createBinancePayDeposit(userId, {
     throw new Error('Positive amount_usdt is required');
   }
 
-  const settings = await getCardPricingSettings();
+  const settings = await getDepositFeeSettings();
   const minUsdt = settings.minimum_usdt_deposit ?? 5;
   if (gross < minUsdt) {
     throw new Error(`Minimum Binance Pay deposit is $${Number(minUsdt).toFixed(2)} USDT`);

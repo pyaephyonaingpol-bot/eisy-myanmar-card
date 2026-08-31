@@ -33,6 +33,12 @@ const DEFAULTS = {
   payment_service_fee_percent: '2',
   payment_service_fee_minimum_usdt: '1',
   payment_service_fee_mode: 'max_percent_or_min',
+  deposit_service_fee_percent: '2',
+  deposit_service_fee_minimum_usdt: '1',
+  deposit_service_fee_mode: 'max_percent_or_min',
+  withdrawal_service_fee_percent: '2',
+  withdrawal_service_fee_minimum_usdt: '1',
+  withdrawal_service_fee_mode: 'max_percent_or_min',
 };
 
 const NUMERIC_KEYS = new Set([
@@ -55,6 +61,10 @@ const NUMERIC_KEYS = new Set([
   'mmk_withdraw_fee_percent',
   'payment_service_fee_percent',
   'payment_service_fee_minimum_usdt',
+  'deposit_service_fee_percent',
+  'deposit_service_fee_minimum_usdt',
+  'withdrawal_service_fee_percent',
+  'withdrawal_service_fee_minimum_usdt',
 ]);
 
 const STRING_KEYS = new Set([
@@ -65,6 +75,8 @@ const STRING_KEYS = new Set([
   'usdt_withdraw_fee_bep20_type',
   'usdt_withdraw_fee_bank_type',
   'payment_service_fee_mode',
+  'deposit_service_fee_mode',
+  'withdrawal_service_fee_mode',
 ]);
 
 const FEE_TYPE_KEYS = new Set([
@@ -132,6 +144,31 @@ async function getAllSettings() {
   return { ...map };
 }
 
+function resolveScopedServiceFeeFields(raw, scope) {
+  const { normalizeFeeMode, DEFAULT_FEE_MODE } = require('./paymentFeeService');
+  const prefix = scope === 'withdrawal' ? 'withdrawal_service_fee' : 'deposit_service_fee';
+  const modeRaw = raw[`${prefix}_mode`] ?? raw.payment_service_fee_mode ?? DEFAULT_FEE_MODE;
+  const percentRaw = raw[`${prefix}_percent`] ?? raw.payment_service_fee_percent;
+  const minimumRaw = raw[`${prefix}_minimum_usdt`] ?? raw.payment_service_fee_minimum_usdt;
+  return {
+    [`${prefix}_mode`]: normalizeFeeMode(modeRaw),
+    [`${prefix}_percent`]: parseFloat(percentRaw) || 2,
+    [`${prefix}_minimum_usdt`]: parseFloat(minimumRaw) || 1,
+  };
+}
+
+function withScopedPaymentFeeShape(settings, scope) {
+  const prefix = scope === 'withdrawal' ? 'withdrawal_service_fee' : 'deposit_service_fee';
+  const scoped = resolveScopedServiceFeeFields(settings, scope);
+  return {
+    ...settings,
+    ...scoped,
+    payment_service_fee_mode: scoped[`${prefix}_mode`],
+    payment_service_fee_percent: scoped[`${prefix}_percent`],
+    payment_service_fee_minimum_usdt: scoped[`${prefix}_minimum_usdt`],
+  };
+}
+
 async function getCardPricingSettings() {
   const raw = await getAllSettings();
   return {
@@ -165,25 +202,36 @@ async function getCardPricingSettings() {
       const { normalizeFeeMode, DEFAULT_FEE_MODE } = require('./paymentFeeService');
       return normalizeFeeMode(raw.payment_service_fee_mode || DEFAULT_FEE_MODE);
     })(),
+    ...resolveScopedServiceFeeFields(raw, 'deposit'),
+    ...resolveScopedServiceFeeFields(raw, 'withdrawal'),
   };
+}
+
+async function getDepositFeeSettings() {
+  const pricing = await getCardPricingSettings();
+  return withScopedPaymentFeeShape(pricing, 'deposit');
 }
 
 async function getWithdrawalFeeSettings() {
   const pricing = await getCardPricingSettings();
+  const scoped = withScopedPaymentFeeShape(pricing, 'withdrawal');
   return {
-    usdt_withdraw_fee_trc20: pricing.usdt_withdraw_fee_trc20,
-    usdt_withdraw_fee_bep20: pricing.usdt_withdraw_fee_bep20,
-    usdt_withdraw_fee_trc20_type: pricing.usdt_withdraw_fee_trc20_type,
-    usdt_withdraw_fee_bep20_type: pricing.usdt_withdraw_fee_bep20_type,
-    usdt_withdraw_fee_bank: pricing.usdt_withdraw_fee_bank,
-    usdt_withdraw_fee_bank_type: pricing.usdt_withdraw_fee_bank_type,
-    minimum_usdt_withdrawal: pricing.minimum_usdt_withdrawal,
-    minimum_mmk_withdrawal: pricing.minimum_mmk_withdrawal,
-    mmk_withdraw_fee_percent: pricing.mmk_withdraw_fee_percent,
-    mmk_to_usd_rate: pricing.mmk_to_usd_rate,
-    payment_service_fee_percent: pricing.payment_service_fee_percent,
-    payment_service_fee_minimum_usdt: pricing.payment_service_fee_minimum_usdt,
-    payment_service_fee_mode: pricing.payment_service_fee_mode,
+    usdt_withdraw_fee_trc20: scoped.usdt_withdraw_fee_trc20,
+    usdt_withdraw_fee_bep20: scoped.usdt_withdraw_fee_bep20,
+    usdt_withdraw_fee_trc20_type: scoped.usdt_withdraw_fee_trc20_type,
+    usdt_withdraw_fee_bep20_type: scoped.usdt_withdraw_fee_bep20_type,
+    usdt_withdraw_fee_bank: scoped.usdt_withdraw_fee_bank,
+    usdt_withdraw_fee_bank_type: scoped.usdt_withdraw_fee_bank_type,
+    minimum_usdt_withdrawal: scoped.minimum_usdt_withdrawal,
+    minimum_mmk_withdrawal: scoped.minimum_mmk_withdrawal,
+    mmk_withdraw_fee_percent: scoped.mmk_withdraw_fee_percent,
+    mmk_to_usd_rate: scoped.mmk_to_usd_rate,
+    payment_service_fee_percent: scoped.payment_service_fee_percent,
+    payment_service_fee_minimum_usdt: scoped.payment_service_fee_minimum_usdt,
+    payment_service_fee_mode: scoped.payment_service_fee_mode,
+    withdrawal_service_fee_percent: scoped.withdrawal_service_fee_percent,
+    withdrawal_service_fee_minimum_usdt: scoped.withdrawal_service_fee_minimum_usdt,
+    withdrawal_service_fee_mode: scoped.withdrawal_service_fee_mode,
   };
 }
 
@@ -197,6 +245,9 @@ async function getWithdrawalRateSettings() {
     payment_service_fee_percent: fees.payment_service_fee_percent,
     payment_service_fee_minimum_usdt: fees.payment_service_fee_minimum_usdt,
     payment_service_fee_mode: fees.payment_service_fee_mode,
+    withdrawal_service_fee_percent: fees.withdrawal_service_fee_percent,
+    withdrawal_service_fee_minimum_usdt: fees.withdrawal_service_fee_minimum_usdt,
+    withdrawal_service_fee_mode: fees.withdrawal_service_fee_mode,
     minimum_usdt_withdrawal: fees.minimum_usdt_withdrawal,
     minimum_mmk_withdrawal: fees.minimum_mmk_withdrawal,
     // Kept in sync for routing labels / legacy UI; live fee math uses payment_service_fee_*
@@ -263,6 +314,9 @@ async function updateWithdrawalRates(updates = {}) {
 
   const allowedKeys = [
     'mmk_to_usd_rate',
+    'withdrawal_service_fee_percent',
+    'withdrawal_service_fee_minimum_usdt',
+    'withdrawal_service_fee_mode',
     'payment_service_fee_percent',
     'payment_service_fee_minimum_usdt',
     'payment_service_fee_mode',
@@ -284,14 +338,22 @@ async function updateWithdrawalRates(updates = {}) {
     }
   }
 
-  // Keep legacy network fee knobs aligned with the live unified payment fee
-  // so older UI / docs stay consistent with what users are charged.
-  if (payload.payment_service_fee_percent !== undefined) {
-    const pct = payload.payment_service_fee_percent;
-    if (payload.usdt_withdraw_fee_trc20 === undefined) payload.usdt_withdraw_fee_trc20 = pct;
-    if (payload.usdt_withdraw_fee_bep20 === undefined) payload.usdt_withdraw_fee_bep20 = pct;
-    if (payload.usdt_withdraw_fee_bank === undefined) payload.usdt_withdraw_fee_bank = pct;
-    if (payload.mmk_withdraw_fee_percent === undefined) payload.mmk_withdraw_fee_percent = pct;
+  if (payload.payment_service_fee_mode !== undefined && payload.withdrawal_service_fee_mode === undefined) {
+    payload.withdrawal_service_fee_mode = payload.payment_service_fee_mode;
+  }
+  if (payload.payment_service_fee_percent !== undefined && payload.withdrawal_service_fee_percent === undefined) {
+    payload.withdrawal_service_fee_percent = payload.payment_service_fee_percent;
+  }
+  if (payload.payment_service_fee_minimum_usdt !== undefined && payload.withdrawal_service_fee_minimum_usdt === undefined) {
+    payload.withdrawal_service_fee_minimum_usdt = payload.payment_service_fee_minimum_usdt;
+  }
+
+  const withdrawalPct = payload.withdrawal_service_fee_percent ?? payload.payment_service_fee_percent;
+  if (withdrawalPct !== undefined) {
+    if (payload.usdt_withdraw_fee_trc20 === undefined) payload.usdt_withdraw_fee_trc20 = withdrawalPct;
+    if (payload.usdt_withdraw_fee_bep20 === undefined) payload.usdt_withdraw_fee_bep20 = withdrawalPct;
+    if (payload.usdt_withdraw_fee_bank === undefined) payload.usdt_withdraw_fee_bank = withdrawalPct;
+    if (payload.mmk_withdraw_fee_percent === undefined) payload.mmk_withdraw_fee_percent = withdrawalPct;
     if (payload.usdt_withdraw_fee_trc20_type === undefined) payload.usdt_withdraw_fee_trc20_type = 'percent';
     if (payload.usdt_withdraw_fee_bep20_type === undefined) payload.usdt_withdraw_fee_bep20_type = 'percent';
     if (payload.usdt_withdraw_fee_bank_type === undefined) payload.usdt_withdraw_fee_bank_type = 'percent';
@@ -323,6 +385,9 @@ function buildWithdrawalRateChangeNotes(before, payload) {
   const parts = ['Withdrawal rates updated'];
   const track = [
     'mmk_to_usd_rate',
+    'withdrawal_service_fee_mode',
+    'withdrawal_service_fee_percent',
+    'withdrawal_service_fee_minimum_usdt',
     'payment_service_fee_mode',
     'payment_service_fee_percent',
     'payment_service_fee_minimum_usdt',
@@ -447,14 +512,16 @@ function calculateDepositFeeBreakdown(amount, { currency = 'USDT', settings = {}
     calculateMmkPaymentFeeBreakdown,
   } = require('./paymentFeeService');
 
+  const feeSettings = withScopedPaymentFeeShape(settings, 'deposit');
+
   if (String(currency).toUpperCase() === 'MMK') {
     return {
-      ...calculateMmkPaymentFeeBreakdown(amount, settings),
+      ...calculateMmkPaymentFeeBreakdown(amount, feeSettings),
       operation: 'deposit',
     };
   }
   return {
-    ...calculateUsdtPaymentFeeBreakdown(amount, settings),
+    ...calculateUsdtPaymentFeeBreakdown(amount, feeSettings),
     operation: 'deposit',
   };
 }
@@ -570,8 +637,14 @@ async function updateSettings(updates) {
       if (key === 'payment_service_fee_percent' && (num < 0 || num > 20)) {
         throw new Error('Payment service fee percent must be between 0% and 20%');
       }
+      if ((key === 'deposit_service_fee_percent' || key === 'withdrawal_service_fee_percent') && (num < 0 || num > 20)) {
+        throw new Error(`${key} must be between 0% and 20%`);
+      }
       if (key === 'payment_service_fee_minimum_usdt' && num < 0) {
         throw new Error('Payment service fee minimum must be zero or greater');
+      }
+      if ((key === 'deposit_service_fee_minimum_usdt' || key === 'withdrawal_service_fee_minimum_usdt') && num < 0) {
+        throw new Error(`${key} must be zero or greater`);
       }
       await setSetting(key, num);
     } else if (FEE_TYPE_KEYS.has(key)) {
@@ -580,11 +653,11 @@ async function updateSettings(updates) {
         throw new Error(`${key} must be "fixed" or "percent"`);
       }
       await setSetting(key, normalized);
-    } else if (key === 'payment_service_fee_mode') {
+    } else if (key === 'payment_service_fee_mode' || key === 'deposit_service_fee_mode' || key === 'withdrawal_service_fee_mode') {
       const { normalizeFeeMode, FEE_MODES } = require('./paymentFeeService');
       const mode = normalizeFeeMode(strVal);
       if (!Object.values(FEE_MODES).includes(mode)) {
-        throw new Error('payment_service_fee_mode must be off, percent, fixed, or max_percent_or_min');
+        throw new Error(`${key} must be off, percent, fixed, or max_percent_or_min`);
       }
       await setSetting(key, mode);
     } else if (STRING_KEYS.has(key)) {
@@ -725,6 +798,7 @@ module.exports = {
   getAllSettings,
   invalidateSettingsCache,
   getCardPricingSettings,
+  getDepositFeeSettings,
   getCurrentRateSummary,
   buildRateSnapshot,
   listExchangeRateHistory,

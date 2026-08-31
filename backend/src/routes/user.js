@@ -12,6 +12,7 @@ const {
   calculateCardReloadPricingUsdt,
   getUsdtDepositSettings,
   getWithdrawalFeeSettings,
+  getDepositFeeSettings,
   parseRecordMetadata,
   getCurrentRateSummary,
 } = require('../services/settingsService');
@@ -468,6 +469,7 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
       kripicard_bins: bins.bins,
       kripicard_bins_source: bins.source,
       withdrawal_fees: await getWithdrawalFeeSettings(),
+      deposit_fees: await getDepositFeeSettings(),
     });
   } catch (err) {
     console.error('[user/card/pricing]', err);
