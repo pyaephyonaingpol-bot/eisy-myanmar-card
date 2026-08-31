@@ -30,7 +30,6 @@
 
       // Navigation — admin
       nav_admin_deposits: 'Deposits',
-      nav_admin_payment_methods: 'Payment Methods',
       nav_admin_cards: 'Cards',
       nav_admin_users: 'Users',
       nav_admin_transactions: 'Transactions',
@@ -375,7 +374,6 @@
       nav_user_app: 'User App',
 
       nav_admin_deposits: 'ငွေသွင်းမှုများ',
-      nav_admin_payment_methods: 'ငွေပေးချေမှုနည်းလမ်းများ',
       nav_admin_cards: 'ကဒ်များ',
       nav_admin_users: 'အသုံးပြုသူများ',
       nav_admin_transactions: 'ငွေလွှဲမှုများ',

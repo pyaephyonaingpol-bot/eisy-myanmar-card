@@ -20,6 +20,7 @@
     "test:nowpayments-payout-config": "node scripts/test-nowpayments-payout-config.js",
     "test:withdraw-rollback": "node scripts/test-withdraw-rollback.js",
     "test:admin-usdt-wd-list": "node scripts/test-admin-usdt-withdrawal-list.js",
+    "test:admin-no-payment-methods": "node scripts/test-admin-no-payment-methods.js",
     "test:transaction-csv-export": "node scripts/test-transaction-csv-export.js",
     "test:upload-storage": "node scripts/test-upload-storage.js",
     "test:user-profile-phone": "node scripts/test-user-profile-phone.js",
