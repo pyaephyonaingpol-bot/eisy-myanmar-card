@@ -1380,7 +1380,6 @@ const Dashboard = {
 
   populateCardBinOptions() {
     const select = $('cardBinSelect');
-    const input = $('cardBinInput');
     if (!select) return;
 
     // Client fallback so the dropdown never renders empty / "No Options"
@@ -1394,12 +1393,7 @@ const Dashboard = {
       this.cardPricing?.kripicard_default_bin || bins[0] || ''
     ).trim();
 
-    select.classList.remove('hidden');
     select.required = true;
-    if (input) {
-      input.classList.add('hidden');
-      input.required = false;
-    }
 
     const prev = select.value;
     select.innerHTML = bins.map((bin) =>
@@ -1417,10 +1411,7 @@ const Dashboard = {
 
   getSelectedCardBin() {
     const select = $('cardBinSelect');
-    if (select && !select.classList.contains('hidden') && select.value) {
-      return String(select.value).trim();
-    }
-    return String($('cardBinInput')?.value || '').trim();
+    return String(select?.value || '').trim();
   },
 
   populateReloadPaymentMethodOptions() {
@@ -4801,7 +4792,7 @@ const Dashboard = {
             return;
           }
           if (!bin) {
-            this.toast(typeof t === 'function' ? t('card_bin_required') : 'Select or enter a card BIN', 'error');
+            this.toast(typeof t === 'function' ? t('card_bin_required') : 'Select a card BIN', 'error');
             return;
           }
           if (Number(this.walletUsdt ?? 0) < required) {

@@ -979,7 +979,7 @@
                     <small id="cardMinDepositHint" class="hint" data-i18n="min_initial_deposit">Minimum initial deposit: $10.00</small>
                   </div>
                   <div class="field"><label for="cardBinSelect" data-i18n="card_bin">Card BIN</label>
-                    <select id="cardBinSelect" required>
+                    <select id="cardBinSelect" required aria-describedby="cardBinHint">
                       <option value="539502">539502</option>
                       <option value="525847">525847</option>
                       <option value="441357">441357</option>
@@ -987,8 +987,7 @@
                       <option value="428803">428803</option>
                       <option value="493728">493728</option>
                     </select>
-                    <input id="cardBinInput" class="hidden" type="text" inputmode="numeric" placeholder="BIN" />
-                    <small class="hint" data-i18n="card_bin_hint">Select a Kripicard BIN for your virtual card.</small>
+                    <small id="cardBinHint" class="hint" data-i18n="card_bin_hint">Select a Kripicard BIN for your virtual card.</small>
                   </div>
                   <div class="field">
                     <label data-i18n="pay_from">Pay From</label>
