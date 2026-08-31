@@ -264,7 +264,10 @@ const Dashboard = {
       this.loadSupportThreads();
       this.loadKycStatusUI();
       this.updateChangePasswordUI();
+    }
+    if (page === 'profile') {
       this.updateProfileFormUI();
+      this.loadWallet({ force: false });
     }
     if (page === 'cards') {
       const hasPending = (this.allCards || []).some((c) => this.isCardPending(c));
@@ -4755,7 +4758,7 @@ const Dashboard = {
     if (Auth.user) {
       if ($('headerUser')) $('headerUser').textContent = Auth.user.name || Auth.user.email;
       if ($('headerEmail')) $('headerEmail').textContent = Auth.user.email || '';
-      // Account info line lives in Settings; updateProfileFormUI owns #settingsAccountInfo.
+      // Account info line lives in Settings; profile form + summary boxes live on Profile.
       this.updateProfileFormUI();
       if (Auth.needsPinUnlock()) {
         $('pinUnlockModal')?.classList.remove('hidden');

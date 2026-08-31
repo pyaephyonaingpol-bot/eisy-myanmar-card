@@ -26,6 +26,7 @@
     "test:usdt-wallet-loading": "node scripts/test-usdt-wallet-loading.js",
     "test:pin-login": "node scripts/test-pin-login.js",
     "test:acctinfo-guard": "node scripts/test-acctinfo-guard.js",
+    "test:dashboard-profile-page": "node scripts/test-dashboard-profile-page.js",
     "test:tron-orders": "node scripts/test-tron-orders.js",
     "test:tron-hd-addresses": "node scripts/test-tron-hd-addresses.js",
     "test:tron-wallet": "node scripts/test-tron-wallet-service.js",
