@@ -162,6 +162,10 @@ const Dashboard = {
       });
     });
 
+    document.querySelectorAll('[data-open-usdt-topup]').forEach((btn) => {
+      btn.addEventListener('click', () => this.openUsdtTopUpModal());
+    });
+
     this._navInitialized = true;
   },
 
@@ -254,7 +258,7 @@ const Dashboard = {
     if (page === 'deposits') {
       this.loadDepositHistory({ force });
       this.populateReloadCardSelect();
-      if (opts.depositTab) this.switchDepositTab(opts.depositTab);
+      if (opts.depositTab === 'usdt') this.openUsdtTopUpModal();
     }
     if (page === 'usdt-wallet') this.loadUsdtWalletPage(force);
     if (page === 'rates') this.renderRatesPage();
@@ -765,7 +769,10 @@ const Dashboard = {
     await this.loadWallet({ force: true });
     this.loadDepositHistory({ force: true });
     this.loadTransactions();
-    setTimeout(() => this.resetUsdtDepositForm(), 2500);
+    setTimeout(() => {
+      this.resetUsdtDepositForm();
+      this.closeUsdtTopUpModal();
+    }, 2500);
   },
 
   /** Disable a submit button and show an inline spinner while a request is in flight. */
@@ -792,21 +799,49 @@ const Dashboard = {
     delete btn.dataset.idleLabel;
   },
 
-  switchDepositTab(tab) {
-    // Wallet top-up is USDT (TRC20) only — ignore legacy MMK tab requests.
-    if (window.EisyComponents?.usdtAddressBox?.switchDepositTab) {
-      return window.EisyComponents.usdtAddressBox.switchDepositTab('usdt');
+  switchDepositTab(_tab) {
+    // Legacy hook — USDT top-up lives in a modal now.
+    this.openUsdtTopUpModal();
+  },
+
+  openUsdtTopUpModal() {
+    if (!Auth.isLoggedIn()) {
+      this.toast('Sign in to top up your USDT wallet', 'error');
+      return;
     }
-    $('depositUsdtPanel')?.classList.remove('hidden');
-    $('depositMmkPanel')?.classList.add('hidden');
+    this.loadUsdtAddresses().catch(() => {});
+    this.updateUsdtDepositFeePreview();
+    $('usdtTopUpModal')?.classList.remove('hidden');
+    requestAnimationFrame(() => $('usdtAmount')?.focus());
+  },
+
+  closeUsdtTopUpModal() {
+    $('usdtTopUpModal')?.classList.add('hidden');
+  },
+
+  closeUsdtTopUpModalAndReset() {
+    this.closeUsdtTopUpModal();
+    this.resetUsdtDepositForm();
+  },
+
+  bindUsdtTopUpModal() {
+    $('usdtTopUpModalClose')?.addEventListener('click', () => this.closeUsdtTopUpModal());
+    $('usdtTopUpModal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'usdtTopUpModal') this.closeUsdtTopUpModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (!$('usdtTopUpModal') || $('usdtTopUpModal').classList.contains('hidden')) return;
+      this.closeUsdtTopUpModal();
+    });
   },
 
   bindDepositTabs() {
-    // No MMK/USDT tab strip — keep USDT panel visible; honor deep-links as USDT.
+    // Legacy deep-links with data-deposit-tab open the modal instead of inline panels.
     document.querySelectorAll('[data-deposit-tab]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true, depositTab: 'usdt' });
-        else this.switchDepositTab('usdt');
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.openUsdtTopUpModal();
       });
     });
   },
@@ -5008,7 +5043,7 @@ const Dashboard = {
           }
           if (Number(this.walletUsdt ?? 0) < required) {
             this.toast(`Insufficient USDT wallet. Need ${this.formatUsdt(required)}. Top up first.`, 'error');
-            if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true, depositTab: 'usdt' });
+            this.openUsdtTopUpModal();
             return;
           }
 
@@ -5058,7 +5093,7 @@ const Dashboard = {
           if (err.code === 'INSUFFICIENT_USDT_BALANCE' || err.code === 'USDT_ONLY_CARD_ISSUANCE') {
             this.toast(err.message, 'error');
             if (err.code === 'INSUFFICIENT_USDT_BALANCE' && typeof AppNav !== 'undefined') {
-              AppNav.navigate('deposits', { pushHash: true, depositTab: 'usdt' });
+              this.openUsdtTopUpModal();
             }
             return;
           }
@@ -5129,13 +5164,13 @@ const Dashboard = {
     });
 
     this.bindDepositTabs();
+    this.bindUsdtTopUpModal();
     this.bindUsdtDepositForms();
     this.bindP2pMarket();
     this.bindP2pBuyModal();
     this.bindP2pSellModal();
     this.bindP2pPostAdModal();
     this.bindKycModal();
-    this.switchDepositTab('usdt');
 
     $('btnLoadTx')?.addEventListener('click', () => this.loadTransactions());
     $('btnLoadDeposits')?.addEventListener('click', () => this.loadDepositHistory());
@@ -6122,7 +6157,7 @@ const Dashboard = {
       if (payFromWallet && walletType === 'usdt' && Number(this.walletUsdt ?? 0) < preview.deposit_usdt) {
         this.toast(`Insufficient USDT wallet. Need ${this.formatUsdt(preview.deposit_usdt)}. Top up first.`, 'error');
         this.closeReloadModal();
-        if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true, depositTab: 'usdt' });
+        this.openUsdtTopUpModal();
         return;
       }
 
@@ -6171,7 +6206,7 @@ const Dashboard = {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
         if (err.code === 'INSUFFICIENT_MMK_BALANCE' || err.code === 'INSUFFICIENT_USDT_BALANCE') {
           this.toast(err.message, 'error');
-          if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true, depositTab: 'usdt' });
+          this.openUsdtTopUpModal();
           return;
         }
         this.toast(err.message || 'Reload request failed', 'error');

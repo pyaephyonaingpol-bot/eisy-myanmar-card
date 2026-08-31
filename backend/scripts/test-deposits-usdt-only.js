@@ -16,10 +16,10 @@ const pageEnd = html.indexOf('Deposit &amp; Request History');
 assert.ok(pageStart >= 0 && pageEnd > pageStart, 'deposits page markers');
 const pageHtml = html.slice(pageStart, pageEnd);
 
-assert.ok(pageHtml.includes('id="depositUsdtPanel"'), 'USDT deposit panel present');
-assert.ok(pageHtml.includes('id="usdtDepositForm"'), 'USDT deposit form present');
-assert.ok(pageHtml.includes('id="usdtAmount"'), 'USDT amount field present');
-assert.ok(pageHtml.includes('TRC20'), 'TRC20 mentioned');
+assert.ok(html.includes('id="usdtTopUpModal"'), 'USDT top-up modal present');
+assert.ok(html.includes('id="usdtDepositForm"'), 'USDT deposit form present');
+assert.ok(html.includes('id="usdtAmount"'), 'USDT amount field present');
+assert.ok(html.includes('TRC20'), 'TRC20 mentioned');
 assert.ok(!pageHtml.includes('id="depositMmkPanel"'), 'MMK deposit panel removed');
 assert.ok(!pageHtml.includes('deposit_tab_mmk'), 'MMK deposit tab removed');
 assert.ok(!pageHtml.includes('id="amountMmk"'), 'MMK amount input removed');
@@ -28,8 +28,9 @@ assert.ok(!pageHtml.includes('id="mmkDepositFeePreview"'), 'MMK fee preview remo
 assert.ok(!pageHtml.includes('id="mmkPaymentMethodDetails"'), 'MMK bank details removed');
 assert.ok(!/KPay|WavePay|KBZPay/i.test(pageHtml), 'no KPay/WavePay copy in top-up section');
 assert.ok(!pageHtml.includes('deposit-type-tabs'), 'deposit type tabs removed');
+assert.ok(pageHtml.includes('data-open-usdt-topup'), 'deposits page opens modal instead of inline form');
 
-assert.ok(dash.includes("switchDepositTab('usdt')") || dash.includes('USDT (TRC20) only'), 'dashboard forces USDT tab');
+assert.ok(dash.includes('openUsdtTopUpModal'), 'dashboard opens USDT top-up modal');
 assert.ok(!box.includes("t !== 'mmk'"), 'usdtAddressBox no longer toggles MMK panel');
 
 console.log('Deposits page is USDT-only — ok');
