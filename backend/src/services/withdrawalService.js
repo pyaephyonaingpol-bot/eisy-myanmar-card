@@ -82,18 +82,21 @@ function validateWalletAddress(network, address) {
 }
 
 function validateBankDetails({ bank_name, account_name, account_number }) {
+  const ALLOWED = new Set([
+    'KPay', 'KBZ Bank', 'CB Pay', 'CB Bank', 'AYA Pay', 'AYA Bank', 'WavePay',
+  ]);
   const bankName = String(bank_name || '').trim();
   const accountName = String(account_name || '').trim();
   const accountNumber = String(account_number || '').trim().replace(/\s+/g, '');
 
-  if (!bankName || bankName.length < 2) {
-    throw new Error('Enter your bank name (e.g. KBZ, AYA, CB)');
+  if (!bankName || !ALLOWED.has(bankName)) {
+    throw new Error('Select your bank or wallet (KPay, KBZ Bank, CB Pay, CB Bank, AYA Pay, AYA Bank, WavePay)');
   }
   if (!accountName || accountName.length < 2) {
     throw new Error('Enter the bank account holder name');
   }
   if (!accountNumber || accountNumber.length < 5) {
-    throw new Error('Enter a valid bank account number');
+    throw new Error('Enter a valid account number or phone number');
   }
 
   return { bankName, accountName, accountNumber };
@@ -384,10 +387,19 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
     }
   }
 
+  try {
+    const { syncUsdtBankWithdrawal } = require('./supabaseSyncService');
+    syncUsdtBankWithdrawal(withdrawal).catch((err) => {
+      console.warn('[withdrawal] supabase bank withdrawal sync skipped:', err.message);
+    });
+  } catch (err) {
+    console.warn('[withdrawal] supabase bank withdrawal sync unavailable:', err.message);
+  }
+
   return {
     withdrawal,
     breakdown,
-    message: `Withdrawal ${refCode} submitted. ${formatMmk(breakdown.amount_mmk)} will be transferred to your ${bank.bankName} account after processing (rate 1 USDT = ${Number(breakdown.exchange_rate).toLocaleString()} MMK).`,
+    message: `Withdrawal ${refCode} submitted. ${formatMmk(breakdown.amount_mmk)} will be transferred to your ${bank.bankName} account after admin review (within 5 working days). Rate 1 USDT = ${Number(breakdown.exchange_rate).toLocaleString()} MMK.`,
   };
 }
 

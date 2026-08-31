@@ -93,6 +93,7 @@ const Dashboard = {
       this.bindCardCopyButtons();
       this.bindCardSelector();
       this.bindCardDetailModal();
+      this.bindSellUsdtMmkModal();
       this.bindCardsAutoRefresh();
       this.bindProofLightbox();
       this.bindReloadCard();
@@ -1536,7 +1537,7 @@ const Dashboard = {
       });
     });
 
-    // Wallet dashboard "Sell USDT / Convert to MMK" shortcuts → P2P Sell tab
+    // Wallet dashboard "Sell USDT / Convert to MMK" → dedicated convert modal
     const openSell = (e) => {
       e.preventDefault();
       this.openSellConvertUsdt();
@@ -1618,12 +1619,222 @@ const Dashboard = {
       this.toast('Sign in to sell USDT / convert to MMK', 'error');
       return;
     }
-    if (typeof AppNav !== 'undefined') {
-      AppNav.navigate('p2p', { pushHash: true, p2pTab: 'sell' });
-    } else {
-      this.switchP2pTab('sell');
-      this.loadP2pPage();
+    if (Auth.needsPinUnlock()) {
+      $('pinUnlockModal')?.classList.remove('hidden');
+      this.toast('Unlock your PIN to continue', 'error');
+      return;
     }
+    this.openSellUsdtMmkModal();
+  },
+
+  SELL_USDT_BANK_METHODS: ['KPay', 'KBZ Bank', 'CB Pay', 'CB Bank', 'AYA Pay', 'AYA Bank', 'WavePay'],
+
+  openSellUsdtMmkModal() {
+    $('sellUsdtMmkForm')?.classList.remove('hidden');
+    $('sellUsdtSuccessBox')?.classList.add('hidden');
+    if ($('sellUsdtOutput')) $('sellUsdtOutput').textContent = '';
+    if ($('sellUsdtBankMethod')) $('sellUsdtBankMethod').value = '';
+    if ($('sellUsdtAccountName')) $('sellUsdtAccountName').value = '';
+    if ($('sellUsdtAccountNumber')) $('sellUsdtAccountNumber').value = '';
+    if ($('sellUsdtAmount')) {
+      const min = Number(this.withdrawalFees?.minimum_usdt_withdrawal || 10);
+      $('sellUsdtAmount').value = min > 0 ? min.toFixed(2) : '';
+    }
+    const balHint = $('sellUsdtBalanceHint');
+    if (balHint) balHint.textContent = this.formatWithdrawBalanceHint();
+    const minHint = $('sellUsdtMinHint');
+    if (minHint) {
+      const min = Number(this.withdrawalFees?.minimum_usdt_withdrawal || 10);
+      minHint.textContent = `Minimum withdrawal: $${min.toFixed(2)} USDT`;
+    }
+    $('sellUsdtMmkModal')?.classList.remove('hidden');
+    this.updateSellUsdtMmkPreview();
+    this.loadWithdrawalFees().catch(() => {});
+    if (Auth.isLoggedIn() && !Auth.needsPinUnlock()) {
+      this.loadUsdtWalletPage(true).catch(() => {});
+    }
+  },
+
+  closeSellUsdtMmkModal() {
+    $('sellUsdtMmkModal')?.classList.add('hidden');
+  },
+
+  calculateSellUsdtMmkPreviewClient(amountUsdt) {
+    // Reuse bank (USDT→MMK) fee + rate math from withdraw preview.
+    const fees = this.withdrawalFees;
+    if (!fees || !Number.isFinite(amountUsdt) || amountUsdt <= 0) return null;
+    const method = 'bank';
+    const network = 'BANK';
+    let mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
+    const feePercent = Number(fees.payment_service_fee_percent ?? 2);
+    const minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? 1);
+    const percentFee = Math.round(amountUsdt * feePercent) / 100;
+    let feeUsdt = 0;
+    if (mode === 'off') feeUsdt = 0;
+    else if (mode === 'percent') feeUsdt = Math.round(percentFee * 100) / 100;
+    else if (mode === 'fixed') feeUsdt = Math.round(minimumFee * 100) / 100;
+    else feeUsdt = Math.round(Math.max(percentFee, minimumFee) * 100) / 100;
+    const netUsdt = Math.round((amountUsdt - feeUsdt) * 100) / 100;
+    const min = Number(fees.minimum_usdt_withdrawal || 10);
+    const rate = Number(fees.mmk_to_usd_rate || 4500);
+    const amountMmk = Math.round(netUsdt * rate);
+    const usedMinimum = mode === 'max_percent_or_min' && percentFee < minimumFee;
+    let feeLabel = 'No service fee';
+    if (feeUsdt > 0) {
+      if (mode === 'fixed') feeLabel = `fixed $${feeUsdt.toFixed(2)}`;
+      else if (mode === 'percent') feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
+      else if (usedMinimum) feeLabel = `min $${minimumFee.toFixed(2)} (${feePercent}% = $${percentFee.toFixed(2)})`;
+      else feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
+    }
+    return {
+      payout_method: method,
+      network,
+      amount_usdt: Math.round(amountUsdt * 100) / 100,
+      fee_usdt: feeUsdt,
+      net_usdt: netUsdt,
+      fee_label: feeLabel,
+      exchange_rate: rate,
+      amount_mmk: amountMmk,
+      minimum_usdt_withdrawal: min,
+      below_minimum: amountUsdt < min,
+      invalid_net: netUsdt <= 0 || amountMmk <= 0,
+    };
+  },
+
+  updateSellUsdtMmkPreview() {
+    const amount = parseFloat($('sellUsdtAmount')?.value);
+    const preview = this.calculateSellUsdtMmkPreviewClient(amount);
+    const rate = Number(this.withdrawalFees?.mmk_to_usd_rate || 4500);
+
+    if ($('sellUsdtPreviewRate')) {
+      $('sellUsdtPreviewRate').textContent = `1 USDT = ${rate.toLocaleString()} MMK`;
+    }
+
+    if (!preview) {
+      if ($('sellUsdtPreviewFee')) $('sellUsdtPreviewFee').textContent = '—';
+      if ($('sellUsdtPreviewNet')) $('sellUsdtPreviewNet').textContent = '—';
+      if ($('sellUsdtPreviewMmk')) $('sellUsdtPreviewMmk').textContent = '—';
+      if ($('sellUsdtPreviewSummary')) {
+        $('sellUsdtPreviewSummary').textContent = 'Enter an amount to preview the MMK payout.';
+      }
+      return;
+    }
+
+    if ($('sellUsdtPreviewFee')) $('sellUsdtPreviewFee').textContent = preview.fee_label;
+    if ($('sellUsdtPreviewNet')) $('sellUsdtPreviewNet').textContent = `$${preview.net_usdt.toFixed(2)} USDT`;
+    if ($('sellUsdtPreviewMmk')) {
+      $('sellUsdtPreviewMmk').textContent = `${Math.round(preview.amount_mmk).toLocaleString()} MMK`;
+    }
+
+    let summary = `$${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} = $${preview.net_usdt.toFixed(2)} USDT → ${Math.round(preview.amount_mmk).toLocaleString()} MMK.`;
+    if (preview.below_minimum) summary = `Minimum withdrawal is $${preview.minimum_usdt_withdrawal.toFixed(2)} USDT.`;
+    if (preview.invalid_net) summary = 'Amount too small after fee.';
+    if ($('sellUsdtPreviewSummary')) $('sellUsdtPreviewSummary').textContent = summary;
+  },
+
+  bindSellUsdtMmkModal() {
+    if (this._sellUsdtMmkBound) return;
+    this._sellUsdtMmkBound = true;
+
+    $('sellUsdtMmkModalClose')?.addEventListener('click', () => this.closeSellUsdtMmkModal());
+    $('sellUsdtMmkModal')?.addEventListener('click', (e) => {
+      if (e.target === $('sellUsdtMmkModal')) this.closeSellUsdtMmkModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const modal = $('sellUsdtMmkModal');
+      if (modal && !modal.classList.contains('hidden')) this.closeSellUsdtMmkModal();
+    });
+    $('sellUsdtAmount')?.addEventListener('input', () => this.updateSellUsdtMmkPreview());
+
+    $('sellUsdtMmkForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const bankName = $('sellUsdtBankMethod')?.value?.trim();
+      const accountName = $('sellUsdtAccountName')?.value?.trim();
+      const accountNumber = $('sellUsdtAccountNumber')?.value?.trim();
+      const amount = parseFloat($('sellUsdtAmount')?.value);
+      const preview = this.calculateSellUsdtMmkPreviewClient(amount);
+
+      if (!bankName || !this.SELL_USDT_BANK_METHODS.includes(bankName)) {
+        this.toast(typeof t === 'function' ? t('sell_usdt_bank_required') : 'Select a bank or wallet', 'error');
+        return;
+      }
+      if (!accountName || accountName.length < 2) {
+        this.toast('Enter the account holder name', 'error');
+        return;
+      }
+      if (!accountNumber || accountNumber.replace(/\s+/g, '').length < 5) {
+        this.toast('Enter a valid account number or phone number', 'error');
+        return;
+      }
+      if (!preview || preview.below_minimum || preview.invalid_net) {
+        this.toast('Enter a valid USDT amount', 'error');
+        return;
+      }
+      if (Number(this.walletUsdt ?? 0) < preview.amount_usdt) {
+        this.toast(`Insufficient USDT balance. Need $${preview.amount_usdt.toFixed(2)} USDT.`, 'error');
+        return;
+      }
+
+      const btn = $('btnSubmitSellUsdtMmk');
+      const prevLabel = btn?.textContent;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Submitting…';
+      }
+
+      try {
+        const payload = {
+          payout_method: 'bank',
+          amount_usdt: preview.amount_usdt,
+          bank_name: bankName,
+          account_name: accountName,
+          account_number: accountNumber,
+        };
+        const data = await (window.EisyServices?.withdrawal?.createUsdt
+          ? window.EisyServices.withdrawal.createUsdt(payload)
+          : Auth.api('POST', '/api/withdrawal/usdt', payload, { sensitive: true }));
+
+        if (data.success === false) {
+          throw Object.assign(new Error(data.error || data.message || 'Conversion failed'), {
+            code: data.code || 'WITHDRAWAL_FAILED',
+          });
+        }
+
+        if (data.wallet) {
+          this.walletUsdt = data.wallet.balance_usdt;
+          this.walletMmk = data.wallet.balance_mmk ?? this.walletMmk;
+          if ($('sumBalanceUsdt')) {
+            $('sumBalanceUsdt').textContent = data.wallet.usdt_formatted
+              || `$ ${Number(data.wallet.balance_usdt).toFixed(2)} USDT`;
+          }
+          if ($('sumBalanceMmk') && data.wallet.mmk_formatted) {
+            $('sumBalanceMmk').textContent = data.wallet.mmk_formatted;
+          }
+        }
+
+        $('sellUsdtMmkForm')?.classList.add('hidden');
+        $('sellUsdtSuccessBox')?.classList.remove('hidden');
+        if ($('sellUsdtRefCode')) $('sellUsdtRefCode').textContent = data.ref_code || data.withdrawal?.ref_code || '—';
+        const mmk = data.breakdown?.amount_mmk ?? preview.amount_mmk;
+        if ($('sellUsdtSuccessMessage')) {
+          $('sellUsdtSuccessMessage').textContent = data.message
+            || `Request submitted. ${Math.round(mmk || 0).toLocaleString()} MMK will be paid after admin review (within 5 working days).`;
+        }
+        this.toast('Conversion request submitted for review', 'ok');
+        this.log(`Sell USDT→MMK ${data.ref_code || ''} submitted`, 'ok');
+        this.loadWallet({ force: true }).catch(() => {});
+      } catch (err) {
+        this.toast(err.message || 'Failed to submit conversion', 'error');
+        this.log(err.message || 'Sell USDT failed', 'error');
+        if ($('sellUsdtOutput')) $('sellUsdtOutput').textContent = err.message || String(err);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prevLabel || (typeof t === 'function' ? t('btn_submit_sell_usdt') : 'Submit Conversion Request');
+        }
+      }
+    });
   },
 
   startP2pTrade(listing, side) {

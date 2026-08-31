@@ -141,11 +141,37 @@ async function syncCardReload(reload, user) {
   });
 }
 
+async function syncUsdtBankWithdrawal(withdrawal, user) {
+  if (!isSupabaseEnabled() || !withdrawal) return null;
+  const u = user || (withdrawal.user_id ? await User.findById(withdrawal.user_id) : null);
+  return upsertRow('usdt_bank_withdrawals', {
+    id: String(withdrawal.id),
+    user_id: String(withdrawal.user_id),
+    user_email: u?.email || null,
+    user_name: u?.name || null,
+    ref_code: withdrawal.ref_code || null,
+    payout_method: withdrawal.payout_method || 'bank',
+    amount_usdt: withdrawal.amount_usdt != null ? Number(withdrawal.amount_usdt) : null,
+    fee_usdt: withdrawal.fee_usdt != null ? Number(withdrawal.fee_usdt) : null,
+    net_usdt: withdrawal.net_usdt != null ? Number(withdrawal.net_usdt) : null,
+    exchange_rate: withdrawal.exchange_rate != null ? Number(withdrawal.exchange_rate) : null,
+    amount_mmk: withdrawal.amount_mmk != null ? Number(withdrawal.amount_mmk) : null,
+    bank_name: withdrawal.bank_name || null,
+    account_name: withdrawal.account_name || null,
+    account_number: withdrawal.account_number || null,
+    status: withdrawal.status || 'pending',
+    admin_note: withdrawal.admin_note || null,
+    created_at: withdrawal.created_at || nowIso(),
+    updated_at: withdrawal.updated_at || nowIso(),
+  });
+}
+
 module.exports = {
   syncUserWalletById,
   upsertUserWallet,
   syncDeposit,
   syncCardApplication,
   syncCardReload,
+  syncUsdtBankWithdrawal,
   isSupabaseEnabled,
 };
