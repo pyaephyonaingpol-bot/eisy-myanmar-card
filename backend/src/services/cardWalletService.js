@@ -13,6 +13,10 @@ const { RELOAD_PENDING_MESSAGE } = require('./cardReloadApprovalService');
 const { recordPlatformUsdFee, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { issueCardForUser, isSupabaseAdminEnabled } = require('./cardIssueService');
 const { ensureSupabaseUserWallet } = require('./supabaseSyncService');
+const {
+  debitUsdtForCardPurchase,
+  finalizeCardPurchaseWallet,
+} = require('./supabaseWalletLedgerService');
 
 const CARD_REQUEST_PENDING_MESSAGE =
   'Card request submitted. An admin will process your card shortly (usually within 15-30 mins).';
@@ -193,36 +197,69 @@ async function purchaseCardFromUsdtWallet(userId, {
   const idempotencyKey = paymentRef
     || `usdt-issue-${userId}-${kripicardCostUsd}-${resolvedBin}-${Date.now()}`;
 
+  if (!isSupabaseAdminEnabled()) {
+    const err = new Error(
+      'Card issuance requires Supabase. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.'
+    );
+    err.code = 'SUPABASE_NOT_CONFIGURED';
+    throw err;
+  }
+  if (!String(process.env.KRIPICARD_API_KEY || '').trim()) {
+    const err = new Error('KRIPICARD_API_KEY is not configured');
+    err.code = 'KRIPICARD_NOT_CONFIGURED';
+    throw err;
+  }
+
   await ensureSupabaseUserWallet(userId, { syncIfExists: true });
 
-  await debitUsdt(userId, requiredUsdt, {
-    description: `New card purchase — ${formatUsdt(requiredUsdt)} ($${kripicardCostUsd.toFixed(2)} card + $${platformMarkupUsd.toFixed(2)} fee)`,
-    createdBy: 'user',
-    metadata: {
-      purpose: 'card_issuance',
-      pricing,
-      wallet: 'usdt',
-      auto_issue: true,
-      kripicard_cost_usd: kripicardCostUsd,
-      platform_markup_usd: platformMarkupUsd,
-    },
+  const debitDescription = `New card purchase — ${formatUsdt(requiredUsdt)} ($${kripicardCostUsd.toFixed(2)} card + $${platformMarkupUsd.toFixed(2)} fee)`;
+  const debitMetadata = {
+    purpose: 'card_issuance',
+    pricing,
+    wallet: 'usdt',
+    auto_issue: true,
+    kripicard_cost_usd: kripicardCostUsd,
+    platform_markup_usd: platformMarkupUsd,
+  };
+
+  let journalId = idempotencyKey;
+  let tursoDebited = false;
+
+  const supabaseDebit = await debitUsdtForCardPurchase(userId, {
+    totalAmountUsdt: requiredUsdt,
+    kripicardCostUsd,
+    platformMarkupUsd,
+    idempotencyKey,
+    description: debitDescription,
+    metadata: debitMetadata,
   });
+  journalId = supabaseDebit.journal_id;
+
+  try {
+    await debitUsdt(userId, requiredUsdt, {
+      description: debitDescription,
+      createdBy: 'user',
+      journalId,
+      metadata: debitMetadata,
+    });
+    tursoDebited = true;
+  } catch (tursoErr) {
+    try {
+      await finalizeCardPurchaseWallet(journalId, {
+        outcome: 'refunded',
+        failureReason: `Local ledger sync failed: ${tursoErr.message}`,
+        metadata: { code: tursoErr.code || null, stage: 'turso_mirror_debit' },
+      });
+    } catch (refundErr) {
+      console.error('[cardWallet] Supabase refund failed after Turso debit error:', refundErr);
+      tursoErr.refund_failed = true;
+      tursoErr.refund_error = refundErr.message;
+    }
+    throw tursoErr;
+  }
 
   let issued;
   try {
-    if (!isSupabaseAdminEnabled()) {
-      const err = new Error(
-        'Card issuance requires Supabase. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.'
-      );
-      err.code = 'SUPABASE_NOT_CONFIGURED';
-      throw err;
-    }
-    if (!String(process.env.KRIPICARD_API_KEY || '').trim()) {
-      const err = new Error('KRIPICARD_API_KEY is not configured');
-      err.code = 'KRIPICARD_NOT_CONFIGURED';
-      throw err;
-    }
-
     issued = await issueCardForUser({
       userId,
       nameOnCard,
@@ -243,19 +280,38 @@ async function purchaseCardFromUsdtWallet(userId, {
     });
   } catch (issueErr) {
     try {
-      await creditUsdt(userId, requiredUsdt, {
-        description: `Card issuance refund — ${formatUsdt(requiredUsdt)} (provider issue failed)`,
-        createdBy: 'system',
+      await finalizeCardPurchaseWallet(journalId, {
+        outcome: 'refunded',
+        failureReason: issueErr.message,
         metadata: {
-          purpose: 'card_issuance_refund',
-          reason: issueErr.message,
           code: issueErr.code || null,
+          stage: 'kripicard_issue',
         },
       });
     } catch (refundErr) {
-      console.error('[cardWallet] USDT refund failed after issue error:', refundErr);
+      console.error('[cardWallet] Supabase refund failed after issue error:', refundErr);
       issueErr.refund_failed = true;
       issueErr.refund_error = refundErr.message;
+    }
+
+    if (tursoDebited) {
+      try {
+        await creditUsdt(userId, requiredUsdt, {
+          description: `Card issuance refund — ${formatUsdt(requiredUsdt)} (provider issue failed)`,
+          createdBy: 'system',
+          journalId: `${journalId}-refund`,
+          metadata: {
+            purpose: 'card_issuance_refund',
+            reason: issueErr.message,
+            code: issueErr.code || null,
+            supabase_journal_id: journalId,
+          },
+        });
+      } catch (tursoRefundErr) {
+        console.error('[cardWallet] Turso refund failed after issue error:', tursoRefundErr);
+        issueErr.refund_failed = true;
+        issueErr.refund_error = tursoRefundErr.message;
+      }
     }
     throw issueErr;
   }
@@ -274,6 +330,7 @@ async function purchaseCardFromUsdtWallet(userId, {
     kripicard_cost_usd: kripicardCostUsd,
     platform_markup_usd: platformMarkupUsd,
     total_charge_usdt: requiredUsdt,
+    supabase_journal_id: journalId,
     payment_method: 'usdt_wallet',
     paid_from_wallet: true,
     wallet_type: 'usdt',
@@ -315,6 +372,19 @@ async function purchaseCardFromUsdtWallet(userId, {
         request_status: 'pending_provider_details',
       },
     });
+  }
+
+  try {
+    await finalizeCardPurchaseWallet(journalId, {
+      outcome: 'completed',
+      referenceId: card.id,
+      metadata: {
+        provider_card_id: cardMetadata.provider_card_id,
+        card_status: card.status,
+      },
+    });
+  } catch (finalizeErr) {
+    console.error('[cardWallet] Supabase finalize completed failed:', finalizeErr);
   }
 
   try {
