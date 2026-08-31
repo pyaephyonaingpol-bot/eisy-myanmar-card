@@ -29,7 +29,6 @@ const {
   getKripicardBinOptions,
 } = require('../services/cardWalletService');
 const { assignCardToUser, isSupabaseAdminEnabled } = require('../services/cardPoolService');
-const { issueCardForUser, publicUserCard } = require('../services/cardIssueService');
 const { resolveActivePaymentMethod } = require('../services/depositPaymentMethodService');
 const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
@@ -71,6 +70,73 @@ function mapCardForClient(c) {
     activated_at: metadata.activated_at || c.activated_at || null,
     label: pending ? 'Pending request' : `Card •••• ${last4}${c.is_primary ? ' (Primary)' : ''}`,
     last4,
+  };
+}
+
+function respondCardPurchaseError(res, err, logTag) {
+  if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
+    return res.status(400).json({
+      error: err.message,
+      code: err.code,
+      required_usdt: err.required_usdt,
+      available_usdt: err.available_usdt,
+    });
+  }
+  if (
+    err.code === 'USDT_ONLY_CARD_ISSUANCE'
+    || err.code === 'INVALID_BIN'
+    || err.code === 'INVALID_NAME_ON_CARD'
+    || err.code === 'INVALID_AMOUNT'
+    || err.code === 'KRIPICARD_NOT_CONFIGURED'
+    || err.code === 'SUPABASE_NOT_CONFIGURED'
+  ) {
+    const status = (err.code === 'KRIPICARD_NOT_CONFIGURED' || err.code === 'SUPABASE_NOT_CONFIGURED')
+      ? 503
+      : 400;
+    return res.status(status).json({ error: err.message, code: err.code });
+  }
+  if (
+    err.code === 'KRIPICARD_HTTP_ERROR'
+    || err.code === 'KRIPICARD_API_ERROR'
+    || err.code === 'KRIPICARD_TIMEOUT'
+    || err.code === 'KRIPICARD_BAD_RESPONSE'
+    || err.code === 'KRIPICARD_MISSING_CARD_ID'
+  ) {
+    return res.status(502).json({
+      error: err.message || 'Card provider issuance failed',
+      code: err.code,
+      provider_status: err.status,
+      refunded: !err.refund_failed,
+    });
+  }
+  if (err.message.includes('Minimum initial deposit') || err.message.includes('must be') || err.message.includes('pending')) {
+    return res.status(400).json({ error: err.message, code: err.code });
+  }
+  console.error(`[${logTag}]`, err);
+  return res.status(500).json({ error: 'Internal server error' });
+}
+
+function buildCardPurchaseSuccessPayload(result) {
+  return {
+    success: true,
+    paid_from_wallet: true,
+    pending: Boolean(result.pending),
+    issued: Boolean(result.issued),
+    wallet_type: 'usdt',
+    message: result.message,
+    card: mapCardForClient(result.card),
+    card_request_id: result.card?.id,
+    provider_card_id: result.provider_card_id || null,
+    bin: result.bin || null,
+    pricing_breakdown: {
+      ...result.pricing,
+      payment_method: 'USDT Wallet',
+    },
+    wallet: {
+      debited_usdt: result.wallet_debit_usdt,
+      balance_usdt: result.balance_usdt,
+      usdt_formatted: formatUsdt(result.balance_usdt),
+    },
   };
 }
 
@@ -236,73 +302,33 @@ router.post('/cards/purchase', requireAuth, requireSensitive, async (req, res) =
 });
 
 /**
- * Real-time Kripicard issuance after payment.
+ * Real-time Kripicard issuance with profit markup.
+ * Debits USDT wallet (card load + admin markup), sends only card load to Kripicard,
+ * and records markup in platform_fee_events.
  * Mirrors Next.js route: app/api/cards/issue/route.js
- * Provider: POST /api/external/cards/createcard (name_on_card, bin, amount, api_key)
  */
 router.post('/cards/issue', requireAuth, requireSensitive, async (req, res) => {
   try {
-    if (!isSupabaseAdminEnabled()) {
-      return res.status(503).json({
-        error: 'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.',
-        code: 'SUPABASE_NOT_CONFIGURED',
-      });
-    }
-    if (!String(process.env.KRIPICARD_API_KEY || '').trim()) {
-      return res.status(503).json({
-        error: 'KRIPICARD_API_KEY is not configured',
-        code: 'KRIPICARD_NOT_CONFIGURED',
-      });
-    }
-
+    const user = await User.findById(req.user.id);
     const body = req.body || {};
-    const result = await issueCardForUser({
-      userId: req.user.id,
-      nameOnCard: body.name_on_card || body.cardholder_name || body.cardHolderName || req.user.name,
+    const initialLoadUsd = parseFloat(
+      body.initial_load_usd ?? body.amount ?? body.purchase_amount ?? body.initial_amount
+    );
+
+    const result = await purchaseCardFromUsdtWallet(req.user.id, {
+      initialLoadUsd,
+      cardHolderName: body.name_on_card || body.cardholder_name || body.cardHolderName || user.name,
+      note: body.note,
       bin: body.bin ?? body.bank_bin ?? body.bankBin,
-      amount: body.amount ?? body.purchase_amount ?? body.initial_amount,
-      currency: body.currency || body.purchase_currency || 'USD',
-      paymentRef: body.payment_ref || body.paymentRef || body.deposit_id || null,
-      idempotencyKey: body.idempotency_key || body.idempotencyKey || null,
-      metadata: {
-        ...(body.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
-        source: 'user/cards/issue',
-        issued_via: 'user',
-      },
+      paymentRef: body.payment_ref || body.paymentRef || body.idempotency_key || body.idempotencyKey || null,
     });
 
     res.json({
-      success: true,
-      message: result.reused
-        ? 'Card already issued for this payment'
-        : 'Card issued successfully',
-      reused: Boolean(result.reused),
-      card: publicUserCard(result.user_card),
+      ...buildCardPurchaseSuccessPayload(result),
+      reused: false,
     });
   } catch (err) {
-    console.error('[user/cards/issue]', err);
-    const code = err.code || 'INTERNAL_ERROR';
-    const status =
-      code === 'USER_REQUIRED'
-      || code === 'INVALID_NAME_ON_CARD'
-      || code === 'INVALID_BIN'
-      || code === 'INVALID_AMOUNT'
-        ? 400
-        : code === 'KRIPICARD_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED'
-          ? 503
-          : code === 'KRIPICARD_HTTP_ERROR'
-            || code === 'KRIPICARD_API_ERROR'
-            || code === 'KRIPICARD_TIMEOUT'
-            || code === 'KRIPICARD_BAD_RESPONSE'
-            || code === 'KRIPICARD_MISSING_CARD_ID'
-            ? 502
-            : 500;
-    res.status(status).json({
-      error: err.message || 'Card issue failed',
-      code,
-      errors: err.errors || undefined,
-      provider_status: err.status || undefined,
-    });
+    return respondCardPurchaseError(res, err, 'user/cards/issue');
   }
 });
 
@@ -456,6 +482,7 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
     const bins = getKripicardBinOptions();
     res.json({
       card_issuance_fee_usd: settings.card_issuance_fee_usd,
+      platform_markup_usd: settings.card_issuance_fee_usd,
       minimum_initial_deposit_usd: settings.minimum_initial_deposit_usd,
       card_reload_fee_usd: settings.card_reload_fee_usd,
       card_reload_provider_cost_usd: settings.card_reload_provider_cost_usd,
@@ -507,68 +534,9 @@ router.post('/card/request', requireAuth, requireSensitive, async (req, res) => 
       paymentRef: req.body.payment_ref || req.body.idempotency_key || null,
     });
 
-    return res.json({
-      success: true,
-      paid_from_wallet: true,
-      pending: Boolean(result.pending),
-      issued: Boolean(result.issued),
-      wallet_type: 'usdt',
-      message: result.message,
-      card: mapCardForClient(result.card),
-      card_request_id: result.card?.id,
-      provider_card_id: result.provider_card_id || null,
-      bin: result.bin || null,
-      pricing_breakdown: {
-        ...result.pricing,
-        payment_method: 'USDT Wallet',
-      },
-      wallet: {
-        debited_usdt: result.wallet_debit_usdt,
-        balance_usdt: result.balance_usdt,
-        usdt_formatted: formatUsdt(result.balance_usdt),
-      },
-    });
+    return res.json(buildCardPurchaseSuccessPayload(result));
   } catch (err) {
-    if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
-      return res.status(400).json({
-        error: err.message,
-        code: err.code,
-        required_usdt: err.required_usdt,
-        available_usdt: err.available_usdt,
-      });
-    }
-    if (
-      err.code === 'USDT_ONLY_CARD_ISSUANCE'
-      || err.code === 'INVALID_BIN'
-      || err.code === 'INVALID_NAME_ON_CARD'
-      || err.code === 'INVALID_AMOUNT'
-      || err.code === 'KRIPICARD_NOT_CONFIGURED'
-      || err.code === 'SUPABASE_NOT_CONFIGURED'
-    ) {
-      const status = (err.code === 'KRIPICARD_NOT_CONFIGURED' || err.code === 'SUPABASE_NOT_CONFIGURED')
-        ? 503
-        : 400;
-      return res.status(status).json({ error: err.message, code: err.code });
-    }
-    if (
-      err.code === 'KRIPICARD_HTTP_ERROR'
-      || err.code === 'KRIPICARD_API_ERROR'
-      || err.code === 'KRIPICARD_TIMEOUT'
-      || err.code === 'KRIPICARD_BAD_RESPONSE'
-      || err.code === 'KRIPICARD_MISSING_CARD_ID'
-    ) {
-      return res.status(502).json({
-        error: err.message || 'Card provider issuance failed',
-        code: err.code,
-        provider_status: err.status,
-        refunded: !err.refund_failed,
-      });
-    }
-    if (err.message.includes('Minimum initial deposit') || err.message.includes('must be') || err.message.includes('pending')) {
-      return res.status(400).json({ error: err.message, code: err.code });
-    }
-    console.error('[user/card/request]', err);
-    res.status(500).json({ error: 'Internal server error' });
+    return respondCardPurchaseError(res, err, 'user/card/request');
   }
 });
 

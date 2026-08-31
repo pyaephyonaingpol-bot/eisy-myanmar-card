@@ -735,17 +735,22 @@ function calculateCardRequestPricingUsdt(initialLoadUsd, settings) {
     throw new Error(`Minimum initial deposit is $${min.toFixed(2)} USD`);
   }
 
-  const totalUsd = initial + fee;
+  const kripicardCostUsd = Math.round(initial * 100) / 100;
+  const platformMarkupUsd = Math.round(fee * 100) / 100;
+  const totalUsd = kripicardCostUsd + platformMarkupUsd;
   const totalUsdt = Math.round(totalUsd * 100) / 100;
 
   return {
-    initial_load_usd: Math.round(initial * 100) / 100,
-    issuance_fee_usd: Math.round(fee * 100) / 100,
+    initial_load_usd: kripicardCostUsd,
+    kripicard_cost_usd: kripicardCostUsd,
+    issuance_fee_usd: platformMarkupUsd,
+    platform_markup_usd: platformMarkupUsd,
     total_usd_required: Math.round(totalUsd * 100) / 100,
     total_usdt: totalUsdt,
+    total_charge_usdt: totalUsdt,
     payment_currency: 'USDT',
     exchange_rate_applied: false,
-    note: '1 USDT ≈ 1 USD',
+    note: '1 USDT ≈ 1 USD — platform markup retained internally; only card load sent to Kripicard',
   };
 }
 

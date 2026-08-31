@@ -12,6 +12,7 @@ const CardReloadRequest = require('../models/CardReloadRequest');
 const { RELOAD_PENDING_MESSAGE } = require('./cardReloadApprovalService');
 const { recordPlatformUsdFee, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { issueCardForUser, isSupabaseAdminEnabled } = require('./cardIssueService');
+const { ensureSupabaseUserWallet } = require('./supabaseSyncService');
 
 const CARD_REQUEST_PENDING_MESSAGE =
   'Card request submitted. An admin will process your card shortly (usually within 15-30 mins).';
@@ -155,8 +156,11 @@ async function reloadCardFromWallet(userId, { cardId, amountMmk }) {
 }
 
 /**
- * USDT wallet purchase → debit → Kripicard createcard → activate local card.
- * Refunds USDT if provider issuance fails after debit.
+ * USDT wallet purchase with profit markup:
+ * - Debit user: kripicard_cost_usd + platform_markup_usd (total_charge_usdt)
+ * - Send to Kripicard API: kripicard_cost_usd only (initial card load)
+ * - Record platform_markup_usd in platform_fee_events ledger
+ * Refunds full charge if provider issuance fails after debit.
  */
 async function purchaseCardFromUsdtWallet(userId, {
   initialLoadUsd,
@@ -183,14 +187,25 @@ async function purchaseCardFromUsdtWallet(userId, {
 
   const settings = await getCardPricingSettings();
   const pricing = calculateCardRequestPricingUsdt(initialLoadUsd, settings);
-  const requiredUsdt = pricing.total_usdt;
+  const kripicardCostUsd = pricing.kripicard_cost_usd;
+  const platformMarkupUsd = pricing.platform_markup_usd;
+  const requiredUsdt = pricing.total_charge_usdt;
   const idempotencyKey = paymentRef
-    || `usdt-issue-${userId}-${pricing.initial_load_usd}-${resolvedBin}-${Date.now()}`;
+    || `usdt-issue-${userId}-${kripicardCostUsd}-${resolvedBin}-${Date.now()}`;
+
+  await ensureSupabaseUserWallet(userId, { syncIfExists: true });
 
   await debitUsdt(userId, requiredUsdt, {
-    description: `New card purchase — ${formatUsdt(requiredUsdt)} (${pricing.total_usd_required} USD incl. fee)`,
+    description: `New card purchase — ${formatUsdt(requiredUsdt)} ($${kripicardCostUsd.toFixed(2)} card + $${platformMarkupUsd.toFixed(2)} fee)`,
     createdBy: 'user',
-    metadata: { purpose: 'card_issuance', pricing, wallet: 'usdt', auto_issue: true },
+    metadata: {
+      purpose: 'card_issuance',
+      pricing,
+      wallet: 'usdt',
+      auto_issue: true,
+      kripicard_cost_usd: kripicardCostUsd,
+      platform_markup_usd: platformMarkupUsd,
+    },
   });
 
   let issued;
@@ -212,7 +227,7 @@ async function purchaseCardFromUsdtWallet(userId, {
       userId,
       nameOnCard,
       bin: resolvedBin,
-      amount: pricing.initial_load_usd,
+      amount: kripicardCostUsd,
       currency: 'USD',
       paymentRef: idempotencyKey,
       idempotencyKey,
@@ -220,6 +235,9 @@ async function purchaseCardFromUsdtWallet(userId, {
         source: 'purchaseCardFromUsdtWallet',
         wallet_type: 'usdt',
         pricing,
+        kripicard_cost_usd: kripicardCostUsd,
+        platform_markup_usd: platformMarkupUsd,
+        total_charge_usdt: requiredUsdt,
         note: note || null,
       },
     });
@@ -253,6 +271,9 @@ async function purchaseCardFromUsdtWallet(userId, {
 
   const cardMetadata = {
     pricing,
+    kripicard_cost_usd: kripicardCostUsd,
+    platform_markup_usd: platformMarkupUsd,
+    total_charge_usdt: requiredUsdt,
     payment_method: 'usdt_wallet',
     paid_from_wallet: true,
     wallet_type: 'usdt',
@@ -297,14 +318,16 @@ async function purchaseCardFromUsdtWallet(userId, {
   }
 
   try {
-    await recordPlatformUsdFee(pricing.issuance_fee_usd, {
+    await recordPlatformUsdFee(platformMarkupUsd, {
       feeType: PLATFORM_FEE_TYPES.CARD_ISSUE,
       userId,
       referenceType: 'cards_v2',
       referenceId: card.id,
-      description: `Card issuance fee $${pricing.issuance_fee_usd.toFixed(2)} (USDT auto-issue)`,
+      description: `Card issuance markup $${platformMarkupUsd.toFixed(2)} (Kripicard load $${kripicardCostUsd.toFixed(2)})`,
       metadata: {
         pricing,
+        kripicard_cost_usd: kripicardCostUsd,
+        platform_markup_usd: platformMarkupUsd,
         provider_card_id: cardMetadata.provider_card_id,
         bin: resolvedBin,
       },
