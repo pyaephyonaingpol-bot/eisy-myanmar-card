@@ -68,6 +68,8 @@ const { getRevenueDashboard } = require('../services/revenueAnalyticsService');
 const {
   listP2pAdminTransactions,
   listCardReloadAdminTransactions,
+  listCardIssuanceAdminTransactions,
+  listMmkWithdrawalAdminTransactions,
 } = require('../services/adminLedgerTransactionService');
 const {
   listKycSubmissionsForAdmin,
@@ -1339,13 +1341,21 @@ router.get('/transactions', requirePermission('transactions'), async (req, res) 
     const userId = req.query.user_id ? parseInt(req.query.user_id, 10) : null;
     const category = (req.query.category || '').toLowerCase();
 
-    if (category === 'p2p') {
-      const transactions = await listP2pAdminTransactions({ userId });
-      return res.json({ category: 'p2p', transactions });
+    if (category === 'card_issuance') {
+      const transactions = await listCardIssuanceAdminTransactions({ userId });
+      return res.json({ category: 'card_issuance', transactions });
     }
     if (category === 'card_reload') {
       const transactions = await listCardReloadAdminTransactions({ userId });
       return res.json({ category: 'card_reload', transactions });
+    }
+    if (category === 'mmk_withdrawal') {
+      const transactions = await listMmkWithdrawalAdminTransactions({ userId });
+      return res.json({ category: 'mmk_withdrawal', transactions });
+    }
+    if (category === 'p2p') {
+      const transactions = await listP2pAdminTransactions({ userId });
+      return res.json({ category: 'p2p', transactions });
     }
 
     const type = req.query.type || null;
@@ -1359,7 +1369,7 @@ router.get('/transactions', requirePermission('transactions'), async (req, res) 
 
 /**
  * Daily CSV export for accounting.
- * GET /api/admin/transactions/csv?date=YYYY-MM-DD&source=nowpayments|p2p|card_reload|ledger
+ * GET /api/admin/transactions/csv?date=YYYY-MM-DD&source=card_issuance|card_reload|mmk_withdrawal
  * Dates are interpreted in Asia/Yangon (UTC+06:30).
  */
 router.get('/transactions/csv', requirePermission('transactions'), async (req, res) => {
@@ -1368,7 +1378,7 @@ router.get('/transactions/csv', requirePermission('transactions'), async (req, r
     const userId = req.query.user_id ? parseInt(req.query.user_id, 10) : null;
     const result = await buildDailyTransactionsCsv({
       date: req.query.date || undefined,
-      source: req.query.source || 'nowpayments',
+      source: req.query.source || 'card_issuance',
       userId: Number.isFinite(userId) ? userId : null,
     });
 

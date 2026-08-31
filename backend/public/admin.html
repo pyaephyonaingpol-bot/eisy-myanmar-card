@@ -753,10 +753,11 @@
 
       <section id="tabTransactions" class="panel app-page" data-page="transactions">
         <h2>Transaction History</h2>
-        <p class="hint" style="margin-bottom:0.75rem">P2P trading and card reload ledgers are kept separate for accurate financial reporting. Use Daily CSV Export for NOWPayments (Supabase) deposits and ledger downloads.</p>
+        <p class="hint" style="margin-bottom:0.75rem">Transaction history for automated USDT card issuance, card reloads, and MMK bank withdrawals. Use Daily CSV Export to download accounting reports.</p>
         <div class="admin-tabs" id="txCategoryTabs" role="tablist">
-          <button type="button" class="tab active" data-tx-category="p2p">P2P Transactions</button>
-          <button type="button" class="tab" data-tx-category="card_reload">Card Reload Transactions</button>
+          <button type="button" class="tab active" data-tx-category="card_issuance">Card Issuance</button>
+          <button type="button" class="tab" data-tx-category="card_reload">Card Reloads</button>
+          <button type="button" class="tab" data-tx-category="mmk_withdrawal">MMK Withdrawals</button>
         </div>
         <div class="admin-toolbar" style="flex-wrap:wrap;gap:0.5rem;align-items:center">
           <input id="txUserFilter" type="number" placeholder="Filter by user ID" />
@@ -765,10 +766,9 @@
           <label for="txExportDate" class="hint" style="margin:0">Daily CSV</label>
           <input id="txExportDate" type="date" title="Date (Asia/Yangon)" />
           <select id="txExportSource" title="Export source">
-            <option value="nowpayments">NOWPayments (Supabase)</option>
-            <option value="p2p">P2P</option>
-            <option value="card_reload">Card Reload</option>
-            <option value="ledger">Full Ledger</option>
+            <option value="card_issuance">Card Issuance</option>
+            <option value="card_reload">Card Reloads</option>
+            <option value="mmk_withdrawal">MMK Withdrawals</option>
           </select>
           <button type="button" id="txExportCsvBtn" class="btn btn-primary btn-sm">Download CSV</button>
         </div>
