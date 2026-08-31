@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const { sendOtpEmail } = require('./emailService');
 const { devOtpPayload } = require('./devOtp');
 const { addMinutes, addDays } = require('../lib/sqliteDatetime');
-const { syncUserWalletById } = require('./supabaseSyncService');
+const { syncUserWalletById, ensureSupabaseUserWalletInBackground } = require('./supabaseSyncService');
 const {
   hashPin, verifyPin, generateOtp, generateSessionToken,
   createPinToken, validatePinFormat, normalizeEmail, hashToken,
@@ -145,11 +145,7 @@ async function completeRegistration({ email, otp, name, phone, pin, ipAddress, d
   }
   await User.verifyEmail(user.id);
 
-  syncUserWalletById(user.id).catch((err) => {
-    console.warn('[auth] Supabase wallet sync after register:', err.message);
-  });
-
-  // Provision unique TRC-20 HD deposit address (non-blocking).
+  ensureSupabaseUserWalletInBackground(user.id, { syncIfExists: false });
   try {
     const { provisionDepositAddressInBackground } = require('./tronWalletService');
     provisionDepositAddressInBackground(user.id);
@@ -263,12 +259,7 @@ async function loginWithPin({ email, pin, ipAddress, deviceName, devicePlatform 
     console.warn('[auth] PIN login transaction log skipped:', err.message);
   });
 
-  // Optional Supabase wallet mirror — never block PIN login if sync fails.
-  try {
-    syncUserWalletById(user.id);
-  } catch (err) {
-    console.warn('[auth] Supabase wallet sync skipped after PIN login:', err.message);
-  }
+  ensureSupabaseUserWalletInBackground(user.id);
 
   const freshUser = await User.findById(user.id);
   if (!freshUser) {
@@ -320,6 +311,8 @@ async function verifyLoginOtp({ email, otp, ipAddress, deviceName, devicePlatfor
     ipAddress,
     createdBy: 'user',
   });
+
+  ensureSupabaseUserWalletInBackground(user.id);
 
   const freshUser = await User.findById(user.id);
   return {
@@ -463,6 +456,8 @@ async function verifyBiometrics(email, deviceToken, ipAddress, deviceName, devic
     createdBy: 'user',
   });
 
+  ensureSupabaseUserWalletInBackground(user.id);
+
   return {
     user: mapPublicUser(user),
     sessionToken,
@@ -510,6 +505,9 @@ async function changePassword(userId, { currentPassword, newPassword, confirmPas
 async function getMe(userId) {
   const user = await User.findById(userId);
   if (!user) throw new Error('User not found');
+
+  ensureSupabaseUserWalletInBackground(userId);
+
   return {
     ...mapPublicUser(user),
     has_pin: Boolean(user.pin_hash),
