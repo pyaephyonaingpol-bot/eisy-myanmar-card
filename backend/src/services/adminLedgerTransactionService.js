@@ -173,7 +173,131 @@ async function listCardReloadAdminTransactions({ userId, limit = 200 } = {}) {
   });
 }
 
+async function listCardIssuanceAdminTransactions({ userId, limit = 200 } = {}) {
+  const db = getDb();
+  const params = [];
+  let userFilter = '';
+
+  if (userId) {
+    userFilter = ' AND t.user_id = ?';
+    params.push(userId);
+  }
+
+  const rows = await db.all(`
+    SELECT
+      t.id,
+      t.user_id,
+      t.amount_usd,
+      t.reference_type,
+      t.reference_id,
+      t.description,
+      t.metadata,
+      t.created_at,
+      u.name AS user_name,
+      u.email AS user_email,
+      c.card_number,
+      substr(replace(c.card_number, ' ', ''), -4) AS card_last_four,
+      c.status AS card_status
+    FROM transaction_logs t
+    LEFT JOIN users u ON u.id = t.user_id
+    LEFT JOIN cards_v2 c ON c.id = t.reference_id AND t.reference_type = 'cards_v2'
+    WHERE t.type = 'card_issued'
+    ${userFilter}
+    ORDER BY t.created_at DESC
+    LIMIT ?
+  `, ...params, limit);
+
+  return rows.map((row) => {
+    const metadata = parseRecordMetadata(row.metadata);
+    const pricing = metadata.pricing || {};
+    return {
+      id: row.id,
+      ref_code: row.reference_id ? `CARD-${row.reference_id}` : `ISSUE-${row.id}`,
+      category: 'card_issuance',
+      user_id: row.user_id,
+      user_name: row.user_name,
+      user_email: row.user_email,
+      card_id: row.reference_id,
+      card_last_four: row.card_last_four,
+      kripicard_cost_usd: round2(
+        pricing.kripicard_cost_usd ?? pricing.initial_load_usd ?? metadata.kripicard_cost_usd
+      ),
+      platform_markup_usd: round2(
+        pricing.platform_markup_usd ?? pricing.issuance_fee_usd ?? metadata.platform_markup_usd
+      ),
+      total_charge_usdt: round2(
+        pricing.total_charge_usdt ?? pricing.total_usdt ?? row.amount_usd
+      ),
+      wallet_type: metadata.wallet || metadata.wallet_type || 'usdt',
+      provider: metadata.provider || 'kripicard',
+      provider_card_id: metadata.provider_card_id || null,
+      status: metadata.pending || row.card_status === 'pending' ? 'pending' : 'issued',
+      created_at: row.created_at,
+      pricing,
+    };
+  });
+}
+
+async function listMmkWithdrawalAdminTransactions({ userId, limit = 200 } = {}) {
+  const db = getDb();
+  const params = [];
+  let userFilter = '';
+
+  if (userId) {
+    userFilter = ' AND w.user_id = ?';
+    params.push(userId);
+  }
+
+  const rows = await db.all(`
+    SELECT
+      w.id,
+      w.user_id,
+      w.ref_code,
+      w.amount_mmk,
+      w.fee_mmk,
+      w.net_mmk,
+      w.fee_percent,
+      w.bank_name,
+      w.account_name,
+      w.account_number,
+      w.status,
+      w.admin_note,
+      w.processed_at,
+      w.created_at,
+      u.name AS user_name,
+      u.email AS user_email
+    FROM mmk_withdrawal_requests w
+    LEFT JOIN users u ON u.id = w.user_id
+    WHERE 1=1
+    ${userFilter}
+    ORDER BY COALESCE(w.processed_at, w.created_at) DESC
+    LIMIT ?
+  `, ...params, limit);
+
+  return rows.map((row) => ({
+    id: row.id,
+    ref_code: row.ref_code,
+    category: 'mmk_withdrawal',
+    user_id: row.user_id,
+    user_name: row.user_name,
+    user_email: row.user_email,
+    amount_mmk: round2(row.amount_mmk),
+    fee_mmk: round2(row.fee_mmk),
+    net_mmk: round2(row.net_mmk),
+    fee_percent: row.fee_percent != null ? round2(row.fee_percent) : null,
+    bank_name: row.bank_name,
+    account_name: row.account_name,
+    account_number: row.account_number,
+    status: row.status,
+    admin_note: row.admin_note,
+    processed_at: row.processed_at,
+    created_at: row.created_at,
+  }));
+}
+
 module.exports = {
   listP2pAdminTransactions,
   listCardReloadAdminTransactions,
+  listCardIssuanceAdminTransactions,
+  listMmkWithdrawalAdminTransactions,
 };

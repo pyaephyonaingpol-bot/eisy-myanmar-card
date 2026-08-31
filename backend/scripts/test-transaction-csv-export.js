@@ -6,6 +6,8 @@
 
 require('../src/lib/loadEnv');
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const {
   dayBoundsYangon,
   todayYangonDateString,
@@ -48,19 +50,25 @@ async function main() {
   assert.ok(threw);
   console.log('ok');
 
-  section('build nowpayments CSV (live Supabase if configured)');
-  const { isSupabaseEnabled } = require('../src/lib/supabase');
-  if (isSupabaseEnabled()) {
-    const result = await buildDailyTransactionsCsv({
-      date: today,
-      source: 'nowpayments',
-    });
-    assert.ok(result.filename.includes(today));
-    assert.ok(result.csv.startsWith('created_at,'));
-    console.log('ok rows=', result.rowCount, 'file=', result.filename);
-  } else {
-    console.log('skip — Supabase not configured');
+  section('export service accepts current sources only');
+  const exportSrc = fs.readFileSync(
+    path.join(__dirname, '../src/services/transactionCsvExportService.js'),
+    'utf8'
+  );
+  assert.ok(exportSrc.includes("src === 'card_issuance'"));
+  assert.ok(exportSrc.includes("src === 'mmk_withdrawal'"));
+  assert.ok(!exportSrc.includes("src === 'nowpayments'"));
+  console.log('ok');
+
+  section('invalid export source');
+  let invalid = false;
+  try {
+    await buildDailyTransactionsCsv({ date: today, source: 'nowpayments' });
+  } catch (err) {
+    invalid = err.code === 'INVALID_SOURCE';
   }
+  assert.ok(invalid);
+  console.log('ok');
 
   console.log('\nCSV export helper checks passed.');
 }

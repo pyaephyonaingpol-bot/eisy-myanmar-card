@@ -626,10 +626,10 @@
 
       const txCategoryTabs = $('txCategoryTabs');
       if (txCategoryTabs) {
-        this.txCategory = this.txCategory || 'p2p';
+        this.txCategory = this.txCategory || 'card_issuance';
         txCategoryTabs.querySelectorAll('[data-tx-category]').forEach((btn) => {
           btn.addEventListener('click', () => {
-            this.txCategory = btn.dataset.txCategory || 'p2p';
+            this.txCategory = btn.dataset.txCategory || 'card_issuance';
             txCategoryTabs.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
             btn.classList.add('active');
             this.loadTransactions();
@@ -3234,7 +3234,12 @@
       const table = $('transactionsTable');
       if (!table) return;
 
-      const category = this.txCategory || 'p2p';
+      const category = this.txCategory || 'card_issuance';
+      const categoryLabels = {
+        card_issuance: 'card issuance',
+        card_reload: 'card reload',
+        mmk_withdrawal: 'MMK withdrawal',
+      };
 
       try {
         const userFilter = $('txUserFilter');
@@ -3245,26 +3250,51 @@
         const transactions = Array.isArray(data.transactions) ? data.transactions : [];
 
         if (!transactions.length) {
-          table.innerHTML = '<p class="hint">No ' + (category === 'p2p' ? 'P2P' : 'card reload') + ' transactions yet.</p>';
+          table.innerHTML = '<p class="hint">No ' + (categoryLabels[category] || category) + ' transactions yet.</p>';
           return;
         }
 
-        if (category === 'p2p') {
+        if (category === 'card_issuance') {
           table.innerHTML =
             '<table class="data-table">' +
               '<thead><tr>' +
-              '<th>Time</th><th>Order</th><th>Side</th><th>Escrow (USDT)</th>' +
-              '<th>Buyer</th><th>Seller</th><th>P2P Fee</th><th>Status</th>' +
+              '<th>Time</th><th>Reference</th><th>User</th><th>Card Load</th>' +
+              '<th>Platform Fee</th><th>Total Charged</th><th>Wallet</th><th>Status</th>' +
               '</tr></thead><tbody>' +
               transactions.map((t) =>
                 '<tr>' +
-                  '<td><small>' + this.esc(t.released_at || t.created_at || '—') + '</small></td>' +
-                  '<td><code>' + this.esc(t.ref_code) + '</code><br><small>#' + t.id + '</small></td>' +
-                  '<td>' + this.esc(t.side || '—') + '</td>' +
-                  '<td>' + Number(t.escrow_usdt || 0).toFixed(2) + '</td>' +
-                  '<td><small>' + this.esc(t.buyer?.name || t.buyer?.email || t.buyer?.user_id || '—') + '</small></td>' +
-                  '<td><small>' + this.esc(t.seller?.name || t.seller?.email || t.seller?.user_id || '—') + '</small></td>' +
-                  '<td><strong>' + Number(t.platform_fee_usdt || 0).toFixed(2) + ' USDT</strong></td>' +
+                  '<td><small>' + this.esc(t.created_at || '—') + '</small></td>' +
+                  '<td><code>' + this.esc(t.ref_code) + '</code>' +
+                    (t.card_last_four ? '<br><small>•••• ' + this.esc(t.card_last_four) + '</small>' : '') +
+                  '</td>' +
+                  '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small></td>' +
+                  '<td>$' + Number(t.kripicard_cost_usd || 0).toFixed(2) + '</td>' +
+                  '<td><strong>$' + Number(t.platform_markup_usd || 0).toFixed(2) + '</strong></td>' +
+                  '<td>' + Number(t.total_charge_usdt || 0).toFixed(2) + ' USDT</td>' +
+                  '<td>' + this.esc((t.wallet_type || '—').toUpperCase()) + '</td>' +
+                  '<td><span class="badge">' + this.esc(t.status) + '</span></td>' +
+                '</tr>'
+              ).join('') +
+              '</tbody></table>';
+          return;
+        }
+
+        if (category === 'mmk_withdrawal') {
+          table.innerHTML =
+            '<table class="data-table">' +
+              '<thead><tr>' +
+              '<th>Time</th><th>Reference</th><th>User</th><th>Amount</th>' +
+              '<th>Fee</th><th>Net</th><th>Bank</th><th>Status</th>' +
+              '</tr></thead><tbody>' +
+              transactions.map((t) =>
+                '<tr>' +
+                  '<td><small>' + this.esc(t.processed_at || t.created_at || '—') + '</small></td>' +
+                  '<td><code>' + this.esc(t.ref_code) + '</code></td>' +
+                  '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small></td>' +
+                  '<td>' + Math.round(Number(t.amount_mmk || 0)).toLocaleString() + ' MMK</td>' +
+                  '<td>' + Math.round(Number(t.fee_mmk || 0)).toLocaleString() + ' MMK</td>' +
+                  '<td><strong>' + Math.round(Number(t.net_mmk || 0)).toLocaleString() + ' MMK</strong></td>' +
+                  '<td><small>' + this.esc(t.bank_name || '—') + '</small></td>' +
                   '<td><span class="badge">' + this.esc(t.status) + '</span></td>' +
                 '</tr>'
               ).join('') +
@@ -3328,7 +3358,7 @@
       const status = $('txExportStatus');
       const btn = $('txExportCsvBtn');
       const date = $('txExportDate')?.value || this.yangonDateString();
-      const source = $('txExportSource')?.value || 'nowpayments';
+      const source = $('txExportSource')?.value || 'card_issuance';
       const userId = $('txUserFilter')?.value?.trim();
 
       let path = '/api/admin/transactions/csv?date=' + encodeURIComponent(date)
