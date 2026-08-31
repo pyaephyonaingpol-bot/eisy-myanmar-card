@@ -64,6 +64,55 @@ async function syncUserWalletById(userId) {
   return upsertUserWallet(user);
 }
 
+/**
+ * Ensure a Supabase user_wallets row exists for this Turso user.
+ * Creates the mirror row on first login / dashboard load when missing.
+ * Non-fatal when Supabase is disabled or unreachable.
+ */
+async function ensureSupabaseUserWallet(userId, { syncIfExists = false } = {}) {
+  if (!isSupabaseEnabled()) {
+    return { ensured: false, skipped: true, reason: 'supabase_disabled' };
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    return { ensured: false, skipped: true, reason: 'user_not_found' };
+  }
+
+  const { fetchFreshUserWalletRow, invalidateUserWalletCache } = require('./supabaseWalletReadService');
+  const existing = await fetchFreshUserWalletRow(userId, {
+    email: user.email,
+    bypassCache: true,
+  });
+
+  if (existing && !syncIfExists) {
+    return { ensured: true, created: false, row: existing };
+  }
+
+  const row = await upsertUserWallet(user);
+  invalidateUserWalletCache(userId);
+
+  let freshRow = existing;
+  if (!existing || syncIfExists) {
+    freshRow = await fetchFreshUserWalletRow(userId, {
+      email: user.email,
+      bypassCache: true,
+    });
+  }
+
+  return {
+    ensured: Boolean(row || freshRow),
+    created: !existing,
+    row: freshRow || row,
+  };
+}
+
+function ensureSupabaseUserWalletInBackground(userId, options = {}) {
+  ensureSupabaseUserWallet(userId, options).catch((err) => {
+    console.warn('[supabase] ensure user wallet:', err.message);
+  });
+}
+
 async function syncDeposit(deposit, user) {
   if (!isSupabaseEnabled() || !deposit) return null;
   const u = user || (deposit.user_id ? await User.findById(deposit.user_id) : null);
@@ -168,6 +217,8 @@ async function syncUsdtBankWithdrawal(withdrawal, user) {
 
 module.exports = {
   syncUserWalletById,
+  ensureSupabaseUserWallet,
+  ensureSupabaseUserWalletInBackground,
   upsertUserWallet,
   syncDeposit,
   syncCardApplication,

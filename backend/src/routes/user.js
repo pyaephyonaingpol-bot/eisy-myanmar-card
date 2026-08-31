@@ -21,6 +21,7 @@ const { createDepositRequest } = require('../services/depositService');
 const { RELOAD_PENDING_MESSAGE } = require('../services/cardReloadApprovalService');
 const { walletPayload, formatMmk, formatUsdt, migrateLegacyUsdToMmk } = require('../services/walletService');
 const { overlayWalletPayloadFromSupabase } = require('../services/supabaseWalletReadService');
+const { ensureSupabaseUserWallet } = require('../services/supabaseSyncService');
 const {
   reloadCardFromWallet,
   purchaseCardFromUsdtWallet,
@@ -400,6 +401,13 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
       legacyMigration = await migrateLegacyUsdToMmk(req.user.id);
       user = await User.findById(req.user.id);
     }
+
+    try {
+      await ensureSupabaseUserWallet(req.user.id);
+    } catch (err) {
+      console.warn('[user/wallet] Supabase wallet ensure skipped:', err.message);
+    }
+
     const localPayload = {
       ...walletPayload(user),
       email: user.email || req.user.email,

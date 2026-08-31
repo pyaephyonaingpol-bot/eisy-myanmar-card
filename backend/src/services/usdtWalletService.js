@@ -316,6 +316,13 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
   const user = await User.findById(userId);
   if (!user) throw new Error('User not found');
 
+  try {
+    const { ensureSupabaseUserWallet } = require('./supabaseSyncService');
+    await ensureSupabaseUserWallet(userId);
+  } catch (err) {
+    console.warn('[usdt-wallet/overview] Supabase wallet ensure skipped:', err.message);
+  }
+
   // Always resolve balances first so Available / Locked / Total can render
   // even when deposit-address provisioning or escrow queries fail.
   const balances = await resolveUsdtBalancesForDisplay(userId, user);

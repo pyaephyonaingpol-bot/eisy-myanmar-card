@@ -26,6 +26,7 @@
     "test:upload-storage": "node scripts/test-upload-storage.js",
     "test:user-profile-phone": "node scripts/test-user-profile-phone.js",
     "test:usdt-wallet-loading": "node scripts/test-usdt-wallet-loading.js",
+    "test:ensure-supabase-usdt-wallet": "node scripts/test-ensure-supabase-usdt-wallet.js",
     "test:pin-login": "node scripts/test-pin-login.js",
     "test:acctinfo-guard": "node scripts/test-acctinfo-guard.js",
     "test:dashboard-profile-page": "node scripts/test-dashboard-profile-page.js",
