@@ -22,6 +22,7 @@
     "test:admin-usdt-wd-list": "node scripts/test-admin-usdt-withdrawal-list.js",
     "test:admin-no-payment-methods": "node scripts/test-admin-no-payment-methods.js",
     "test:admin-split-fee-sections": "node scripts/test-admin-split-fee-sections.js",
+    "test:admin-rates-pricing-blocks": "node scripts/test-admin-rates-pricing-blocks.js",
     "test:admin-ledger-filter-cleanup": "node scripts/test-admin-ledger-filter-cleanup.js",
     "test:usdt-topup-modal": "node scripts/test-usdt-topup-modal.js",
     "test:transaction-csv-export": "node scripts/test-transaction-csv-export.js",
