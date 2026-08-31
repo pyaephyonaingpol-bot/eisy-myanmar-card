@@ -544,7 +544,7 @@
               <div>
                 <p class="sa-card-eyebrow">Payout pricing</p>
                 <h2 class="sa-card-title">Withdrawal rates &amp; fees</h2>
-                <p class="sa-card-sub">USDT→MMK rate and service fee used on every new withdrawal</p>
+                <p class="sa-card-sub">USDT→MMK rate and withdrawal service fee used on every new payout</p>
               </div>
             </div>
 
@@ -560,7 +560,7 @@
                 <input id="wrEffectiveDate" type="date" required />
               </div>
 
-              <p class="sa-section-label">Service fee / markup</p>
+              <p class="sa-section-label">Withdrawal fees</p>
               <div class="field">
                 <label for="wrFeeMode">Fee mode</label>
                 <select id="wrFeeMode">
@@ -569,7 +569,7 @@
                   <option value="fixed">Fixed USDT only</option>
                   <option value="max_percent_or_min" selected>Max(percent, minimum)</option>
                 </select>
-                <small class="hint">Optional platform profit on deposits &amp; withdrawals</small>
+                <small class="hint">Applied to USDT→MMK bank payouts and other withdrawal routes (not deposits)</small>
               </div>
               <div class="field">
                 <label for="wrFeePercent">Percent (%)</label>
@@ -860,8 +860,8 @@
 
         <h2 style="margin-top:2rem">Rate &amp; Pricing</h2>
         <p class="hint" style="margin-bottom:1rem">
-          Core exchange rate and product fees. Withdrawal fee / minimums are managed on
-          <strong>Overview</strong>. Saves are logged to Exchange Rate History.
+          Core exchange rate and product fees. Withdrawal fees and minimums are managed on
+          <strong>Overview → Withdrawal rates &amp; fees</strong>. Saves are logged to Exchange Rate History.
         </p>
         <form id="adminSettingsForm" class="form sa-rates-form" style="max-width:min(640px,100%)">
           <p class="sa-section-label">Exchange rate</p>
@@ -901,7 +901,29 @@
             <input id="settingMinUsdtReload" type="number" step="0.01" min="0" required />
           </div>
 
-          <p class="sa-section-label">P2P &amp; service fee</p>
+          <p class="sa-section-label">Deposit &amp; card purchase fees</p>
+          <div class="field">
+            <label for="settingDepositFeeMode">Fee mode</label>
+            <select id="settingDepositFeeMode">
+              <option value="off">Off (no fee)</option>
+              <option value="percent">Percent only</option>
+              <option value="fixed">Fixed USDT only</option>
+              <option value="max_percent_or_min" selected>Max(percent, minimum)</option>
+            </select>
+            <small class="hint">Applied to USDT/MMK deposits and card top-ups (not withdrawals)</small>
+          </div>
+          <div class="field">
+            <label for="settingDepositFeePercent">Fee (%)</label>
+            <input id="settingDepositFeePercent" type="number" step="0.01" min="0" max="20" required />
+            <small class="hint">Used for Percent and Max(%, min) modes</small>
+          </div>
+          <div class="field">
+            <label for="settingDepositFeeMinUsdt">Fixed / min fee (USDT)</label>
+            <input id="settingDepositFeeMinUsdt" type="number" step="0.01" min="0" required />
+            <small class="hint">Fixed amount or minimum floor, depending on mode</small>
+          </div>
+
+          <p class="sa-section-label">P2P trading</p>
           <div class="field">
             <label for="settingP2pSellerFee">P2P seller fee (%)</label>
             <input id="settingP2pSellerFee" type="number" step="0.1" min="0" max="10" required />
@@ -910,36 +932,6 @@
             <label>Platform USDT revenue</label>
             <div id="settingPlatformRevenueBalance" class="p2p-revenue-balance">—</div>
             <small class="hint">Read-only</small>
-          </div>
-          <div class="field">
-            <label for="settingPaymentFeeMode">Service fee mode</label>
-            <select id="settingPaymentFeeMode">
-              <option value="off">Off (no fee)</option>
-              <option value="percent">Percent only</option>
-              <option value="fixed">Fixed USDT only</option>
-              <option value="max_percent_or_min" selected>Max(percent, minimum)</option>
-            </select>
-            <small class="hint">Optional markup on deposits &amp; withdrawals</small>
-          </div>
-          <div class="field">
-            <label for="settingPaymentFeePercent">Service fee (%)</label>
-            <input id="settingPaymentFeePercent" type="number" step="0.01" min="0" max="20" required />
-            <small class="hint">Used for Percent and Max(%, min) modes</small>
-          </div>
-          <div class="field">
-            <label for="settingPaymentFeeMinUsdt">Fixed / min fee (USDT)</label>
-            <input id="settingPaymentFeeMinUsdt" type="number" step="0.01" min="0" required />
-            <small class="hint">Fixed amount or minimum floor, depending on mode</small>
-          </div>
-
-          <p class="sa-section-label">Minimum withdrawals</p>
-          <div class="field">
-            <label for="settingMinUsdtWithdrawal">Min USDT withdrawal</label>
-            <input id="settingMinUsdtWithdrawal" type="number" step="0.01" min="0.01" required />
-          </div>
-          <div class="field">
-            <label for="settingMinMmkWithdrawal">Min MMK withdrawal</label>
-            <input id="settingMinMmkWithdrawal" type="number" step="1" min="1" required />
           </div>
 
           <div class="sa-actions">

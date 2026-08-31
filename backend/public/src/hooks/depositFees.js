@@ -45,8 +45,32 @@
     return FEE_MODE.MAX_PERCENT_OR_MIN;
   }
 
-  function resolveMode(fees) {
-    return normalizeFeeMode(fees?.payment_service_fee_mode);
+  function resolveMode(fees, scope) {
+    const prefix = scope === 'withdrawal' ? 'withdrawal_service_fee' : 'deposit_service_fee';
+    const mode = fees?.[`${prefix}_mode`] ?? fees?.payment_service_fee_mode;
+    return normalizeFeeMode(mode);
+  }
+
+  function resolvePercent(fees, scope) {
+    const c = cfg();
+    const prefix = scope === 'withdrawal' ? 'withdrawal_service_fee' : 'deposit_service_fee';
+    return Number(
+      fees?.[`${prefix}_percent`]
+      ?? fees?.payment_service_fee_percent
+      ?? c.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT
+      ?? 2
+    );
+  }
+
+  function resolveMinimumUsdt(fees, scope) {
+    const c = cfg();
+    const prefix = scope === 'withdrawal' ? 'withdrawal_service_fee' : 'deposit_service_fee';
+    return Number(
+      fees?.[`${prefix}_minimum_usdt`]
+      ?? fees?.payment_service_fee_minimum_usdt
+      ?? c.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT
+      ?? 1
+    );
   }
 
   function calcUsdtFee(amount, feePercent, minimumFee, mode) {
@@ -80,12 +104,11 @@
   }
 
   function calculateUsdtDepositFeePreview(amountUsdt, fees = {}) {
-    const c = cfg();
     const amount = Math.round((Number(amountUsdt) || 0) * 100) / 100;
     if (!(amount > 0)) return null;
-    const mode = resolveMode(fees);
-    const feePercent = Number(fees.payment_service_fee_percent ?? c.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
-    const minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? c.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1);
+    const mode = resolveMode(fees, 'deposit');
+    const feePercent = resolvePercent(fees, 'deposit');
+    const minimumFee = resolveMinimumUsdt(fees, 'deposit');
     const percentFee = Math.round(amount * feePercent) / 100;
     const fee = calcUsdtFee(amount, feePercent, minimumFee, mode);
     const net = Math.round((amount - fee) * 100) / 100;
@@ -103,12 +126,10 @@
     const c = cfg();
     const amount = Math.round(Number(amountMmk) || 0);
     if (!(amount > 0)) return null;
-    const mode = resolveMode(fees);
-    const feePercent = Number(fees.payment_service_fee_percent ?? c.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
+    const mode = resolveMode(fees, 'deposit');
+    const feePercent = resolvePercent(fees, 'deposit');
     const rate = Number(fees.mmk_to_usd_rate || fees.usdt_to_mmk_rate || 4500);
-    const minimumFee = Math.round(
-      Number(fees.payment_service_fee_minimum_usdt ?? c.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1) * rate
-    );
+    const minimumFee = Math.round(resolveMinimumUsdt(fees, 'deposit') * rate);
     const percentFee = Math.round(amount * feePercent / 100);
     let fee = 0;
     if (mode === FEE_MODE.OFF) fee = 0;
@@ -130,9 +151,9 @@
     const c = cfg();
     const amount = Math.round((Number(amountUsdt) || 0) * 100) / 100;
     if (!(amount > 0)) return null;
-    const mode = resolveMode(fees);
-    const feePercent = Number(fees.payment_service_fee_percent ?? c.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
-    const minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? c.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1);
+    const mode = resolveMode(fees, 'withdrawal');
+    const feePercent = resolvePercent(fees, 'withdrawal');
+    const minimumFee = resolveMinimumUsdt(fees, 'withdrawal');
     const percentFee = Math.round(amount * feePercent) / 100;
     const feeUsdt = calcUsdtFee(amount, feePercent, minimumFee, mode);
     const net = Math.round((amount - feeUsdt) * 100) / 100;

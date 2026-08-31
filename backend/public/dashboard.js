@@ -3599,7 +3599,7 @@ const Dashboard = {
   },
 
   calculateUsdtDepositFeePreviewClient(amountUsdt) {
-    const fees = this.withdrawalFees || this.pricingSettings || {};
+    const fees = this.depositFees || this.cardPricing?.deposit_fees || this.pricingSettings || {};
     if (window.EisyHooks?.depositFees?.calculateUsdtDepositFeePreview) {
       return window.EisyHooks.depositFees.calculateUsdtDepositFeePreview(amountUsdt, fees);
     }
@@ -3633,7 +3633,7 @@ const Dashboard = {
   },
 
   calculateMmkDepositFeePreviewClient(amountMmk) {
-    const fees = this.withdrawalFees || this.pricingSettings || {};
+    const fees = this.depositFees || this.cardPricing?.deposit_fees || this.pricingSettings || {};
     if (window.EisyHooks?.depositFees?.calculateMmkDepositFeePreview) {
       return window.EisyHooks.depositFees.calculateMmkDepositFeePreview(amountMmk, {
         ...fees,
@@ -5235,6 +5235,7 @@ const Dashboard = {
     try {
       const data = await Auth.api('GET', '/api/user/card/pricing');
       this.cardPricing = data;
+      this.depositFees = data.deposit_fees || null;
       this._markFetched('pricing');
       const min = data.minimum_initial_deposit_usd ?? 10;
       const input = $('cardInitialLoad');
@@ -6332,9 +6333,9 @@ const Dashboard = {
     if (reloadFeeEl) reloadFeeEl.textContent = '$3.50 fixed (+ $2.00 platform profit per reload)';
 
     const wf = p.withdrawal_fees || this.withdrawalFees || {};
-    const mode = String(wf.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
-    const pct = Number(wf.payment_service_fee_percent ?? 2);
-    const minFee = Number(wf.payment_service_fee_minimum_usdt ?? 1);
+    const mode = String(wf.withdrawal_service_fee_mode || wf.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
+    const pct = Number(wf.withdrawal_service_fee_percent ?? wf.payment_service_fee_percent ?? 2);
+    const minFee = Number(wf.withdrawal_service_fee_minimum_usdt ?? wf.payment_service_fee_minimum_usdt ?? 1);
     const unifiedLabel = mode === 'off'
       ? 'No service fee'
       : mode === 'fixed'
