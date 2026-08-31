@@ -249,6 +249,55 @@ const Card = {
       ORDER BY c.created_at DESC LIMIT ?
     `, limit);
   },
+
+  /**
+   * Soft-remove a card from the user's My Cards list.
+   * Pending requests are cancelled; issued cards are hidden via metadata
+   * (ledger / reload history stays intact — no hard DELETE).
+   */
+  async removeFromUserList(id, userId, { reason } = {}) {
+    const db = getDb();
+    const existing = await this.findById(id);
+    if (!existing || Number(existing.user_id) !== Number(userId)) return null;
+
+    let metadata = {};
+    try {
+      metadata = existing.metadata ? JSON.parse(existing.metadata) : {};
+    } catch (_) {
+      metadata = {};
+    }
+
+    const status = String(existing.status || '').toLowerCase();
+    const isPending =
+      status === 'pending' || String(existing.card_number || '').startsWith('PENDING-');
+
+    metadata.removed_by_user = true;
+    metadata.removed_at = new Date().toISOString();
+    if (reason) metadata.removed_reason = String(reason).slice(0, 200);
+
+    if (isPending) {
+      await db.run(`
+        UPDATE ${this.TABLE}
+        SET status = 'cancelled',
+            cancelled_at = datetime('now'),
+            status_reason = COALESCE(?, status_reason),
+            metadata = ?,
+            updated_at = datetime('now')
+        WHERE id = ? AND user_id = ?
+      `, reason || 'Removed by user', JSON.stringify(metadata), id, userId);
+    } else {
+      await db.run(`
+        UPDATE ${this.TABLE}
+        SET metadata = ?,
+            updated_at = datetime('now')
+        WHERE id = ? AND user_id = ?
+      `, JSON.stringify(metadata), id, userId);
+    }
+
+    const row = await this.findById(id);
+    syncCardApplication(row).catch((err) => console.warn('[supabase] card sync:', err.message));
+    return row;
+  },
 };
 
 module.exports = Card;

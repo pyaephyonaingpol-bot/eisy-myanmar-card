@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="192x192" href="/icons/Icon-192.png" />
   <link rel="apple-touch-icon" sizes="512x512" href="/icons/Icon-512.png" />
-  <link rel="stylesheet" href="/styles.css?v=20260830profile" />
+  <link rel="stylesheet" href="/styles.css?v=20260831cardmodal" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
     /* Early paint lock: avoid auth↔dashboard flash before JS mounts */
@@ -150,6 +150,57 @@
         <button type="submit" class="btn btn-primary">Submit Payment Proof</button>
       </form>
       <pre class="output hidden" id="reloadOutput" aria-hidden="true"></pre>
+    </div>
+  </div>
+
+  <!-- ═══ CARD DETAIL MODAL ═══ -->
+  <div id="cardDetailModal" class="modal hidden" role="dialog" aria-labelledby="cardDetailModalTitle" aria-modal="true">
+    <div class="modal-box modal-box-wide card-detail-modal-box">
+      <div class="modal-header-row">
+        <h3 id="cardDetailModalTitle" data-i18n="card_detail_modal_title">Card Details</h3>
+        <button type="button" id="cardDetailModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+
+      <div id="cardDetailPreview" class="card-detail-preview" aria-hidden="true">
+        <div class="card-detail-preview-top">
+          <span class="card-detail-brand">EISY MYANMAR</span>
+          <span id="cardDetailStatusPill" class="card-status-pill">—</span>
+        </div>
+        <div id="cardDetailNumber" class="card-detail-number">•••• •••• •••• ••••</div>
+        <div class="card-detail-preview-meta">
+          <div><small data-i18n="name_on_card">Name on Card</small><strong id="cardDetailHolder">—</strong></div>
+          <div><small>EXP</small><strong id="cardDetailExp">—</strong></div>
+          <div><small>CVV</small><strong id="cardDetailCvv">—</strong></div>
+        </div>
+      </div>
+
+      <div class="card-detail-grid" id="cardDetailGrid">
+        <div class="card-detail-item">
+          <span class="label" data-i18n="status">Status</span>
+          <span class="value" id="cardDetailStatus">—</span>
+        </div>
+        <div class="card-detail-item">
+          <span class="label" data-i18n="card_balance">Balance</span>
+          <span class="value" id="cardDetailBalance">—</span>
+        </div>
+        <div class="card-detail-item">
+          <span class="label" data-i18n="selected_card">Selected Card</span>
+          <span class="value" id="cardDetailLabel">—</span>
+        </div>
+        <div class="card-detail-item">
+          <span class="label" data-i18n="card_created">Created</span>
+          <span class="value" id="cardDetailCreated">—</span>
+        </div>
+      </div>
+      <p id="cardDetailStatusReason" class="hint card-detail-reason hidden"></p>
+      <p id="cardDetailError" class="error-text hidden" role="alert"></p>
+
+      <div class="card-detail-actions">
+        <button type="button" id="cardDetailRevealBtn" class="btn btn-secondary btn-sm" data-i18n="show_card_details">Show Card Details</button>
+        <button type="button" id="cardDetailReloadBtn" class="btn btn-primary btn-sm" data-i18n="top_up_reload_card">Top Up / Reload Card</button>
+        <button type="button" id="cardDetailDeleteBtn" class="btn btn-reject btn-sm" data-i18n="btn_delete_card">Delete Card</button>
+      </div>
+      <p class="hint" style="margin-top:0.75rem" data-i18n="card_delete_hint">Removes this card from My Cards. Pending requests are cancelled; issued cards stay in records for history.</p>
     </div>
   </div>
 
@@ -1435,13 +1486,13 @@
   <script src="/vendor/browser-image-compression.js?v=20260812a"></script>
   <script type="module" src="/supabaseBridge.js?v=20260821fresh"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260830profile"></script>
+  <script src="/i18n.js?v=20260831cardmodal"></script>
   <script src="/auth.js?v=20260824pinuser"></script>
   <script src="/src/services/apiClient.js?v=20260817m2"></script>
   <script src="/src/services/depositApi.js?v=20260828tron"></script>
   <script src="/src/services/usdtWalletApi.js?v=20260824usdtload"></script>
   <script src="/src/services/withdrawalApi.js?v=20260817m2"></script>
-  <script src="/src/services/cardsApi.js?v=20260817m2"></script>
+  <script src="/src/services/cardsApi.js?v=20260831cardmodal"></script>
   <script src="/src/services/accountApi.js?v=20260823profile"></script>
   <script src="/src/services/p2pApi.js?v=20260819p2p"></script>
   <script src="/src/services/index.js?v=20260817m2"></script>
@@ -1456,6 +1507,6 @@
   <script src="/src/components/index.js?v=20260817m2"></script>
   <script src="/nav.js?v=20260816kb2"></script>
   <script src="/viewport.js?v=20260821scroll"></script>
-  <script src="/dashboard.js?v=20260830profile"></script>
+  <script src="/dashboard.js?v=20260831cardmodal"></script>
 </body>
 </html>

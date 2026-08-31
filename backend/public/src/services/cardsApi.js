@@ -23,5 +23,8 @@
     listReloads() {
       return api().request('GET', '/api/user/reloads');
     },
+    remove(cardId, body = {}) {
+      return api().request('POST', `/api/user/cards/${cardId}/remove`, body, { sensitive: true });
+    },
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);
