@@ -432,10 +432,6 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             <span data-i18n="nav_admin_deposits">Deposits</span>
           </button>
-          <button type="button" class="nav-item" data-page="payment-methods" data-admin-perm="payment_methods">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h2"/></svg>
-            <span data-i18n="nav_admin_payment_methods">Payment Methods</span>
-          </button>
           <button type="button" class="nav-item" data-page="cards" data-admin-perm="cards">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
             <span data-i18n="nav_admin_cards">Cards</span>
@@ -510,7 +506,6 @@
         <main class="app-content">
           <span class="hidden" data-page-title="overview">Overview</span>
           <span class="hidden" data-page-title="deposits" data-i18n="nav_admin_deposits">Deposits</span>
-          <span class="hidden" data-page-title="payment-methods" data-i18n="nav_admin_payment_methods">Payment Methods</span>
           <span class="hidden" data-page-title="cards" data-i18n="nav_admin_cards">Cards</span>
           <span class="hidden" data-page-title="users" data-i18n="nav_admin_users">Users</span>
           <span class="hidden" data-page-title="transactions" data-i18n="nav_admin_transactions">Transactions</span>
@@ -953,75 +948,10 @@
         </form>
         <pre class="output hidden" id="adminSettingsOut" aria-hidden="true"></pre>
 
-        <div data-admin-perm="payment_methods" class="panel" style="margin-top:1.5rem;padding:1rem 1.15rem">
-          <h3 style="margin:0 0 0.35rem">MMK Payment Methods</h3>
-          <p class="hint" style="margin:0 0 0.75rem">Bank / KBZPay / WavePay accounts for card applications and deposits are managed on the Payment Methods page.</p>
-          <button type="button" class="btn btn-secondary btn-sm" data-goto="payment-methods">Open Payment Methods</button>
-        </div>
-
         <h2 style="margin-top:2rem">Exchange Rate History</h2>
         <p class="hint" style="margin-bottom:0.75rem">Historical log of all rate and fee updates. Deposits store the rate active at request time.</p>
         <div id="exchangeRateHistoryTable" class="data-table-wrap"><p class="hint">Loading history…</p></div>
       </section>
-
-      <section id="tabPaymentMethods" class="panel app-page" data-page="payment-methods" data-admin-perm="payment_methods">
-        <h2>Payment Methods / Bank Settings</h2>
-        <p class="hint" style="margin-bottom:0.85rem">
-          Manage MMK receiving accounts (Bank Transfer, KBZPay, WavePay). Active methods appear automatically in the user
-          <strong>Apply for New Card</strong>, card reload, and Deposit flows.
-        </p>
-
-        <form id="adminPaymentMethodForm" class="form grid-admin-form" style="max-width:min(760px,100%);margin-bottom:1rem">
-          <input type="hidden" id="pmEditId" value="" />
-          <div class="field">
-            <label for="pmMethodType">Payment Type</label>
-            <select id="pmMethodType" required>
-              <option value="kbzpay">KBZPay</option>
-              <option value="wavepay">WavePay</option>
-              <option value="bank_transfer" selected>Bank Transfer</option>
-              <option value="other">Other Wallet</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="pmBankName">Display Name</label>
-            <input id="pmBankName" type="text" placeholder="KBZPay / WavePay / AYA Bank" required />
-          </div>
-          <div class="field">
-            <label for="pmAccountName">Account Name</label>
-            <input id="pmAccountName" type="text" placeholder="Eisy Myanmar" required />
-          </div>
-          <div class="field">
-            <label for="pmAccountNumber">Account Number / Phone</label>
-            <input id="pmAccountNumber" type="text" placeholder="09xxxxxxxx or bank account #" required />
-          </div>
-          <div class="field" style="grid-column:1/-1">
-            <label for="pmQrUrl">QR Code Image URL</label>
-            <input id="pmQrUrl" type="url" placeholder="https://…/qr.png or /assets/qr/kbz.png" />
-            <small class="hint">Optional. If empty, the app generates a QR from the account number.</small>
-          </div>
-          <div class="field" style="grid-column:1/-1">
-            <label for="pmNotes">Internal Notes</label>
-            <input id="pmNotes" type="text" placeholder="Optional note for admins only" />
-          </div>
-          <div class="field">
-            <label for="pmSortOrder">Sort Order</label>
-            <input id="pmSortOrder" type="number" step="1" value="0" />
-          </div>
-          <div class="field">
-            <label for="pmActive">Status</label>
-            <select id="pmActive">
-              <option value="1" selected>Active</option>
-              <option value="0">Inactive</option>
-            </select>
-          </div>
-          <div class="field" style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap">
-            <button type="submit" class="btn btn-primary" id="pmSubmitBtn">Add Payment Method</button>
-            <button type="button" class="btn btn-secondary" id="pmResetBtn">Clear</button>
-          </div>
-        </form>
-        <div id="adminPaymentMethodsTable" class="data-table-wrap"><p class="hint">Loading payment methods…</p></div>
-      </section>
-
 
       <section id="tabAdmins" class="panel app-page" data-page="admins">
         <h2>Admin Accounts</h2>
