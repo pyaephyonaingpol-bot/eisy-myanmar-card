@@ -92,6 +92,7 @@ const Dashboard = {
       this.initSupabase().catch((err) => console.warn('[Dashboard] Supabase init:', err.message));
       this.bindCardCopyButtons();
       this.bindCardSelector();
+      this.bindCardDetailModal();
       this.bindCardsAutoRefresh();
       this.bindProofLightbox();
       this.bindReloadCard();
@@ -3891,11 +3892,223 @@ const Dashboard = {
     }).join('');
 
     thumbs.querySelectorAll('.card-thumb').forEach((btn) => {
-      btn.onclick = () => this.selectCard(parseInt(btn.dataset.index, 10));
+      btn.onclick = () => {
+        const idx = parseInt(btn.dataset.index, 10);
+        if (Number.isNaN(idx)) return;
+        this.selectCard(idx);
+        this.openCardDetailModal(idx);
+      };
     });
 
     $('btnPrevCard').disabled = this.allCards.length <= 1;
     $('btnNextCard').disabled = this.allCards.length <= 1;
+  },
+
+  cardDetailModalIndex: null,
+  cardDetailRevealed: false,
+
+  openCardDetailModal(index = this.activeCardIndex) {
+    if (!this.allCards.length) return;
+    const idx = Number.isFinite(index) ? index : this.activeCardIndex;
+    if (idx < 0 || idx >= this.allCards.length) return;
+    this.cardDetailModalIndex = idx;
+    this.cardDetailRevealed = false;
+    this.selectCard(idx);
+    this.renderCardDetailModal();
+    $('cardDetailModal')?.classList.remove('hidden');
+    document.body.classList.add('modal-open');
+  },
+
+  closeCardDetailModal() {
+    $('cardDetailModal')?.classList.add('hidden');
+    this.cardDetailModalIndex = null;
+    this.cardDetailRevealed = false;
+    const err = $('cardDetailError');
+    if (err) {
+      err.textContent = '';
+      err.classList.add('hidden');
+    }
+    if (!$('reloadCardModal') || $('reloadCardModal').classList.contains('hidden')) {
+      if (!$('withdrawUsdtModal') || $('withdrawUsdtModal').classList.contains('hidden')) {
+        document.body.classList.remove('modal-open');
+      }
+    }
+  },
+
+  getCardDetailModalCard() {
+    const idx = this.cardDetailModalIndex;
+    if (idx == null || !this.allCards[idx]) return null;
+    return this.allCards[idx];
+  },
+
+  formatCardCreatedAt(value) {
+    if (!value) return '—';
+    try {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return String(value);
+      return d.toLocaleString();
+    } catch (_) {
+      return String(value);
+    }
+  },
+
+  renderCardDetailModal() {
+    const card = this.getCardDetailModalCard();
+    const err = $('cardDetailError');
+    if (err) {
+      err.textContent = '';
+      err.classList.add('hidden');
+    }
+    if (!card) {
+      this.closeCardDetailModal();
+      return;
+    }
+
+    const pending = this.isCardPending(card);
+    const active = this.isCardActive(card);
+    const pillCls = this.cardStatusPillClass(card);
+    const statusLabel = this.cardStatusLabel(card);
+    const canReveal = active && Boolean(card.card_number);
+    const showDetails = canReveal && this.cardDetailRevealed;
+
+    if ($('cardDetailModalTitle')) {
+      $('cardDetailModalTitle').textContent = card.label || (typeof t === 'function' ? t('card_detail_modal_title') : 'Card Details');
+    }
+
+    const statusPill = $('cardDetailStatusPill');
+    if (statusPill) {
+      statusPill.textContent = statusLabel;
+      statusPill.className = `card-status-pill ${pillCls}`;
+    }
+    if ($('cardDetailStatus')) $('cardDetailStatus').textContent = statusLabel;
+    if ($('cardDetailLabel')) $('cardDetailLabel').textContent = card.label || `•••• ${card.last4 || '????'}`;
+    if ($('cardDetailHolder')) $('cardDetailHolder').textContent = card.card_holder_name || '—';
+    if ($('cardDetailCreated')) $('cardDetailCreated').textContent = this.formatCardCreatedAt(card.created_at || card.activated_at);
+
+    const balanceEl = $('cardDetailBalance');
+    if (balanceEl) {
+      if (pending) balanceEl.textContent = typeof t === 'function' ? t('balance_pending') : 'Balance pending';
+      else if (card.balance_usd != null && Number.isFinite(Number(card.balance_usd))) {
+        balanceEl.textContent = `$${Number(card.balance_usd).toFixed(2)} USD`;
+      } else {
+        balanceEl.textContent = '$0.00 USD';
+      }
+    }
+
+    if (showDetails) {
+      if ($('cardDetailNumber')) $('cardDetailNumber').textContent = this.formatCardNumber(card.card_number);
+      if ($('cardDetailExp')) $('cardDetailExp').textContent = card.exp_date || '—';
+      if ($('cardDetailCvv')) $('cardDetailCvv').textContent = card.cvv || '—';
+    } else if (pending) {
+      if ($('cardDetailNumber')) $('cardDetailNumber').textContent = '•••• •••• •••• ••••';
+      if ($('cardDetailExp')) $('cardDetailExp').textContent = '—';
+      if ($('cardDetailCvv')) $('cardDetailCvv').textContent = '—';
+    } else {
+      if ($('cardDetailNumber')) $('cardDetailNumber').textContent = `•••• •••• •••• ${card.last4 || '????'}`;
+      if ($('cardDetailExp')) $('cardDetailExp').textContent = '**/**';
+      if ($('cardDetailCvv')) $('cardDetailCvv').textContent = '***';
+    }
+
+    const reasonEl = $('cardDetailStatusReason');
+    if (reasonEl) {
+      const alertMsg = this.cardStatusAlertMessage(card);
+      const reason = [alertMsg, card.status_reason].filter(Boolean).join(' — ');
+      if (reason) {
+        reasonEl.textContent = reason;
+        reasonEl.classList.remove('hidden');
+      } else {
+        reasonEl.textContent = '';
+        reasonEl.classList.add('hidden');
+      }
+    }
+
+    const revealBtn = $('cardDetailRevealBtn');
+    if (revealBtn) {
+      revealBtn.disabled = !canReveal;
+      revealBtn.textContent = showDetails
+        ? (typeof t === 'function' ? t('hide_card_details') : 'Hide Card Details')
+        : (typeof t === 'function' ? t('show_card_details') : 'Show Card Details');
+    }
+
+    const reloadBtn = $('cardDetailReloadBtn');
+    if (reloadBtn) reloadBtn.disabled = !active;
+
+    const deleteBtn = $('cardDetailDeleteBtn');
+    if (deleteBtn) deleteBtn.disabled = false;
+  },
+
+  async removeCardFromDetailModal() {
+    const card = this.getCardDetailModalCard();
+    if (!card?.id) return;
+
+    const confirmMsg = typeof t === 'function'
+      ? t('card_delete_confirm')
+      : 'Remove this card from My Cards? Pending requests will be cancelled.';
+    if (!window.confirm(confirmMsg)) return;
+
+    const deleteBtn = $('cardDetailDeleteBtn');
+    const err = $('cardDetailError');
+    if (deleteBtn) deleteBtn.disabled = true;
+    if (err) {
+      err.textContent = '';
+      err.classList.add('hidden');
+    }
+
+    try {
+      const data = window.EisyServices?.cards?.remove
+        ? await window.EisyServices.cards.remove(card.id)
+        : await Auth.api('POST', `/api/user/cards/${card.id}/remove`, { reason: 'Removed by user' }, { sensitive: true });
+
+      this.toast(data.message || 'Card removed', 'ok');
+      this.log(`Card ${card.id} removed from My Cards`, 'ok');
+      this.closeCardDetailModal();
+      await this.loadAllCards({ forceRefresh: true, preserveSelection: false, silent: true });
+    } catch (e) {
+      const message = e.message || 'Failed to remove card';
+      if (err) {
+        err.textContent = message;
+        err.classList.remove('hidden');
+      }
+      this.toast(message, 'error');
+    } finally {
+      if (deleteBtn) deleteBtn.disabled = false;
+    }
+  },
+
+  bindCardDetailModal() {
+    if (this._cardDetailModalBound) return;
+    this._cardDetailModalBound = true;
+
+    $('cardDetailModalClose')?.addEventListener('click', () => this.closeCardDetailModal());
+    $('cardDetailModal')?.addEventListener('click', (e) => {
+      if (e.target === $('cardDetailModal')) this.closeCardDetailModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const modal = $('cardDetailModal');
+      if (modal && !modal.classList.contains('hidden')) this.closeCardDetailModal();
+    });
+
+    $('cardDetailRevealBtn')?.addEventListener('click', () => {
+      const card = this.getCardDetailModalCard();
+      if (!card || !this.isCardActive(card) || !card.card_number) return;
+      this.cardDetailRevealed = !this.cardDetailRevealed;
+      // Keep page reveal in sync when viewing the active card
+      if (this.cardDetailModalIndex === this.activeCardIndex) {
+        this.cardDetailsRevealed = this.cardDetailRevealed;
+        this.renderActiveCard(card);
+      }
+      this.renderCardDetailModal();
+    });
+
+    $('cardDetailReloadBtn')?.addEventListener('click', () => {
+      const card = this.getCardDetailModalCard();
+      if (!card || !this.isCardActive(card)) return;
+      this.closeCardDetailModal();
+      this.openReloadModal(card.id);
+    });
+
+    $('cardDetailDeleteBtn')?.addEventListener('click', () => this.removeCardFromDetailModal());
   },
 
   selectCard(index, { forceRevealReset = false } = {}) {
@@ -4675,6 +4888,15 @@ const Dashboard = {
 
     $('btnLoadCard').onclick = () => this.loadAllCards({ forceRefresh: true });
     $('btnShowCardDetails')?.addEventListener('click', () => this.toggleCardDetails());
+    $('cardStatusHero')?.addEventListener('click', () => {
+      if (!this.allCards.length) return;
+      this.openCardDetailModal(this.activeCardIndex);
+    });
+    $('cardVisual')?.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      if (!this.allCards.length) return;
+      this.openCardDetailModal(this.activeCardIndex);
+    });
 
     if ($('depositForm')) {
       $('depositForm').onsubmit = async (e) => {

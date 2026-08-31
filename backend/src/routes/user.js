@@ -75,7 +75,14 @@ function mapCardForClient(c) {
 async function getUserCardsPayload(userId) {
   const db = getDb();
   let cards = await Card.findByUserId(userId);
-  cards = cards.filter((c) => !['cancelled', 'expired'].includes(String(c.status || '').toLowerCase()));
+  cards = cards.filter((c) => {
+    const status = String(c.status || '').toLowerCase();
+    if (['cancelled', 'expired'].includes(status)) return false;
+    let metadata = {};
+    try { metadata = c.metadata ? JSON.parse(c.metadata) : {}; } catch (_) {}
+    if (metadata.removed_by_user) return false;
+    return true;
+  });
 
   if (!cards.length) {
     const legacy = await db.get('SELECT * FROM cards WHERE user_id = ?', userId);
@@ -111,6 +118,52 @@ router.get('/cards', requireAuth, requireSensitive, async (req, res) => {
   } catch (err) {
     console.error('[user/cards]', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Soft-remove a card from My Cards (hide from list / cancel pending request).
+ * Does not hard-delete ledger or reload history.
+ */
+router.post('/cards/:id/remove', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+
+    const existing = await Card.findById(cardId);
+    if (!existing || Number(existing.user_id) !== Number(req.user.id)) {
+      return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
+    }
+
+    const removed = await Card.removeFromUserList(cardId, req.user.id, {
+      reason: req.body?.reason || 'Removed by user',
+    });
+    if (!removed) {
+      return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
+    }
+
+    await TransactionLog.create({
+      userId: req.user.id,
+      type: 'card_cancelled',
+      description: `Card removed from My Cards (id ${cardId})`,
+      referenceType: 'card',
+      referenceId: cardId,
+      metadata: { card_id: cardId, soft_remove: true },
+      createdBy: 'user',
+    }).catch((err) => console.warn('[user/cards/remove] log skipped:', err.message));
+
+    const payload = await getUserCardsPayload(req.user.id);
+    res.json({
+      success: true,
+      message: 'Card removed from My Cards',
+      removed_card_id: cardId,
+      ...payload,
+    });
+  } catch (err) {
+    console.error('[user/cards/remove]', err);
+    res.status(500).json({ error: err.message || 'Failed to remove card' });
   }
 });
 
