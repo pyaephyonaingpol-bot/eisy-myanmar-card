@@ -22,8 +22,12 @@ assert(/id="cardDetailModalClose"/.test(html), 'modal close X required');
 assert(/id="cardDetailDeleteBtn"/.test(html), 'Delete Card button required');
 assert(/id="cardDetailReloadBtn"/.test(html), 'Reload button in modal required');
 assert(/id="cardDetailRevealBtn"/.test(html), 'Reveal details button required');
+assert(!/id="cardVisual"/.test(html), 'inline cardVisual container removed from main page');
+assert(/id="cardDetailCopyActions"/.test(html), 'modal copy actions required');
 
 assert(/openCardDetailModal/.test(dash), 'openCardDetailModal required');
+assert(/openCardDetailsForActiveCard/.test(dash), 'Show Card Details opens modal');
+assert(!/toggleCardDetails/.test(dash), 'inline toggleCardDetails removed');
 assert(/closeCardDetailModal/.test(dash), 'closeCardDetailModal required');
 assert(/bindCardDetailModal/.test(dash), 'bindCardDetailModal required');
 assert(/removeCardFromDetailModal/.test(dash), 'remove handler required');

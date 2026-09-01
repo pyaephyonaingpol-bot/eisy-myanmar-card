@@ -208,6 +208,10 @@
         <button type="button" id="cardDetailReloadBtn" class="btn btn-primary btn-sm" data-i18n="top_up_reload_card">Top Up / Reload Card</button>
         <button type="button" id="cardDetailDeleteBtn" class="btn btn-reject btn-sm" data-i18n="btn_delete_card">Delete Card</button>
       </div>
+      <div id="cardDetailCopyActions" class="card-detail-copy-actions hidden">
+        <button type="button" id="cardDetailCopyNumber" class="btn btn-secondary btn-sm" data-i18n="copy_card_number">Copy Card Number</button>
+        <button type="button" id="cardDetailCopyAll" class="btn btn-secondary btn-sm" data-i18n="copy_all_details">Copy All Details</button>
+      </div>
       <p class="hint" style="margin-top:0.75rem" data-i18n="card_delete_hint">Removes this card from My Cards. Pending requests are cancelled; issued cards stay in records for history.</p>
     </div>
   </div>
@@ -1137,34 +1141,6 @@
                   <button id="btnLoadCard" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
                 </div>
                 <div id="cardStatusAlert" class="card-status-alert hidden" role="alert"></div>
-                <div id="cardVisual" class="card-visual hidden">
-                  <div class="card-visual-top">
-                    <span style="font-size:0.7rem;opacity:0.7">EISY MYANMAR</span>
-                    <span id="visCardStatus" class="card-status-pill">active</span>
-                  </div>
-                  <div class="card-number-row">
-                    <div class="card-visual-number" id="visNumber">**** **** **** ****</div>
-                    <button type="button" class="btn-copy-chip" id="btnCopyCardNumber" data-i18n-title="copy_card_number" title="Copy card number" data-i18n="copy_card_number">Copy Card Number</button>
-                  </div>
-                  <div class="card-visual-footer">
-                    <div><small>HOLDER</small><div id="visHolder">—</div></div>
-                    <div class="copy-field-group">
-                      <small>EXP</small>
-                      <div class="copy-field-row">
-                        <span id="visExp">—</span>
-                        <button type="button" class="btn-copy-icon" id="btnCopyExp" title="Copy expiry date" aria-label="Copy expiry date">📋</button>
-                      </div>
-                    </div>
-                    <div class="copy-field-group">
-                      <small>CVV</small>
-                      <div class="copy-field-row">
-                        <span id="visCvv">—</span>
-                        <button type="button" class="btn-copy-icon" id="btnCopyCvv" title="Copy CVV" aria-label="Copy CVV">📋</button>
-                      </div>
-                    </div>
-                  </div>
-                  <button type="button" class="btn btn-primary btn-copy-all" id="btnCopyAllCard" data-i18n="copy_all_details">Copy All Details</button>
-                </div>
                 <div id="cardPendingNotice" class="card-pending-notice hidden">
                   <p data-i18n="card_pending_notice">This card request is pending admin approval. You'll receive your card number once issued.</p>
                 </div>

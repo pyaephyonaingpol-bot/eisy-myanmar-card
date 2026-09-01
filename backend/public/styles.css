@@ -862,14 +862,22 @@ a.btn { text-decoration: none; }
   flex-wrap: wrap;
   gap: 0.65rem;
 }
-.card-detail-actions .btn {
+.card-detail-copy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+.card-detail-actions .btn,
+.card-detail-copy-actions .btn {
   flex: 1 1 auto;
   min-width: min(100%, 9rem);
 }
 @media (max-width: 520px) {
   .card-detail-grid { grid-template-columns: 1fr; }
   .card-detail-preview-meta { grid-template-columns: 1fr 1fr; }
-  .card-detail-actions .btn { width: 100%; }
+  .card-detail-actions .btn,
+  .card-detail-copy-actions .btn { width: 100%; }
 }
 
 .card-details-subtitle { font-size: 0.75rem; color: var(--text-muted); margin-left: 0.35rem; }
