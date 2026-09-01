@@ -110,7 +110,7 @@ function testBackendUsdtOnly() {
     walletSvc.indexOf('MMK_WALLET_ALLOWED_DEBIT_PURPOSES'),
     walletSvc.indexOf('function assertMmkDebitAllowed')
   );
-  assert.ok(allowList.includes("'card_reload'"), 'MMK debit allow-list still allows reloads');
+  assert.ok(!allowList.includes("'card_reload'"), 'MMK debit allow-list excludes card_reload');
   assert.ok(!allowList.includes("'card_issuance'"), 'MMK debit allow-list excludes card_issuance');
   assert.ok(walletSvc.includes("purpose === 'card_issuance'"), 'explicit reject of MMK card_issuance debit');
 

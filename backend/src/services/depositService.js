@@ -181,86 +181,19 @@ async function createDepositRequest(userId, {
     throw err;
   }
 
-  const refCode = await uniqueRefCode();
-  const settings = await getCardPricingSettings();
-  const rate = settings.mmk_to_usd_rate;
-  const amountMmk = Math.round(parseFloat(amount_mmk) || 0);
-  if (!(amountMmk > 0)) {
-    throw new Error('Positive amount_mmk is required');
+  if (purpose === 'card_reload') {
+    const err = new Error(
+      'Card reload no longer accepts MMK or bank deposits. Pay with your USDT wallet.'
+    );
+    err.code = 'USDT_ONLY_CARD_RELOAD';
+    throw err;
   }
 
-  const computedUsd = amount_usd != null ? amount_usd : amountMmk / rate;
-  const rateSnapshot = await buildRateSnapshot();
-
-  const mergedMetadata = {
-    ...(metadata || {}),
-    rate_snapshot: rateSnapshot,
-  };
-
-  // Wallet top-ups apply unified payment service fee: max(2%, min $1 MMK-equivalent)
-  if (purpose === 'topup') {
-    const feeBreakdown = calculateDepositFeeBreakdown(amountMmk, { currency: 'MMK', settings });
-    assertValidPaymentAmount(feeBreakdown, { kind: 'MMK deposit' });
-    const platformProfitUsd = Math.round(((feeBreakdown.fee_mmk || 0) / rate) * 100) / 100;
-    mergedMetadata.payment_fee = {
-      operation: 'deposit',
-      currency: 'MMK',
-      gross_mmk: feeBreakdown.amount_mmk,
-      fee_mmk: feeBreakdown.fee_mmk,
-      net_mmk: feeBreakdown.net_mmk,
-      platform_profit_usd: platformProfitUsd,
-      fee_percent: feeBreakdown.fee_percent,
-      minimum_fee_mmk: feeBreakdown.minimum_fee_mmk,
-      used_minimum_fee: feeBreakdown.used_minimum_fee,
-      fee_rule: feeBreakdown.fee_rule,
-      fee_label: feeBreakdown.fee_label,
-    };
-    mergedMetadata.pricing = {
-      ...(mergedMetadata.pricing || {}),
-      ...mergedMetadata.payment_fee,
-      platform_profit_usd: platformProfitUsd,
-      is_wallet_topup: true,
-      mmk_to_usd_rate: rate,
-    };
-  }
-
-  const platformProfitUsd = Number(
-    mergedMetadata?.pricing?.platform_profit_usd
-      ?? mergedMetadata?.payment_fee?.platform_profit_usd
-      ?? 0
-  ) || 0;
-
-  const deposit = await DepositRequest.create({
-    userId,
-    amountMmk,
-    amountUsd: computedUsd,
-    refCode,
-    paymentMethod: payment_method || 'KBZPay',
-    purpose,
-    metadata: mergedMetadata,
-    platformProfitUsd,
-  });
-
-  await TransactionLog.create({
-    userId,
-    type: 'deposit_request',
-    direction: 'neutral',
-    amountMmk,
-    amountUsd: computedUsd,
-    referenceType: 'deposit_requests_v2',
-    referenceId: deposit.id,
-    description: `[${purpose}] Deposit requested: ${refCode} via ${deposit.payment_method}`,
-    createdBy: 'user',
-    metadata: {
-      purpose,
-      payment_method: deposit.payment_method,
-      rate_snapshot: rateSnapshot,
-      payment_fee: mergedMetadata.payment_fee || null,
-      ...(metadata || {}),
-    },
-  });
-
-  return deposit;
+  const err = new Error(
+    'MMK bank deposits are no longer supported. Top up via USDT (TRC20) only.'
+  );
+  err.code = 'USDT_ONLY_DEPOSIT';
+  throw err;
 }
 
 async function createUsdtDepositRequest(userId, {

@@ -35,6 +35,12 @@ const DepositRequest = {
       || (purpose === 'usdt_topup' || String(paymentMethod).startsWith('USDT') ? 'USDT' : 'MMK');
     const network = usdtNetwork || null;
 
+    if (currency !== 'USDT') {
+      const err = new Error('Deposits accept USDT/crypto only. MMK bank deposits are no longer supported.');
+      err.code = 'USDT_ONLY_DEPOSIT';
+      throw err;
+    }
+
     const result = await db.run(`
       INSERT INTO ${this.TABLE} (
         user_id, amount_mmk, amount_usd, ref_code, payment_method,

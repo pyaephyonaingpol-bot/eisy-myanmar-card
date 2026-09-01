@@ -26,7 +26,6 @@ function formatUsdt(amount) {
  * Card issuance is USDT-only. MMK → USDT conversion is never allowed.
  */
 const MMK_WALLET_ALLOWED_DEBIT_PURPOSES = new Set([
-  'card_reload',
   'mmk_bank_withdrawal',
 ]);
 
@@ -50,9 +49,16 @@ function assertMmkDebitAllowed({ createdBy, metadata } = {}) {
     throw err;
   }
   if (purpose && MMK_WALLET_ALLOWED_DEBIT_PURPOSES.has(purpose)) return;
+  if (purpose === 'card_reload') {
+    const err = new Error(
+      'MMK wallet cannot be used for card reloads. Pay with your USDT wallet.'
+    );
+    err.code = 'USDT_ONLY_CARD_RELOAD';
+    throw err;
+  }
   const err = new Error(
-    'MMK wallet can only be used for card reloads and bank withdrawals. '
-    + 'New cards require USDT wallet payment. MMK → USDT exchange is not available. '
+    'MMK wallet can only be used for bank withdrawals. '
+    + 'Deposits and card reloads require USDT. MMK → USDT exchange is not available. '
     + 'P2P USDT trades use external KPay/WavePay/Bank transfers.'
   );
   err.code = 'MMK_WALLET_RESTRICTED';
