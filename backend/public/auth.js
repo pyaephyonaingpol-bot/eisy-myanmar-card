@@ -474,9 +474,13 @@ const Auth = {
         this.clear();
       } else {
         console.warn('[Auth] Session restore skipped (transient error):', err.message);
+        const cached = this.load();
+        if (cached?.sessionToken && cached?.user) {
+          return true;
+        }
       }
     }
-    return false;
+    return Boolean(this.sessionToken && this.user);
   },
 };
 

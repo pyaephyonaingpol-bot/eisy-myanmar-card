@@ -508,6 +508,68 @@ const Dashboard = {
     return `$ ${n.toFixed(2)} USDT`;
   },
 
+  applySessionUserToUI(user = Auth.user) {
+    const profile = user || {};
+    const displayName = profile.name || profile.email || profile.phone || '—';
+    if ($('headerUser')) $('headerUser').textContent = displayName;
+    if ($('headerEmail')) $('headerEmail').textContent = profile.email || '—';
+    if ($('sumName')) $('sumName').textContent = profile.name || '—';
+    if ($('sumEmail')) $('sumEmail').textContent = profile.email || '—';
+    if ($('sumPhone')) {
+      $('sumPhone').textContent = this.formatUserPhone(profile.phone || profile.phone_display) || '—';
+    }
+  },
+
+  setHomeWalletBalanceDisplay(text) {
+    const label = text == null || text === '' ? '—' : String(text);
+    if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = label;
+  },
+
+  renderWalletBalancesFromCache() {
+    if (this.walletUsdt == null && this.walletMmk == null) return false;
+    this.renderWalletBalances({
+      balance_mmk: this.walletMmk ?? 0,
+      balance_usdt: this.walletUsdt ?? 0,
+      balance_usdt_locked: this.walletUsdtLocked ?? 0,
+    });
+    return true;
+  },
+
+  async ensureSessionUser({ force = false } = {}) {
+    if (!Auth.isLoggedIn()) return null;
+    const cached = Auth.user || Auth.load()?.user || null;
+    if (cached) this.applySessionUserToUI(cached);
+
+    const incomplete = !cached?.email && !cached?.name;
+    if (!force && cached && !incomplete) return cached;
+
+    try {
+      const data = await Auth.api('GET', '/api/auth/me', null, { timeoutMs: 12000 });
+      if (data?.user) {
+        Auth.setSession({
+          sessionToken: Auth.sessionToken,
+          user: data.user,
+          pinToken: Auth.pinToken,
+          pinTokenExpiresInSeconds: Math.max(
+            0,
+            Math.floor(((Auth.pinTokenExpiresAt?.() || 0) - Date.now()) / 1000)
+          ),
+        });
+        this.applySessionUserToUI(data.user);
+        return data.user;
+      }
+    } catch (err) {
+      if (err.status === 401 || err.code === 'SESSION_INVALID') {
+        await Auth.logout();
+        this.refreshAuthUI();
+        return null;
+      }
+      console.warn('[Dashboard] ensureSessionUser:', err.message);
+      if (cached) return cached;
+    }
+    return cached;
+  },
+
   renderWalletBalances(data) {
     const mmk = data?.balance_mmk ?? data?.balance ?? 0;
     const usdt = data?.balance_usdt ?? 0;
@@ -522,7 +584,7 @@ const Dashboard = {
     }
 
     // Dashboard Wallet Overview shows USDT only (MMK wallet card removed).
-    if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = usdtText;
+    this.setHomeWalletBalanceDisplay(usdtText);
 
     if (data?.legacy_migration?.migrated) {
       this.toast(
@@ -4710,6 +4772,7 @@ const Dashboard = {
 
   updateProfileFormUI() {
     const user = Auth.user || {};
+    this.applySessionUserToUI(user);
     const nameEl = $('profileName');
     const emailEl = $('profileEmail');
     const phoneEl = $('profilePhone');
@@ -5076,48 +5139,56 @@ const Dashboard = {
 
     this.initNavigationIfNeeded();
     const hydrateToken = this.beginHydration();
+    this.applySessionUserToUI();
 
-    if (Auth.user) {
-      if ($('headerUser')) $('headerUser').textContent = Auth.user.name || Auth.user.email;
-      if ($('headerEmail')) $('headerEmail').textContent = Auth.user.email || '';
-      // Account info line lives in Settings; profile form + summary boxes live on Profile.
+    const finishHydration = () => this.endHydration(hydrateToken);
+    const hydrationSafety = setTimeout(finishHydration, 5000);
+
+    const bootstrap = async () => {
+      await this.ensureSessionUser().catch(() => null);
       this.updateProfileFormUI();
+
       if (Auth.needsPinUnlock()) {
         $('pinUnlockModal')?.classList.remove('hidden');
         this.applyCachedCardsIfAvailable();
+        this.setHomeWalletBalanceDisplay('🔒 Locked');
       } else {
         $('pinUnlockModal')?.classList.add('hidden');
         this.applyCachedCardsIfAvailable();
         this.loadAllCards({ preserveSelection: true, silent: true });
       }
 
-      const pending = [
-        this.loadWallet(),
+      this.setHomeWalletBalanceDisplay('Loading…');
+      if ($('sumName') && $('sumName').textContent === '—' && Auth.user?.name) {
+        $('sumName').textContent = Auth.user.name;
+      }
+
+      await Promise.allSettled([
+        this.loadWallet({ force: true }),
         this.loadTransactions(),
         this.loadDepositHistory(),
         this.loadCardPricing(),
         this.loadWithdrawalFees(),
         this.loadDepositPaymentMethods(),
         this.loadKycStatus(),
-      ];
+      ]);
+    };
 
-      const settle = Promise.allSettled(pending);
-      const timeout = new Promise((resolve) => setTimeout(resolve, 3500));
-      Promise.race([settle, timeout]).finally(() => {
-        this.endHydration(hydrateToken);
+    bootstrap()
+      .catch((err) => console.warn('[Dashboard] refresh bootstrap:', err.message))
+      .finally(() => {
+        clearTimeout(hydrationSafety);
+        finishHydration();
       });
 
-      this.updateHomeRateSummary();
-      this.populateReloadCardSelect();
-      this.updateChangePasswordUI();
-      this.bindSupabaseUserRealtime();
+    this.updateHomeRateSummary();
+    this.populateReloadCardSelect();
+    this.updateChangePasswordUI();
+    this.bindSupabaseUserRealtime();
 
-      if (typeof AppNav !== 'undefined' && AppNav.currentPage == null) {
-        const hashPage = AppNav.pageFromHash?.();
-        AppNav.navigate(hashPage || 'home', { pushHash: !hashPage, replace: true });
-      }
-    } else {
-      this.endHydration(hydrateToken);
+    if (typeof AppNav !== 'undefined' && AppNav.currentPage == null) {
+      const hashPage = AppNav.pageFromHash?.();
+      AppNav.navigate(hashPage || 'home', { pushHash: !hashPage, replace: true });
     }
   },
 
@@ -6430,35 +6501,61 @@ const Dashboard = {
   async loadWallet(opts = {}) {
     if (!Auth.isLoggedIn()) return;
     const force = Boolean(opts.force);
-    if (!force && this._isFresh('wallet')) return;
+    if (!force && this._isFresh('wallet')) {
+      if (this.renderWalletBalancesFromCache()) return;
+    }
+
+    if (Auth.needsPinUnlock()) {
+      this.setHomeWalletBalanceDisplay('🔒 Locked');
+      if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+        this.setUsdtWalletBalancePlaceholders('🔒 Locked');
+      }
+      $('pinUnlockModal')?.classList.remove('hidden');
+      return;
+    }
 
     return this._withInflight('wallet', async () => {
+      if (!force && this._isFresh('wallet') && this.renderWalletBalancesFromCache()) return;
+
+      this.setHomeWalletBalanceDisplay('Loading…');
       try {
-        // Sensitive Auth.api already uses cache: 'no-store' — no Date.now() needed.
-        const data = await Auth.api('GET', '/api/user/wallet', null, { sensitive: true });
+        const data = await Auth.api('GET', '/api/user/wallet', null, {
+          sensitive: true,
+          timeoutMs: 15000,
+        });
         this.renderWalletBalances(data);
         this.walletUsdt = data.balance_usdt;
         this.walletUsdtLocked = data.balance_usdt_locked || 0;
         this._markFetched('wallet');
-        if ($('sumName')) $('sumName').textContent = Auth.user?.name || '—';
-        if ($('sumPhone')) {
-          $('sumPhone').textContent = this.formatUserPhone(Auth.user?.phone || Auth.user?.phone_display) || '—';
-        }
-        if ($('sumEmail')) $('sumEmail').textContent = Auth.user?.email || '—';
-        // Keep USDT Wallet page Available/Locked/Total in sync with the same payload.
+        this.applySessionUserToUI();
         if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
           this.syncUsdtWalletBalancesFromPayload(data);
         }
       } catch (err) {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
-          if ($('sumBalanceMmk')) $('sumBalanceMmk').textContent = '🔒 Locked';
-          if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = '🔒 Locked';
+          this.setHomeWalletBalanceDisplay('🔒 Locked');
           if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
             this.setUsdtWalletBalancePlaceholders('🔒 Locked');
           }
+          $('pinUnlockModal')?.classList.remove('hidden');
+          return;
         }
+
+        if (this.renderWalletBalancesFromCache()) {
+          console.warn('[Dashboard] wallet load failed — showing cached balance:', err.message);
+          return;
+        }
+
+        const message = err.code === 'REQUEST_TIMEOUT'
+          ? 'Balance timed out — tap Refresh'
+          : (err.message || 'Balance unavailable');
+        this.setHomeWalletBalanceDisplay(message);
+        if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
+          this.setUsdtWalletBalancePlaceholders(message);
+        }
+        console.warn('[Dashboard] wallet load failed:', err.message);
       }
-    });
+    }, { force });
   },
 
   async loadAllCards({ preserveSelection = false, silent = false, forceRefresh = false } = {}) {
