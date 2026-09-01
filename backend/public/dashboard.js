@@ -573,51 +573,28 @@ const Dashboard = {
   },
 
   updateReloadWalletHint() {
-    const method = $('reloadPaymentMethod')?.value;
-    if (method === 'wallet_mmk') {
-      const preview = this.calculateReloadPreviewClient(parseFloat($('reloadAmountMmk')?.value));
-      if (!preview || preview.below_min) return;
-      const required = preview.deposit_mmk;
-      const available = Number(this.walletMmk ?? 0);
-      if (available >= required) {
-        this.setWalletHint('reloadWalletHint', 'reloadWalletError', {
-          ok: true,
-          okMsg: `MMK wallet sufficient — ${this.formatMmk(required)} total (top-up + $3.50 fee) will be held pending admin approval.`,
-        });
-      } else {
-        this.setWalletHint('reloadWalletHint', 'reloadWalletError', {
-          errMsg: `Insufficient MMK wallet. Need ${this.formatMmk(required)}, you have ${this.formatMmk(available)}.`,
-        });
-      }
-      return;
+    const preview = this.calculateReloadPreviewUsdtClient(parseFloat($('reloadAmountUsdt')?.value));
+    if (!preview || preview.below_min) return;
+    const required = preview.deposit_usdt;
+    const available = Number(this.walletUsdt ?? 0);
+    if (available >= required) {
+      this.setWalletHint('reloadWalletHint', 'reloadWalletError', {
+        ok: true,
+        okMsg: `USDT wallet sufficient — ${this.formatUsdt(required)} total (top-up + service fee) will be deducted pending admin approval.`,
+      });
+    } else {
+      this.setWalletHint('reloadWalletHint', 'reloadWalletError', {
+        errMsg: `Insufficient USDT wallet. Need ${this.formatUsdt(required)}, you have ${this.formatUsdt(available)}.`,
+      });
     }
-    if (method === 'wallet_usdt') {
-      const preview = this.calculateReloadPreviewUsdtClient(parseFloat($('reloadAmountUsdt')?.value));
-      if (!preview || preview.below_min) return;
-      const required = preview.deposit_usdt;
-      const available = Number(this.walletUsdt ?? 0);
-      if (available >= required) {
-        this.setWalletHint('reloadWalletHint', 'reloadWalletError', {
-          ok: true,
-          okMsg: `USDT wallet sufficient — ${this.formatUsdt(required)} total (top-up + $3.50 fee) will be deducted pending admin approval.`,
-        });
-      } else {
-        this.setWalletHint('reloadWalletHint', 'reloadWalletError', {
-          errMsg: `Insufficient USDT wallet. Need ${this.formatUsdt(required)}, you have ${this.formatUsdt(available)}.`,
-        });
-      }
-      return;
-    }
-    this.setWalletHint('reloadWalletHint', 'reloadWalletError', {});
   },
 
   isWalletPaymentMethod(method) {
-    return method === 'wallet_mmk' || method === 'wallet_usdt';
+    return method === 'wallet_usdt';
   },
 
   getWalletTypeFromMethod(method) {
     if (method === 'wallet_usdt') return 'usdt';
-    if (method === 'wallet_mmk') return 'mmk';
     return null;
   },
 
@@ -1451,21 +1428,8 @@ const Dashboard = {
   },
 
   populateReloadPaymentMethodOptions() {
-    const select = $('reloadPaymentMethod');
-    if (!select) return;
-    const prev = select.value;
-    const walletOpts = [
-      `<option value="wallet_mmk">${this.esc(typeof t === 'function' ? t('pay_mmk_wallet_reload') : 'MMK Wallet — card reloads only (instant)')}</option>`,
-      `<option value="wallet_usdt">${this.esc(typeof t === 'function' ? t('pay_usdt_wallet_reload') : 'USDT Wallet (Instant — 1:1 USD)')}</option>`,
-    ];
-    const bankOpts = (this._depositPaymentMethods || []).map((m) =>
-      `<option value="${this.paymentMethodOptionValue(m.id)}">${this.esc(m.bank_name)} — ${this.esc(m.account_name)} (Manual)</option>`
-    );
-    select.innerHTML = walletOpts.concat(bankOpts).join('');
-    if (prev && [...select.options].some((o) => o.value === prev)) {
-      select.value = prev;
-    }
-    this.updateReloadManualPaymentDetails();
+    const hidden = $('reloadPaymentMethod');
+    if (hidden) hidden.value = 'wallet_usdt';
   },
 
   renderPaymentAccountDetails(method, {
@@ -3960,22 +3924,9 @@ const Dashboard = {
 
   resetReloadModalForm() {
     $('reloadCardForm')?.reset();
-    $('reloadProofForm')?.reset();
-    $('reloadRefBox')?.classList.add('hidden');
-    $('reloadProofForm')?.classList.add('hidden');
-    const status = $('reloadStatus');
-    if (status) {
-      status.textContent = 'Send payment, then submit proof below.';
-      status.className = 'status-line';
-    }
-    if ($('reloadActiveDepositId')) $('reloadActiveDepositId').value = '';
-    this.clearReloadScreenshotPreview();
+    if ($('reloadPaymentMethod')) $('reloadPaymentMethod').value = 'wallet_usdt';
     this.hideDebugOutput('reloadOutput');
     this.updateReloadPreview();
-    if (this.reloadPollTimer) {
-      clearInterval(this.reloadPollTimer);
-      this.reloadPollTimer = null;
-    }
   },
 
   async onPaymentProofSubmitted(message = 'Payment Proof Submitted Successfully!') {
@@ -5291,10 +5242,6 @@ const Dashboard = {
       this.updateHomeRateSummary();
       this.renderRatesPage();
       this.updateReloadPreview();
-      const minReload = $('reloadMinHint');
-      if (minReload && data.minimum_card_reload_mmk) {
-        minReload.textContent = `Minimum reload: ${Number(data.minimum_card_reload_mmk).toLocaleString()} MMK`;
-      }
       const minUsdtReload = $('reloadMinUsdtHint');
       if (minUsdtReload && data.minimum_usdt_reload) {
         minUsdtReload.textContent = `Minimum reload: $${Number(data.minimum_usdt_reload).toFixed(2)} USDT`;
@@ -5306,15 +5253,10 @@ const Dashboard = {
       if ($('usdtAmount') && data.minimum_usdt_deposit) {
         $('usdtAmount').min = data.minimum_usdt_deposit;
       }
-      const reloadInput = $('reloadAmountMmk');
-      if (reloadInput && data.minimum_card_reload_mmk) {
-        reloadInput.min = data.minimum_card_reload_mmk;
-      }
       const reloadUsdtInput = $('reloadAmountUsdt');
       if (reloadUsdtInput && data.minimum_usdt_reload) {
         reloadUsdtInput.min = data.minimum_usdt_reload;
       }
-      this.toggleReloadAmountFields();
       this.loadUsdtAddresses();
     } catch (err) {
       console.warn('[card pricing]', err.message);
@@ -5442,19 +5384,24 @@ const Dashboard = {
     if (!p || amountUsdt == null || amountUsdt === '') return null;
 
     const topUp = parseFloat(amountUsdt);
-    const fee = 3.5;
+    const feePercent = Number(p.card_reload_fee_percent ?? 0);
+    const feeFixed = Number(p.card_reload_fee_usd ?? 0);
+    const fee = feePercent > 0
+      ? Math.round(topUp * feePercent) / 100
+      : feeFixed;
     const minUsdt = p.minimum_usdt_reload ?? 5;
 
     if (!Number.isFinite(topUp) || topUp <= 0) return null;
 
     const topUpUsd = Math.round(topUp * 100) / 100;
-    const totalWalletUsdt = Math.round((topUpUsd + fee) * 100) / 100;
+    const reloadFeeUsd = Math.round(fee * 100) / 100;
+    const totalWalletUsdt = Math.round((topUpUsd + reloadFeeUsd) * 100) / 100;
 
     return {
       top_up_usd: topUpUsd,
       deposit_usdt: totalWalletUsdt,
       total_wallet_usd: totalWalletUsdt,
-      reload_fee_usd: fee,
+      reload_fee_usd: reloadFeeUsd,
       net_usd_to_card: topUpUsd,
       below_min: topUpUsd < minUsdt,
       min_usdt: minUsdt,
@@ -5462,60 +5409,18 @@ const Dashboard = {
     };
   },
 
-  calculateReloadPreviewClient(amountMmk) {
-    const p = this.cardPricing;
-    if (!p || amountMmk == null || amountMmk === '') return null;
-
-    const mmk = parseFloat(amountMmk);
-    const rate = p.mmk_to_usd_rate || 4500;
-    const fee = 3.5;
-    const minMmk = p.minimum_card_reload_mmk ?? 10000;
-
-    if (!Number.isFinite(mmk) || mmk <= 0) return null;
-
-    const topUpUsd = Math.round((mmk / rate) * 100) / 100;
-    const totalWalletUsd = Math.round((topUpUsd + fee) * 100) / 100;
-    const totalWalletMmk = Math.ceil(totalWalletUsd * rate);
-
-    return {
-      top_up_mmk: mmk,
-      top_up_usd: topUpUsd,
-      deposit_mmk: totalWalletMmk,
-      total_wallet_usd: totalWalletUsd,
-      reload_fee_usd: fee,
-      net_usd_to_card: topUpUsd,
-      mmk_to_usd_rate: rate,
-      rate_effective_date: p.rate_effective_date,
-      below_min: mmk < minMmk,
-      min_mmk: minMmk,
-    };
-  },
-
   updateReloadPreview() {
     const select = $('reloadCardSelect');
     const cardId = select?.value;
     const card = this.getActiveCards().find((c) => String(c.id) === String(cardId));
-    const method = $('reloadPaymentMethod')?.value || 'wallet_mmk';
-    const isUsdt = method === 'wallet_usdt';
-    const preview = isUsdt
-      ? this.calculateReloadPreviewUsdtClient($('reloadAmountUsdt')?.value)
-      : this.calculateReloadPreviewClient($('reloadAmountMmk')?.value);
-    const p = this.cardPricing;
+    const preview = this.calculateReloadPreviewUsdtClient($('reloadAmountUsdt')?.value);
 
     const set = (id, text) => { const el = $(id); if (el) el.textContent = text; };
 
     set('reloadPreviewCard', card ? this.cardReloadLabel(card) : '—');
-    set('reloadPreviewTopUp', preview ? `$${preview.top_up_usd.toFixed(2)}` : '—');
-    set('reloadPreviewFee', '$3.50');
-    set('reloadPreviewTotal', preview
-      ? (isUsdt
-        ? `$${preview.total_wallet_usd.toFixed(2)} USDT`
-        : `$${preview.total_wallet_usd.toFixed(2)} (${preview.deposit_mmk.toLocaleString()} MMK)`)
-      : '—');
-    set('reloadPreviewRateLabel', isUsdt ? 'Wallet debit' : "Today's Exchange Rate");
-    set('reloadPreviewRate', isUsdt
-      ? (preview ? `$${preview.total_wallet_usd.toFixed(2)} USDT total` : '—')
-      : (p ? `1 USD = ${Number(p.mmk_to_usd_rate).toLocaleString()} MMK` : '—'));
+    set('reloadPreviewTopUp', preview ? `$${preview.top_up_usd.toFixed(2)} USDT` : '—');
+    set('reloadPreviewFee', preview ? `$${preview.reload_fee_usd.toFixed(2)}` : '—');
+    set('reloadPreviewTotal', preview ? `$${preview.total_wallet_usd.toFixed(2)} USDT` : '—');
 
     const receive = $('reloadPreviewReceive');
     if (receive) {
@@ -5523,10 +5428,7 @@ const Dashboard = {
         receive.textContent = 'Select a target card to see your reload summary.';
         receive.className = 'reload-preview-receive';
       } else if (preview?.below_min) {
-        const minLabel = isUsdt
-          ? `$${preview.min_usdt.toFixed(2)} USDT`
-          : `${preview.min_mmk.toLocaleString()} MMK`;
-        receive.textContent = `Minimum top-up is ${minLabel}.`;
+        receive.textContent = `Minimum top-up is $${preview.min_usdt.toFixed(2)} USDT.`;
         receive.className = 'reload-preview-receive';
         receive.style.background = 'var(--warning-bg)';
         receive.style.borderColor = 'var(--warning-border)';
@@ -5550,25 +5452,13 @@ const Dashboard = {
   },
 
   toggleReloadAmountFields() {
-    const method = $('reloadPaymentMethod')?.value || 'wallet_mmk';
-    const isUsdt = method === 'wallet_usdt' || method === 'USDT';
-    const mmkField = $('reloadAmountMmk')?.closest('.field');
-    const usdtField = $('reloadAmountUsdtField');
-    if (mmkField) mmkField.classList.toggle('hidden', isUsdt);
-    if (usdtField) usdtField.classList.toggle('hidden', !isUsdt);
-    if ($('reloadAmountMmk')) $('reloadAmountMmk').required = !isUsdt;
-    if ($('reloadAmountUsdt')) $('reloadAmountUsdt').required = isUsdt;
     this.updateReloadPreview();
   },
 
   openReloadModal(preselectedCardId) {
     this.populateReloadCardSelect(preselectedCardId);
     this.populateReloadPaymentMethodOptions();
-    this.toggleReloadAmountFields();
-    this.updateReloadManualPaymentDetails();
     $('reloadCardForm')?.classList.remove('hidden');
-    $('reloadRefBox')?.classList.add('hidden');
-    $('reloadProofForm')?.classList.add('hidden');
     if ($('reloadOutput')) $('reloadOutput').textContent = '';
     $('reloadCardModal')?.classList.remove('hidden');
     this.updateReloadPreview();
@@ -6123,38 +6013,19 @@ const Dashboard = {
     });
 
     $('reloadCardSelect')?.addEventListener('change', () => this.updateReloadPreview());
-    $('reloadAmountMmk')?.addEventListener('input', () => this.updateReloadPreview());
     $('reloadAmountUsdt')?.addEventListener('input', () => this.updateReloadPreview());
-    $('reloadPaymentMethod')?.addEventListener('change', () => {
-      this.toggleReloadAmountFields();
-      this.updateReloadWalletHint();
-      this.updateReloadManualPaymentDetails();
-    });
 
     $('reloadCardForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const cardId = parseInt($('reloadCardSelect').value, 10);
-      const method = $('reloadPaymentMethod').value;
-      const selected = this.parseSelectedPaymentMethod(method);
-      const payFromWallet = selected.kind === 'wallet';
-      const walletType = selected.walletType;
-      const isUsdt = walletType === 'usdt';
-      const preview = isUsdt
-        ? this.calculateReloadPreviewUsdtClient(parseFloat($('reloadAmountUsdt')?.value))
-        : this.calculateReloadPreviewClient(parseFloat($('reloadAmountMmk')?.value));
+      const preview = this.calculateReloadPreviewUsdtClient(parseFloat($('reloadAmountUsdt')?.value));
 
       if (!cardId || !preview || preview.below_min) {
         this.toast('Please select a card and enter a valid top-up amount', 'error');
         return;
       }
 
-      if (payFromWallet && walletType === 'mmk' && Number(this.walletMmk ?? 0) < preview.deposit_mmk) {
-        this.toast(`Insufficient MMK wallet. Need ${this.formatMmk(preview.deposit_mmk)}. Top up first.`, 'error');
-        this.closeReloadModal();
-        if (typeof AppNav !== 'undefined') AppNav.navigate('deposits', { pushHash: true });
-        return;
-      }
-      if (payFromWallet && walletType === 'usdt' && Number(this.walletUsdt ?? 0) < preview.deposit_usdt) {
+      if (Number(this.walletUsdt ?? 0) < preview.deposit_usdt) {
         this.toast(`Insufficient USDT wallet. Need ${this.formatUsdt(preview.deposit_usdt)}. Top up first.`, 'error');
         this.closeReloadModal();
         this.openUsdtTopUpModal();
@@ -6162,49 +6033,24 @@ const Dashboard = {
       }
 
       try {
-        const body = {
+        const data = await Auth.api('POST', '/api/user/card/reload', {
           card_id: cardId,
-          pay_from_wallet: payFromWallet,
-        };
-        if (payFromWallet) {
-          body.wallet_type = walletType;
-          if (isUsdt) body.amount_usdt = preview.top_up_usd;
-          else body.amount_mmk = preview.top_up_mmk;
-        } else {
-          body.amount_mmk = preview.top_up_mmk;
-          if (selected.paymentMethodId) body.payment_method_id = selected.paymentMethodId;
-          if (selected.method?.bank_name || selected.paymentMethodName) {
-            body.payment_method = selected.method?.bank_name || selected.paymentMethodName;
-          }
-        }
+          pay_from_wallet: true,
+          wallet_type: 'usdt',
+          amount_usdt: preview.top_up_usd,
+        }, { sensitive: true });
 
-        const data = await Auth.api('POST', '/api/user/card/reload', body, { sensitive: true });
-
-        if (data.paid_from_wallet || data.pending) {
-          const msg = data.message || 'Reload request submitted! Pending admin approval.';
-          this.toast(msg, 'ok');
-          this.log(msg, 'ok');
-          this.closeReloadModalAndReset();
-          this.loadWallet();
-          this.loadReloadHistory();
-          this.loadDepositHistory();
-          this.loadTransactions();
-          return;
-        }
-
-        $('reloadRefBox')?.classList.remove('hidden');
-        $('reloadRefCode').textContent = data.deposit.ref_code;
-        $('reloadActiveDepositId').value = data.deposit.id;
-        $('reloadProofForm')?.classList.remove('hidden');
-        $('reloadStatus').textContent = 'Reload request submitted — send payment, then submit proof below. Pending admin approval.';
-        $('reloadStatus').className = 'status-line warn';
-        this.toast(data.message || 'Reload request submitted! Pending admin approval.', 'ok');
-        this.startReloadPolling(data.deposit.ref_code);
-        this.log(`Card reload requested: ${data.deposit.ref_code}`, 'ok');
+        const msg = data.message || 'Reload request submitted! Pending admin approval.';
+        this.toast(msg, 'ok');
+        this.log(msg, 'ok');
+        this.closeReloadModalAndReset();
+        this.loadWallet();
+        this.loadReloadHistory();
         this.loadDepositHistory();
+        this.loadTransactions();
       } catch (err) {
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
-        if (err.code === 'INSUFFICIENT_MMK_BALANCE' || err.code === 'INSUFFICIENT_USDT_BALANCE') {
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+        if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
           this.toast(err.message, 'error');
           this.openUsdtTopUpModal();
           return;
@@ -6213,41 +6059,6 @@ const Dashboard = {
         this.log(err.message, 'error');
       }
     });
-
-    $('reloadProofForm')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      try {
-        await this.submitDepositProof({
-          depositId: $('reloadActiveDepositId').value,
-          txnId: $('reloadTxnId').value.trim(),
-          userNote: $('reloadNote').value.trim(),
-          fileInput: $('reloadScreenshot'),
-          base64: this._reloadReceiptBase64,
-          filename: this._reloadReceiptFile?.name || 'receipt.jpg',
-          requireReceipt: true,
-        });
-        this.closeReloadModalAndReset();
-        await this.onPaymentProofSubmitted('Payment Proof Submitted Successfully!');
-      } catch (err) {
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
-        this.toast(err.message || 'Failed to submit payment proof', 'error');
-        this.log(err.message, 'error');
-      }
-    });
-
-    $('btnCopyReloadRef')?.addEventListener('click', () => {
-      navigator.clipboard.writeText($('reloadRefCode').textContent);
-      this.copyToast('Ref code copied!');
-    });
-
-    const reloadScreenshot = $('reloadScreenshot');
-    if (reloadScreenshot) {
-      reloadScreenshot.onchange = () => this.previewReloadScreenshot();
-    }
-    const btnClearReloadScreenshot = $('btnClearReloadScreenshot');
-    if (btnClearReloadScreenshot) {
-      btnClearReloadScreenshot.onclick = () => this.clearReloadScreenshotPreview();
-    }
   },
 
   previewReloadScreenshot() {
@@ -6343,7 +6154,7 @@ const Dashboard = {
     const eff = p.rate_effective_date ? ` (Effective: ${p.rate_effective_date})` : '';
     const cardFee = Number(p.card_issuance_fee_usd || 0).toFixed(2);
     const minDep = Number(p.minimum_initial_deposit_usd || 0).toFixed(2);
-    el.textContent = `Card issue: 1 USDT ≈ 1 USD · Fee $${cardFee} · Min $${minDep} · Reload FX: 1 USD = ${Number(p.mmk_to_usd_rate || 4500).toLocaleString()} MMK${eff}`;
+    el.textContent = `Card issue: 1 USDT ≈ 1 USD · Fee $${cardFee} · Min $${minDep} · Reload: USDT wallet only${eff}`;
   },
 
   renderRatesPage() {
