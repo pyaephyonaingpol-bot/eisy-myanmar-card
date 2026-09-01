@@ -188,21 +188,13 @@
       if (settingsForm) {
         const canWrite = this.hasPermission('settings_write');
         settingsForm.querySelectorAll('input, select, textarea, button').forEach((input) => {
-          if (input.id === 'settingPlatformRevenueBalance') return;
           input.disabled = !canWrite;
         });
       }
 
-      const wrForm = $('withdrawalRatesForm');
-      if (wrForm) {
-        const canWriteRates = this.hasPermission('withdrawal_rates_write');
-        wrForm.querySelectorAll('input, select, textarea, button[type="submit"]').forEach((input) => {
-          input.disabled = !canWriteRates;
-        });
-        const hint = $('wrSaveHint');
-        if (hint && !canWriteRates) {
-          hint.textContent = 'View only — Super/Finance Admin required to edit';
-        }
+      const wrRefresh = $('wrRefreshBtn');
+      if (wrRefresh && !this.hasPermission('withdrawal_rates_read')) {
+        wrRefresh.disabled = true;
       }
 
       const allowedPages = this.pages && this.pages.length
@@ -449,11 +441,15 @@
         }
       });
 
-      $('withdrawalRatesForm')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        this.saveWithdrawalRates();
-      });
       $('wrRefreshBtn')?.addEventListener('click', () => this.loadWithdrawalRates());
+      $('btnEditRatesFees')?.addEventListener('click', () => {
+        if (this.hasPermission('settings') || this.hasPermission('ledger')) {
+          this.switchTab('settings');
+          $('adminSettingsForm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          this.showAdminToast('Rates & Fees requires settings permission', 'error');
+        }
+      });
 
       const depositFilter = $('depositFilter');
       if (depositFilter) depositFilter.addEventListener('change', () => this.loadDeposits());
@@ -794,20 +790,25 @@
               effective_date: $('settingEffectiveDate').value,
               card_issuance_fee_usd: parseFloat($('settingCardFee').value),
               minimum_initial_deposit_usd: parseFloat($('settingMinDeposit').value),
-              card_reload_fee_usd: parseFloat($('settingReloadFee')?.value || '1'),
+              card_reload_fee_percent: parseFloat($('settingReloadFeePercent')?.value || '0'),
               minimum_card_reload_mmk: parseFloat($('settingMinReloadMmk')?.value || '10000'),
               minimum_usdt_deposit: parseFloat($('settingMinUsdtDeposit')?.value || '5'),
               minimum_usdt_reload: parseFloat($('settingMinUsdtReload')?.value || '5'),
-              p2p_seller_fee_percent: parseFloat($('settingP2pSellerFee')?.value || '1'),
-              deposit_service_fee_mode: $('settingDepositFeeMode')?.value || 'max_percent_or_min',
+              deposit_service_fee_mode: 'max_percent_or_min',
               deposit_service_fee_percent: parseFloat($('settingDepositFeePercent')?.value || '2'),
               deposit_service_fee_minimum_usdt: parseFloat($('settingDepositFeeMinUsdt')?.value || '1'),
+              withdrawal_service_fee_mode: 'max_percent_or_min',
+              withdrawal_service_fee_percent: parseFloat($('settingWithdrawFeePercent')?.value || '2'),
+              withdrawal_service_fee_minimum_usdt: parseFloat($('settingWithdrawFeeMinUsdt')?.value || '1'),
+              minimum_usdt_withdrawal: parseFloat($('settingMinUsdtWithdrawal')?.value || '10'),
+              minimum_mmk_withdrawal: parseFloat($('settingMinMmkWithdrawal')?.value || '10000'),
               updated_by: this.user?.email || this.user?.name || 'admin',
             });
             if (out) {
               out.classList.remove('hidden');
               out.textContent = 'Saved.';
             }
+            if ($('adminSettingsSaveHint')) $('adminSettingsSaveHint').textContent = 'Saved.';
             this.showAdminToast('Pricing saved', 'ok');
             this.pricingSettings = data.pricing;
             this.updateRateBadge(data.current_rate);
@@ -1049,38 +1050,8 @@
     },
 
     async saveWithdrawalRates() {
-      if (!this.hasPermission('withdrawal_rates_write')) {
-        this.showAdminToast('Only Super Admin or Finance Admin can change withdrawal rates', 'error');
-        return;
-      }
-      const btn = $('wrSaveBtn');
-      const out = $('withdrawalRatesOut');
-      if (btn) btn.disabled = true;
-      try {
-        const data = await this.api('PUT', '/api/admin/withdrawal-rates', {
-          mmk_to_usd_rate: Number($('wrExchangeRate')?.value),
-          effective_date: $('wrEffectiveDate')?.value,
-          withdrawal_service_fee_mode: $('wrFeeMode')?.value || 'max_percent_or_min',
-          withdrawal_service_fee_percent: Number($('wrFeePercent')?.value),
-          withdrawal_service_fee_minimum_usdt: Number($('wrFeeMinUsdt')?.value),
-          minimum_usdt_withdrawal: Number($('wrMinUsdt')?.value),
-          minimum_mmk_withdrawal: Number($('wrMinMmk')?.value),
-          notes: ($('wrNotes')?.value || '').trim() || undefined,
-        });
-        this.renderWithdrawalRatesPreview(data.preview);
-        if (out) out.textContent = JSON.stringify(data.rates || data, null, 2);
-        if ($('wrNotes')) $('wrNotes').value = '';
-        this.showAdminToast(data.message || 'Withdrawal rates saved', 'ok');
-        const hint = $('wrSaveHint');
-        if (hint) hint.textContent = 'Saved — new withdrawals use these rates';
-        // Keep general settings badge in sync when exchange rate changes
-        if (data.current_rate) this.updateRateBadge(data.current_rate);
-      } catch (err) {
-        this.showAdminToast(err.message || 'Failed to save withdrawal rates', 'error');
-        if (out) out.textContent = err.message || 'Save failed';
-      } finally {
-        if (btn && this.hasPermission('withdrawal_rates_write')) btn.disabled = false;
-      }
+      // Editing moved to Rates & Fees. Keep method for compatibility.
+      return this.loadWithdrawalRates();
     },
 
     async loadAdmins() {
@@ -2759,23 +2730,29 @@
         const p = data.pricing || {};
         if ($('settingCardFee')) $('settingCardFee').value = p.card_issuance_fee_usd ?? 5;
         if ($('settingMinDeposit')) $('settingMinDeposit').value = p.minimum_initial_deposit_usd ?? 10;
-        if ($('settingReloadFee')) $('settingReloadFee').value = p.card_reload_fee_usd ?? 3.5;
+        if ($('settingReloadFeePercent')) {
+          $('settingReloadFeePercent').value = p.card_reload_fee_percent ?? 0;
+        }
         if ($('settingMinReloadMmk')) $('settingMinReloadMmk').value = p.minimum_card_reload_mmk ?? 10000;
         if ($('settingMinUsdtDeposit')) $('settingMinUsdtDeposit').value = p.minimum_usdt_deposit ?? data.settings?.minimum_usdt_deposit ?? 5;
         if ($('settingMinUsdtReload')) $('settingMinUsdtReload').value = p.minimum_usdt_reload ?? data.settings?.minimum_usdt_reload ?? 5;
-        if ($('settingP2pSellerFee')) $('settingP2pSellerFee').value = p.p2p_seller_fee_percent ?? 1;
-        if ($('settingDepositFeeMode')) {
-          $('settingDepositFeeMode').value = p.deposit_service_fee_mode || p.payment_service_fee_mode || 'max_percent_or_min';
-        }
         if ($('settingDepositFeePercent')) {
           $('settingDepositFeePercent').value = p.deposit_service_fee_percent ?? p.payment_service_fee_percent ?? 2;
         }
         if ($('settingDepositFeeMinUsdt')) {
           $('settingDepositFeeMinUsdt').value = p.deposit_service_fee_minimum_usdt ?? p.payment_service_fee_minimum_usdt ?? 1;
         }
-        if ($('settingPlatformRevenueBalance')) {
-          const rev = Number(p.platform_usdt_revenue_balance ?? 0);
-          $('settingPlatformRevenueBalance').textContent = rev.toFixed(2) + ' USDT';
+        if ($('settingWithdrawFeePercent')) {
+          $('settingWithdrawFeePercent').value = p.withdrawal_service_fee_percent ?? p.payment_service_fee_percent ?? 2;
+        }
+        if ($('settingWithdrawFeeMinUsdt')) {
+          $('settingWithdrawFeeMinUsdt').value = p.withdrawal_service_fee_minimum_usdt ?? 1;
+        }
+        if ($('settingMinUsdtWithdrawal')) {
+          $('settingMinUsdtWithdrawal').value = p.minimum_usdt_withdrawal ?? 10;
+        }
+        if ($('settingMinMmkWithdrawal')) {
+          $('settingMinMmkWithdrawal').value = p.minimum_mmk_withdrawal ?? 10000;
         }
         if ($('settingExchangeRate')) $('settingExchangeRate').value = p.mmk_to_usd_rate ?? 4500;
         if ($('settingEffectiveDate')) {

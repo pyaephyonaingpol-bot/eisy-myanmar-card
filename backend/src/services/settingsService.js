@@ -9,6 +9,7 @@ const DEFAULTS = {
   card_issuance_fee_usd: '5.00',
   minimum_initial_deposit_usd: '10.00',
   card_reload_fee_usd: '3.50',
+  card_reload_fee_percent: '0',
   card_reload_provider_cost_usd: '1.50',
   card_reload_net_profit_usd: '2.00',
   minimum_card_reload_mmk: '10000',
@@ -45,6 +46,7 @@ const NUMERIC_KEYS = new Set([
   'card_issuance_fee_usd',
   'minimum_initial_deposit_usd',
   'card_reload_fee_usd',
+  'card_reload_fee_percent',
   'card_reload_provider_cost_usd',
   'card_reload_net_profit_usd',
   'minimum_card_reload_mmk',
@@ -175,6 +177,7 @@ async function getCardPricingSettings() {
     card_issuance_fee_usd: parseFloat(raw.card_issuance_fee_usd) || 5,
     minimum_initial_deposit_usd: parseFloat(raw.minimum_initial_deposit_usd) || 10,
     card_reload_fee_usd: parseFloat(raw.card_reload_fee_usd) || CARD_RELOAD_USER_FEE_USD,
+    card_reload_fee_percent: parseFloat(raw.card_reload_fee_percent) || 0,
     card_reload_provider_cost_usd: parseFloat(raw.card_reload_provider_cost_usd) || 1.5,
     card_reload_net_profit_usd: parseFloat(raw.card_reload_net_profit_usd) || 2,
     minimum_card_reload_mmk: parseFloat(raw.minimum_card_reload_mmk) || 10000,
@@ -640,6 +643,9 @@ async function updateSettings(updates) {
       if ((key === 'deposit_service_fee_percent' || key === 'withdrawal_service_fee_percent') && (num < 0 || num > 20)) {
         throw new Error(`${key} must be between 0% and 20%`);
       }
+      if (key === 'card_reload_fee_percent' && (num < 0 || num > 50)) {
+        throw new Error('Card reload fee percent must be between 0% and 50%');
+      }
       if (key === 'payment_service_fee_minimum_usdt' && num < 0) {
         throw new Error('Payment service fee minimum must be zero or greater');
       }
@@ -690,6 +696,18 @@ async function updateSettings(updates) {
   };
 }
 
+function resolveCardReloadFeeUsd(topUpUsd, settings = {}) {
+  const percent = parseFloat(settings.card_reload_fee_percent);
+  if (Number.isFinite(percent) && percent > 0) {
+    return Math.round((Number(topUpUsd) * percent / 100) * 100) / 100;
+  }
+  const fixed = parseFloat(settings.card_reload_fee_usd);
+  if (Number.isFinite(fixed) && fixed >= 0) {
+    return Math.round(fixed * 100) / 100;
+  }
+  return getCardReloadFeeBreakdown().reload_fee_usd;
+}
+
 function calculateCardReloadPricing(topUpMmk, settings) {
   const mmk = parseFloat(topUpMmk);
   const rate = settings.mmk_to_usd_rate;
@@ -704,16 +722,22 @@ function calculateCardReloadPricing(topUpMmk, settings) {
   }
 
   const topUpUsd = Math.round((mmk / rate) * 100) / 100;
-  const totalWalletUsd = Math.round((topUpUsd + fees.reload_fee_usd) * 100) / 100;
+  const reloadFeeUsd = resolveCardReloadFeeUsd(topUpUsd, settings);
+  const providerCost = fees.provider_cost_usd;
+  const netProfit = Math.max(0, Math.round((reloadFeeUsd - providerCost) * 100) / 100);
+  const totalWalletUsd = Math.round((topUpUsd + reloadFeeUsd) * 100) / 100;
   const totalWalletMmk = Math.ceil(totalWalletUsd * rate);
 
   return {
     top_up_mmk: Math.round(mmk),
     top_up_usd: topUpUsd,
     net_usd_to_card: topUpUsd,
-    reload_fee_usd: fees.reload_fee_usd,
-    provider_cost_usd: fees.provider_cost_usd,
-    net_profit_usd: fees.net_profit_usd,
+    reload_fee_usd: reloadFeeUsd,
+    reload_fee_percent: Number.isFinite(parseFloat(settings.card_reload_fee_percent))
+      ? parseFloat(settings.card_reload_fee_percent)
+      : null,
+    provider_cost_usd: providerCost,
+    net_profit_usd: netProfit,
     total_wallet_usd: totalWalletUsd,
     total_wallet_mmk: totalWalletMmk,
     deposit_mmk: totalWalletMmk,
@@ -767,7 +791,10 @@ function calculateCardReloadPricingUsdt(topUpUsdt, settings) {
   }
 
   const topUpUsd = Math.round(topUp * 100) / 100;
-  const totalWalletUsdt = Math.round((topUpUsd + fees.reload_fee_usd) * 100) / 100;
+  const reloadFeeUsd = resolveCardReloadFeeUsd(topUpUsd, settings);
+  const providerCost = fees.provider_cost_usd;
+  const netProfit = Math.max(0, Math.round((reloadFeeUsd - providerCost) * 100) / 100);
+  const totalWalletUsdt = Math.round((topUpUsd + reloadFeeUsd) * 100) / 100;
 
   return {
     top_up_usdt: topUpUsd,
@@ -776,13 +803,18 @@ function calculateCardReloadPricingUsdt(topUpUsdt, settings) {
     total_wallet_usd: totalWalletUsdt,
     total_wallet_usdt: totalWalletUsdt,
     net_usd_to_card: topUpUsd,
-    reload_fee_usd: fees.reload_fee_usd,
-    provider_cost_usd: fees.provider_cost_usd,
-    net_profit_usd: fees.net_profit_usd,
+    reload_fee_usd: reloadFeeUsd,
+    reload_fee_percent: Number.isFinite(parseFloat(settings.card_reload_fee_percent))
+      ? parseFloat(settings.card_reload_fee_percent)
+      : null,
+    provider_cost_usd: providerCost,
+    net_profit_usd: netProfit,
     gross_usd: topUpUsd,
     payment_currency: 'USDT',
     exchange_rate_applied: false,
-    note: '1 USDT ≈ 1 USD — $3.50 fixed service fee added on top',
+    note: Number.isFinite(parseFloat(settings.card_reload_fee_percent)) && parseFloat(settings.card_reload_fee_percent) > 0
+      ? `1 USDT ≈ 1 USD — ${parseFloat(settings.card_reload_fee_percent)}% reload fee added on top`
+      : '1 USDT ≈ 1 USD — fixed service fee added on top',
   };
 }
 
@@ -821,6 +853,7 @@ module.exports = {
   calculateWithdrawalBreakdown,
   calculateMmkWithdrawalBreakdown,
   calculateDepositFeeBreakdown,
+  resolveCardReloadFeeUsd,
   parseRecordMetadata,
   todayDateString,
   formatEffectiveDate,

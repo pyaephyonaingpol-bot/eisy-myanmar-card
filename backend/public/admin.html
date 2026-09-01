@@ -236,6 +236,44 @@
       text-transform: uppercase;
       color: #64748b;
     }
+    .pricing-blocks {
+      display: grid;
+      gap: 1rem;
+      max-width: min(920px, 100%);
+    }
+    .pricing-block {
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.55);
+      padding: 1rem 1.1rem 1.15rem;
+    }
+    .pricing-block-header { margin-bottom: 0.85rem; }
+    .pricing-block-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .pricing-block-desc {
+      margin: 0.35rem 0 0;
+      color: #94a3b8;
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    .pricing-block-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.4rem;
+      height: 1.4rem;
+      margin-right: 0.45rem;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.16);
+      color: #7dd3fc;
+      font-size: 0.75rem;
+      font-weight: 700;
+      vertical-align: middle;
+    }
     .sa-actions {
       grid-column: 1 / -1;
       display: flex;
@@ -544,68 +582,16 @@
               <div>
                 <p class="sa-card-eyebrow">Payout pricing</p>
                 <h2 class="sa-card-title">Withdrawal rates &amp; fees</h2>
-                <p class="sa-card-sub">USDT→MMK rate and withdrawal service fee used on every new payout</p>
+                <p class="sa-card-sub">Configured under Rates &amp; Fees — Withdraw MMK Rate and USDT Withdrawal Fee</p>
               </div>
             </div>
-
-            <form id="withdrawalRatesForm" class="sa-rates-form">
-              <p class="sa-section-label">Exchange rate</p>
-              <div class="field">
-                <label for="wrExchangeRate">USDT → MMK</label>
-                <input id="wrExchangeRate" type="number" step="1" min="1" required placeholder="4500" />
-                <small class="hint">MMK paid per 1 USDT (after fee)</small>
-              </div>
-              <div class="field">
-                <label for="wrEffectiveDate">Effective date</label>
-                <input id="wrEffectiveDate" type="date" required />
-              </div>
-
-              <p class="sa-section-label">Withdrawal fees</p>
-              <div class="field">
-                <label for="wrFeeMode">Fee mode</label>
-                <select id="wrFeeMode">
-                  <option value="off">Off (no fee)</option>
-                  <option value="percent">Percent only</option>
-                  <option value="fixed">Fixed USDT only</option>
-                  <option value="max_percent_or_min" selected>Max(percent, minimum)</option>
-                </select>
-                <small class="hint">Applied to USDT→MMK bank payouts and other withdrawal routes (not deposits)</small>
-              </div>
-              <div class="field">
-                <label for="wrFeePercent">Percent (%)</label>
-                <input id="wrFeePercent" type="number" step="0.01" min="0" max="20" required />
-              </div>
-              <div class="field">
-                <label for="wrFeeMinUsdt">Fixed / minimum (USDT)</label>
-                <input id="wrFeeMinUsdt" type="number" step="0.01" min="0" required />
-                <small class="hint">Fixed amount when mode is Fixed; otherwise the minimum floor for Max(%, min).</small>
-              </div>
-
-              <p class="sa-section-label">Minimums</p>
-              <div class="field">
-                <label for="wrMinUsdt">Min USDT withdrawal</label>
-                <input id="wrMinUsdt" type="number" step="0.01" min="0.01" required />
-              </div>
-              <div class="field">
-                <label for="wrMinMmk">Min MMK withdrawal</label>
-                <input id="wrMinMmk" type="number" step="1" min="1" required />
-              </div>
-
-              <div class="field full">
-                <label for="wrNotes">Note (optional)</label>
-                <input id="wrNotes" type="text" placeholder="Why this change?" />
-              </div>
-
-              <div class="sa-actions">
-                <button type="submit" class="btn btn-primary" id="wrSaveBtn">Save rates</button>
-                <button type="button" class="btn btn-secondary" id="wrRefreshBtn">Reload</button>
-                <span id="wrSaveHint" class="hint"></span>
-              </div>
-            </form>
-
-            <div class="sa-preview">
-              <p class="sa-preview-title">Quick preview</p>
+            <div class="sa-preview" style="margin-top:0;padding-top:0;border-top:0">
+              <p class="sa-preview-title">Current values</p>
               <div id="withdrawalRatesPreview"><p class="hint" style="margin:0">Loading…</p></div>
+            </div>
+            <div class="sa-actions" style="margin-top:1rem">
+              <button type="button" class="btn btn-secondary btn-sm" id="btnEditRatesFees">Edit in Rates &amp; Fees</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="wrRefreshBtn">Reload</button>
             </div>
             <pre class="output hidden" id="withdrawalRatesOut" aria-hidden="true"></pre>
           </div>
@@ -860,82 +846,130 @@
 
         <h2 style="margin-top:2rem">Rate &amp; Pricing</h2>
         <p class="hint" style="margin-bottom:1rem">
-          Core exchange rate and product fees. Withdrawal fees and minimums are managed on
-          <strong>Overview → Withdrawal rates &amp; fees</strong>. Saves are logged to Exchange Rate History.
+          Five dedicated fee blocks for withdrawals, card issuance, card reloads, USDT deposits, and USDT withdrawals.
+          Saves are logged to Exchange Rate History.
         </p>
-        <form id="adminSettingsForm" class="form sa-rates-form" style="max-width:min(640px,100%)">
-          <p class="sa-section-label">Exchange rate</p>
-          <div class="field">
-            <label for="settingExchangeRate">USD / MMK rate</label>
-            <input id="settingExchangeRate" type="number" step="1" min="1" required placeholder="4500" />
-            <small class="hint">MMK per 1 USD</small>
-          </div>
-          <div class="field">
-            <label for="settingEffectiveDate">Effective date</label>
-            <input id="settingEffectiveDate" type="date" required />
+        <form id="adminSettingsForm" class="form" style="max-width:min(920px,100%)">
+          <div class="pricing-blocks">
+            <section class="pricing-block" aria-labelledby="pricingBlockWithdrawMmkTitle">
+              <div class="pricing-block-header">
+                <h3 id="pricingBlockWithdrawMmkTitle" class="pricing-block-title">
+                  <span class="pricing-block-num">1</span>Withdraw MMK Rate
+                </h3>
+                <p class="pricing-block-desc">Daily exchange rate for USDT-to-MMK local bank withdrawals (1 USD = X MMK).</p>
+              </div>
+              <div class="sa-rates-form">
+                <div class="field">
+                  <label for="settingExchangeRate">1 USD = MMK</label>
+                  <input id="settingExchangeRate" type="number" step="1" min="1" required placeholder="4500" />
+                  <small class="hint">MMK paid per 1 USDT after withdrawal fee</small>
+                </div>
+                <div class="field">
+                  <label for="settingEffectiveDate">Effective date</label>
+                  <input id="settingEffectiveDate" type="date" required />
+                </div>
+                <div class="field">
+                  <label for="settingMinMmkWithdrawal">Min MMK withdrawal</label>
+                  <input id="settingMinMmkWithdrawal" type="number" step="1" min="1" required />
+                </div>
+              </div>
+            </section>
+
+            <section class="pricing-block" aria-labelledby="pricingBlockCardIssueTitle">
+              <div class="pricing-block-header">
+                <h3 id="pricingBlockCardIssueTitle" class="pricing-block-title">
+                  <span class="pricing-block-num">2</span>Card Issue Fee / Rate
+                </h3>
+                <p class="pricing-block-desc">Platform markup fee charged when issuing a new virtual card (kept as platform earnings; not sent to Kripicard).</p>
+              </div>
+              <div class="sa-rates-form">
+                <div class="field">
+                  <label for="settingCardFee">Card issuance fee (USD)</label>
+                  <input id="settingCardFee" type="number" step="0.01" min="0" required />
+                </div>
+                <div class="field">
+                  <label for="settingMinDeposit">Min initial card load (USD)</label>
+                  <input id="settingMinDeposit" type="number" step="0.01" min="0" required />
+                </div>
+              </div>
+            </section>
+
+            <section class="pricing-block" aria-labelledby="pricingBlockCardReloadTitle">
+              <div class="pricing-block-header">
+                <h3 id="pricingBlockCardReloadTitle" class="pricing-block-title">
+                  <span class="pricing-block-num">3</span>Card Reload Fee (%)
+                </h3>
+                <p class="pricing-block-desc">Percentage fee applied on top of each card reload amount.</p>
+              </div>
+              <div class="sa-rates-form">
+                <div class="field">
+                  <label for="settingReloadFeePercent">Reload fee (%)</label>
+                  <input id="settingReloadFeePercent" type="number" step="0.01" min="0" max="50" required />
+                  <small class="hint">Charged as a percent of the top-up amount</small>
+                </div>
+                <div class="field">
+                  <label for="settingMinUsdtReload">Min USDT reload</label>
+                  <input id="settingMinUsdtReload" type="number" step="0.01" min="0" required />
+                </div>
+                <div class="field">
+                  <label for="settingMinReloadMmk">Min MMK reload</label>
+                  <input id="settingMinReloadMmk" type="number" step="1" min="0" required />
+                </div>
+              </div>
+            </section>
+
+            <section class="pricing-block" aria-labelledby="pricingBlockUsdtDepositTitle">
+              <div class="pricing-block-header">
+                <h3 id="pricingBlockUsdtDepositTitle" class="pricing-block-title">
+                  <span class="pricing-block-num">4</span>USDT Deposit Fee / Rate
+                </h3>
+                <p class="pricing-block-desc">Service fee taken from user USDT deposits before net balance is credited.</p>
+              </div>
+              <div class="sa-rates-form">
+                <div class="field">
+                  <label for="settingDepositFeePercent">Deposit fee (%)</label>
+                  <input id="settingDepositFeePercent" type="number" step="0.01" min="0" max="20" required />
+                </div>
+                <div class="field">
+                  <label for="settingDepositFeeMinUsdt">Minimum fee (USDT)</label>
+                  <input id="settingDepositFeeMinUsdt" type="number" step="0.01" min="0" required />
+                  <small class="hint">Fee charged = max(percent of deposit, this minimum)</small>
+                </div>
+                <div class="field">
+                  <label for="settingMinUsdtDeposit">Min USDT deposit</label>
+                  <input id="settingMinUsdtDeposit" type="number" step="0.01" min="0" required />
+                </div>
+              </div>
+            </section>
+
+            <section class="pricing-block" aria-labelledby="pricingBlockUsdtWithdrawTitle">
+              <div class="pricing-block-header">
+                <h3 id="pricingBlockUsdtWithdrawTitle" class="pricing-block-title">
+                  <span class="pricing-block-num">5</span>USDT Withdrawal Fee
+                </h3>
+                <p class="pricing-block-desc">Fee for USDT withdrawals: custom percentage with a fixed minimum floor (default $1).</p>
+              </div>
+              <div class="sa-rates-form">
+                <div class="field">
+                  <label for="settingWithdrawFeePercent">Withdrawal fee (%)</label>
+                  <input id="settingWithdrawFeePercent" type="number" step="0.01" min="0" max="20" required />
+                </div>
+                <div class="field">
+                  <label for="settingWithdrawFeeMinUsdt">Minimum fee (USDT)</label>
+                  <input id="settingWithdrawFeeMinUsdt" type="number" step="0.01" min="0" required />
+                  <small class="hint">Floor of $1 recommended — fee = max(percent, minimum)</small>
+                </div>
+                <div class="field">
+                  <label for="settingMinUsdtWithdrawal">Min USDT withdrawal</label>
+                  <input id="settingMinUsdtWithdrawal" type="number" step="0.01" min="0.01" required />
+                </div>
+              </div>
+            </section>
           </div>
 
-          <p class="sa-section-label">Cards &amp; deposits</p>
-          <div class="field">
-            <label for="settingCardFee">Card issuance fee (USD)</label>
-            <input id="settingCardFee" type="number" step="0.01" min="0" required />
-          </div>
-          <div class="field">
-            <label for="settingMinDeposit">Min initial deposit (USD)</label>
-            <input id="settingMinDeposit" type="number" step="0.01" min="0" required />
-          </div>
-          <div class="field">
-            <label for="settingReloadFee">Card reload fee (USD)</label>
-            <input id="settingReloadFee" type="number" step="0.01" min="0" required />
-          </div>
-          <div class="field">
-            <label for="settingMinReloadMmk">Min card reload (MMK)</label>
-            <input id="settingMinReloadMmk" type="number" step="1" min="0" required />
-          </div>
-          <div class="field">
-            <label for="settingMinUsdtDeposit">Min USDT deposit</label>
-            <input id="settingMinUsdtDeposit" type="number" step="0.01" min="0" required />
-          </div>
-          <div class="field">
-            <label for="settingMinUsdtReload">Min USDT card reload</label>
-            <input id="settingMinUsdtReload" type="number" step="0.01" min="0" required />
-          </div>
-
-          <p class="sa-section-label">Deposit &amp; card purchase fees</p>
-          <div class="field">
-            <label for="settingDepositFeeMode">Fee mode</label>
-            <select id="settingDepositFeeMode">
-              <option value="off">Off (no fee)</option>
-              <option value="percent">Percent only</option>
-              <option value="fixed">Fixed USDT only</option>
-              <option value="max_percent_or_min" selected>Max(percent, minimum)</option>
-            </select>
-            <small class="hint">Applied to USDT/MMK deposits and card top-ups (not withdrawals)</small>
-          </div>
-          <div class="field">
-            <label for="settingDepositFeePercent">Fee (%)</label>
-            <input id="settingDepositFeePercent" type="number" step="0.01" min="0" max="20" required />
-            <small class="hint">Used for Percent and Max(%, min) modes</small>
-          </div>
-          <div class="field">
-            <label for="settingDepositFeeMinUsdt">Fixed / min fee (USDT)</label>
-            <input id="settingDepositFeeMinUsdt" type="number" step="0.01" min="0" required />
-            <small class="hint">Fixed amount or minimum floor, depending on mode</small>
-          </div>
-
-          <p class="sa-section-label">P2P trading</p>
-          <div class="field">
-            <label for="settingP2pSellerFee">P2P seller fee (%)</label>
-            <input id="settingP2pSellerFee" type="number" step="0.1" min="0" max="10" required />
-          </div>
-          <div class="field">
-            <label>Platform USDT revenue</label>
-            <div id="settingPlatformRevenueBalance" class="p2p-revenue-balance">—</div>
-            <small class="hint">Read-only</small>
-          </div>
-
-          <div class="sa-actions">
+          <div class="sa-actions" style="margin-top:1rem">
             <button type="submit" class="btn btn-primary">Save pricing</button>
+            <span id="adminSettingsSaveHint" class="hint"></span>
           </div>
         </form>
         <pre class="output hidden" id="adminSettingsOut" aria-hidden="true"></pre>

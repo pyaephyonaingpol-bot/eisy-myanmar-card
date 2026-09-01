@@ -372,6 +372,7 @@ router.get('/settings', requirePermission('settings_read'), async (_req, res) =>
         card_issuance_fee_usd: pricing.card_issuance_fee_usd,
         minimum_initial_deposit_usd: pricing.minimum_initial_deposit_usd,
         card_reload_fee_usd: pricing.card_reload_fee_usd,
+        card_reload_fee_percent: pricing.card_reload_fee_percent,
         minimum_card_reload_mmk: pricing.minimum_card_reload_mmk,
         mmk_to_usd_rate: pricing.mmk_to_usd_rate,
         rate_effective_date: pricing.rate_effective_date,

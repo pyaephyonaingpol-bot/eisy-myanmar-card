@@ -12,13 +12,13 @@ const adminHtml = fs.readFileSync(path.join(ROOT, 'backend/public/admin.html'), 
 const adminJs = fs.readFileSync(path.join(ROOT, 'backend/public/admin.js'), 'utf8');
 const settingsService = fs.readFileSync(path.join(ROOT, 'backend/src/services/settingsService.js'), 'utf8');
 
-assert.ok(adminHtml.includes('Deposit &amp; card purchase fees'), 'deposit fee section label');
-assert.ok(adminHtml.includes('id="settingDepositFeeMode"'), 'deposit fee mode field');
+assert.ok(adminHtml.includes('USDT Deposit Fee / Rate'), 'deposit fee block label');
 assert.ok(adminHtml.includes('id="settingDepositFeePercent"'), 'deposit fee percent field');
 assert.ok(adminHtml.includes('id="settingDepositFeeMinUsdt"'), 'deposit fee min field');
 assert.ok(!adminHtml.includes('id="settingPaymentFeeMode"'), 'legacy unified settings fee mode removed');
-assert.ok(adminHtml.includes('Withdrawal fees'), 'withdrawal fee section label on overview');
-assert.ok(adminHtml.includes('id="wrFeeMode"'), 'withdrawal fee mode field kept');
+assert.ok(adminHtml.includes('USDT Withdrawal Fee'), 'withdrawal fee block label');
+assert.ok(adminHtml.includes('id="settingWithdrawFeePercent"'), 'withdrawal fee percent field');
+assert.ok(!adminHtml.includes('id="wrFeeMode"'), 'overview fee mode editor removed');
 
 assert.ok(adminJs.includes('deposit_service_fee_mode'), 'admin saves deposit fee mode');
 assert.ok(adminJs.includes('withdrawal_service_fee_mode'), 'admin saves withdrawal fee mode');
