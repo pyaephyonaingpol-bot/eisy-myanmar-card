@@ -158,7 +158,7 @@ function enrichDeposit(deposit, settings) {
   return {
     ...deposit,
     purpose,
-    deposit_currency: deposit.deposit_currency || (purpose === 'usdt_topup' ? 'USDT' : 'MMK'),
+    deposit_currency: deposit.deposit_currency || 'USDT',
     usdt_network: deposit.usdt_network || metadata.usdt_network || null,
     tx_hash: deposit.tx_hash || deposit.txn_id || deposit.kpay_transaction_id || null,
     screenshot_url: screenshotPath,

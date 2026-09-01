@@ -12,7 +12,6 @@ const DEFAULTS = {
   card_reload_fee_percent: '0',
   card_reload_provider_cost_usd: '1.50',
   card_reload_net_profit_usd: '2.00',
-  minimum_card_reload_mmk: '10000',
   minimum_usdt_deposit: '5.00',
   minimum_usdt_reload: '5.00',
   p2p_seller_fee_percent: '1.0',
@@ -49,7 +48,6 @@ const NUMERIC_KEYS = new Set([
   'card_reload_fee_percent',
   'card_reload_provider_cost_usd',
   'card_reload_net_profit_usd',
-  'minimum_card_reload_mmk',
   'minimum_usdt_deposit',
   'minimum_usdt_reload',
   'mmk_to_usd_rate',
@@ -180,7 +178,6 @@ async function getCardPricingSettings() {
     card_reload_fee_percent: parseFloat(raw.card_reload_fee_percent) || 0,
     card_reload_provider_cost_usd: parseFloat(raw.card_reload_provider_cost_usd) || 1.5,
     card_reload_net_profit_usd: parseFloat(raw.card_reload_net_profit_usd) || 2,
-    minimum_card_reload_mmk: parseFloat(raw.minimum_card_reload_mmk) || 10000,
     minimum_usdt_deposit: parseFloat(raw.minimum_usdt_deposit) || 5,
     minimum_usdt_reload: parseFloat(raw.minimum_usdt_reload) || 5,
     mmk_to_usd_rate: parseFloat(raw.mmk_to_usd_rate) || 4500,
@@ -575,7 +572,6 @@ async function getCurrentRateSummary() {
     card_issuance_fee_usd: pricing.card_issuance_fee_usd,
     minimum_initial_deposit_usd: pricing.minimum_initial_deposit_usd,
     card_reload_fee_usd: pricing.card_reload_fee_usd,
-    minimum_card_reload_mmk: pricing.minimum_card_reload_mmk,
     effective_at: effectiveAt,
     effective_date: effectiveDate,
     updated_by: latest?.updated_by || 'admin',
@@ -708,45 +704,6 @@ function resolveCardReloadFeeUsd(topUpUsd, settings = {}) {
   return getCardReloadFeeBreakdown().reload_fee_usd;
 }
 
-function calculateCardReloadPricing(topUpMmk, settings) {
-  const mmk = parseFloat(topUpMmk);
-  const rate = settings.mmk_to_usd_rate;
-  const minMmk = settings.minimum_card_reload_mmk;
-  const fees = getCardReloadFeeBreakdown();
-
-  if (!Number.isFinite(mmk) || mmk <= 0) {
-    throw new Error('Top-up amount must be a positive number');
-  }
-  if (mmk < minMmk) {
-    throw new Error(`Minimum top-up amount is ${minMmk.toLocaleString()} MMK`);
-  }
-
-  const topUpUsd = Math.round((mmk / rate) * 100) / 100;
-  const reloadFeeUsd = resolveCardReloadFeeUsd(topUpUsd, settings);
-  const providerCost = fees.provider_cost_usd;
-  const netProfit = Math.max(0, Math.round((reloadFeeUsd - providerCost) * 100) / 100);
-  const totalWalletUsd = Math.round((topUpUsd + reloadFeeUsd) * 100) / 100;
-  const totalWalletMmk = Math.ceil(totalWalletUsd * rate);
-
-  return {
-    top_up_mmk: Math.round(mmk),
-    top_up_usd: topUpUsd,
-    net_usd_to_card: topUpUsd,
-    reload_fee_usd: reloadFeeUsd,
-    reload_fee_percent: Number.isFinite(parseFloat(settings.card_reload_fee_percent))
-      ? parseFloat(settings.card_reload_fee_percent)
-      : null,
-    provider_cost_usd: providerCost,
-    net_profit_usd: netProfit,
-    total_wallet_usd: totalWalletUsd,
-    total_wallet_mmk: totalWalletMmk,
-    deposit_mmk: totalWalletMmk,
-    gross_usd: topUpUsd,
-    mmk_to_usd_rate: rate,
-    rate_effective_date: settings.rate_effective_date || todayDateString(),
-  };
-}
-
 function calculateCardRequestPricingUsdt(initialLoadUsd, settings) {
   const initial = parseFloat(initialLoadUsd);
   const fee = settings.card_issuance_fee_usd;
@@ -840,7 +797,6 @@ module.exports = {
   buildRateSnapshot,
   listExchangeRateHistory,
   updateSettings,
-  calculateCardReloadPricing,
   calculateCardRequestPricingUsdt,
   calculateCardReloadPricingUsdt,
   getUsdtDepositSettings,

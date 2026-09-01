@@ -18,7 +18,19 @@
 --           admin_notes, daily_limit_usd, metadata, activated_at, cancelled_at,
 --           created_at, updated_at
 
--- ─── DEPOSITS ───────────────────────────────────────────────────
+-- ─── DEPOSITS (USDT/crypto only; amount_mmk retained for legacy rows) ───
+-- deposit_requests_v2: id, user_id, amount_mmk (legacy), amount_usd, ref_code,
+--   payment_method, deposit_currency CHECK('USDT'), usdt_network, tx_hash,
+--   platform_profit_usd, status, purpose, metadata, ...
+
+-- ─── CARD RELOADS (USDT wallet only; amount_mmk retained for legacy rows) ───
+-- card_reload_requests: wallet_type CHECK('usdt'), amount_usdt, amount_mmk (legacy)
+
+-- ─── WITHDRAWALS (MMK operations) ───
+-- mmk_withdrawal_requests: amount_mmk, fee_mmk, net_mmk
+-- usdt_withdrawal_requests: amount_mmk (USDT→bank payout), exchange_rate
+
+-- ─── DEPOSITS (legacy doc) ───
 -- deposit_requests_v2: id, user_id, amount_mmk, amount_usd, ref_code,
 --   payment_method, kpay_transaction_id, txn_id, screenshot_path,
 --   screenshot_original_name, screenshot_mime_type, status, user_note,
