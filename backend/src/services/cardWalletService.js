@@ -3,11 +3,10 @@ const User = require('../models/User');
 const TransactionLog = require('../models/TransactionLog');
 const {
   getCardPricingSettings,
-  calculateCardReloadPricing,
   calculateCardRequestPricingUsdt,
   calculateCardReloadPricingUsdt,
 } = require('./settingsService');
-const { debitMmk, debitUsdt, creditUsdt, formatMmk, formatUsdt } = require('./walletService');
+const { debitUsdt, creditUsdt, formatUsdt } = require('./walletService');
 const CardReloadRequest = require('../models/CardReloadRequest');
 const { RELOAD_PENDING_MESSAGE } = require('./cardReloadApprovalService');
 const { recordPlatformUsdFee, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
@@ -102,70 +101,6 @@ function getKripicardBinOptions() {
   };
 }
 
-async function reloadCardFromWallet(userId, { cardId, amountMmk }) {
-  const user = await User.findById(userId);
-  if (!user) throw new Error('User not found');
-
-  const card = await Card.findById(cardId);
-  if (!card || card.user_id !== userId) throw new Error('Card not found');
-  if (card.status !== 'active') throw new Error('Only active cards can be reloaded');
-
-  const settings = await getCardPricingSettings();
-  const pricing = calculateCardReloadPricing(amountMmk, settings);
-  const requiredMmk = pricing.deposit_mmk;
-
-  await debitMmk(userId, requiredMmk, {
-    description: `Card reload hold — ${formatMmk(requiredMmk)} (pending admin approval)`,
-    referenceType: 'cards_v2',
-    referenceId: cardId,
-    createdBy: 'user',
-    metadata: { purpose: 'card_reload', pricing, card_id: cardId, pending: true },
-  });
-
-  const reloadRequest = await CardReloadRequest.create({
-    userId,
-    cardId,
-    walletType: 'mmk',
-    amountMmk: requiredMmk,
-    netUsdToCard: pricing.net_usd_to_card,
-    reloadFeeUsd: pricing.reload_fee_usd,
-    grossUsd: pricing.gross_usd,
-    pricing,
-  });
-
-  await TransactionLog.create({
-    userId,
-    type: 'deposit_request',
-    direction: 'neutral',
-    amountMmk: requiredMmk,
-    amountUsd: pricing.net_usd_to_card,
-    referenceType: 'card_reload_requests',
-    referenceId: reloadRequest.id,
-    description: `Card reload requested from MMK wallet — ${formatMmk(requiredMmk)} (pending admin review)`,
-    createdBy: 'user',
-    metadata: { pricing, paid_from_wallet: true, wallet_type: 'mmk', pending: true },
-  });
-
-  const updatedUser = await User.findById(userId);
-
-  return {
-    pending: true,
-    reload_request: CardReloadRequest.mapForClient(reloadRequest),
-    reload_request_id: reloadRequest.id,
-    pricing,
-    wallet_debit_mmk: requiredMmk,
-    balance_mmk: Number(updatedUser.balance_mmk ?? 0),
-    message: RELOAD_PENDING_MESSAGE,
-  };
-}
-
-/**
- * USDT wallet purchase with profit markup:
- * - Debit user: kripicard_cost_usd + platform_markup_usd (total_charge_usdt)
- * - Send to Kripicard API: kripicard_cost_usd only (initial card load)
- * - Record platform_markup_usd in platform_fee_events ledger
- * Refunds full charge if provider issuance fails after debit.
- */
 async function purchaseCardFromUsdtWallet(userId, {
   initialLoadUsd,
   cardHolderName,
@@ -503,7 +438,6 @@ async function reloadCardFromUsdtWallet(userId, { cardId, amountUsdt }) {
 }
 
 module.exports = {
-  reloadCardFromWallet,
   purchaseCardFromUsdtWallet,
   reloadCardFromUsdtWallet,
   resolveKripicardBin,

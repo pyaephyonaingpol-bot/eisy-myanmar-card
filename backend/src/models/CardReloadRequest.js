@@ -24,6 +24,23 @@ const CardReloadRequest = {
     depositId,
     userNote,
   }) {
+    const normalizedWallet = String(walletType || '').toLowerCase();
+    if (normalizedWallet !== 'usdt') {
+      const err = new Error('Card reload requests accept USDT wallet only.');
+      err.code = 'USDT_ONLY_CARD_RELOAD';
+      throw err;
+    }
+    if (amountMmk != null && Number(amountMmk) > 0) {
+      const err = new Error('MMK amounts are not accepted for card reloads.');
+      err.code = 'USDT_ONLY_CARD_RELOAD';
+      throw err;
+    }
+    if (!Number.isFinite(Number(amountUsdt)) || Number(amountUsdt) <= 0) {
+      const err = new Error('Positive amount_usdt is required for card reload requests.');
+      err.code = 'USDT_ONLY_CARD_RELOAD';
+      throw err;
+    }
+
     const db = getDb();
     const result = await db.run(`
       INSERT INTO ${this.TABLE} (

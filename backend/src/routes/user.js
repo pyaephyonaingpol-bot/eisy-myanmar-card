@@ -8,8 +8,6 @@ const DepositRequest = require('../models/DepositRequest');
 const { enrichDeposit } = require('../services/depositEnrichment');
 const {
   getCardPricingSettings,
-  calculateCardReloadPricing,
-  calculateCardReloadPricingUsdt,
   getUsdtDepositSettings,
   getWithdrawalFeeSettings,
   getDepositFeeSettings,
@@ -17,19 +15,15 @@ const {
   getCurrentRateSummary,
 } = require('../services/settingsService');
 const CardReloadRequest = require('../models/CardReloadRequest');
-const { createDepositRequest } = require('../services/depositService');
-const { RELOAD_PENDING_MESSAGE } = require('../services/cardReloadApprovalService');
-const { walletPayload, formatMmk, formatUsdt, migrateLegacyUsdToMmk } = require('../services/walletService');
+const { walletPayload, formatUsdt, migrateLegacyUsdToMmk } = require('../services/walletService');
 const { overlayWalletPayloadFromSupabase } = require('../services/supabaseWalletReadService');
 const { ensureSupabaseUserWallet } = require('../services/supabaseSyncService');
 const {
-  reloadCardFromWallet,
   purchaseCardFromUsdtWallet,
   reloadCardFromUsdtWallet,
   getKripicardBinOptions,
 } = require('../services/cardWalletService');
 const { assignCardToUser, isSupabaseAdminEnabled } = require('../services/cardPoolService');
-const { resolveActivePaymentMethod } = require('../services/depositPaymentMethodService');
 const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
   isPendingCardRecord,
@@ -487,10 +481,9 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
       card_reload_fee_usd: settings.card_reload_fee_usd,
       card_reload_provider_cost_usd: settings.card_reload_provider_cost_usd,
       card_reload_net_profit_usd: settings.card_reload_net_profit_usd,
-      minimum_card_reload_mmk: settings.minimum_card_reload_mmk,
       minimum_usdt_deposit: settings.minimum_usdt_deposit,
       minimum_usdt_reload: settings.minimum_usdt_reload,
-      // MMK rate is for reloads/deposits/home rates — not used for card issuance.
+      // MMK rate is for withdrawals only — not used for card issuance or reloads.
       mmk_to_usd_rate: settings.mmk_to_usd_rate,
       rate_effective_date: currentRate.effective_date,
       rate_label: "Today's Daily Exchange Rate",
@@ -542,162 +535,53 @@ router.post('/card/request', requireAuth, requireSensitive, async (req, res) => 
 
 router.post('/card/reload', requireAuth, requireSensitive, async (req, res) => {
   try {
-    const payFromWallet = Boolean(req.body.pay_from_wallet);
-    const walletType = (req.body.wallet_type || 'mmk').toLowerCase();
+    const walletType = String(req.body.wallet_type || 'usdt').toLowerCase();
     const cardId = parseInt(req.body.card_id, 10);
+    const amountUsdt = parseFloat(req.body.amount_usdt);
 
-    if (payFromWallet && walletType === 'usdt') {
-      const amountUsdt = parseFloat(req.body.amount_usdt);
-      const result = await reloadCardFromUsdtWallet(req.user.id, { cardId, amountUsdt });
-      return res.json({
-        success: true,
-        paid_from_wallet: true,
-        pending: Boolean(result.pending),
-        reload_request_id: result.reload_request_id,
-        wallet_type: 'usdt',
-        message: result.message,
-        reload_request: result.reload_request,
-        pricing_breakdown: result.pricing,
-        wallet: {
-          debited_usdt: result.wallet_debit_usdt,
-          balance_usdt: result.balance_usdt,
-          usdt_formatted: formatUsdt(result.balance_usdt),
-        },
+    if (walletType !== 'usdt' || req.body.amount_mmk != null) {
+      return res.status(400).json({
+        error: 'Card reload accepts USDT wallet payment only. MMK wallet and KBZPay/WavePay are not supported.',
+        code: 'USDT_ONLY_CARD_RELOAD',
       });
     }
 
-    const amountMmk = parseFloat(req.body.amount_mmk);
-
-    if (payFromWallet) {
-      const result = await reloadCardFromWallet(req.user.id, { cardId, amountMmk });
-      return res.json({
-        success: true,
-        paid_from_wallet: true,
-        pending: Boolean(result.pending),
-        reload_request_id: result.reload_request_id,
-        wallet_type: 'mmk',
-        message: result.message,
-        reload_request: result.reload_request,
-        pricing_breakdown: result.pricing,
-        wallet: {
-          debited_mmk: result.wallet_debit_mmk,
-          balance_mmk: result.balance_mmk,
-          mmk_formatted: formatMmk(result.balance_mmk),
-        },
+    if (req.body.pay_from_wallet === false || req.body.payment_method || req.body.payment_method_id) {
+      return res.status(400).json({
+        error: 'Card reload accepts USDT wallet payment only.',
+        code: 'USDT_ONLY_CARD_RELOAD',
       });
     }
-
-    const paymentMethodRaw = req.body.payment_method || null;
-    const paymentMethodId = req.body.payment_method_id || null;
 
     if (!cardId) {
       return res.status(400).json({ error: 'card_id is required — select a card to reload' });
     }
 
-    let methodRow;
-    try {
-      methodRow = await resolveActivePaymentMethod({
-        paymentMethodId,
-        paymentMethod: paymentMethodRaw,
-      });
-    } catch (resolveErr) {
-      return res.status(400).json({ error: resolveErr.message || 'Payment method unavailable' });
-    }
-    const paymentMethod = methodRow.bank_name;
-
-    const card = await Card.findById(cardId);
-    if (!card || card.user_id !== req.user.id) {
-      return res.status(404).json({ error: 'Card not found' });
-    }
-    if (!isCardReloadAllowed(card.status)) {
-      return res.status(400).json({
-        error: `Card is ${displayStatusLabel(card.status)} — only active cards can be reloaded`,
-      });
+    if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) {
+      return res.status(400).json({ error: 'Positive amount_usdt is required' });
     }
 
-    const settings = await getCardPricingSettings();
-    const pricing = calculateCardReloadPricing(amountMmk, settings);
-    const mapped = mapCardForClient(card);
-    const cardLabel = `**** **** **** ${mapped.last4} (Active)`;
-
-    const depositMetadata = {
-      card_id: cardId,
-      card_label: cardLabel,
-      card_last4: mapped.last4,
-      payment_method: paymentMethod,
-      payment_method_id: methodRow.id,
-      bank_name: methodRow.bank_name,
-      account_name: methodRow.account_name,
-      account_number: methodRow.account_number,
-      method_type: methodRow.method_type,
-      qr_code_image_url: methodRow.qr_code_image_url,
-      purpose: 'card_reload',
-      pricing: {
-        ...pricing,
-        card_id: cardId,
-        card_label: cardLabel,
-        payment_method: paymentMethod,
-      },
-    };
-
-    const deposit = await createDepositRequest(req.user.id, {
-      amount_mmk: pricing.deposit_mmk,
-      amount_usd: pricing.net_usd_to_card,
-      payment_method: paymentMethod,
-      purpose: 'card_reload',
-      metadata: depositMetadata,
-    });
-
-    const reloadRequest = await CardReloadRequest.create({
-      userId: req.user.id,
-      cardId,
-      walletType: 'mmk',
-      amountMmk: pricing.deposit_mmk,
-      netUsdToCard: pricing.net_usd_to_card,
-      reloadFeeUsd: pricing.reload_fee_usd,
-      grossUsd: pricing.gross_usd,
-      pricing,
-      depositId: deposit.id,
-    });
-
-    res.json({
+    const result = await reloadCardFromUsdtWallet(req.user.id, { cardId, amountUsdt });
+    return res.json({
       success: true,
-      pending: true,
-      reload_request_id: reloadRequest.id,
-      message: RELOAD_PENDING_MESSAGE,
-      deposit: enrichDeposit(deposit, settings),
-      reload_request: CardReloadRequest.mapForClient({
-        ...reloadRequest,
-        card_number: card.card_number,
-      }),
-      pricing_breakdown: {
-        ...pricing,
-        card_id: cardId,
-        card_label: cardLabel,
-        payment_method: paymentMethod,
-      },
-      payment_method: methodRow,
-      payment_instructions: {
-        ref_code: deposit.ref_code,
-        amount_mmk: pricing.deposit_mmk,
-        message: `Send exactly ${pricing.deposit_mmk.toLocaleString()} MMK via ${paymentMethod}`,
-        note: `Card reload — $${pricing.net_usd_to_card.toFixed(2)} USD top-up + $${pricing.reload_fee_usd.toFixed(2)} service fee (${pricing.deposit_mmk.toLocaleString()} MMK total)`,
-        bank_name: methodRow.bank_name,
-        account_name: methodRow.account_name,
-        account_number: methodRow.account_number,
-        method_type: methodRow.method_type,
-        qr_code_image_url: methodRow.qr_code_image_url,
-        qr_code_url: methodRow.qr_code_image_url
-          || `/api/qr?size=200&data=${encodeURIComponent(methodRow.account_number)}`,
+      paid_from_wallet: true,
+      pending: Boolean(result.pending),
+      reload_request_id: result.reload_request_id,
+      wallet_type: 'usdt',
+      message: result.message,
+      reload_request: result.reload_request,
+      pricing_breakdown: result.pricing,
+      wallet: {
+        debited_usdt: result.wallet_debit_usdt,
+        balance_usdt: result.balance_usdt,
+        usdt_formatted: formatUsdt(result.balance_usdt),
       },
     });
   } catch (err) {
-    if (err.code === 'INSUFFICIENT_MMK_BALANCE' || err.code === 'INSUFFICIENT_USDT_BALANCE') {
+    if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
       return res.status(400).json({
         error: err.message,
         code: err.code,
-        required_mmk: err.required_mmk,
-        available_mmk: err.available_mmk,
         required_usdt: err.required_usdt,
         available_usdt: err.available_usdt,
       });

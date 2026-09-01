@@ -10,11 +10,8 @@ const {
 const { uploadDepositScreenshot, persistDepositUpload, saveDepositScreenshotFromBase64 } = require('../middleware/upload');
 const DepositRequest = require('../models/DepositRequest');
 const {
-  createDepositRequest,
   createUsdtDepositRequest,
   submitAndAutoVerifyUsdtDeposit,
-  verifyByListener,
-  getExchangeRate,
 } = require('../services/depositService');
 const {
   submitP2pUsdtDeposit,
@@ -24,7 +21,7 @@ const { enrichDeposit } = require('../services/depositEnrichment');
 const { walletPayload } = require('../services/walletService');
 const { getUsdtDepositSettings } = require('../services/settingsService');
 const { createBinancePayDeposit } = require('../services/binanceDepositService');
-const { listPaymentMethods, resolveActivePaymentMethod } = require('../services/depositPaymentMethodService');
+const { listPaymentMethods } = require('../services/depositPaymentMethodService');
 const { getMasterWalletAddress } = require('../services/tronMasterWalletService');
 
 const router = express.Router();
@@ -107,103 +104,53 @@ router.post('/create', requireAuth, requireSensitive, async (req, res) => {
 router.post('/request', requireAuth, requireSensitive, async (req, res) => {
   try {
     const userId = req.user.id;
-    const depositType = (req.body.deposit_type || 'mmk').toLowerCase();
+    const depositType = (req.body.deposit_type || 'usdt').toLowerCase();
 
-    if (depositType === 'usdt') {
-      const amountUsdt = parseFloat(req.body.amount_usdt);
-      const network = req.body.network || 'TRC20';
-      const depositChannel = (req.body.deposit_channel || 'platform_direct').toLowerCase();
-
-      if (!amountUsdt || amountUsdt <= 0) {
-        return res.status(400).json({ error: 'Positive amount_usdt is required' });
-      }
-
-      if (depositChannel === 'p2p') {
-        return res.status(400).json({
-          error: 'P2P merchant USDT deposits are no longer supported. Use Platform Direct or buy USDT on the P2P marketplace.',
-        });
-      }
-
-      const { deposit, depositAddress, network: net, fee_breakdown } = await createUsdtDepositRequest(userId, {
-        amount_usdt: amountUsdt,
-        network,
-        metadata: { deposit_channel: 'platform_direct', ...(req.body.metadata || {}) },
-      });
-
-      return res.json({
-        success: true,
-        message: 'USDT Deposit Request Submitted!',
-        deposit: enrichDeposit(deposit),
-        deposit_type: 'usdt',
-        deposit_channel: 'platform_direct',
-        fee_breakdown,
-        payment_instructions: {
-          message: `Send exactly ${amountUsdt.toFixed(2)} USDT via ${net} to the platform address below`,
-          ref_code: deposit.ref_code,
-          network: net,
-          deposit_address: depositAddress,
-          fee_usdt: fee_breakdown?.fee_usdt,
-          net_usdt: fee_breakdown?.net_usdt,
-          fee_label: fee_breakdown?.fee_label,
-          note: `Service fee is max(2%, $1). Net credit ≈ $${Number(fee_breakdown?.net_usdt || 0).toFixed(2)} USDT after approval.`,
-        },
+    if (depositType === 'mmk' || req.body.amount_mmk != null) {
+      return res.status(400).json({
+        success: false,
+        error: 'MMK bank deposits are no longer supported. Top up via USDT (TRC20) only.',
+        code: 'USDT_ONLY_DEPOSIT',
       });
     }
 
-    const { amount_mmk, payment_method, purpose, payment_method_id } = req.body;
+    const amountUsdt = parseFloat(req.body.amount_usdt ?? req.body.amount);
+    const network = req.body.network || 'TRC20';
+    const depositChannel = (req.body.deposit_channel || 'platform_direct').toLowerCase();
 
-    if (!amount_mmk || amount_mmk <= 0) {
-      return res.status(400).json({ error: 'Positive amount_mmk is required' });
+    if (!amountUsdt || amountUsdt <= 0) {
+      return res.status(400).json({ error: 'Positive amount_usdt is required' });
     }
 
-    let methodRow;
-    try {
-      methodRow = await resolveActivePaymentMethod({
-        paymentMethodId: payment_method_id,
-        paymentMethod: payment_method,
+    if (depositChannel === 'p2p') {
+      return res.status(400).json({
+        error: 'P2P merchant USDT deposits are no longer supported. Use Platform Direct or buy USDT on the P2P marketplace.',
       });
-    } catch (resolveErr) {
-      return res.status(400).json({ error: resolveErr.message || 'Payment method unavailable' });
     }
 
-    const method = methodRow.bank_name;
-    const deposit = await createDepositRequest(userId, {
-      amount_mmk,
-      payment_method: method,
-      purpose: purpose || 'topup',
-      metadata: {
-        ...(req.body.metadata || {}),
-        payment_method_id: methodRow.id,
-        bank_name: methodRow.bank_name,
-        account_name: methodRow.account_name,
-        account_number: methodRow.account_number,
-        method_type: methodRow.method_type,
-        qr_code_image_url: methodRow.qr_code_image_url,
-      },
+    const { deposit, depositAddress, network: net, fee_breakdown } = await createUsdtDepositRequest(userId, {
+      amount_usdt: amountUsdt,
+      network,
+      metadata: { deposit_channel: 'platform_direct', ...(req.body.metadata || {}) },
     });
 
-    const rate = await getExchangeRate();
-    const enriched = enrichDeposit(deposit);
-    const feeInfo = enriched?.pricing_breakdown || enriched?.metadata?.payment_fee;
-
-    res.json({
+    return res.json({
       success: true,
-      deposit: enriched,
-      fee_breakdown: feeInfo || null,
-      payment_method: methodRow,
+      message: 'USDT Deposit Request Submitted!',
+      deposit: enrichDeposit(deposit),
+      deposit_type: 'usdt',
+      deposit_channel: 'platform_direct',
+      fee_breakdown,
       payment_instructions: {
-        message: `Send exactly ${Number(amount_mmk).toLocaleString()} MMK to the ${methodRow.bank_name} account below`,
+        message: `Send exactly ${amountUsdt.toFixed(2)} USDT via ${net} to the platform address below`,
         ref_code: deposit.ref_code,
-        note: `Include reference code ${deposit.ref_code} in the payment note/description`,
-        bank_name: methodRow.bank_name,
-        account_name: methodRow.account_name,
-        account_number: methodRow.account_number,
-        method_type: methodRow.method_type,
-        qr_code_image_url: methodRow.qr_code_image_url,
-        qr_code_url: methodRow.qr_code_image_url
-          || `/api/qr?size=200&data=${encodeURIComponent(methodRow.account_number)}`,
+        network: net,
+        deposit_address: depositAddress,
+        fee_usdt: fee_breakdown?.fee_usdt,
+        net_usdt: fee_breakdown?.net_usdt,
+        fee_label: fee_breakdown?.fee_label,
+        note: `Service fee is max(2%, $1). Net credit ≈ $${Number(fee_breakdown?.net_usdt || 0).toFixed(2)} USDT after approval.`,
       },
-      rate,
     });
   } catch (err) {
     console.error('[deposit/request]', err);
@@ -281,6 +228,15 @@ router.post('/submit', requireAuth, requireSensitive, (req, res, next) => {
     const isUsdt = deposit.purpose === 'usdt_topup' || deposit.deposit_currency === 'USDT';
     const txHashValue = tx_hash || txn_id || kpay_transaction_id;
 
+    if (!isUsdt) {
+      if (req.file?.path) fs.unlink(req.file.path, () => {});
+      return res.status(400).json({
+        success: false,
+        error: 'MMK bank deposit proof is no longer accepted. Top up via USDT (TRC20) only.',
+        code: 'USDT_ONLY_DEPOSIT',
+      });
+    }
+
     if (isUsdt && txHashValue) {
       if (isP2pDeposit(deposit)) {
         const result = await submitP2pUsdtDeposit(deposit_id, {
@@ -329,46 +285,10 @@ router.post('/submit', requireAuth, requireSensitive, (req, res, next) => {
       });
     }
 
-    let screenshotPath;
-    let screenshotOriginalName;
-    let screenshotMimeType;
-    if (req.file) {
-      screenshotPath = await persistDepositUpload(req.file);
-      screenshotOriginalName = req.file.originalname;
-      screenshotMimeType = req.file.mimetype;
-    } else {
-      const base64 = req.body.screenshot_base64
-        || req.body.proof_base64
-        || req.body.receipt_base64;
-      if (base64) {
-        const saved = await saveDepositScreenshotFromBase64(base64, {
-          originalName: req.body.screenshot_filename
-            || req.body.proof_filename
-            || req.body.receipt_filename
-            || 'receipt.jpg',
-        });
-        screenshotPath = saved.screenshotPath;
-        screenshotOriginalName = saved.originalName;
-        screenshotMimeType = saved.mimeType;
-      }
-    }
-
-    const updated = await DepositRequest.submitProof(deposit_id, {
-      kpayTransactionId: kpay_transaction_id || txn_id || tx_hash,
-      txnId: txn_id || tx_hash || kpay_transaction_id,
-      txHash: tx_hash || txn_id || kpay_transaction_id,
-      screenshotPath,
-      screenshotOriginalName,
-      screenshotMimeType,
-      userNote: user_note,
-    });
-
-    res.json({
-      success: true,
-      auto_verified: false,
-      pending: false,
-      message: 'Deposit proof submitted — awaiting admin review',
-      deposit: enrichDeposit(updated),
+    return res.status(400).json({
+      success: false,
+      error: 'tx_hash, txn_id, or kpay_transaction_id is required for USDT deposit verification.',
+      code: 'USDT_TX_HASH_REQUIRED',
     });
   } catch (err) {
     if (req.file?.path) fs.unlink(req.file.path, () => {});
@@ -458,28 +378,10 @@ router.get('/mine', requireAuth, async (req, res) => {
 // Android MMK listener hook or authorized admin — never anonymous
 router.post('/verify', requireListenerOrAdmin, async (req, res) => {
   try {
-    const { ref_code, amount, txn_id, sender_phone } = req.body;
-
-    if (!ref_code || amount == null || amount === '') {
-      return res.status(400).json({ error: 'ref_code and amount are required' });
-    }
-
-    const result = await verifyByListener({ ref_code, amount, txn_id, sender_phone });
-
-    if (result.alreadyVerified) {
-      return res.json({
-        success: true,
-        message: 'Already verified',
-        status: 'VERIFIED',
-        user: { id: result.user.id, balance: result.user.balance },
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Deposit verified and balance credited',
-      deposit: enrichDeposit(result.deposit),
-      user: { id: result.user.id, balance: result.user.balance },
+    return res.status(410).json({
+      success: false,
+      error: 'MMK bank deposit auto-verification is disabled. Deposits accept USDT (TRC20) only.',
+      code: 'USDT_ONLY_DEPOSIT',
     });
   } catch (err) {
     console.error('[deposit/verify]', err.message || err);

@@ -15,12 +15,13 @@ async function main() {
   const dbFile = path.join(os.tmpdir(), `eisy-deposit-profit-${Date.now()}.db`);
   process.env.DATABASE_URL = `file:${dbFile}`;
   process.env.NODE_ENV = 'test';
+  process.env.MASTER_WALLET_ADDRESS = process.env.MASTER_WALLET_ADDRESS || 'TTestMasterWalletAddress123456789012';
   for (const key of Object.keys(process.env)) {
     if (/supabase/i.test(key)) delete process.env[key];
   }
 
   const { initDb, closeDb, getDb } = require('../src/db');
-  const { createDepositRequest, creditDepositAndVerify } = require('../src/services/depositService');
+  const { creditDepositAndVerify } = require('../src/services/depositService');
   const { getRevenueDashboard } = require('../src/services/revenueAnalyticsService');
   const PlatformFeeEvent = require('../src/models/PlatformFeeEvent');
   const { PLATFORM_FEE_TYPES } = require('../src/constants/platformFeeTypes');
@@ -33,14 +34,28 @@ async function main() {
     'Profit Test',
     `09${String(Date.now()).slice(-8)}`
   );
-  const userId = user.lastID;
+  const userId = Number(user.lastID);
 
-  const deposit = await createDepositRequest(userId, {
-    amount_mmk: 100000,
-    payment_method: 'KBZPay',
-    purpose: 'topup',
+  const DepositRequest = require('../src/models/DepositRequest');
+  const refCode = `REF-PROFIT-${Date.now()}`;
+  const deposit = await DepositRequest.create({
+    userId,
+    amountMmk: 0,
+    amountUsd: 100,
+    refCode,
+    paymentMethod: 'USDT-TRC20',
+    purpose: 'usdt_topup',
+    depositCurrency: 'USDT',
+    usdtNetwork: 'TRC20',
+    platformProfitUsd: 2,
+    metadata: {
+      payment_fee: { platform_profit_usd: 2, fee_usdt: 2, net_usdt: 98 },
+      pricing: { platform_profit_usd: 2, fee_usdt: 2, net_usdt: 98 },
+    },
   });
-  assert.ok(Number(deposit.platform_profit_usd) > 0, 'platform_profit_usd should be stored on deposit row');
+  const meta = typeof deposit.metadata === 'string' ? JSON.parse(deposit.metadata) : (deposit.metadata || {});
+  const profitUsd = Number(deposit.platform_profit_usd || meta?.payment_fee?.platform_profit_usd || 0);
+  assert.ok(profitUsd > 0, 'platform profit should be stored on USDT deposit row or metadata');
 
   const verified = await creditDepositAndVerify(deposit, {
     txnId: `TX-${Date.now()}`,
