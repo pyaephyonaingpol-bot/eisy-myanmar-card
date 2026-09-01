@@ -791,7 +791,6 @@
               card_issuance_fee_usd: parseFloat($('settingCardFee').value),
               minimum_initial_deposit_usd: parseFloat($('settingMinDeposit').value),
               card_reload_fee_percent: parseFloat($('settingReloadFeePercent')?.value || '0'),
-              minimum_card_reload_mmk: parseFloat($('settingMinReloadMmk')?.value || '10000'),
               minimum_usdt_deposit: parseFloat($('settingMinUsdtDeposit')?.value || '5'),
               minimum_usdt_reload: parseFloat($('settingMinUsdtReload')?.value || '5'),
               deposit_service_fee_mode: 'max_percent_or_min',
@@ -2733,7 +2732,6 @@
         if ($('settingReloadFeePercent')) {
           $('settingReloadFeePercent').value = p.card_reload_fee_percent ?? 0;
         }
-        if ($('settingMinReloadMmk')) $('settingMinReloadMmk').value = p.minimum_card_reload_mmk ?? 10000;
         if ($('settingMinUsdtDeposit')) $('settingMinUsdtDeposit').value = p.minimum_usdt_deposit ?? data.settings?.minimum_usdt_deposit ?? 5;
         if ($('settingMinUsdtReload')) $('settingMinUsdtReload').value = p.minimum_usdt_reload ?? data.settings?.minimum_usdt_reload ?? 5;
         if ($('settingDepositFeePercent')) {

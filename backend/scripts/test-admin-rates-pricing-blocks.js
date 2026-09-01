@@ -24,7 +24,8 @@ assert.ok(pricingHtml.includes('USDT Withdrawal Fee'), 'block 5: USDT withdrawal
 
 assert.ok(pricingHtml.includes('id="settingExchangeRate"'), 'MMK rate input');
 assert.ok(pricingHtml.includes('id="settingCardFee"'), 'card issue fee input');
-assert.ok(pricingHtml.includes('id="settingReloadFeePercent"'), 'reload percent input');
+assert.ok(pricingHtml.includes('id="settingMinUsdtReload"'), 'min USDT reload input');
+assert.ok(!pricingHtml.includes('id="settingMinReloadMmk"'), 'min MMK reload input removed');
 assert.ok(pricingHtml.includes('id="settingDepositFeePercent"'), 'deposit percent input');
 assert.ok(pricingHtml.includes('id="settingWithdrawFeePercent"'), 'withdrawal percent input');
 assert.ok(pricingHtml.includes('id="settingWithdrawFeeMinUsdt"'), 'withdrawal min fee input');
