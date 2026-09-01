@@ -413,18 +413,34 @@ function calculateNetworkWithdrawalFee(amountUsdt, network, settings) {
   const isBep20 = net === 'BEP20';
   const isTrc20 = !isBank && !isBep20;
 
-  // TRC20 master-wallet withdrawals use a fixed fee (default 2 USDT).
-  if (isTrc20) {
-    const envFee = Number(process.env.WITHDRAW_FIXED_FEE_USDT);
-    const configuredFee = Number(settings?.usdt_withdraw_fee_trc20);
-    const feeUsdt = Math.round(
-      (Number.isFinite(envFee) && envFee >= 0
-        ? envFee
-        : (Number.isFinite(configuredFee) ? configuredFee : 2)) * 100
-    ) / 100;
+  const feeTypeKey = isBank
+    ? 'usdt_withdraw_fee_bank_type'
+    : isBep20
+      ? 'usdt_withdraw_fee_bep20_type'
+      : 'usdt_withdraw_fee_trc20_type';
+  const feeAmountKey = isBank
+    ? 'usdt_withdraw_fee_bank'
+    : isBep20
+      ? 'usdt_withdraw_fee_bep20'
+      : 'usdt_withdraw_fee_trc20';
+  const configuredType = settings?.[feeTypeKey] === 'percent' ? 'percent' : 'fixed';
+
+  if (configuredType === 'fixed') {
+    let feeUsdt;
+    if (isTrc20) {
+      const envFee = Number(process.env.WITHDRAW_FIXED_FEE_USDT);
+      const configuredFee = Number(settings?.[feeAmountKey] ?? settings?.usdt_withdraw_fee_trc20);
+      feeUsdt = Math.round(
+        (Number.isFinite(envFee) && envFee >= 0
+          ? envFee
+          : (Number.isFinite(configuredFee) ? configuredFee : 2)) * 100
+      ) / 100;
+    } else {
+      feeUsdt = Math.round((Number(settings?.[feeAmountKey]) || 2) * 100) / 100;
+    }
     const netUsdt = Math.round((amount - feeUsdt) * 100) / 100;
     return {
-      network: 'TRC20',
+      network: isBank ? 'BANK' : isBep20 ? 'BEP20' : 'TRC20',
       amount_usdt: amount,
       fee_usdt: feeUsdt,
       net_usdt: netUsdt,
@@ -441,7 +457,7 @@ function calculateNetworkWithdrawalFee(amountUsdt, network, settings) {
   const feeBreakdown = calculateUsdtPaymentFeeBreakdown(amount, settings);
 
   return {
-    network: isBank ? 'BANK' : 'BEP20',
+    network: isBank ? 'BANK' : isBep20 ? 'BEP20' : 'TRC20',
     amount_usdt: feeBreakdown.amount_usdt,
     fee_usdt: feeBreakdown.fee_usdt,
     net_usdt: feeBreakdown.net_usdt,
@@ -667,6 +683,23 @@ async function updateSettings(updates) {
       await setSetting(key, strVal);
     } else {
       await setSetting(key, strVal);
+    }
+  }
+
+  if (
+    numericUpdates.withdrawal_service_fee_percent !== undefined
+    && numericUpdates.withdrawal_service_fee_percent !== null
+    && numericUpdates.withdrawal_service_fee_percent !== ''
+  ) {
+    const pct = parseFloat(String(numericUpdates.withdrawal_service_fee_percent).trim());
+    if (Number.isFinite(pct) && pct >= 0) {
+      await setSetting('usdt_withdraw_fee_trc20', pct);
+      await setSetting('usdt_withdraw_fee_bep20', pct);
+      await setSetting('usdt_withdraw_fee_bank', pct);
+      await setSetting('mmk_withdraw_fee_percent', pct);
+      await setSetting('usdt_withdraw_fee_trc20_type', 'percent');
+      await setSetting('usdt_withdraw_fee_bep20_type', 'percent');
+      await setSetting('usdt_withdraw_fee_bank_type', 'percent');
     }
   }
 

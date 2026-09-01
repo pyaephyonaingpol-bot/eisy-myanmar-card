@@ -18,7 +18,6 @@ const {
 } = require('./settingsService');
 const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { transferUsdtTrc20, isLikelyTronAddress } = require('./tronMasterWalletService');
-const { getFixedWithdrawFeeUsdt } = require('./withdrawCryptoService');
 // NOWPayments payout helpers are retained for legacy IPN / admin tools only —
 // user-facing crypto withdrawals use master-wallet TronWeb (manual energy).
 
@@ -150,17 +149,6 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
 
   if (requestedAmount < settings.minimum_usdt_withdrawal) {
     throw new Error(`Minimum withdrawal is ${formatUsdt(settings.minimum_usdt_withdrawal)}`);
-  }
-
-  if (normalizedNetwork === 'TRC20') {
-    const fixedFee = getFixedWithdrawFeeUsdt();
-    if (!(requestedAmount > fixedFee)) {
-      const err = new Error(
-        `withdrawAmount must be strictly greater than the ${fixedFee.toFixed(1)} USDT fee`
-      );
-      err.code = 'WITHDRAW_AMOUNT_TOO_LOW';
-      throw err;
-    }
   }
 
   if (breakdown.net_usdt <= 0) {

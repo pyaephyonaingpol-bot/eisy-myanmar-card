@@ -1635,20 +1635,20 @@ const Dashboard = {
     if ($('sellUsdtBankMethod')) $('sellUsdtBankMethod').value = '';
     if ($('sellUsdtAccountName')) $('sellUsdtAccountName').value = '';
     if ($('sellUsdtAccountNumber')) $('sellUsdtAccountNumber').value = '';
-    if ($('sellUsdtAmount')) {
-      const min = Number(this.withdrawalFees?.minimum_usdt_withdrawal || 10);
-      $('sellUsdtAmount').value = min > 0 ? min.toFixed(2) : '';
-    }
     const balHint = $('sellUsdtBalanceHint');
     if (balHint) balHint.textContent = this.formatWithdrawBalanceHint();
-    const minHint = $('sellUsdtMinHint');
-    if (minHint) {
-      const min = Number(this.withdrawalFees?.minimum_usdt_withdrawal || 10);
-      minHint.textContent = `Minimum withdrawal: $${min.toFixed(2)} USDT`;
-    }
     $('sellUsdtMmkModal')?.classList.remove('hidden');
-    this.updateSellUsdtMmkPreview();
-    this.loadWithdrawalFees().catch(() => {});
+    this.loadWithdrawalFees({ force: true }).then(() => {
+      const min = Number(this.withdrawalFees?.minimum_usdt_withdrawal ?? 10);
+      if ($('sellUsdtAmount')) {
+        $('sellUsdtAmount').value = min > 0 ? min.toFixed(2) : '';
+      }
+      const minHint = $('sellUsdtMinHint');
+      if (minHint) minHint.textContent = `Minimum withdrawal: $${min.toFixed(2)} USDT`;
+      this.updateSellUsdtMmkPreview();
+    }).catch(() => {
+      this.updateSellUsdtMmkPreview();
+    });
     if (Auth.isLoggedIn() && !Auth.needsPinUnlock()) {
       this.loadUsdtWalletPage(true).catch(() => {});
     }
@@ -1659,45 +1659,10 @@ const Dashboard = {
   },
 
   calculateSellUsdtMmkPreviewClient(amountUsdt) {
-    // Reuse bank (USDT→MMK) fee + rate math from withdraw preview.
-    const fees = this.withdrawalFees;
-    if (!fees || !Number.isFinite(amountUsdt) || amountUsdt <= 0) return null;
-    const method = 'bank';
-    const network = 'BANK';
-    let mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
-    const feePercent = Number(fees.payment_service_fee_percent ?? 2);
-    const minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? 1);
-    const percentFee = Math.round(amountUsdt * feePercent) / 100;
-    let feeUsdt = 0;
-    if (mode === 'off') feeUsdt = 0;
-    else if (mode === 'percent') feeUsdt = Math.round(percentFee * 100) / 100;
-    else if (mode === 'fixed') feeUsdt = Math.round(minimumFee * 100) / 100;
-    else feeUsdt = Math.round(Math.max(percentFee, minimumFee) * 100) / 100;
-    const netUsdt = Math.round((amountUsdt - feeUsdt) * 100) / 100;
-    const min = Number(fees.minimum_usdt_withdrawal || 10);
-    const rate = Number(fees.mmk_to_usd_rate || 4500);
-    const amountMmk = Math.round(netUsdt * rate);
-    const usedMinimum = mode === 'max_percent_or_min' && percentFee < minimumFee;
-    let feeLabel = 'No service fee';
-    if (feeUsdt > 0) {
-      if (mode === 'fixed') feeLabel = `fixed $${feeUsdt.toFixed(2)}`;
-      else if (mode === 'percent') feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
-      else if (usedMinimum) feeLabel = `min $${minimumFee.toFixed(2)} (${feePercent}% = $${percentFee.toFixed(2)})`;
-      else feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
-    }
-    return {
-      payout_method: method,
-      network,
-      amount_usdt: Math.round(amountUsdt * 100) / 100,
-      fee_usdt: feeUsdt,
-      net_usdt: netUsdt,
-      fee_label: feeLabel,
-      exchange_rate: rate,
-      amount_mmk: amountMmk,
-      minimum_usdt_withdrawal: min,
-      below_minimum: amountUsdt < min,
-      invalid_net: netUsdt <= 0 || amountMmk <= 0,
-    };
+    return this.calculateWithdrawFeePreviewClient(amountUsdt, this.withdrawalFees, {
+      network: 'BANK',
+      method: 'bank',
+    });
   },
 
   updateSellUsdtMmkPreview() {
@@ -5473,26 +5438,36 @@ const Dashboard = {
     this.resetReloadModalForm();
   },
 
-  async loadWithdrawalFees() {
+  async loadWithdrawalFees({ force = false } = {}) {
     if (!Auth.isLoggedIn()) return;
-    if (this.withdrawalFees && this._isFresh('withdrawalFees')) return;
+    if (!force && this.withdrawalFees && this._isFresh('withdrawalFees')) return;
     return this._withInflight('withdrawalFees', async () => {
     try {
       const data = await (window.EisyServices?.withdrawal?.getFees
         ? window.EisyServices.withdrawal.getFees()
         : Auth.api('GET', '/api/withdrawal/fees'));
-      this.withdrawalFees = data.fees || data;
+      const rawFees = data.fees || data;
+      this.withdrawalFees = {
+        ...rawFees,
+        minimum_usdt_withdrawal: data.minimum_usdt_withdrawal ?? rawFees.minimum_usdt_withdrawal,
+        minimum_mmk_withdrawal: data.minimum_mmk_withdrawal ?? rawFees.minimum_mmk_withdrawal,
+        mmk_to_usd_rate: data.mmk_to_usd_rate ?? rawFees.mmk_to_usd_rate,
+        payment_service_fee_percent: data.payment_service_fee_percent ?? rawFees.payment_service_fee_percent,
+        payment_service_fee_minimum_usdt: data.payment_service_fee_minimum_usdt ?? rawFees.payment_service_fee_minimum_usdt,
+        payment_service_fee_mode: data.payment_service_fee_mode ?? rawFees.payment_service_fee_mode,
+      };
       this._markFetched('withdrawalFees');
-      if (data.mmk_to_usd_rate != null) {
-        this.withdrawalFees.mmk_to_usd_rate = data.mmk_to_usd_rate;
-      }
-      const min = Number(data.minimum_usdt_withdrawal || this.withdrawalFees.minimum_usdt_withdrawal || 10);
+      const min = Number(this.withdrawalFees.minimum_usdt_withdrawal ?? 10);
       const minInput = $('withdrawAmountUsdt');
       if (minInput) minInput.min = min;
+      const sellMinInput = $('sellUsdtAmount');
+      if (sellMinInput) sellMinInput.min = min;
       const minHint = $('withdrawMinHint');
       if (minHint) minHint.textContent = `Minimum withdrawal: $${min.toFixed(2)} USDT`;
+      const sellMinHint = $('sellUsdtMinHint');
+      if (sellMinHint) sellMinHint.textContent = `Minimum withdrawal: $${min.toFixed(2)} USDT`;
 
-      const minMmk = Number(data.minimum_mmk_withdrawal || this.withdrawalFees.minimum_mmk_withdrawal || 10000);
+      const minMmk = Number(this.withdrawalFees.minimum_mmk_withdrawal ?? 10000);
       const minMmkInput = $('withdrawAmountMmk');
       if (minMmkInput) minMmkInput.min = minMmk;
       const minMmkHint = $('withdrawMmkMinHint');
@@ -5500,10 +5475,12 @@ const Dashboard = {
 
       this.updateWithdrawPreview();
       this.updateWithdrawMmkPreview();
+      this.updateSellUsdtMmkPreview();
+      this.syncWithdrawPayoutFields();
     } catch (err) {
       console.warn('[Dashboard] withdrawal fees:', err.message);
     }
-    });
+    }, { force });
   },
 
   getWithdrawPayoutMethod() {
@@ -5546,16 +5523,20 @@ const Dashboard = {
     }
 
     if (methodHint) {
+      const fees = this.withdrawalFees || {};
+      const pct = Number(fees.payment_service_fee_percent ?? 2);
+      const minFee = Number(fees.payment_service_fee_minimum_usdt ?? 1);
+      const feeSummary = `${pct}% (min $${minFee.toFixed(2)})`;
       const t = window.EisyI18n?.t?.bind(window.EisyI18n);
       if (method === 'crypto') {
         methodHint.textContent = t
-          ? t('withdraw_method_crypto_hint')
-          : 'Automated TRC20 payout from our master wallet (manual energy). Fixed $2 USDT fee. BEP20 remains manual.';
+          ? `${t('withdraw_method_crypto_hint')} Service fee: ${feeSummary}.`
+          : `Automated TRC20 payout from our master wallet. Service fee: ${feeSummary}. BEP20 remains manual.`;
         methodHint.dataset.i18n = 'withdraw_method_crypto_hint';
       } else {
         methodHint.textContent = t
-          ? t('withdraw_method_bank_hint')
-          : 'Convert USDT to MMK at the platform rate and receive bank transfer after processing.';
+          ? `${t('withdraw_method_bank_hint')} Service fee: ${feeSummary}.`
+          : `Convert USDT to MMK at the platform rate. Service fee: ${feeSummary}. Bank transfer after processing.`;
         methodHint.dataset.i18n = 'withdraw_method_bank_hint';
       }
     }
@@ -5573,26 +5554,33 @@ const Dashboard = {
     this.updateWithdrawPreview();
   },
 
-  calculateWithdrawPreviewClient(amountUsdt) {
-    const fees = this.withdrawalFees;
+  calculateWithdrawFeePreviewClient(amountUsdt, fees, { network, method } = {}) {
     if (!fees || !Number.isFinite(amountUsdt) || amountUsdt <= 0) return null;
 
-    const method = this.getWithdrawPayoutMethod();
-    const network = method === 'bank'
-      ? 'BANK'
-      : ($('withdrawNetwork')?.value || 'TRC20');
-    const isBank = network === 'BANK';
-    const isTrc20 = !isBank && network === 'TRC20';
+    const net = String(network || 'TRC20').toUpperCase();
+    const payoutMethod = method || (net === 'BANK' ? 'bank' : 'crypto');
+    const isBank = net === 'BANK';
+    const feeTypeKey = isBank
+      ? 'usdt_withdraw_fee_bank_type'
+      : net === 'BEP20'
+        ? 'usdt_withdraw_fee_bep20_type'
+        : 'usdt_withdraw_fee_trc20_type';
+    const feeAmountKey = isBank
+      ? 'usdt_withdraw_fee_bank'
+      : net === 'BEP20'
+        ? 'usdt_withdraw_fee_bep20'
+        : 'usdt_withdraw_fee_trc20';
+    const configuredType = fees[feeTypeKey] === 'percent' ? 'percent' : 'fixed';
 
-    // TRC20 master-wallet path: fixed $2 fee.
     let mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
     let feePercent = Number(fees.payment_service_fee_percent ?? 2);
     let minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? 1);
-    if (isTrc20) {
+    if (configuredType === 'fixed') {
       mode = 'fixed';
       feePercent = 0;
-      minimumFee = Number(fees.usdt_withdraw_fee_trc20 ?? fees.payment_service_fee_minimum_usdt ?? 2);
+      minimumFee = Number(fees[feeAmountKey] ?? fees.payment_service_fee_minimum_usdt ?? 2);
     }
+
     const percentFee = Math.round(amountUsdt * feePercent) / 100;
     let feeUsdt = 0;
     if (mode === 'off') feeUsdt = 0;
@@ -5600,7 +5588,7 @@ const Dashboard = {
     else if (mode === 'fixed') feeUsdt = Math.round(minimumFee * 100) / 100;
     else feeUsdt = Math.round(Math.max(percentFee, minimumFee) * 100) / 100;
     const netUsdt = Math.round((amountUsdt - feeUsdt) * 100) / 100;
-    const min = Number(fees.minimum_usdt_withdrawal || 10);
+    const min = Number(fees.minimum_usdt_withdrawal ?? 10);
     const rate = Number(fees.mmk_to_usd_rate || 4500);
     const amountMmk = isBank ? Math.round(netUsdt * rate) : null;
     const usedMinimum = mode === 'max_percent_or_min' && percentFee < minimumFee;
@@ -5614,8 +5602,8 @@ const Dashboard = {
     }
 
     return {
-      payout_method: method,
-      network,
+      payout_method: payoutMethod,
+      network: net,
       amount_usdt: Math.round(amountUsdt * 100) / 100,
       fee_usdt: feeUsdt,
       net_usdt: netUsdt,
@@ -5630,6 +5618,17 @@ const Dashboard = {
       below_minimum: amountUsdt < min,
       invalid_net: netUsdt <= 0 || (isBank && (!amountMmk || amountMmk <= 0)),
     };
+  },
+
+  calculateWithdrawPreviewClient(amountUsdt) {
+    const fees = this.withdrawalFees;
+    if (!fees || !Number.isFinite(amountUsdt) || amountUsdt <= 0) return null;
+
+    const method = this.getWithdrawPayoutMethod();
+    const network = method === 'bank'
+      ? 'BANK'
+      : ($('withdrawNetwork')?.value || 'TRC20');
+    return this.calculateWithdrawFeePreviewClient(amountUsdt, fees, { network, method });
   },
 
   updateWithdrawPreview() {
@@ -5687,17 +5686,22 @@ const Dashboard = {
     if ($('withdrawUsdtAccountNumber')) $('withdrawUsdtAccountNumber').value = '';
     if ($('withdrawPayoutMethod')) $('withdrawPayoutMethod').value = 'crypto';
     if ($('withdrawNetwork')) $('withdrawNetwork').value = 'TRC20';
-    if ($('withdrawAmountUsdt')) {
-      const min = Number(this.withdrawalFees?.minimum_usdt_withdrawal || 10);
-      $('withdrawAmountUsdt').value = min > 0 ? min.toFixed(2) : '';
-    }
     const balHint = $('withdrawBalanceHint');
     if (balHint) {
       balHint.textContent = this.formatWithdrawBalanceHint();
     }
-    this.syncWithdrawPayoutFields();
     $('withdrawUsdtModal')?.classList.remove('hidden');
-    this.updateWithdrawPreview();
+    this.loadWithdrawalFees({ force: true }).then(() => {
+      const min = Number(this.withdrawalFees?.minimum_usdt_withdrawal ?? 10);
+      if ($('withdrawAmountUsdt')) {
+        $('withdrawAmountUsdt').value = min > 0 ? min.toFixed(2) : '';
+      }
+      this.syncWithdrawPayoutFields();
+      this.updateWithdrawPreview();
+    }).catch(() => {
+      this.syncWithdrawPayoutFields();
+      this.updateWithdrawPreview();
+    });
     if (Auth.isLoggedIn() && !Auth.needsPinUnlock()) {
       this.loadUsdtWalletPage(true).catch(() => {});
     }

@@ -67,25 +67,27 @@ function mapMmkWithdrawal(row) {
 router.get('/fees', requireAuth, async (_req, res) => {
   try {
     const settings = await getWithdrawalFeeSettings();
-    const trc20Sample = calculateWithdrawalBreakdown(
-      Math.max(Number(settings.minimum_usdt_withdrawal) || 10, 10),
-      'TRC20',
-      settings
-    );
     const mode = settings.payment_service_fee_mode || 'max_percent_or_min';
-    const feeRule = 'fixed_usdt';
-    const fixedFee = Number(trc20Sample.fee_usdt) || 2;
-    const feeLabel = `fixed $${fixedFee.toFixed(2)}`;
+    const sampleAmount = Math.max(Number(settings.minimum_usdt_withdrawal) || 10, 1);
+
+    const buildNetworkMeta = (network, { label, auto_send = false, exchange_rate = null } = {}) => {
+      const breakdown = calculateWithdrawalBreakdown(sampleAmount, network, settings);
+      return {
+        network,
+        payout_method: network === 'BANK' ? 'bank' : 'crypto',
+        label,
+        fee_rule: breakdown.fee_rule,
+        fee_mode: breakdown.fee_type || mode,
+        fee_percent: breakdown.fee_percent ?? settings.payment_service_fee_percent,
+        minimum_fee_usdt: breakdown.minimum_fee_usdt ?? settings.payment_service_fee_minimum_usdt,
+        fee_label: breakdown.fee_label,
+        auto_send,
+        ...(exchange_rate != null ? { exchange_rate } : {}),
+      };
+    };
+
     res.json({
-      fees: {
-        ...settings,
-        usdt_withdraw_fee_trc20: fixedFee,
-        usdt_withdraw_fee_trc20_type: 'fixed',
-        // Client TRC20 preview uses these for the fixed $2 master-wallet fee.
-        payment_service_fee_mode: 'fixed',
-        payment_service_fee_minimum_usdt: fixedFee,
-        payment_service_fee_percent: 0,
-      },
+      fees: settings,
       policy: {
         mmk_to_usdt_allowed: false,
         mmk_bank_withdraw_allowed: true,
@@ -93,57 +95,32 @@ router.get('/fees', requireAuth, async (_req, res) => {
         usdt_bank_withdraw_allowed: true,
         trc20_auto_send: true,
         payout_provider: 'tron_master_wallet',
-        service_fee_rule: feeRule,
-        service_fee_mode: 'fixed',
-        service_fee_percent: 0,
-        service_fee_minimum_usdt: fixedFee,
+        service_fee_rule: mode,
+        service_fee_mode: mode,
+        service_fee_percent: settings.payment_service_fee_percent,
+        service_fee_minimum_usdt: settings.payment_service_fee_minimum_usdt,
       },
       networks: [
-        {
-          network: 'TRC20',
-          payout_method: 'crypto',
+        buildNetworkMeta('TRC20', {
           label: 'USDT TRC20 (Master Wallet)',
-          fee_rule: feeRule,
-          fee_mode: 'fixed',
-          fee_percent: 0,
-          minimum_fee_usdt: fixedFee,
-          fee_label: feeLabel,
           auto_send: true,
-        },
-        {
-          network: 'BEP20',
-          payout_method: 'crypto',
+        }),
+        buildNetworkMeta('BEP20', {
           label: 'BEP20 (BSC Network — manual)',
-          fee_rule: mode === 'off' ? 'fee = 0' : 'payment_service_fee',
-          fee_mode: mode,
-          fee_percent: settings.payment_service_fee_percent ?? 2,
-          minimum_fee_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
-          fee_label: mode === 'fixed'
-            ? `fixed $${Number(settings.payment_service_fee_minimum_usdt ?? 1).toFixed(2)}`
-            : `${settings.payment_service_fee_percent ?? 2}%`,
           auto_send: false,
-        },
-        {
-          network: 'BANK',
-          payout_method: 'bank',
+        }),
+        buildNetworkMeta('BANK', {
           label: 'Bank Account (USDT → MMK)',
-          fee_rule: 'payment_service_fee',
-          fee_mode: mode,
-          fee_percent: settings.payment_service_fee_percent ?? 2,
-          minimum_fee_usdt: settings.payment_service_fee_minimum_usdt ?? 1,
-          fee_label: mode === 'fixed'
-            ? `fixed $${Number(settings.payment_service_fee_minimum_usdt ?? 1).toFixed(2)}`
-            : `${settings.payment_service_fee_percent ?? 2}%`,
-          exchange_rate: settings.mmk_to_usd_rate,
           auto_send: false,
-        },
+          exchange_rate: settings.mmk_to_usd_rate,
+        }),
       ],
       minimum_usdt_withdrawal: settings.minimum_usdt_withdrawal,
       minimum_mmk_withdrawal: settings.minimum_mmk_withdrawal,
-      mmk_withdraw_fee_percent: settings.payment_service_fee_percent ?? 2,
-      payment_service_fee_percent: 0,
-      payment_service_fee_minimum_usdt: fixedFee,
-      payment_service_fee_mode: 'fixed',
+      mmk_withdraw_fee_percent: settings.mmk_withdraw_fee_percent,
+      payment_service_fee_percent: settings.payment_service_fee_percent,
+      payment_service_fee_minimum_usdt: settings.payment_service_fee_minimum_usdt,
+      payment_service_fee_mode: settings.payment_service_fee_mode,
       mmk_to_usd_rate: settings.mmk_to_usd_rate,
     });
   } catch (err) {
