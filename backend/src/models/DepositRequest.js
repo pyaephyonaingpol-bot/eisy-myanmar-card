@@ -31,12 +31,16 @@ const DepositRequest = {
     platformProfitUsd = 0,
   }) {
     const db = getDb();
-    const currency = depositCurrency
-      || (purpose === 'usdt_topup' || String(paymentMethod).startsWith('USDT') ? 'USDT' : 'MMK');
+    const currency = depositCurrency || 'USDT';
     const network = usdtNetwork || null;
 
     if (currency !== 'USDT') {
       const err = new Error('Deposits accept USDT/crypto only. MMK bank deposits are no longer supported.');
+      err.code = 'USDT_ONLY_DEPOSIT';
+      throw err;
+    }
+    if (Number(amountMmk) > 0) {
+      const err = new Error('MMK amounts are not accepted for deposits.');
       err.code = 'USDT_ONLY_DEPOSIT';
       throw err;
     }

@@ -56,7 +56,8 @@ function testServicesAndModels() {
   const cardWallet = read('backend/src/services/cardWalletService.js');
   const reloadModel = read('backend/src/models/CardReloadRequest.js');
   const depositModel = read('backend/src/models/DepositRequest.js');
-  const migration = read('backend/migrations/049_usdt_only_deposits_reloads.sql');
+  const migration049 = read('backend/migrations/049_usdt_only_deposits_reloads.sql');
+  const migration050 = read('backend/migrations/050_schema_usdt_only_currency.sql');
 
   assert.ok(depositSvc.includes('USDT_ONLY_DEPOSIT'));
   assert.ok(depositSvc.includes('USDT_ONLY_CARD_RELOAD'));
@@ -73,8 +74,13 @@ function testServicesAndModels() {
 
   assert.ok(reloadModel.includes('USDT_ONLY_CARD_RELOAD'));
   assert.ok(depositModel.includes('USDT_ONLY_DEPOSIT'));
-  assert.ok(migration.includes('trg_card_reload_reject_mmk_insert'));
-  assert.ok(migration.includes('trg_deposit_reject_mmk_insert'));
+  assert.ok(depositModel.includes("depositCurrency || 'USDT'"));
+  assert.ok(!depositModel.includes("'MMK'"));
+  assert.ok(migration049.includes('trg_card_reload_reject_mmk_insert'));
+  assert.ok(migration049.includes('trg_deposit_reject_mmk_insert'));
+  assert.ok(migration050.includes("CHECK(deposit_currency IN ('USDT'))"));
+  assert.ok(migration050.includes("CHECK(wallet_type IN ('usdt'))"));
+  assert.ok(migration050.includes('minimum_card_reload_mmk'));
 
   console.log('ok');
 }
@@ -131,6 +137,7 @@ async function testRuntimeGuards() {
       refCode: 'REF-TEST',
       paymentMethod: 'KBZPay',
       purpose: 'topup',
+      depositCurrency: 'MMK',
     });
   } catch (e) {
     mmkDepositErr = e;

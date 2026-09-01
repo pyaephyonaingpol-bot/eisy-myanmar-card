@@ -131,6 +131,7 @@ const CardReloadRequest = {
   mapForClient(row) {
     if (!row) return null;
     const pricing = parseRecordMetadata(row.pricing_json);
+    const legacyMmkReload = Boolean(pricing?.legacy_mmk_reload);
     const cardNumber = String(row.card_number || '').replace(/\s/g, '');
     const last4 = cardNumber.length >= 4 ? cardNumber.slice(-4) : '????';
 
@@ -161,11 +162,13 @@ const CardReloadRequest = {
       card_last4: last4,
       card_label: `**** **** **** ${last4}`,
       top_up_amount_usd: row.net_usd_to_card,
-      wallet_deducted_mmk: row.wallet_type === 'mmk' ? row.amount_mmk : null,
+      wallet_deducted_mmk: legacyMmkReload ? row.amount_mmk : null,
       wallet_deducted_usdt: row.wallet_type === 'usdt' ? row.amount_usdt : null,
       wallet_deducted_display: row.wallet_type === 'usdt'
         ? `$${Number(row.amount_usdt || 0).toFixed(2)} USDT`
-        : `${Number(row.amount_mmk || 0).toLocaleString()} MMK`,
+        : (legacyMmkReload
+          ? `${Number(row.amount_mmk || 0).toLocaleString()} MMK (legacy)`
+          : `${Number(row.amount_mmk || 0).toLocaleString()} MMK`),
       fee_profit_usd: resolveReloadNetProfit({
         pricing,
         reload_fee_usd: row.reload_fee_usd,

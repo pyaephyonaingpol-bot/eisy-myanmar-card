@@ -25,6 +25,7 @@
     "test:admin-rates-pricing-blocks": "node scripts/test-admin-rates-pricing-blocks.js",
     "test:no-mmk-deposit-reload-ui": "node scripts/test-no-mmk-deposit-reload-ui.js",
     "test:usdt-only-deposit-reload-backend": "node scripts/test-usdt-only-deposit-reload-backend.js",
+    "test:schema-usdt-only-currency": "node scripts/test-schema-usdt-only-currency.js",
     "test:admin-ledger-filter-cleanup": "node scripts/test-admin-ledger-filter-cleanup.js",
     "test:usdt-topup-modal": "node scripts/test-usdt-topup-modal.js",
     "test:transaction-csv-export": "node scripts/test-transaction-csv-export.js",
