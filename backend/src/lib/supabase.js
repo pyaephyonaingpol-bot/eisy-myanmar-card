@@ -46,7 +46,7 @@ function getSupabaseConfig() {
  */
 function isSupabaseEnabled() {
   const { url, anonKey, serviceKey } = getSupabaseConfig();
-  if (!url) return false;
+  if (!url || !/^https?:\/\//i.test(url)) return false;
   if (isUsableSecret(serviceKey) || isUsableSecret(anonKey)) return true;
   if ((anonKey && anonKey.includes('...')) || (serviceKey && serviceKey.includes('...'))) {
     console.warn('[supabase] Key appears truncated — set the full key in .env.local');
@@ -63,7 +63,19 @@ function getSupabase() {
   if (!isSupabaseEnabled()) return null;
   if (!client) {
     const { url, anonKey, serviceKey } = getSupabaseConfig();
-    const key = isUsableSecret(serviceKey) ? serviceKey : anonKey;
+    const hasService = isUsableSecret(serviceKey);
+    if (!hasService) {
+      const nodeEnv = String(process.env.NODE_ENV || '').toLowerCase();
+      if (nodeEnv === 'production' || process.env.VERCEL === '1') {
+        console.error(
+          '[supabase] CRITICAL: SUPABASE_SERVICE_ROLE_KEY missing in production. '
+          + 'Refusing to use the anon key for server writes (would be blocked by RLS anyway).'
+        );
+        return null;
+      }
+      console.warn('[supabase] Using anon key for server client (dev only) — set SUPABASE_SERVICE_ROLE_KEY');
+    }
+    const key = hasService ? serviceKey : anonKey;
     client = createClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false },
     });

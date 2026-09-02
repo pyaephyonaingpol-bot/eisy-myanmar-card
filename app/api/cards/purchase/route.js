@@ -131,17 +131,14 @@ export async function POST(request) {
       }
       const sessionUserId = await resolveUserIdFromSession(token);
       if (!sessionUserId) {
-        // Allow trusted deployments that pass user_id with a valid bearer when
-        // the local session DB is not wired into the Next.js runtime.
-        if (userId == null) {
-          return json(
-            { error: 'Invalid or expired session', code: 'SESSION_INVALID' },
-            401
-          );
-        }
-      } else {
-        userId = sessionUserId;
+        // Do NOT accept client-supplied user_id when session lookup fails —
+        // that allowed any bearer string + arbitrary user_id to assign cards.
+        return json(
+          { error: 'Invalid or expired session', code: 'SESSION_INVALID' },
+          401
+        );
       }
+      userId = sessionUserId;
     }
 
     if (userId === undefined || userId === null || String(userId).trim() === '') {

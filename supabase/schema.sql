@@ -101,18 +101,40 @@ CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders (user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_local_deposit_id ON orders (local_deposit_id);
 
 -- Permissive policies for demo (app uses its own Express auth).
--- Tighten with RLS + auth.uid() before production.
+-- CRITICAL: anon_all policies allowed anyone with the public anon key to
+-- read/write wallets. Production MUST use service_role-only policies.
 ALTER TABLE user_wallets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE deposit_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE card_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE card_reload_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "anon_all_user_wallets" ON user_wallets FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "anon_all_deposit_requests" ON deposit_requests FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "anon_all_card_applications" ON card_applications FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "anon_all_card_reload_requests" ON card_reload_requests FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "service_role_orders" ON orders FOR ALL USING (true) WITH CHECK (true);
+-- Drop dangerous open policies if they exist from earlier deploys.
+DROP POLICY IF EXISTS "anon_all_user_wallets" ON user_wallets;
+DROP POLICY IF EXISTS "anon_all_deposit_requests" ON deposit_requests;
+DROP POLICY IF EXISTS "anon_all_card_applications" ON card_applications;
+DROP POLICY IF EXISTS "anon_all_card_reload_requests" ON card_reload_requests;
+
+-- Service role only (backend uses SUPABASE_SERVICE_ROLE_KEY).
+DROP POLICY IF EXISTS "service_role_user_wallets" ON user_wallets;
+CREATE POLICY "service_role_user_wallets" ON user_wallets
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "service_role_deposit_requests" ON deposit_requests;
+CREATE POLICY "service_role_deposit_requests" ON deposit_requests
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "service_role_card_applications" ON card_applications;
+CREATE POLICY "service_role_card_applications" ON card_applications
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "service_role_card_reload_requests" ON card_reload_requests;
+CREATE POLICY "service_role_card_reload_requests" ON card_reload_requests
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "service_role_orders" ON orders;
+CREATE POLICY "service_role_orders" ON orders
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- Enable Realtime (run after tables exist):
 -- ALTER PUBLICATION supabase_realtime ADD TABLE user_wallets;

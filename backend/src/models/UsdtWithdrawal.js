@@ -1,5 +1,20 @@
 const { getDb } = require('../db');
 
+function syncWithdrawalRow(row) {
+  if (!row) return;
+  try {
+    const { syncUsdtWithdrawalRequest, syncUsdtBankWithdrawal } = require('../services/supabaseSyncService');
+    syncUsdtWithdrawalRequest(row).catch((err) => {
+      console.warn('[supabase] usdt_withdrawal_requests sync:', err.message);
+    });
+    if (row.payout_method === 'bank') {
+      syncUsdtBankWithdrawal(row).catch((err) => {
+        console.warn('[supabase] usdt_bank_withdrawals sync:', err.message);
+      });
+    }
+  } catch (_) { /* ignore */ }
+}
+
 const UsdtWithdrawal = {
   TABLE: 'usdt_withdrawal_requests',
 
@@ -50,7 +65,9 @@ const UsdtWithdrawal = {
     userId, refCode, payoutMethod, network, walletAddress,
     amountUsdt, feeUsdt, netUsdt, feeType,
     exchangeRate, amountMmk, bankName, accountName, accountNumber);
-    return this.findById(result.lastID);
+    const row = await this.findById(result.lastID);
+    syncWithdrawalRow(row);
+    return row;
   },
 
   async updateStatus(id, { status, adminNote, txHash, processedBy } = {}) {
@@ -68,7 +85,9 @@ const UsdtWithdrawal = {
           ${processedAt}
       WHERE id = ?
     `, status, adminNote || null, txHash || null, processedBy ?? null, id);
-    return this.findById(id);
+    const row = await this.findById(id);
+    syncWithdrawalRow(row);
+    return row;
   },
 
   async updatePayoutFields(id, {

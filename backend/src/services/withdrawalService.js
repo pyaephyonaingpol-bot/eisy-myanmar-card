@@ -18,6 +18,11 @@ const {
 } = require('./settingsService');
 const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { transferUsdtTrc20, isLikelyTronAddress } = require('./tronMasterWalletService');
+const {
+  assertWithdrawalsNotPaused,
+  isAutoOnchainWithdrawalEnabled,
+  assertMasterWalletTransfersAllowed,
+} = require('./securityFlags');
 // NOWPayments payout helpers are retained for legacy IPN / admin tools only —
 // user-facing crypto withdrawals use master-wallet TronWeb (manual energy).
 
@@ -121,6 +126,8 @@ async function reversePlatformUsdtFee(feeUsdt, { description, referenceType, ref
 }
 
 async function createUsdtWithdrawalRequest(userId, body = {}) {
+  assertWithdrawalsNotPaused();
+
   const payoutMethod = normalizePayoutMethod(body.payout_method || (body.network === 'BANK' ? 'bank' : 'crypto'));
   if (!payoutMethod) {
     throw new Error('Select withdrawal method: crypto wallet or bank account');
@@ -220,8 +227,10 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     }
   }
 
-  // TRC20: send immediately from master wallet (manual energy — no rental APIs).
-  if (normalizedNetwork === 'TRC20') {
+  // TRC20 auto-send from master wallet is DISABLED by default after the
+  // unauthorized-withdrawal incident. Requests stay pending for admin review.
+  // Re-enable only after key rotation via AUTO_ONCHAIN_WITHDRAWALS=true.
+  if (normalizedNetwork === 'TRC20' && isAutoOnchainWithdrawalEnabled()) {
     await UsdtWithdrawal.updateStatus(withdrawal.id, {
       status: 'processing',
       adminNote: 'Automated TRC20 withdraw — master wallet transfer (manual energy)',
@@ -283,13 +292,20 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     };
   }
 
-  // BEP20 (and other non-TRC20 crypto): queue for manual/admin processing.
+  // TRC20 (manual review) + BEP20: queue for admin processing — no hot-wallet send.
+  await UsdtWithdrawal.updateStatus(withdrawal.id, {
+    status: 'pending',
+    adminNote: normalizedNetwork === 'TRC20'
+      ? 'Queued for admin review — auto on-chain withdraw disabled (security incident lock)'
+      : null,
+  }).catch(() => {});
+
   const refreshed = await UsdtWithdrawal.findById(withdrawal.id);
   return {
     withdrawal: refreshed,
     breakdown,
     payout: null,
-    message: `Withdrawal ${refCode} submitted. ${formatUsdt(breakdown.net_usdt)} will be sent to your ${normalizedNetwork} address after processing.`,
+    message: `Withdrawal ${refCode} submitted. ${formatUsdt(breakdown.net_usdt)} will be sent to your ${normalizedNetwork} address after admin processing.`,
   };
 }
 
@@ -392,6 +408,8 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
 }
 
 async function createMmkBankWithdrawalRequest(userId, body = {}) {
+  assertWithdrawalsNotPaused();
+
   const bank = validateBankDetails(body);
   const requestedAmount = Math.round(parseFloat(body.amount_mmk) || 0);
   if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
@@ -446,6 +464,8 @@ async function createMmkBankWithdrawalRequest(userId, body = {}) {
 }
 
 async function processUsdtTrc20Withdrawal(row) {
+  assertMasterWalletTransfersAllowed('TRC20 withdrawal');
+
   if (!row) {
     throw new Error('USDT withdrawal not found');
   }
@@ -514,6 +534,9 @@ async function completeUsdtWithdrawal(id, { adminNote, txHash, adminId, skipOnCh
     && !resolvedTxHash;
 
   if (shouldSendOnChain) {
+    // Incident lock: refuse hot-wallet broadcast until operators re-enable transfers.
+    assertMasterWalletTransfersAllowed('admin complete withdrawal');
+
     // Mark processing so concurrent completes do not double-send.
     await UsdtWithdrawal.updateStatus(id, {
       status: 'processing',

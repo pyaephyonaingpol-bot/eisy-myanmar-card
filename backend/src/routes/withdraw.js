@@ -6,6 +6,7 @@
  */
 const express = require('express');
 const { requireAuth, requireSensitive } = require('../middleware/auth');
+const { requireWithdrawalsEnabled } = require('../middleware/withdrawalGuard');
 const {
   calculateFixedFeeWithdraw,
   executeFixedFeeTrc20Withdraw,
@@ -16,7 +17,7 @@ const User = require('../models/User');
 
 const router = express.Router();
 
-router.post('/', requireAuth, requireSensitive, async (req, res) => {
+router.post('/', requireAuth, requireSensitive, requireWithdrawalsEnabled, async (req, res) => {
   try {
     const customerAddress = req.body?.customerAddress ?? req.body?.customer_address;
     const withdrawAmount = req.body?.withdrawAmount ?? req.body?.withdraw_amount ?? req.body?.amount_usdt;
@@ -51,6 +52,7 @@ router.post('/', requireAuth, requireSensitive, async (req, res) => {
   } catch (err) {
     console.error('[withdraw POST]', err.message, err.code || '');
     const status = (() => {
+      if (err.code === 'WITHDRAWALS_PAUSED' || err.code === 'MASTER_WALLET_TRANSFERS_PAUSED') return 503;
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') return 401;
       if ([
         'WITHDRAW_ADDRESS_REQUIRED',
