@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Admin transaction history / CSV export filters — USDT card flows only.
+ * Admin transaction history / CSV export filters — USDT deposits/withdrawals + card flows.
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -20,10 +20,14 @@ function testAdminHtmlFilters() {
   assert.ok(txStart >= 0 && txEnd > txStart);
   const block = html.slice(txStart, txEnd);
 
+  assert.ok(block.includes('data-tx-category="usdt_deposit"'));
+  assert.ok(block.includes('data-tx-category="usdt_withdrawal"'));
   assert.ok(block.includes('data-tx-category="card_issuance"'));
   assert.ok(block.includes('data-tx-category="card_reload"'));
   assert.ok(block.includes('data-tx-category="mmk_withdrawal"'));
   assert.ok(!block.includes('data-tx-category="p2p"'));
+  assert.ok(block.includes('value="usdt_deposit"'));
+  assert.ok(block.includes('value="usdt_withdrawal"'));
   assert.ok(block.includes('value="card_issuance"'));
   assert.ok(block.includes('value="card_reload"'));
   assert.ok(block.includes('value="mmk_withdrawal"'));
@@ -38,13 +42,14 @@ function testAdminJsHandlers() {
   section('Admin JS transaction handlers');
   const js = fs.readFileSync(path.join(ROOT, 'backend/public/admin.js'), 'utf8');
 
-  assert.ok(js.includes("this.txCategory = this.txCategory || 'card_issuance'"));
+  assert.ok(js.includes("this.txCategory = this.txCategory || 'usdt_deposit'"));
+  assert.ok(js.includes("category === 'usdt_deposit'"));
+  assert.ok(js.includes("category === 'usdt_withdrawal'"));
   assert.ok(js.includes("category === 'card_issuance'"));
   assert.ok(js.includes("category === 'mmk_withdrawal'"));
-  assert.ok(js.includes("'card_issuance'"));
   assert.ok(!js.includes("data-tx-category=\"p2p\""));
   assert.ok(!js.includes("category === 'p2p'"));
-  assert.ok(js.includes("|| 'card_issuance'"));
+  assert.ok(js.includes("|| 'usdt_deposit'"));
   console.log('ok');
 }
 
@@ -54,11 +59,17 @@ function testBackendCategories() {
   const svc = fs.readFileSync(path.join(ROOT, 'backend/src/services/adminLedgerTransactionService.js'), 'utf8');
   const csv = fs.readFileSync(path.join(ROOT, 'backend/src/services/transactionCsvExportService.js'), 'utf8');
 
+  assert.ok(route.includes("category === 'usdt_deposit'"));
+  assert.ok(route.includes("category === 'usdt_withdrawal'"));
   assert.ok(route.includes("category === 'card_issuance'"));
   assert.ok(route.includes("category === 'mmk_withdrawal'"));
-  assert.ok(route.includes('card_issuance|card_reload|mmk_withdrawal'));
+  assert.ok(route.includes('usdt_deposit|usdt_withdrawal'));
+  assert.ok(svc.includes('listUsdtDepositAdminTransactions'));
+  assert.ok(svc.includes('listUsdtWithdrawalAdminTransactions'));
   assert.ok(svc.includes('listCardIssuanceAdminTransactions'));
   assert.ok(svc.includes('listMmkWithdrawalAdminTransactions'));
+  assert.ok(csv.includes("src === 'usdt_deposit'"));
+  assert.ok(csv.includes("src === 'usdt_withdrawal'"));
   assert.ok(csv.includes("src === 'card_issuance'"));
   assert.ok(csv.includes("src === 'mmk_withdrawal'"));
   assert.ok(!csv.includes("src === 'nowpayments'"));

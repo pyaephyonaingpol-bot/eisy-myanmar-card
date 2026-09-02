@@ -32,6 +32,7 @@
     "test:dashboard-wallet-hydration": "node scripts/test-dashboard-wallet-hydration.js",
     "test:admin-usdt-adjust-sync": "node scripts/test-admin-usdt-adjust-sync.js",
     "test:admin-ledger-filter-cleanup": "node scripts/test-admin-ledger-filter-cleanup.js",
+    "test:admin-usdt-tx-tabs": "node scripts/test-admin-usdt-tx-tabs.js",
     "test:usdt-topup-modal": "node scripts/test-usdt-topup-modal.js",
     "test:transaction-csv-export": "node scripts/test-transaction-csv-export.js",
     "test:upload-storage": "node scripts/test-upload-storage.js",
