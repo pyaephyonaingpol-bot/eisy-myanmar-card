@@ -428,6 +428,23 @@ const Dashboard = {
     return this.resolveCardStatus(card) === 'terminated';
   },
 
+  isCardVisibleInUserList(card) {
+    if (!card) return false;
+    if (this.isCardTerminated(card)) return false;
+    let metadata = card.metadata;
+    if (typeof metadata === 'string') {
+      try { metadata = JSON.parse(metadata); } catch (_) { metadata = {}; }
+    }
+    if (metadata?.removed_by_user) return false;
+    return true;
+  },
+
+  filterVisibleCards(cards) {
+    return (cards || [])
+      .map((c) => this.normalizeCard(c))
+      .filter((c) => this.isCardVisibleInUserList(c));
+  },
+
   isCardRestricted(card) {
     const s = this.resolveCardStatus(card);
     return s === 'suspended' || s === 'frozen';
@@ -461,7 +478,11 @@ const Dashboard = {
   applyCachedCardsIfAvailable() {
     const cached = this.loadCardsCache();
     if (!cached?.length) return false;
-    this.allCards = cached.map((c) => this.normalizeCard(c));
+    this.allCards = this.filterVisibleCards(cached);
+    if (!this.allCards.length) {
+      this.clearCardsCache();
+      return false;
+    }
     if (this.activeCardIndex >= this.allCards.length) this.activeCardIndex = 0;
     this.renderCardSelector();
     if (this.allCards.length) this.selectCard(this.activeCardIndex);
@@ -4267,7 +4288,27 @@ const Dashboard = {
       this.toast(data.message || 'Card removed', 'ok');
       this.log(`Card ${card.id} removed from My Cards`, 'ok');
       this.closeCardDetailModal();
-      await this.loadAllCards({ forceRefresh: true, preserveSelection: false, silent: true });
+      this.clearCardsCache();
+      if (Array.isArray(data.cards)) {
+        this.allCards = this.filterVisibleCards(data.cards);
+        this.activeCardIndex = typeof data.active_index === 'number' ? data.active_index : 0;
+        if (this.activeCardIndex >= this.allCards.length) this.activeCardIndex = 0;
+        this.saveCardsCache(this.allCards);
+        if (!this.allCards.length) {
+          this.currentCard = null;
+          $('cardSelectorSection')?.classList.add('hidden');
+          $('cardPendingNotice')?.classList.add('hidden');
+          if ($('cardBalanceDisplay')) $('cardBalanceDisplay').textContent = '—';
+          if ($('sumCard')) $('sumCard').textContent = 'No card';
+          this.updateCardStatusSummary(null);
+        } else {
+          this.renderCardSelector();
+          this.renderActiveCard(this.allCards[this.activeCardIndex]);
+          this.populateReloadCardSelect();
+        }
+      } else {
+        await this.loadAllCards({ forceRefresh: true, preserveSelection: false, silent: true });
+      }
     } catch (e) {
       const message = e.message || 'Failed to remove card';
       if (err) {
@@ -6607,7 +6648,7 @@ const Dashboard = {
         }
       }
 
-      const newCards = (data.cards || []).map((c) => this.normalizeCard(c));
+      const newCards = this.filterVisibleCards(data.cards || []);
       const nextSignature = this.cardsSignature(newCards);
       const unchanged = prevSignature === nextSignature && prevCards.length === newCards.length;
 

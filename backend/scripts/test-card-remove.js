@@ -14,18 +14,35 @@ const assert = require('assert');
 const { initDb, closeDb, getDb } = require('../src/db');
 const Card = require('../src/models/Card');
 const User = require('../src/models/User');
+const { isCardVisibleInUserList } = require('../src/constants/cardStatuses');
 
 async function getUserCardsPayload(userId) {
-  // Mirror filter used by routes/user.js
-  let cards = await Card.findByUserId(userId);
-  cards = cards.filter((c) => {
-    const status = String(c.status || '').toLowerCase();
-    if (['cancelled', 'expired'].includes(status)) return false;
-    let metadata = {};
-    try { metadata = c.metadata ? JSON.parse(c.metadata) : {}; } catch (_) {}
-    if (metadata.removed_by_user) return false;
-    return true;
-  });
+  const db = getDb();
+  const allV2 = await Card.findByUserId(userId);
+  let cards = allV2.filter(isCardVisibleInUserList);
+
+  if (!cards.length) {
+    const countRow = await db.get(
+      'SELECT COUNT(*) AS c FROM cards_v2 WHERE user_id = ?',
+      userId
+    );
+    const hasV2Rows = Number(countRow?.c || 0) > 0;
+    if (!hasV2Rows) {
+      const legacy = await db.get('SELECT * FROM cards WHERE user_id = ?', userId);
+      if (legacy) {
+        const legacyCard = {
+          ...legacy,
+          status: 'active',
+          is_primary: 1,
+          metadata: null,
+        };
+        if (isCardVisibleInUserList(legacyCard)) {
+          cards = [legacyCard];
+        }
+      }
+    }
+  }
+
   return cards;
 }
 
@@ -82,10 +99,34 @@ async function run() {
   list = await getUserCardsPayload(user.id);
   assert.strictEqual(list.length, 0, 'all cards removed from list');
 
+  // Terminated cards must not appear in My Cards
+  const terminated = await Card.issue({
+    userId: user.id,
+    cardNumber: '4111111111111111',
+    expDate: '01/29',
+    cvv: '999',
+    cardHolderName: 'TERMINATED USER',
+    status: 'terminated',
+    isPrimary: false,
+  });
+  assert(terminated?.id, 'terminated card issue failed');
+  list = await getUserCardsPayload(user.id);
+  assert.strictEqual(list.length, 0, 'terminated card must be hidden');
+
+  // Legacy fallback must not resurrect when cards_v2 rows exist but are all hidden
+  await db.run(
+    `INSERT INTO cards (user_id, card_number, exp_date, cvv, card_holder_name, created_at)
+     VALUES (?, '4000000000000002', '06/30', '321', 'LEGACY GHOST', datetime('now'))`,
+    user.id
+  );
+  list = await getUserCardsPayload(user.id);
+  assert.strictEqual(list.length, 0, 'legacy card must not appear when cards_v2 rows exist');
+
   // Wrong owner must fail
   const other = await Card.removeFromUserList(issued.id, user.id + 9999);
   assert.strictEqual(other, null);
 
+  await db.run('DELETE FROM cards WHERE user_id = ?', user.id);
   await db.run('DELETE FROM cards_v2 WHERE user_id = ?', user.id);
   await db.run('DELETE FROM users WHERE id = ?', user.id);
 
