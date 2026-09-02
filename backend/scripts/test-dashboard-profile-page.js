@@ -48,7 +48,8 @@ assert(/data-page="profile"/.test(html), 'nav/page profile required');
 assert(/data-page-title="profile"/.test(html), 'page title for profile required');
 assert(/id="sumBalanceUsdt"/.test(home), 'home must keep wallet balance');
 assert(/home-card-purchase/.test(home), 'home must keep card purchase panel');
-assert(/quick_actions/.test(home), 'home must keep quick actions');
+assert(!/quick_actions/.test(home), 'home must not contain redundant quick actions panel');
+assert(!/btnSellConvertUsdtQuick/.test(home), 'home must not duplicate sell-usdt quick button');
 
 assert(/page === 'profile'/.test(dash), 'dashboard onPageChange must handle profile');
 assert(/updateProfileFormUI\(\)/.test(dash), 'profile form UI updater must remain');

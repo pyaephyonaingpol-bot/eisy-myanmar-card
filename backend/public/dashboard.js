@@ -1626,7 +1626,6 @@ const Dashboard = {
     };
     $('btnSellConvertUsdt')?.addEventListener('click', openSell);
     $('btnSellConvertUsdtPage')?.addEventListener('click', openSell);
-    $('btnSellConvertUsdtQuick')?.addEventListener('click', openSell);
 
     $('p2pNetworkFilter')?.addEventListener('change', () => this.loadP2pMarket());
     $('btnRefreshP2pMarket')?.addEventListener('click', () => this.loadP2pPage());
