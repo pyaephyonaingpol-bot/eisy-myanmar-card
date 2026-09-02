@@ -295,9 +295,191 @@ async function listMmkWithdrawalAdminTransactions({ userId, limit = 200 } = {}) 
   }));
 }
 
+/**
+ * On-chain / crypto USDT deposits (deposit_requests_v2).
+ * Surfaces deposit address, network, and Tx hash for admin forensics.
+ */
+async function listUsdtDepositAdminTransactions({ userId, limit = 200 } = {}) {
+  const db = getDb();
+  const params = [];
+  let userFilter = '';
+
+  if (userId) {
+    userFilter = ' AND d.user_id = ?';
+    params.push(userId);
+  }
+
+  const rows = await db.all(`
+    SELECT
+      d.id,
+      d.user_id,
+      d.ref_code,
+      d.amount_usd,
+      d.amount_mmk,
+      d.deposit_currency,
+      d.usdt_network,
+      d.payment_method,
+      d.tx_hash,
+      d.txn_id,
+      d.kpay_transaction_id,
+      d.status,
+      d.purpose,
+      d.platform_profit_usd,
+      d.admin_note,
+      d.user_note,
+      d.metadata,
+      d.submitted_at,
+      d.reviewed_at,
+      d.created_at,
+      u.name AS user_name,
+      u.email AS user_email,
+      u.phone AS user_phone,
+      a.address AS custodial_deposit_address,
+      a.derivation_path AS custodial_derivation_path,
+      a.derivation_index AS custodial_derivation_index
+    FROM deposit_requests_v2 d
+    LEFT JOIN users u ON u.id = d.user_id
+    LEFT JOIN user_usdt_wallet_addresses a
+      ON a.user_id = d.user_id
+     AND a.network = 'TRC20'
+     AND a.address_type = 'custodial'
+    WHERE UPPER(COALESCE(d.deposit_currency, 'USDT')) = 'USDT'
+    ${userFilter}
+    ORDER BY COALESCE(d.reviewed_at, d.submitted_at, d.created_at) DESC
+    LIMIT ?
+  `, ...params, limit);
+
+  return rows.map((row) => {
+    const metadata = parseRecordMetadata(row.metadata);
+    const txHash = row.tx_hash || row.txn_id || row.kpay_transaction_id || metadata.tx_hash || null;
+    const depositAddress = metadata.deposit_address
+      || metadata.tron_deposit_address
+      || row.custodial_deposit_address
+      || null;
+    return {
+      id: row.id,
+      ref_code: row.ref_code,
+      category: 'usdt_deposit',
+      user_id: row.user_id,
+      user_name: row.user_name,
+      user_email: row.user_email,
+      user_phone: row.user_phone,
+      amount_usdt: round2(row.amount_usd),
+      network: row.usdt_network || metadata.network || metadata.usdt_network || 'TRC20',
+      payment_method: row.payment_method,
+      deposit_address: depositAddress,
+      derivation_path: row.custodial_derivation_path || metadata.derivation_path || null,
+      derivation_index: row.custodial_derivation_index != null
+        ? Number(row.custodial_derivation_index)
+        : (metadata.derivation_index != null ? Number(metadata.derivation_index) : null),
+      tx_hash: txHash,
+      tron_order_id: metadata.tron_order_id || null,
+      purpose: row.purpose,
+      platform_profit_usd: row.platform_profit_usd != null ? round2(row.platform_profit_usd) : null,
+      status: row.status,
+      admin_note: row.admin_note,
+      user_note: row.user_note,
+      submitted_at: row.submitted_at,
+      reviewed_at: row.reviewed_at,
+      created_at: row.created_at,
+      metadata,
+    };
+  });
+}
+
+/**
+ * USDT crypto + bank withdrawals (usdt_withdrawal_requests).
+ * Surfaces destination address / bank details and on-chain Tx hash.
+ */
+async function listUsdtWithdrawalAdminTransactions({ userId, limit = 200 } = {}) {
+  const db = getDb();
+  const params = [];
+  let userFilter = '';
+
+  if (userId) {
+    userFilter = ' AND w.user_id = ?';
+    params.push(userId);
+  }
+
+  const rows = await db.all(`
+    SELECT
+      w.id,
+      w.user_id,
+      w.ref_code,
+      w.payout_method,
+      w.payout_provider,
+      w.network,
+      w.wallet_address,
+      w.amount_usdt,
+      w.fee_usdt,
+      w.net_usdt,
+      w.fee_type,
+      w.exchange_rate,
+      w.amount_mmk,
+      w.bank_name,
+      w.account_name,
+      w.account_number,
+      w.status,
+      w.admin_note,
+      w.tx_hash,
+      w.nowpayments_payout_id,
+      w.nowpayments_withdrawal_id,
+      w.processed_by,
+      w.processed_at,
+      w.created_at,
+      u.name AS user_name,
+      u.email AS user_email,
+      u.phone AS user_phone,
+      admin_u.name AS processed_by_name,
+      admin_u.email AS processed_by_email
+    FROM usdt_withdrawal_requests w
+    LEFT JOIN users u ON u.id = w.user_id
+    LEFT JOIN users admin_u ON admin_u.id = w.processed_by
+    WHERE 1=1
+    ${userFilter}
+    ORDER BY COALESCE(w.processed_at, w.created_at) DESC
+    LIMIT ?
+  `, ...params, limit);
+
+  return rows.map((row) => ({
+    id: row.id,
+    ref_code: row.ref_code,
+    category: 'usdt_withdrawal',
+    user_id: row.user_id,
+    user_name: row.user_name,
+    user_email: row.user_email,
+    user_phone: row.user_phone,
+    payout_method: row.payout_method || (row.network === 'BANK' || row.bank_name ? 'bank' : 'crypto'),
+    payout_provider: row.payout_provider || null,
+    network: row.network,
+    wallet_address: row.wallet_address,
+    amount_usdt: round2(row.amount_usdt),
+    fee_usdt: round2(row.fee_usdt),
+    net_usdt: round2(row.net_usdt),
+    fee_type: row.fee_type,
+    exchange_rate: row.exchange_rate != null ? Number(row.exchange_rate) : null,
+    amount_mmk: row.amount_mmk != null ? round2(row.amount_mmk) : null,
+    bank_name: row.bank_name,
+    account_name: row.account_name,
+    account_number: row.account_number,
+    status: row.status,
+    admin_note: row.admin_note,
+    tx_hash: row.tx_hash,
+    nowpayments_payout_id: row.nowpayments_payout_id || null,
+    nowpayments_withdrawal_id: row.nowpayments_withdrawal_id || null,
+    processed_by: row.processed_by,
+    processed_by_name: row.processed_by_name,
+    processed_by_email: row.processed_by_email,
+    processed_at: row.processed_at,
+    created_at: row.created_at,
+  }));
+}
+
 module.exports = {
   listP2pAdminTransactions,
   listCardReloadAdminTransactions,
   listCardIssuanceAdminTransactions,
   listMmkWithdrawalAdminTransactions,
+  listUsdtDepositAdminTransactions,
+  listUsdtWithdrawalAdminTransactions,
 };

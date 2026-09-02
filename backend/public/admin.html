@@ -739,9 +739,11 @@
 
       <section id="tabTransactions" class="panel app-page" data-page="transactions">
         <h2>Transaction History</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Transaction history for automated USDT card issuance, card reloads, and MMK bank withdrawals. Use Daily CSV Export to download accounting reports.</p>
+        <p class="hint" style="margin-bottom:0.75rem">Transaction history for USDT deposits &amp; withdrawals (on-chain), automated USDT card issuance, card reloads, and MMK bank withdrawals. Use Daily CSV Export to download accounting reports.</p>
         <div class="admin-tabs" id="txCategoryTabs" role="tablist">
-          <button type="button" class="tab active" data-tx-category="card_issuance">Card Issuance</button>
+          <button type="button" class="tab active" data-tx-category="usdt_deposit">USDT Deposits</button>
+          <button type="button" class="tab" data-tx-category="usdt_withdrawal">USDT Withdrawals</button>
+          <button type="button" class="tab" data-tx-category="card_issuance">Card Issuance</button>
           <button type="button" class="tab" data-tx-category="card_reload">Card Reloads</button>
           <button type="button" class="tab" data-tx-category="mmk_withdrawal">MMK Withdrawals</button>
         </div>
@@ -752,6 +754,8 @@
           <label for="txExportDate" class="hint" style="margin:0">Daily CSV</label>
           <input id="txExportDate" type="date" title="Date (Asia/Yangon)" />
           <select id="txExportSource" title="Export source">
+            <option value="usdt_deposit">USDT Deposits</option>
+            <option value="usdt_withdrawal">USDT Withdrawals</option>
             <option value="card_issuance">Card Issuance</option>
             <option value="card_reload">Card Reloads</option>
             <option value="mmk_withdrawal">MMK Withdrawals</option>

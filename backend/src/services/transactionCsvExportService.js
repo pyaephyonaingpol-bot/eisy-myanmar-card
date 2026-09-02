@@ -1,12 +1,14 @@
 /**
  * Daily CSV export helpers for admin accounting.
- * Sources: card issuance, card reloads, MMK withdrawals.
+ * Sources: card issuance, card reloads, MMK withdrawals, USDT deposits, USDT withdrawals.
  */
 const TransactionLog = require('../models/TransactionLog');
 const {
   listCardIssuanceAdminTransactions,
   listCardReloadAdminTransactions,
   listMmkWithdrawalAdminTransactions,
+  listUsdtDepositAdminTransactions,
+  listUsdtWithdrawalAdminTransactions,
 } = require('./adminLedgerTransactionService');
 
 const YANGON_OFFSET = '+06:30';
@@ -173,6 +175,90 @@ function mmkWithdrawalRowsToCsv(rows) {
   return toCsv(headers, mapped);
 }
 
+function usdtDepositRowsToCsv(rows) {
+  const headers = [
+    'created_at',
+    'submitted_at',
+    'reviewed_at',
+    'id',
+    'ref_code',
+    'user_id',
+    'user_name',
+    'user_email',
+    'amount_usdt',
+    'network',
+    'deposit_address',
+    'tx_hash',
+    'tron_order_id',
+    'purpose',
+    'status',
+    'admin_note',
+  ];
+  const mapped = (rows || []).map((t) => ({
+    created_at: t.created_at || '',
+    submitted_at: t.submitted_at || '',
+    reviewed_at: t.reviewed_at || '',
+    id: t.id ?? '',
+    ref_code: t.ref_code || '',
+    user_id: t.user_id ?? '',
+    user_name: t.user_name || '',
+    user_email: t.user_email || '',
+    amount_usdt: t.amount_usdt ?? '',
+    network: t.network || '',
+    deposit_address: t.deposit_address || '',
+    tx_hash: t.tx_hash || '',
+    tron_order_id: t.tron_order_id || '',
+    purpose: t.purpose || '',
+    status: t.status || '',
+    admin_note: t.admin_note || '',
+  }));
+  return toCsv(headers, mapped);
+}
+
+function usdtWithdrawalRowsToCsv(rows) {
+  const headers = [
+    'created_at',
+    'processed_at',
+    'id',
+    'ref_code',
+    'user_id',
+    'user_name',
+    'user_email',
+    'payout_method',
+    'network',
+    'wallet_address',
+    'amount_usdt',
+    'fee_usdt',
+    'net_usdt',
+    'tx_hash',
+    'status',
+    'processed_by',
+    'processed_by_name',
+    'admin_note',
+  ];
+  const mapped = (rows || []).map((t) => ({
+    created_at: t.created_at || '',
+    processed_at: t.processed_at || '',
+    id: t.id ?? '',
+    ref_code: t.ref_code || '',
+    user_id: t.user_id ?? '',
+    user_name: t.user_name || '',
+    user_email: t.user_email || '',
+    payout_method: t.payout_method || '',
+    network: t.network || '',
+    wallet_address: t.wallet_address || '',
+    amount_usdt: t.amount_usdt ?? '',
+    fee_usdt: t.fee_usdt ?? '',
+    net_usdt: t.net_usdt ?? '',
+    tx_hash: t.tx_hash || '',
+    status: t.status || '',
+    processed_by: t.processed_by ?? '',
+    processed_by_name: t.processed_by_name || '',
+    admin_note: t.admin_note || '',
+  }));
+  return toCsv(headers, mapped);
+}
+
 function filterRowsByYangonDay(rows, dateField, bounds) {
   const startMs = Date.parse(bounds.startIso);
   const endMs = Date.parse(bounds.endIso);
@@ -215,8 +301,20 @@ async function buildDailyTransactionsCsv({
     const rows = filterRowsByYangonDay(all, 'processed_at', bounds);
     csv = mmkWithdrawalRowsToCsv(rows);
     rowCount = rows.length;
+  } else if (src === 'usdt_deposit') {
+    const all = await listUsdtDepositAdminTransactions({ userId, limit: 5000 });
+    const rows = filterRowsByYangonDay(all, 'submitted_at', bounds);
+    csv = usdtDepositRowsToCsv(rows);
+    rowCount = rows.length;
+  } else if (src === 'usdt_withdrawal') {
+    const all = await listUsdtWithdrawalAdminTransactions({ userId, limit: 5000 });
+    const rows = filterRowsByYangonDay(all, 'processed_at', bounds);
+    csv = usdtWithdrawalRowsToCsv(rows);
+    rowCount = rows.length;
   } else {
-    const err = new Error('source must be card_issuance, card_reload, or mmk_withdrawal');
+    const err = new Error(
+      'source must be card_issuance, card_reload, mmk_withdrawal, usdt_deposit, or usdt_withdrawal'
+    );
     err.code = 'INVALID_SOURCE';
     throw err;
   }

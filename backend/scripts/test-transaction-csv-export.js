@@ -55,6 +55,8 @@ async function main() {
     path.join(__dirname, '../src/services/transactionCsvExportService.js'),
     'utf8'
   );
+  assert.ok(exportSrc.includes("src === 'usdt_deposit'"));
+  assert.ok(exportSrc.includes("src === 'usdt_withdrawal'"));
   assert.ok(exportSrc.includes("src === 'card_issuance'"));
   assert.ok(exportSrc.includes("src === 'mmk_withdrawal'"));
   assert.ok(!exportSrc.includes("src === 'nowpayments'"));

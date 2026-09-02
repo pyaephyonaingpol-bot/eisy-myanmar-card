@@ -70,6 +70,8 @@ const {
   listCardReloadAdminTransactions,
   listCardIssuanceAdminTransactions,
   listMmkWithdrawalAdminTransactions,
+  listUsdtDepositAdminTransactions,
+  listUsdtWithdrawalAdminTransactions,
 } = require('../services/adminLedgerTransactionService');
 const {
   listKycSubmissionsForAdmin,
@@ -1354,6 +1356,14 @@ router.get('/transactions', requirePermission('transactions'), async (req, res) 
       const transactions = await listMmkWithdrawalAdminTransactions({ userId });
       return res.json({ category: 'mmk_withdrawal', transactions });
     }
+    if (category === 'usdt_deposit') {
+      const transactions = await listUsdtDepositAdminTransactions({ userId });
+      return res.json({ category: 'usdt_deposit', transactions });
+    }
+    if (category === 'usdt_withdrawal') {
+      const transactions = await listUsdtWithdrawalAdminTransactions({ userId });
+      return res.json({ category: 'usdt_withdrawal', transactions });
+    }
     if (category === 'p2p') {
       const transactions = await listP2pAdminTransactions({ userId });
       return res.json({ category: 'p2p', transactions });
@@ -1370,7 +1380,7 @@ router.get('/transactions', requirePermission('transactions'), async (req, res) 
 
 /**
  * Daily CSV export for accounting.
- * GET /api/admin/transactions/csv?date=YYYY-MM-DD&source=card_issuance|card_reload|mmk_withdrawal
+ * GET /api/admin/transactions/csv?date=YYYY-MM-DD&source=card_issuance|card_reload|mmk_withdrawal|usdt_deposit|usdt_withdrawal
  * Dates are interpreted in Asia/Yangon (UTC+06:30).
  */
 router.get('/transactions/csv', requirePermission('transactions'), async (req, res) => {

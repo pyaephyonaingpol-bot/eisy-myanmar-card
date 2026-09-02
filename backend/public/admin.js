@@ -622,12 +622,16 @@
 
       const txCategoryTabs = $('txCategoryTabs');
       if (txCategoryTabs) {
-        this.txCategory = this.txCategory || 'card_issuance';
+        this.txCategory = this.txCategory || 'usdt_deposit';
         txCategoryTabs.querySelectorAll('[data-tx-category]').forEach((btn) => {
           btn.addEventListener('click', () => {
-            this.txCategory = btn.dataset.txCategory || 'card_issuance';
+            this.txCategory = btn.dataset.txCategory || 'usdt_deposit';
             txCategoryTabs.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
             btn.classList.add('active');
+            const exportSource = $('txExportSource');
+            if (exportSource && exportSource.querySelector('option[value="' + this.txCategory + '"]')) {
+              exportSource.value = this.txCategory;
+            }
             this.loadTransactions();
           });
         });
@@ -3209,8 +3213,10 @@
       const table = $('transactionsTable');
       if (!table) return;
 
-      const category = this.txCategory || 'card_issuance';
+      const category = this.txCategory || 'usdt_deposit';
       const categoryLabels = {
+        usdt_deposit: 'USDT deposit',
+        usdt_withdrawal: 'USDT withdrawal',
         card_issuance: 'card issuance',
         card_reload: 'card reload',
         mmk_withdrawal: 'MMK withdrawal',
@@ -3226,6 +3232,85 @@
 
         if (!transactions.length) {
           table.innerHTML = '<p class="hint">No ' + (categoryLabels[category] || category) + ' transactions yet.</p>';
+          return;
+        }
+
+        if (category === 'usdt_deposit') {
+          table.innerHTML =
+            '<table class="data-table">' +
+              '<thead><tr>' +
+              '<th>Time</th><th>Reference</th><th>User</th><th>Amount</th>' +
+              '<th>Network</th><th>Deposit Address</th><th>Tx Hash</th><th>Status / Notes</th>' +
+              '</tr></thead><tbody>' +
+              transactions.map((t) => {
+                const hash = t.tx_hash || '';
+                const hashShort = hash
+                  ? ('<code title="' + this.esc(hash) + '">' + this.esc(hash.slice(0, 10) + '…' + hash.slice(-6)) + '</code>')
+                  : '—';
+                const addr = t.deposit_address || '';
+                const addrCell = addr
+                  ? ('<code style="word-break:break-all;font-size:0.8em">' + this.esc(addr) + '</code>'
+                    + (t.derivation_path ? '<br><small>' + this.esc(t.derivation_path) + '</small>' : ''))
+                  : '—';
+                const notes = [t.user_note, t.admin_note].filter(Boolean).map((n) => this.esc(n)).join('<br>') || '';
+                return '<tr>' +
+                  '<td><small>' + this.esc(t.reviewed_at || t.submitted_at || t.created_at || '—') + '</small></td>' +
+                  '<td><code>' + this.esc(t.ref_code || ('DEP-' + t.id)) + '</code>' +
+                    (t.tron_order_id ? '<br><small>order ' + this.esc(t.tron_order_id) + '</small>' : '') +
+                  '</td>' +
+                  '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small>' +
+                    '<br><small>#' + this.esc(String(t.user_id || '')) + '</small></td>' +
+                  '<td><strong>$' + Number(t.amount_usdt || 0).toFixed(2) + '</strong></td>' +
+                  '<td>' + this.esc(t.network || 'TRC20') + '</td>' +
+                  '<td style="max-width:220px">' + addrCell + '</td>' +
+                  '<td style="max-width:180px;word-break:break-all">' + hashShort + '</td>' +
+                  '<td><span class="badge">' + this.esc(t.status) + '</span>' +
+                    (notes ? '<br><small>' + notes + '</small>' : '') +
+                  '</td>' +
+                '</tr>';
+              }).join('') +
+              '</tbody></table>';
+          return;
+        }
+
+        if (category === 'usdt_withdrawal') {
+          table.innerHTML =
+            '<table class="data-table">' +
+              '<thead><tr>' +
+              '<th>Time</th><th>Reference</th><th>User</th><th>Amount / Fee / Net</th>' +
+              '<th>Method</th><th>Destination</th><th>Tx Hash</th><th>Status / Logs</th>' +
+              '</tr></thead><tbody>' +
+              transactions.map((t) => {
+                const isBank = String(t.payout_method || '').toLowerCase() === 'bank';
+                const method = isBank ? 'Bank (USDT→MMK)' : (t.network || 'Crypto');
+                const dest = isBank
+                  ? this.esc((t.bank_name || '') + ' · ' + (t.account_name || '') + ' · ' + (t.account_number || ''))
+                  : ('<code style="word-break:break-all;font-size:0.8em">' + this.esc(t.wallet_address || '—') + '</code>');
+                const hash = t.tx_hash || '';
+                const hashShort = hash
+                  ? ('<code title="' + this.esc(hash) + '">' + this.esc(hash.slice(0, 10) + '…' + hash.slice(-6)) + '</code>')
+                  : '—';
+                const amounts = '$' + Number(t.amount_usdt || 0).toFixed(2)
+                  + '<br><small>fee $' + Number(t.fee_usdt || 0).toFixed(2)
+                  + ' · net <strong>$' + Number(t.net_usdt || 0).toFixed(2) + '</strong></small>';
+                const logBits = [];
+                if (t.processed_by_name) logBits.push('by ' + this.esc(t.processed_by_name));
+                if (t.admin_note) logBits.push(this.esc(t.admin_note));
+                return '<tr>' +
+                  '<td><small>' + this.esc(t.processed_at || t.created_at || '—') + '</small></td>' +
+                  '<td><code>' + this.esc(t.ref_code || ('WD-' + t.id)) + '</code></td>' +
+                  '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small>' +
+                    '<br><small>#' + this.esc(String(t.user_id || '')) + '</small></td>' +
+                  '<td>' + amounts + '</td>' +
+                  '<td>' + this.esc(method) + '</td>' +
+                  '<td style="max-width:220px">' + dest + '</td>' +
+                  '<td style="max-width:180px;word-break:break-all">' + hashShort + '</td>' +
+                  '<td><span class="badge">' + this.esc(t.status) + '</span>' +
+                    (logBits.length ? '<br><small>' + logBits.join(' · ') + '</small>' : '') +
+                  '</td>' +
+                '</tr>';
+              }).join('') +
+              '</tbody></table>';
           return;
         }
 
