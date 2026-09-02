@@ -293,6 +293,7 @@ async function resolveUsdtBalancesForDisplay(userId, user = null) {
       balance_usdt: balances.available_usdt,
       balance_usdt_locked: balances.locked_usdt,
       email: user?.email,
+      updated_at: user?.updated_at || null,
     });
     if (fromSb.source === 'supabase') {
       balances = {
@@ -304,6 +305,11 @@ async function resolveUsdtBalancesForDisplay(userId, user = null) {
         locked_formatted: fromSb.usdt_locked_formatted,
         total_formatted: fromSb.usdt_total_formatted,
         source: 'supabase',
+      };
+    } else if (fromSb.source === 'turso') {
+      balances = {
+        ...balances,
+        source: 'turso',
       };
     }
   } catch (err) {

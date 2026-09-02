@@ -264,19 +264,30 @@ async function adjustUsdt(userId, deltaUsdt, reason, createdBy = 'admin') {
     throw new Error('Adjustment amount must be a non-zero number');
   }
 
+  let updated;
   if (delta > 0) {
-    return creditUsdt(userId, delta, {
+    updated = await creditUsdt(userId, delta, {
+      description: reason || 'Admin USDT wallet adjustment',
+      createdBy,
+      metadata: { adjustment: true },
+    });
+  } else {
+    updated = await debitUsdt(userId, Math.abs(delta), {
       description: reason || 'Admin USDT wallet adjustment',
       createdBy,
       metadata: { adjustment: true },
     });
   }
 
-  return debitUsdt(userId, Math.abs(delta), {
-    description: reason || 'Admin USDT wallet adjustment',
-    createdBy,
-    metadata: { adjustment: true },
-  });
+  // Dashboard wallet reads prefer Supabase user_wallets — await the mirror
+  // write so Adjust USDT is visible on the next /api/user/wallet fetch.
+  try {
+    await syncUserWalletById(userId);
+  } catch (err) {
+    console.warn('[wallet] adjustUsdt supabase sync:', err.message);
+  }
+
+  return updated || User.findById(userId);
 }
 
 async function adjustMmk(userId, deltaMmk, reason, createdBy = 'admin') {

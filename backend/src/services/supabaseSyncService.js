@@ -61,7 +61,14 @@ async function syncUserWalletById(userId) {
   if (!isSupabaseEnabled()) return null;
   const user = await User.findById(userId);
   if (!user) return null;
-  return upsertUserWallet(user);
+  const row = await upsertUserWallet(user);
+  try {
+    const { invalidateUserWalletCache } = require('./supabaseWalletReadService');
+    invalidateUserWalletCache(userId);
+  } catch (_) {
+    // Cache module may be unavailable in some test harnesses.
+  }
+  return row;
 }
 
 /**

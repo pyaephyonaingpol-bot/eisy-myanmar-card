@@ -437,9 +437,10 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
     const localPayload = {
       ...walletPayload(user),
       email: user.email || req.user.email,
+      updated_at: user.updated_at || null,
     };
-    // Prefer a fresh Supabase read so Table Editor edits show immediately
-    // (short server TTL cache avoids repeat RTTs on rapid SPA polls).
+    // Prefer a fresh Supabase read so Table Editor edits show immediately.
+    // If Turso is newer (admin Adjust USDT), overlay keeps the Turso balance.
     const balances = await overlayWalletPayloadFromSupabase(req.user.id, localPayload);
     res.json({
       user_id: user.id,
