@@ -78,6 +78,20 @@ function invalidateUserWalletCache(userId) {
   }
 }
 
+/** Parse SQLite datetime / ISO timestamps for freshness comparison. */
+function parseTimestampMs(value) {
+  if (!value) return 0;
+  const s = String(value).trim();
+  if (!s) return 0;
+  // SQLite datetime('now') → YYYY-MM-DD HH:MM:SS (treat as UTC)
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(s) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) {
+    const t = Date.parse(s.replace(' ', 'T') + 'Z');
+    return Number.isFinite(t) ? t : 0;
+  }
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? t : 0;
+}
+
 /**
  * Query user_wallets once per call (with short TTL cache).
  * Prefer user_id; if missing or email mismatches, resolve by email.
@@ -192,6 +206,8 @@ function supabaseWalletToPayload(row, { lockedUsdt = 0 } = {}) {
 /**
  * Prefer live Supabase balances for display when a row exists.
  * Falls back to the Turso/local payload when Supabase is off or empty.
+ * If Turso was updated more recently (e.g. Admin Adjust USDT), keep Turso
+ * so the dashboard does not show a stale mirrored balance.
  */
 async function overlayWalletPayloadFromSupabase(userId, basePayload = {}) {
   let email = basePayload.email;
@@ -212,6 +228,19 @@ async function overlayWalletPayloadFromSupabase(userId, basePayload = {}) {
   if (!row) {
     return { ...basePayload, source: basePayload.source || 'turso' };
   }
+
+  const localUpdatedMs = parseTimestampMs(basePayload.updated_at);
+  const supabaseUpdatedMs = parseTimestampMs(row.updated_at);
+  if (localUpdatedMs > 0 && localUpdatedMs > supabaseUpdatedMs) {
+    return {
+      ...basePayload,
+      source: 'turso',
+      supabase_stale: true,
+      supabase_updated_at: row.updated_at || null,
+      supabase_user_id: row.user_id != null ? String(row.user_id) : null,
+    };
+  }
+
   const locked = Number(
     basePayload.balance_usdt_locked
       ?? basePayload.locked_usdt
@@ -228,4 +257,5 @@ module.exports = {
   supabaseWalletToPayload,
   overlayWalletPayloadFromSupabase,
   invalidateUserWalletCache,
+  parseTimestampMs,
 };
