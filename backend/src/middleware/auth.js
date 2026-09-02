@@ -28,19 +28,39 @@ function shouldTouchSession(token) {
   return true;
 }
 
-/** Fallback when ADMIN_API_KEY env is unset (local/dev or misconfigured deploy). */
+/** Fallback when ADMIN_API_KEY env is unset (local/dev ONLY — never production). */
 const DEFAULT_ADMIN_API_KEY = 'eisy-admin-dev-key';
 
+const { isProductionRuntime } = require('../services/securityFlags');
+
 function configuredAdminApiKey() {
-  return process.env.ADMIN_API_KEY || DEFAULT_ADMIN_API_KEY;
+  const fromEnv = String(process.env.ADMIN_API_KEY || '').trim();
+  if (fromEnv) return fromEnv;
+  // Hard default must never authenticate production / Vercel.
+  if (isProductionRuntime()) return '';
+  return DEFAULT_ADMIN_API_KEY;
 }
 
 function isDefaultAdminApiKey() {
-  return !process.env.ADMIN_API_KEY;
+  const fromEnv = String(process.env.ADMIN_API_KEY || '').trim();
+  return !fromEnv;
 }
 
+/**
+ * Dev-only admin bypass when ADMIN_API_KEY is unset.
+ * NEVER enabled in production / Vercel — was a critical incident vector
+ * (anyone could hit /api/admin/* as super_admin).
+ */
 function adminDevBypassEnabled() {
-  return process.env.ADMIN_DEV_BYPASS !== 'false' && !process.env.ADMIN_API_KEY;
+  if (isProductionRuntime()) return false;
+  if (String(process.env.ADMIN_DEV_BYPASS || '').toLowerCase() === 'true') {
+    return !String(process.env.ADMIN_API_KEY || '').trim();
+  }
+  // Legacy local default: bypass only when explicitly not disabled AND no key.
+  // Prefer ADMIN_DEV_BYPASS=true going forward.
+  return process.env.ADMIN_DEV_BYPASS !== 'false'
+    && !String(process.env.ADMIN_API_KEY || '').trim()
+    && String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
 }
 
 function attachApiKeyAdmin(req) {
@@ -296,4 +316,5 @@ module.exports = {
   DEFAULT_ADMIN_API_KEY,
   configuredAdminApiKey,
   isDefaultAdminApiKey,
+  adminDevBypassEnabled,
 };

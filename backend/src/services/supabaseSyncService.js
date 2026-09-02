@@ -222,6 +222,53 @@ async function syncUsdtBankWithdrawal(withdrawal, user) {
   });
 }
 
+/** Mirror Turso transaction_logs → Supabase (fixes "missing transactions" in Table Editor). */
+async function syncTransactionLog(row) {
+  if (!isSupabaseEnabled() || !row?.id) return null;
+  const meta = safeJson(row.metadata);
+  const amountUsdt = row.amount_usdt != null
+    ? Number(row.amount_usdt)
+    : (meta.amount_usdt != null ? Number(meta.amount_usdt) : null);
+  return upsertRow('transaction_logs', {
+    id: String(row.id),
+    user_id: row.user_id != null ? String(row.user_id) : null,
+    type: row.type || null,
+    direction: row.direction || null,
+    amount_usd: row.amount_usd != null ? Number(row.amount_usd) : null,
+    amount_mmk: row.amount_mmk != null ? Number(row.amount_mmk) : null,
+    amount_usdt: amountUsdt,
+    balance_before: row.balance_before != null ? Number(row.balance_before) : null,
+    balance_after: row.balance_after != null ? Number(row.balance_after) : null,
+    reference_type: row.reference_type || null,
+    reference_id: row.reference_id != null ? String(row.reference_id) : null,
+    description: row.description || null,
+    metadata: meta,
+    created_by: row.created_by || null,
+    created_at: row.created_at || nowIso(),
+  });
+}
+
+/** Mirror all USDT withdrawal requests (crypto + bank) for admin visibility. */
+async function syncUsdtWithdrawalRequest(withdrawal) {
+  if (!isSupabaseEnabled() || !withdrawal?.id) return null;
+  return upsertRow('usdt_withdrawal_requests', {
+    id: String(withdrawal.id),
+    user_id: String(withdrawal.user_id),
+    ref_code: withdrawal.ref_code || null,
+    payout_method: withdrawal.payout_method || null,
+    network: withdrawal.network || null,
+    wallet_address: withdrawal.wallet_address || null,
+    amount_usdt: withdrawal.amount_usdt != null ? Number(withdrawal.amount_usdt) : null,
+    fee_usdt: withdrawal.fee_usdt != null ? Number(withdrawal.fee_usdt) : null,
+    net_usdt: withdrawal.net_usdt != null ? Number(withdrawal.net_usdt) : null,
+    status: withdrawal.status || 'pending',
+    tx_hash: withdrawal.tx_hash || null,
+    admin_note: withdrawal.admin_note || null,
+    created_at: withdrawal.created_at || nowIso(),
+    processed_at: withdrawal.processed_at || null,
+  });
+}
+
 module.exports = {
   syncUserWalletById,
   ensureSupabaseUserWallet,
@@ -231,5 +278,7 @@ module.exports = {
   syncCardApplication,
   syncCardReload,
   syncUsdtBankWithdrawal,
+  syncTransactionLog,
+  syncUsdtWithdrawalRequest,
   isSupabaseEnabled,
 };

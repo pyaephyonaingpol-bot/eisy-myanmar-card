@@ -184,6 +184,9 @@ function assertValidTronAddress(tronWeb, address, label) {
  * @returns {Promise<{ txId: string, fromAddress: string, toAddress: string, amountUsdt: number }>}
  */
 async function transferUsdtTrc20({ toAddress, amountUsdt }) {
+  const { assertMasterWalletTransfersAllowed } = require('./securityFlags');
+  assertMasterWalletTransfersAllowed('USDT TRC20 transfer');
+
   const privateKey = getMasterPrivateKey();
   const tronWeb = createTronWeb(privateKey);
   const fromAddressRaw = getMasterAddress(tronWeb, privateKey);

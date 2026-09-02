@@ -4,6 +4,10 @@
  *
  * POST /api/withdraw body: { customerAddress, withdrawAmount }
  * Fee: fixed 2.0 USDT (Net Payout = withdrawAmount - 2.0)
+ *
+ * SECURITY: After unauthorized-withdrawal incident, on-chain broadcast requires
+ * WITHDRAWALS_PAUSED=false AND AUTO_ONCHAIN_WITHDRAWALS=true. Otherwise the
+ * debit is recorded and the request stays pending for admin review.
  */
 const UsdtWithdrawal = require('../models/UsdtWithdrawal');
 const {
@@ -14,6 +18,11 @@ const {
 const { creditPlatformUsdtRevenue, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const tronMasterWalletService = require('./tronMasterWalletService');
 const { getDb } = require('../db');
+const {
+  assertWithdrawalsNotPaused,
+  isAutoOnchainWithdrawalEnabled,
+  assertMasterWalletTransfersAllowed,
+} = require('./securityFlags');
 
 const FIXED_WITHDRAW_FEE_USDT = Number(process.env.WITHDRAW_FIXED_FEE_USDT || 2);
 
@@ -101,9 +110,11 @@ function calculateFixedFeeWithdraw({ customerAddress, withdrawAmount }) {
 }
 
 /**
- * Debit user wallet and send net USDT on-chain from the master wallet.
+ * Debit user wallet and optionally send net USDT on-chain from the master wallet.
  */
 async function executeFixedFeeTrc20Withdraw(userId, { customerAddress, withdrawAmount }) {
+  assertWithdrawalsNotPaused();
+
   if (!userId) {
     const err = new Error('Authenticated user is required');
     err.code = 'WITHDRAW_USER_REQUIRED';
@@ -169,6 +180,37 @@ async function executeFixedFeeTrc20Withdraw(userId, { customerAddress, withdrawA
     }
   }
 
+  if (!isAutoOnchainWithdrawalEnabled()) {
+    const pending = await UsdtWithdrawal.updateStatus(withdrawal.id, {
+      status: 'pending',
+      adminNote: 'Queued for admin review — auto on-chain withdraw disabled (security incident lock)',
+    });
+    return {
+      success: true,
+      queued: true,
+      message: `Withdrawal ${refCode} queued for admin review. ${formatUsdt(calc.netPayout)} USDT will be sent after approval.`,
+      txId: null,
+      tx_hash: null,
+      customerAddress: calc.customerAddress,
+      withdrawAmount: calc.withdrawAmount,
+      feeUsdt: calc.feeUsdt,
+      fee_collected: calc.feeUsdt,
+      netPayout: calc.netPayout,
+      net_payout: calc.netPayout,
+      network: 'TRC20',
+      token: 'USDT',
+      fromAddress: null,
+      withdrawal: {
+        id: pending.id,
+        ref_code: pending.ref_code,
+        status: pending.status,
+        tx_hash: pending.tx_hash || null,
+      },
+    };
+  }
+
+  assertMasterWalletTransfersAllowed('api /withdraw');
+
   await UsdtWithdrawal.updateStatus(withdrawal.id, {
     status: 'processing',
     adminNote: 'Automated TRC20 withdraw — master wallet transfer (manual energy)',
@@ -215,6 +257,7 @@ async function executeFixedFeeTrc20Withdraw(userId, { customerAddress, withdrawA
 
   return {
     success: true,
+    queued: false,
     message: 'Withdrawal completed',
     txId: transfer.txId,
     tx_hash: transfer.txId,

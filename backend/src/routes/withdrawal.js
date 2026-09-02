@@ -1,5 +1,6 @@
 const express = require('express');
 const { requireAuth, requireSensitive } = require('../middleware/auth');
+const { requireWithdrawalsEnabled } = require('../middleware/withdrawalGuard');
 const {
   getWithdrawalFeeSettings,
   calculateWithdrawalBreakdown,
@@ -14,6 +15,7 @@ const UsdtWithdrawal = require('../models/UsdtWithdrawal');
 const MmkWithdrawal = require('../models/MmkWithdrawal');
 const { walletPayload } = require('../services/walletService');
 const User = require('../models/User');
+const { getSecurityStatus } = require('../services/securityFlags');
 
 const router = express.Router();
 
@@ -93,17 +95,18 @@ router.get('/fees', requireAuth, async (_req, res) => {
         mmk_bank_withdraw_allowed: true,
         usdt_crypto_withdraw_allowed: true,
         usdt_bank_withdraw_allowed: true,
-        trc20_auto_send: true,
+        trc20_auto_send: false,
         payout_provider: 'tron_master_wallet',
         service_fee_rule: mode,
         service_fee_mode: mode,
         service_fee_percent: settings.payment_service_fee_percent,
         service_fee_minimum_usdt: settings.payment_service_fee_minimum_usdt,
+        security: getSecurityStatus(),
       },
       networks: [
         buildNetworkMeta('TRC20', {
-          label: 'USDT TRC20 (Master Wallet)',
-          auto_send: true,
+          label: 'USDT TRC20 (Master Wallet — admin review)',
+          auto_send: false,
         }),
         buildNetworkMeta('BEP20', {
           label: 'BEP20 (BSC Network — manual)',
@@ -176,7 +179,7 @@ router.post('/exchange/mmk-to-usdt', requireAuth, async (_req, res) => {
   }
 });
 
-router.post('/usdt', requireAuth, requireSensitive, async (req, res) => {
+router.post('/usdt', requireAuth, requireSensitive, requireWithdrawalsEnabled, async (req, res) => {
   try {
     const result = await createUsdtWithdrawalRequest(req.user.id, req.body || {});
     const user = await User.findById(req.user.id);
@@ -215,7 +218,9 @@ router.post('/usdt', requireAuth, requireSensitive, async (req, res) => {
         wallet: user ? walletPayload(user) : undefined,
       });
     }
-    const status = err.code === 'INSUFFICIENT_USDT_BALANCE'
+    const status = err.code === 'WITHDRAWALS_PAUSED' || err.code === 'MASTER_WALLET_TRANSFERS_PAUSED'
+      ? 503
+      : err.code === 'INSUFFICIENT_USDT_BALANCE'
       ? 402
       : ([
         'NOWPAYMENTS_PAYOUT_CONFIG_INCOMPLETE',
@@ -233,7 +238,7 @@ router.post('/usdt', requireAuth, requireSensitive, async (req, res) => {
   }
 });
 
-router.post('/mmk', requireAuth, requireSensitive, async (req, res) => {
+router.post('/mmk', requireAuth, requireSensitive, requireWithdrawalsEnabled, async (req, res) => {
   try {
     const result = await createMmkBankWithdrawalRequest(req.user.id, req.body || {});
     const user = await User.findById(req.user.id);
@@ -247,7 +252,9 @@ router.post('/mmk', requireAuth, requireSensitive, async (req, res) => {
     });
   } catch (err) {
     console.error('[withdrawal/mmk POST]', err);
-    const status = err.code === 'INSUFFICIENT_MMK_BALANCE'
+    const status = err.code === 'WITHDRAWALS_PAUSED' || err.code === 'MASTER_WALLET_TRANSFERS_PAUSED'
+      ? 503
+      : err.code === 'INSUFFICIENT_MMK_BALANCE'
       ? 402
       : (err.code === 'MMK_TO_USDT_FORBIDDEN' || err.code === 'MMK_WALLET_RESTRICTED' ? 403 : 400);
     res.status(status).json({

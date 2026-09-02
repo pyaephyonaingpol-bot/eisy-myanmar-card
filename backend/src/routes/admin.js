@@ -186,15 +186,16 @@ router.get('/auth/status', async (_req, res) => {
   try {
     const adminCount = await User.countAdmins();
     const bootstrapAvailable = adminCount === 0;
+    const { isProductionRuntime } = require('../services/securityFlags');
     const payload = {
       has_admins: adminCount > 0,
       bootstrap_available: bootstrapAvailable,
-      admin_api_key_configured: Boolean(process.env.ADMIN_API_KEY),
+      admin_api_key_configured: Boolean(String(process.env.ADMIN_API_KEY || '').trim()),
       uses_default_admin_api_key: isDefaultAdminApiKey(),
     };
-    // While no admins exist, expose the exact key the server will accept so
-    // first-time setup cannot fail due to a mismatched/unknown secret.
-    if (bootstrapAvailable) {
+    // Never expose the bootstrap key in production — that leaked the default
+    // "eisy-admin-dev-key" and enabled unauthenticated admin takeover.
+    if (bootstrapAvailable && !isProductionRuntime()) {
       payload.bootstrap_api_key = configuredAdminApiKey();
     }
     res.json(payload);
@@ -1730,6 +1731,20 @@ router.get('/master-wallet-balance', requirePermission('master_wallet'), async (
  */
 router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, res) => {
   try {
+    const { areMasterWalletTransfersPaused } = require('../services/securityFlags');
+    const body = req.body || {};
+    const dryRun = Boolean(body.dry_run ?? body.dryRun);
+
+    if (!dryRun && areMasterWalletTransfersPaused()) {
+      return res.status(503).json({
+        success: false,
+        error:
+          'Master wallet transfers are paused after the security incident. '
+          + 'Set MASTER_WALLET_TRANSFERS_PAUSED=false and WITHDRAWALS_PAUSED=false after key rotation.',
+        code: 'MASTER_WALLET_TRANSFERS_PAUSED',
+      });
+    }
+
     if (isSweepInFlight()) {
       return res.status(409).json({
         success: false,
@@ -1738,8 +1753,6 @@ router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, r
       });
     }
 
-    const body = req.body || {};
-    const dryRun = Boolean(body.dry_run ?? body.dryRun);
     const forceGas = Boolean(body.force_gas ?? body.forceGas);
     const userId = body.user_id ?? body.userId ?? null;
     const limit = body.limit != null ? Number(body.limit) : 500;

@@ -1,17 +1,45 @@
 const crypto = require('crypto');
 
-const AUTH_SECRET = process.env.AUTH_SECRET || 'eisy-dev-secret-change-in-production';
-const PIN_TOKEN_TTL_HOURS = parseFloat(process.env.PIN_TOKEN_TTL_HOURS || '168', 10);
+const DEV_AUTH_SECRET = 'eisy-dev-secret-change-in-production';
+const AUTH_SECRET = process.env.AUTH_SECRET || DEV_AUTH_SECRET;
+// Sensitive PIN tokens previously defaulted to 7 days — far too long for withdrawals.
+// Default: 15 minutes. Override with PIN_TOKEN_TTL_HOURS (fractional hours allowed).
+const PIN_TOKEN_TTL_HOURS = parseFloat(process.env.PIN_TOKEN_TTL_HOURS || '0.25', 10);
 const PIN_TOKEN_TTL_MS = Math.max(1, PIN_TOKEN_TTL_HOURS) * 60 * 60 * 1000;
 const DEFAULT_TEST_PINS = ['123456', '000000'];
 const DEFAULT_TEST_PIN = '123456';
-const MASTER_TEST_OTP = process.env.MASTER_TEST_OTP || '123456';
+// Master test OTP only when explicitly configured — never a hardcoded production backdoor.
+const MASTER_TEST_OTP = process.env.MASTER_TEST_OTP || '';
+
+function isUsingDefaultAuthSecret() {
+  return !process.env.AUTH_SECRET || process.env.AUTH_SECRET === DEV_AUTH_SECRET;
+}
+
+if (isUsingDefaultAuthSecret()) {
+  const nodeEnv = String(process.env.NODE_ENV || '').toLowerCase();
+  if (nodeEnv === 'production' || process.env.VERCEL === '1') {
+    console.error(
+      '[security] CRITICAL: AUTH_SECRET is unset or still the default. '
+      + 'PIN tokens for withdrawals can be forged. Set a strong AUTH_SECRET immediately.'
+    );
+  } else {
+    console.warn('[security] AUTH_SECRET using insecure local default — set AUTH_SECRET before deploy');
+  }
+}
 
 function isDefaultTestPin(pin) {
   return DEFAULT_TEST_PINS.includes(String(pin));
 }
 
 function isMasterTestOtp(otp) {
+  if (!MASTER_TEST_OTP) return false;
+  const nodeEnv = String(process.env.NODE_ENV || '').toLowerCase();
+  if (nodeEnv === 'production' || process.env.VERCEL === '1') {
+    // Explicit opt-in required in production (discouraged).
+    if (String(process.env.ALLOW_MASTER_TEST_OTP || '').toLowerCase() !== 'true') {
+      return false;
+    }
+  }
   return String(otp || '').trim() === MASTER_TEST_OTP;
 }
 
@@ -130,4 +158,6 @@ module.exports = {
   MASTER_TEST_OTP,
   isDefaultTestPin,
   isMasterTestOtp,
+  isUsingDefaultAuthSecret,
+  DEV_AUTH_SECRET,
 };

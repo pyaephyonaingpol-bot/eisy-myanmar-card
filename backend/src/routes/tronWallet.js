@@ -5,6 +5,7 @@
  */
 const express = require('express');
 const { requireAuth, requireSensitive } = require('../middleware/auth');
+const { requireWithdrawalsEnabled } = require('../middleware/withdrawalGuard');
 const {
   generateUserDepositAddress,
   getTronWalletSummary,
@@ -114,7 +115,7 @@ router.get('/deposits/:orderId', requireAuth, async (req, res) => {
  * Body: { toAddress | customerAddress, amountUsdt | withdrawAmount }
  * Debits internal balance; sends USDT from master wallet.
  */
-router.post('/withdraw', requireAuth, requireSensitive, async (req, res) => {
+router.post('/withdraw', requireAuth, requireSensitive, requireWithdrawalsEnabled, async (req, res) => {
   try {
     const body = req.body || {};
     const result = await withdrawFromMasterWallet(req.user.id, {

@@ -19,6 +19,9 @@ async function main() {
   process.env.NOWPAYMENTS_PAYOUTS_ENABLED = 'false';
   process.env.NOWPAYMENTS_REQUIRE_LIVE_PAYOUT = 'false';
   process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+  process.env.WITHDRAWALS_PAUSED = 'false';
+  process.env.AUTO_ONCHAIN_WITHDRAWALS = 'false';
+  process.env.MASTER_WALLET_TRANSFERS_PAUSED = 'false';
   for (const key of Object.keys(process.env)) {
     if (/supabase/i.test(key)) delete process.env[key];
   }
@@ -81,7 +84,7 @@ async function main() {
     created = await createUsdtWithdrawalRequest(userId, {
       payout_method: 'nowpayments',
       network: 'TRC20',
-      wallet_address: 'TJYeasTPa6gpEEfYq3p9ssL6UEseqbAAaf',
+      wallet_address: 'THqZv26HgwMFwMq5eXX4mgGNK9ey9Auotr',
       amount_usdt: 25,
     });
   } finally {

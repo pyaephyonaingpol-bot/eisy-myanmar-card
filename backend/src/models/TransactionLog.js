@@ -22,7 +22,17 @@ const TransactionLog = {
       ipAddress || null, createdBy || 'system'
     );
 
-    return db.get('SELECT * FROM transaction_logs WHERE id = ?', result.lastID);
+    const row = await db.get('SELECT * FROM transaction_logs WHERE id = ?', result.lastID);
+
+    // Dual-write to Supabase mirror (non-fatal) so Table Editor shows the same ledger.
+    try {
+      const { syncTransactionLog } = require('../services/supabaseSyncService');
+      syncTransactionLog(row).catch((err) => {
+        console.warn('[supabase] transaction_logs sync:', err.message);
+      });
+    } catch (_) { /* ignore */ }
+
+    return row;
   },
 
   async findByUserId(userId, { limit = 50, offset = 0, type } = {}) {

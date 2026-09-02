@@ -19,6 +19,7 @@
     "test:nowpayments-payout": "node scripts/test-nowpayments-payout.js",
     "test:nowpayments-payout-config": "node scripts/test-nowpayments-payout-config.js",
     "test:withdraw-rollback": "node scripts/test-withdraw-rollback.js",
+    "test:wallet-security-incident": "node scripts/test-wallet-security-incident.js",
     "test:admin-usdt-wd-list": "node scripts/test-admin-usdt-withdrawal-list.js",
     "test:admin-no-payment-methods": "node scripts/test-admin-no-payment-methods.js",
     "test:admin-split-fee-sections": "node scripts/test-admin-split-fee-sections.js",
