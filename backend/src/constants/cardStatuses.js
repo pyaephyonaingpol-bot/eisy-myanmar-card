@@ -54,6 +54,26 @@ function isCardDetailsAllowed(status) {
   return normalizeCardStatus(status) === CARD_STATUS.ACTIVE;
 }
 
+function parseCardMetadata(card) {
+  if (!card?.metadata) return {};
+  if (typeof card.metadata === 'object') return card.metadata;
+  try {
+    return JSON.parse(card.metadata);
+  } catch (_) {
+    return {};
+  }
+}
+
+/** Whether a card row should appear in the user's My Cards list. */
+function isCardVisibleInUserList(card) {
+  if (!card) return false;
+  const status = normalizeCardStatus(card.status);
+  if (status === CARD_STATUS.TERMINATED) return false;
+  const metadata = parseCardMetadata(card);
+  if (metadata.removed_by_user) return false;
+  return true;
+}
+
 module.exports = {
   CARD_STATUS,
   ADMIN_SETTABLE_STATUSES,
@@ -63,4 +83,6 @@ module.exports = {
   isPendingCardRecord,
   isCardReloadAllowed,
   isCardDetailsAllowed,
+  parseCardMetadata,
+  isCardVisibleInUserList,
 };

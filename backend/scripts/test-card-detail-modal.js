@@ -41,7 +41,11 @@ assert(/remove\(cardId/.test(api), 'cardsApi.remove required');
 assert(/\/cards\/\$\{cardId\}\/remove/.test(api) || /\/cards\/\${cardId}\/remove/.test(api), 'remove endpoint path');
 
 assert(/\/cards\/:id\/remove/.test(userRoutes), 'user remove route required');
-assert(/removed_by_user/.test(userRoutes), 'payload must filter removed_by_user');
+assert(/isCardVisibleInUserList/.test(userRoutes), 'payload must use isCardVisibleInUserList');
 assert(/removeFromUserList/.test(cardModel), 'Card.removeFromUserList required');
+
+assert(/isCardVisibleInUserList/.test(dash), 'dashboard must filter ghost cards client-side');
+assert(/filterVisibleCards/.test(dash), 'filterVisibleCards helper required');
+assert(/clearCardsCache/.test(dash), 'clear cache on remove required');
 
 console.log('CARD DETAIL MODAL GUARD PASSED');

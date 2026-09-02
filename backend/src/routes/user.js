@@ -30,6 +30,7 @@ const {
   normalizeCardStatus,
   displayStatusLabel,
   isCardReloadAllowed,
+  isCardVisibleInUserList,
 } = require('../constants/cardStatuses');
 
 const router = express.Router();
@@ -136,25 +137,30 @@ function buildCardPurchaseSuccessPayload(result) {
 
 async function getUserCardsPayload(userId) {
   const db = getDb();
-  let cards = await Card.findByUserId(userId);
-  cards = cards.filter((c) => {
-    const status = String(c.status || '').toLowerCase();
-    if (['cancelled', 'expired'].includes(status)) return false;
-    let metadata = {};
-    try { metadata = c.metadata ? JSON.parse(c.metadata) : {}; } catch (_) {}
-    if (metadata.removed_by_user) return false;
-    return true;
-  });
+  const allV2 = await Card.findByUserId(userId);
+  let cards = allV2.filter(isCardVisibleInUserList);
 
+  // Legacy `cards` table is only for users who never received a cards_v2 row.
+  // Do not resurrect a legacy card when cards_v2 rows exist but are hidden/terminated.
   if (!cards.length) {
-    const legacy = await db.get('SELECT * FROM cards WHERE user_id = ?', userId);
-    if (legacy) {
-      cards = [{
-        ...legacy,
-        status: 'active',
-        is_primary: 1,
-        metadata: null,
-      }];
+    const countRow = await db.get(
+      'SELECT COUNT(*) AS c FROM cards_v2 WHERE user_id = ?',
+      userId
+    );
+    const hasV2Rows = Number(countRow?.c || 0) > 0;
+    if (!hasV2Rows) {
+      const legacy = await db.get('SELECT * FROM cards WHERE user_id = ?', userId);
+      if (legacy) {
+        const legacyCard = {
+          ...legacy,
+          status: 'active',
+          is_primary: 1,
+          metadata: null,
+        };
+        if (isCardVisibleInUserList(legacyCard)) {
+          cards = [legacyCard];
+        }
+      }
     }
   }
 
