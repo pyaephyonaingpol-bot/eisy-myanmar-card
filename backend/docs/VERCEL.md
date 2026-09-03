@@ -39,8 +39,9 @@ Legacy `/uploads/*` paths are still served by Express for local dev and older ro
 | `DATABASE_URL` | **Turso / LibSQL URL** (`libsql://…`) — required for persistent production data |
 | `DATABASE_AUTH_TOKEN` | Turso auth token |
 | `PUBLIC_BASE_URL` | Canonical site URL (e.g. `https://eisymyanmar.com`) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (persistent upload storage + optional wallet sync) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for server-side Storage uploads |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (bare `https://….supabase.co` only — no `KEY=` prefix / markdown) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **Required for the browser bridge** (`createClient` via `GET /api/config/supabase`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for server-side Storage uploads + Turso→Supabase dual-write |
 | `SUPABASE_UPLOAD_BUCKET` | Storage bucket name (default `uploads`; run `supabase/upload_storage.sql`) |
 | `SUPABASE_UPLOAD_STORAGE` | Set `false` to force local `/uploads` disk only |
 | `AUTH_SECRET` | Session signing secret |

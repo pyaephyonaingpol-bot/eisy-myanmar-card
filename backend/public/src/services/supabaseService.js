@@ -19,18 +19,28 @@ const SupabaseBridge = {
     if (this._initPromise) return this._initPromise;
     this._initPromise = (async () => {
       try {
-        const res = await fetch('/api/config/supabase');
-        const cfg = await res.json();
-        if (!cfg.enabled || !cfg.url || !cfg.anonKey) {
-          console.info('[SupabaseBridge] Disabled — optional cloud sync is off; using the local database');
+        const res = await fetch('/api/config/supabase', { credentials: 'same-origin' });
+        if (!res.ok) {
+          console.warn('[SupabaseBridge] Config endpoint failed:', res.status);
           this.enabled = false;
           return false;
         }
-        this.client = createClient(cfg.url, cfg.anonKey, {
+        const cfg = await res.json();
+        const url = String(cfg?.url || '').trim();
+        const anonKey = String(cfg?.anonKey || cfg?.anon_key || '').trim();
+        if (!cfg?.enabled || !/^https?:\/\//i.test(url) || !anonKey) {
+          console.info(
+            '[SupabaseBridge] Disabled — /api/config/supabase did not return a usable '
+            + 'url + anonKey (optional cloud sync is off; using the local database)'
+          );
+          this.enabled = false;
+          return false;
+        }
+        this.client = createClient(url, anonKey, {
           auth: { persistSession: false, autoRefreshToken: false },
         });
         this.enabled = true;
-        console.info('[SupabaseBridge] Connected');
+        console.info('[SupabaseBridge] Connected to', url.replace(/^https?:\/\//i, '').split('/')[0]);
         return true;
       } catch (err) {
         console.warn('[SupabaseBridge] Init failed:', err.message);
