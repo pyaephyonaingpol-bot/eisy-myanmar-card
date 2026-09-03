@@ -261,7 +261,11 @@ const Dashboard = {
       if (opts.depositTab === 'usdt') this.openUsdtTopUpModal();
     }
     if (page === 'usdt-wallet') this.loadUsdtWalletPage(force);
-    if (page === 'rates') this.renderRatesPage();
+    if (page === 'rates') {
+      this.renderRatesPage();
+      // Always refresh withdrawal fees when visiting Rates so admin updates show promptly.
+      this.loadWithdrawalFees({ force: true }).catch(() => {});
+    }
     if (page === 'p2p') {
       if (opts.p2pTab) this.switchP2pTab(opts.p2pTab);
       this.loadP2pPage();
@@ -5513,8 +5517,32 @@ const Dashboard = {
         payment_service_fee_percent: data.payment_service_fee_percent ?? rawFees.payment_service_fee_percent,
         payment_service_fee_minimum_usdt: data.payment_service_fee_minimum_usdt ?? rawFees.payment_service_fee_minimum_usdt,
         payment_service_fee_mode: data.payment_service_fee_mode ?? rawFees.payment_service_fee_mode,
+        withdrawal_service_fee_percent:
+          data.withdrawal_service_fee_percent
+          ?? rawFees.withdrawal_service_fee_percent
+          ?? data.payment_service_fee_percent
+          ?? rawFees.payment_service_fee_percent,
+        withdrawal_service_fee_minimum_usdt:
+          data.withdrawal_service_fee_minimum_usdt
+          ?? rawFees.withdrawal_service_fee_minimum_usdt
+          ?? data.payment_service_fee_minimum_usdt
+          ?? rawFees.payment_service_fee_minimum_usdt,
+        withdrawal_service_fee_mode:
+          data.withdrawal_service_fee_mode
+          ?? rawFees.withdrawal_service_fee_mode
+          ?? data.payment_service_fee_mode
+          ?? rawFees.payment_service_fee_mode,
       };
       this._markFetched('withdrawalFees');
+      // Keep Rates page in sync with the live withdrawal fee endpoint (not a stale cardPricing cache).
+      if (this.cardPricing) {
+        this.cardPricing.withdrawal_fees = {
+          ...(this.cardPricing.withdrawal_fees || {}),
+          ...this.withdrawalFees,
+        };
+        this.renderRatesPage();
+      }
+      this.updateWithdrawUsdtHint();
       const min = Number(this.withdrawalFees.minimum_usdt_withdrawal ?? 10);
       const minInput = $('withdrawAmountUsdt');
       if (minInput) minInput.min = min;
@@ -5539,6 +5567,32 @@ const Dashboard = {
       console.warn('[Dashboard] withdrawal fees:', err.message);
     }
     }, { force });
+  },
+
+  /** Refresh static withdraw hints with the live admin fee (never hardcode $2). */
+  updateWithdrawUsdtHint() {
+    const fees = this.withdrawalFees || {};
+    const pct = Number(
+      fees.withdrawal_service_fee_percent ?? fees.payment_service_fee_percent ?? 2
+    );
+    const minFee = Number(
+      fees.withdrawal_service_fee_minimum_usdt ?? fees.payment_service_fee_minimum_usdt ?? 1
+    );
+    const feeSummary = Number.isFinite(pct)
+      ? `${pct}% (min $${(Number.isFinite(minFee) ? minFee : 1).toFixed(2)})`
+      : 'see Rates';
+    const pageHint = document.querySelector('[data-i18n="withdraw_usdt_hint"]');
+    if (pageHint) {
+      delete pageHint.dataset.i18n;
+      pageHint.textContent =
+        `Withdraw USDT on TRC20 from our master wallet (automated, service fee ${feeSummary}), `
+        + 'to BEP20 (manual), or convert at the platform rate to MMK in your bank account. '
+        + 'MMK wallet → USDT exchange is not available.';
+    }
+    const methodHint = $('withdrawMethodHint');
+    if (methodHint && !methodHint.dataset.i18nKeep) {
+      // syncWithdrawPayoutFields will overwrite with method-specific copy when modal opens
+    }
   },
 
   getWithdrawPayoutMethod() {
@@ -5582,20 +5636,22 @@ const Dashboard = {
 
     if (methodHint) {
       const fees = this.withdrawalFees || {};
-      const pct = Number(fees.payment_service_fee_percent ?? 2);
-      const minFee = Number(fees.payment_service_fee_minimum_usdt ?? 1);
+      const pct = Number(
+        fees.withdrawal_service_fee_percent ?? fees.payment_service_fee_percent ?? 2
+      );
+      const minFee = Number(
+        fees.withdrawal_service_fee_minimum_usdt ?? fees.payment_service_fee_minimum_usdt ?? 1
+      );
       const feeSummary = `${pct}% (min $${minFee.toFixed(2)})`;
-      const t = window.EisyI18n?.t?.bind(window.EisyI18n);
+      // Do NOT re-attach data-i18n here — static i18n strings still say "Fixed $2"
+      // and would overwrite the live admin fee on the next I18n.apply().
+      delete methodHint.dataset.i18n;
       if (method === 'crypto') {
-        methodHint.textContent = t
-          ? `${t('withdraw_method_crypto_hint')} Service fee: ${feeSummary}.`
-          : `Automated TRC20 payout from our master wallet. Service fee: ${feeSummary}. BEP20 remains manual.`;
-        methodHint.dataset.i18n = 'withdraw_method_crypto_hint';
+        methodHint.textContent =
+          `Automated TRC20 payout from our master wallet. Service fee: ${feeSummary}. BEP20 remains manual.`;
       } else {
-        methodHint.textContent = t
-          ? `${t('withdraw_method_bank_hint')} Service fee: ${feeSummary}.`
-          : `Convert USDT to MMK at the platform rate. Service fee: ${feeSummary}. Bank transfer after processing.`;
-        methodHint.dataset.i18n = 'withdraw_method_bank_hint';
+        methodHint.textContent =
+          `Convert USDT to MMK at the platform rate. Service fee: ${feeSummary}. Bank transfer after processing.`;
       }
     }
 
@@ -5618,22 +5674,41 @@ const Dashboard = {
     const net = String(network || 'TRC20').toUpperCase();
     const payoutMethod = method || (net === 'BANK' ? 'bank' : 'crypto');
     const isBank = net === 'BANK';
-    const feeTypeKey = isBank
-      ? 'usdt_withdraw_fee_bank_type'
-      : net === 'BEP20'
-        ? 'usdt_withdraw_fee_bep20_type'
-        : 'usdt_withdraw_fee_trc20_type';
-    const feeAmountKey = isBank
-      ? 'usdt_withdraw_fee_bank'
-      : net === 'BEP20'
-        ? 'usdt_withdraw_fee_bep20'
-        : 'usdt_withdraw_fee_trc20';
-    const configuredType = fees[feeTypeKey] === 'percent' ? 'percent' : 'fixed';
 
-    let mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
-    let feePercent = Number(fees.payment_service_fee_percent ?? 2);
-    let minimumFee = Number(fees.payment_service_fee_minimum_usdt ?? 1);
-    if (configuredType === 'fixed') {
+    // Prefer admin withdrawal_service_fee_* (mirrored as payment_service_fee_* by the API).
+    // Legacy usdt_withdraw_fee_*_type=fixed must NOT override a live percent/min admin config.
+    const hook = window.EisyHooks?.depositFees;
+    let mode = String(
+      fees.withdrawal_service_fee_mode
+      || fees.payment_service_fee_mode
+      || 'max_percent_or_min'
+    ).toLowerCase();
+    let feePercent = Number(
+      fees.withdrawal_service_fee_percent
+      ?? fees.payment_service_fee_percent
+      ?? 2
+    );
+    let minimumFee = Number(
+      fees.withdrawal_service_fee_minimum_usdt
+      ?? fees.payment_service_fee_minimum_usdt
+      ?? 1
+    );
+    if (hook?.normalizeFeeMode) mode = hook.normalizeFeeMode(mode);
+    else if (mode === 'max_percent_or_minimum' || mode === 'percent_with_minimum' || mode === 'legacy' || mode === 'max') {
+      mode = 'max_percent_or_min';
+    }
+
+    // Only fall back to legacy per-network fixed fees when admin mode is explicitly fixed/off
+    // OR when no withdrawal/payment service fee percent is present.
+    const hasScopedPercent = Number.isFinite(
+      Number(fees.withdrawal_service_fee_percent ?? fees.payment_service_fee_percent)
+    );
+    if (mode === 'fixed' || (!hasScopedPercent && mode !== 'off' && mode !== 'percent' && mode !== 'max_percent_or_min')) {
+      const feeAmountKey = isBank
+        ? 'usdt_withdraw_fee_bank'
+        : net === 'BEP20'
+          ? 'usdt_withdraw_fee_bep20'
+          : 'usdt_withdraw_fee_trc20';
       mode = 'fixed';
       feePercent = 0;
       minimumFee = Number(fees[feeAmountKey] ?? fees.payment_service_fee_minimum_usdt ?? 2);
