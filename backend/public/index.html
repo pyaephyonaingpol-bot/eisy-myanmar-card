@@ -288,7 +288,7 @@
         <h3 id="withdrawUsdtModalTitle" data-i18n="withdraw_usdt_title">Withdraw USDT</h3>
         <button type="button" id="withdrawUsdtModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">Withdraw USDT on TRC20 from our master wallet (automated, fixed $2 fee), to BEP20 (manual), or convert at the platform rate to MMK in your bank account. MMK wallet → USDT exchange is not available.</p>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">Withdraw USDT on TRC20 from our master wallet (automated), to BEP20 (manual), or convert at the platform rate to MMK in your bank account. Service fee follows the live Rates &amp; Fees setting. MMK wallet → USDT exchange is not available.</p>
 
       <form id="withdrawUsdtForm" class="form">
         <div class="field">
@@ -297,7 +297,7 @@
             <option value="crypto" data-i18n="withdraw_method_crypto" selected>USDT TRC20 (Master Wallet)</option>
             <option value="bank" data-i18n="withdraw_method_bank">Bank Account (USDT → MMK)</option>
           </select>
-          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Automated TRC20 payout from our master wallet (manual energy). Fixed $2 USDT fee.</small>
+          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Automated TRC20 payout from our master wallet (manual energy). Service fee follows the live admin withdrawal fee.</small>
         </div>
 
         <div id="withdrawCryptoFields">

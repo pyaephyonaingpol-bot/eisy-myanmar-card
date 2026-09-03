@@ -424,8 +424,21 @@ function calculateNetworkWithdrawalFee(amountUsdt, network, settings) {
       ? 'usdt_withdraw_fee_bep20'
       : 'usdt_withdraw_fee_trc20';
   const configuredType = settings?.[feeTypeKey] === 'percent' ? 'percent' : 'fixed';
+  // Admin withdrawal_service_fee_* (mirrored onto payment_service_fee_*) is the source of truth.
+  // Legacy per-network fixed types must not ignore a live percent/min admin config.
+  const scopedMode = String(
+    settings?.withdrawal_service_fee_mode
+    || settings?.payment_service_fee_mode
+    || ''
+  ).toLowerCase();
+  const scopedPercent = Number(
+    settings?.withdrawal_service_fee_percent ?? settings?.payment_service_fee_percent
+  );
+  const preferScopedServiceFee = Number.isFinite(scopedPercent)
+    && scopedMode !== 'fixed'
+    && (configuredType === 'percent' || scopedMode === 'percent' || scopedMode === 'max_percent_or_min' || scopedMode === 'off');
 
-  if (configuredType === 'fixed') {
+  if (configuredType === 'fixed' && !preferScopedServiceFee) {
     let feeUsdt;
     if (isTrc20) {
       const envFee = Number(process.env.WITHDRAW_FIXED_FEE_USDT);
@@ -700,7 +713,30 @@ async function updateSettings(updates) {
       await setSetting('usdt_withdraw_fee_trc20_type', 'percent');
       await setSetting('usdt_withdraw_fee_bep20_type', 'percent');
       await setSetting('usdt_withdraw_fee_bank_type', 'percent');
+      // Keep legacy payment_service_fee_* mirror in sync so any client still
+      // reading the unscoped keys sees the same admin withdrawal percent.
+      await setSetting('payment_service_fee_percent', pct);
     }
+  }
+
+  if (
+    numericUpdates.withdrawal_service_fee_minimum_usdt !== undefined
+    && numericUpdates.withdrawal_service_fee_minimum_usdt !== null
+    && numericUpdates.withdrawal_service_fee_minimum_usdt !== ''
+  ) {
+    const minFee = parseFloat(String(numericUpdates.withdrawal_service_fee_minimum_usdt).trim());
+    if (Number.isFinite(minFee) && minFee >= 0) {
+      await setSetting('payment_service_fee_minimum_usdt', minFee);
+    }
+  }
+
+  if (
+    numericUpdates.withdrawal_service_fee_mode !== undefined
+    && numericUpdates.withdrawal_service_fee_mode !== null
+    && numericUpdates.withdrawal_service_fee_mode !== ''
+  ) {
+    const { normalizeFeeMode } = require('./paymentFeeService');
+    await setSetting('payment_service_fee_mode', normalizeFeeMode(numericUpdates.withdrawal_service_fee_mode));
   }
 
   const pricing = await getCardPricingSettings();
