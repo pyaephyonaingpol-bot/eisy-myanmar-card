@@ -29,6 +29,7 @@
     "test:usdt-only-deposit-reload-backend": "node scripts/test-usdt-only-deposit-reload-backend.js",
     "test:schema-usdt-only-currency": "node scripts/test-schema-usdt-only-currency.js",
     "test:withdrawal-fee-dashboard": "node scripts/test-withdrawal-fee-dashboard.js",
+    "test:supabase-env-config": "node scripts/test-supabase-env-config.js",
     "test:dashboard-wallet-hydration": "node scripts/test-dashboard-wallet-hydration.js",
     "test:admin-usdt-adjust-sync": "node scripts/test-admin-usdt-adjust-sync.js",
     "test:admin-ledger-filter-cleanup": "node scripts/test-admin-ledger-filter-cleanup.js",
