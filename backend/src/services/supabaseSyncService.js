@@ -29,12 +29,16 @@ async function upsertRow(table, row) {
 
 async function upsertUserWallet(user) {
   if (!isSupabaseEnabled() || !user) return null;
+  const { isUserBlocked, normalizeAuthStatus } = require('../lib/userAuthStatus');
+  const authStatus = normalizeAuthStatus(user.auth_status);
   const row = {
     user_id: String(user.id),
     email: user.email || null,
     name: user.name || null,
     balance_mmk: Number(user.balance_mmk ?? 0),
     balance_usdt: Number(user.balance_usdt ?? 0),
+    auth_status: authStatus,
+    is_blocked: isUserBlocked(authStatus),
     updated_at: nowIso(),
   };
 

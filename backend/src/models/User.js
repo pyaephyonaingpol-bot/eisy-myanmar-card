@@ -150,6 +150,15 @@ const User = {
     return this.findById(userId);
   },
 
+  async setAuthStatus(userId, status) {
+    const db = getDb();
+    const value = String(status || 'active').trim().toLowerCase() || 'active';
+    await db.run(`
+      UPDATE users SET auth_status = ?, updated_at = datetime('now') WHERE id = ?
+    `, value, userId);
+    return this.findById(userId);
+  },
+
   async setAdminRole(userId, role) {
     const db = getDb();
     const value = role ? String(role).trim() : null;

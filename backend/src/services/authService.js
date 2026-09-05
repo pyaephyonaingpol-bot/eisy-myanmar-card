@@ -3,6 +3,7 @@ const { mapPublicUser } = require('./profileService');
 const OtpCode = require('../models/OtpCode');
 const UserSession = require('../models/UserSession');
 const TransactionLog = require('../models/TransactionLog');
+const { assertUserNotBlocked } = require('../lib/userAuthStatus');
 const crypto = require('crypto');
 const { sendOtpEmail } = require('./emailService');
 const { devOtpPayload } = require('./devOtp');
@@ -187,6 +188,8 @@ async function sendLoginOtp(email, ipAddress) {
     throw new Error('No account found for this email');
   }
 
+  assertUserNotBlocked(user, { action: 'log in' });
+
   const otp = generateOtp();
   await OtpCode.create({
     userId: user.id,
@@ -226,6 +229,8 @@ async function loginWithPin({ email, pin, ipAddress, deviceName, devicePlatform 
     err.code = 'USER_NOT_FOUND';
     throw err;
   }
+
+  assertUserNotBlocked(user, { action: 'log in' });
 
   if (!user.pin_hash) {
     if (!isDefaultTestPin(pin)) {
@@ -292,6 +297,8 @@ async function verifyLoginOtp({ email, otp, ipAddress, deviceName, devicePlatfor
       throw new Error('Invalid OTP');
     }
   }
+  assertUserNotBlocked(user, { action: 'log in' });
+
   if (record) {
     await OtpCode.markVerified(record.id);
   }
@@ -434,6 +441,8 @@ async function verifyBiometrics(email, deviceToken, ipAddress, deviceName, devic
   if (!user.biometrics_enabled || !user.biometrics_token_hash) {
     throw new Error('Biometrics not enabled for this account');
   }
+
+  assertUserNotBlocked(user, { action: 'log in' });
 
   const tokenHash = hashToken(deviceToken);
   if (tokenHash !== user.biometrics_token_hash) {

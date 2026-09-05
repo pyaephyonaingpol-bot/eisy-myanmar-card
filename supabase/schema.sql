@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS user_wallets (
   tron_deposit_address TEXT,
   tron_derivation_index INTEGER,
   tron_derivation_path TEXT,
+  auth_status TEXT NOT NULL DEFAULT 'active',
+  is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

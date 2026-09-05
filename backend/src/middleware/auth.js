@@ -95,8 +95,9 @@ async function requireAuth(req, res, next) {
     }
 
     // findByToken already JOINs users — avoid a second User.findById on every request.
-    if (session.auth_status && session.auth_status === 'suspended') {
-      return res.status(403).json({ error: 'Account unavailable', code: 'ACCOUNT_SUSPENDED' });
+    const { isUserBlocked } = require('../lib/userAuthStatus');
+    if (isUserBlocked(session.auth_status)) {
+      return res.status(403).json({ error: 'Account blocked', code: 'ACCOUNT_BLOCKED' });
     }
 
     if (shouldTouchSession(token)) {
@@ -225,8 +226,9 @@ async function requireAdminAuth(req, res, next) {
       }
 
       const user = await User.findById(session.user_id);
-      if (!user || (user.auth_status && user.auth_status === 'suspended')) {
-        return res.status(403).json({ error: 'Account unavailable', code: 'ACCOUNT_SUSPENDED' });
+      const { isUserBlocked } = require('../lib/userAuthStatus');
+      if (!user || isUserBlocked(user.auth_status)) {
+        return res.status(403).json({ error: 'Account blocked', code: 'ACCOUNT_BLOCKED' });
       }
 
       if (!user.admin_role || !isValidRole(user.admin_role)) {

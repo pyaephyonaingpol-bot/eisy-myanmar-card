@@ -55,8 +55,9 @@ async function assertAdminCredentials(user, password) {
   if (!user?.admin_role || !isValidRole(user.admin_role)) {
     throw new Error('This account is not an admin');
   }
-  if (user.auth_status && user.auth_status === 'suspended') {
-    throw new Error('Account unavailable');
+  const { isUserBlocked } = require('../lib/userAuthStatus');
+  if (isUserBlocked(user.auth_status)) {
+    throw new Error('Account blocked');
   }
 
   const pwd = String(password || '');
