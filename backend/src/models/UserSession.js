@@ -41,6 +41,17 @@ const UserSession = {
     `, hash);
   },
 
+  async revokeAllForUser(userId) {
+    const db = getDb();
+    const result = await db.run(`
+      UPDATE user_sessions
+      SET revoked_at = datetime('now')
+      WHERE user_id = ?
+        AND revoked_at IS NULL
+    `, userId);
+    return Number(result?.changes || 0);
+  },
+
   async touch(sessionToken, expiresAt) {
     const db = getDb();
     const hash = this.hashToken(sessionToken);

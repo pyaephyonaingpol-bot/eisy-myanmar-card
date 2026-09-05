@@ -28,6 +28,7 @@ const TransactionLog = require('../models/TransactionLog');
 const SupportThread = require('../models/SupportThread');
 const SupportMessage = require('../models/SupportMessage');
 const User = require('../models/User');
+const { setUserBlockStatus } = require('../services/adminUserBlockService');
 const { creditDepositAndVerify } = require('../services/depositService');
 const { enrichDeposit } = require('../services/depositEnrichment');
 const {
@@ -1338,6 +1339,54 @@ router.get('/users', requirePermission('users'), async (_req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+
+router.post('/users/:userId/status', requirePermission('users'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+
+    const status = String(req.body?.status || '').trim().toLowerCase();
+    if (status !== 'active' && status !== 'blocked') {
+      return res.status(400).json({ error: "status must be 'active' or 'blocked'" });
+    }
+
+    const reason = req.body?.reason || req.body?.status_reason || null;
+    const result = await setUserBlockStatus(userId, {
+      status,
+      reason,
+      adminId: req.user?.id || null,
+      adminEmail: req.user?.email || null,
+    });
+
+    const user = result.user;
+    res.json({
+      success: true,
+      unchanged: Boolean(result.unchanged),
+      message: result.unchanged
+        ? (status === 'blocked' ? 'User is already blocked' : 'User is already active')
+        : (status === 'blocked' ? 'User blocked' : 'User unblocked'),
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        auth_status: user.auth_status,
+        is_blocked: status === 'blocked' || user.auth_status === 'blocked' || user.auth_status === 'suspended',
+      },
+      previous_status: result.previous_status,
+      new_status: result.new_status,
+      sessions_revoked: result.sessions_revoked,
+    });
+  } catch (err) {
+    console.error('[admin/users/status]', err);
+    const code = err.status || (err.message === 'User not found' ? 404 : 400);
+    res.status(code >= 400 && code < 600 ? code : 500).json({
+      error: err.message || 'Failed to update user status',
+      code: err.code || undefined,
+    });
+  }
+});
+
 
 router.get('/transactions', requirePermission('transactions'), async (req, res) => {
   try {

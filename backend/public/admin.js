@@ -3163,6 +3163,43 @@
       }
     },
 
+
+    formatUserAuthStatus(status) {
+      const s = String(status || 'active').toLowerCase();
+      if (s === 'blocked' || s === 'suspended') return 'blocked';
+      return s || 'active';
+    },
+
+    renderUserBlockButton(user) {
+      const blocked = this.formatUserAuthStatus(user.auth_status) === 'blocked';
+      if (blocked) {
+        return '<button type="button" class="btn btn-sm btn-secondary unblock-user-btn" data-uid="' + user.id + '" data-email="' + this.esc(user.email || '') + '">Unblock User</button>';
+      }
+      return '<button type="button" class="btn btn-sm btn-secondary block-user-btn" data-uid="' + user.id + '" data-email="' + this.esc(user.email || '') + '">Block User</button>';
+    },
+
+    async setUserBlocked(userId, status) {
+      const label = status === 'blocked' ? 'block' : 'unblock';
+      const reason = window.prompt(
+        status === 'blocked'
+          ? 'Optional reason for blocking this user (shown in audit log):'
+          : 'Optional note for unblocking this user:',
+        ''
+      );
+      if (reason === null) return;
+      if (!window.confirm('Are you sure you want to ' + label + ' user #' + userId + '?')) return;
+      try {
+        const data = await this.api('POST', '/api/admin/users/' + userId + '/status', {
+          status: status,
+          reason: reason || undefined,
+        });
+        await this.loadUsers();
+        alert((data && data.message) || ('User ' + label + 'ed'));
+      } catch (err) {
+        alert((err && err.message) || ('Failed to ' + label + ' user'));
+      }
+    },
+
     async loadUsers() {
       const table = $('usersTable');
       if (!table) return;
@@ -3186,17 +3223,18 @@
                 '<td>' + this.esc(u.name || '—') + '</td>' +
                 '<td>' + this.esc(u.email || '—') + '</td>' +
                 '<td><strong>$' + Number(u.balance_usdt || 0).toFixed(2) + ' USDT</strong></td>' +
-                '<td>' + this.esc(u.auth_status || 'active') + '</td>' +
+                '<td>' + this.esc(this.formatUserAuthStatus(u.auth_status)) + '</td>' +
                 '<td class="actions-cell">' +
                   '<button type="button" class="btn btn-sm btn-secondary view-card-requests">Card Requests</button>' +
-                  '<button type="button" class="btn btn-sm btn-secondary adj-usdt-wallet" data-uid="' + u.id + '" data-usdt="' + Number(u.balance_usdt || 0) + '">Adjust USDT</button>' +
+                  '<button type="button" class="btn btn-sm btn-secondary adj-usdt-wallet" data-uid="' + u.id + '" data-usdt="' + Number(u.balance_usdt || 0) + '">Adjust USDT</button> ' +
+                  this.renderUserBlockButton(u) +
                 '</td>' +
               '</tr>'
             ).join('') +
             '</tbody>' +
           '</table>';
 
-        table.querySelectorAll('.adj-usdt-wallet').forEach((btn) => {
+                table.querySelectorAll('.adj-usdt-wallet').forEach((btn) => {
           btn.addEventListener('click', () => {
             if ($('adjUsdtUserId')) $('adjUsdtUserId').value = btn.dataset.uid;
             if ($('adjAmountUsdt')) $('adjAmountUsdt').value = '';
@@ -3204,6 +3242,13 @@
             $('balanceAdjustUsdtForm')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           });
         });
+        table.querySelectorAll('.block-user-btn').forEach((btn) => {
+          btn.addEventListener('click', () => this.setUserBlocked(btn.dataset.uid, 'blocked'));
+        });
+        table.querySelectorAll('.unblock-user-btn').forEach((btn) => {
+          btn.addEventListener('click', () => this.setUserBlocked(btn.dataset.uid, 'active'));
+        });
+
       } catch (err) {
         table.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
       }

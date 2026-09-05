@@ -31,6 +31,7 @@
     "test:withdrawal-fee-dashboard": "node scripts/test-withdrawal-fee-dashboard.js",
     "test:supabase-env-config": "node scripts/test-supabase-env-config.js",
     "test:dashboard-wallet-hydration": "node scripts/test-dashboard-wallet-hydration.js",
+    "test:admin-block-user": "node scripts/test-admin-block-user.js",
     "test:admin-usdt-adjust-sync": "node scripts/test-admin-usdt-adjust-sync.js",
     "test:admin-ledger-filter-cleanup": "node scripts/test-admin-ledger-filter-cleanup.js",
     "test:admin-usdt-tx-tabs": "node scripts/test-admin-usdt-tx-tabs.js",
