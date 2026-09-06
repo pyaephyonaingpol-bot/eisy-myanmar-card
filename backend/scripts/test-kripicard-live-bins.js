@@ -37,6 +37,7 @@ function testNoHardcodedLegacyBins() {
   assert.ok(dash.includes('populateCardBinOptions'), 'dropdown populate helper');
   assert.ok(html.includes('Loading available BINs'), 'loading state in select');
   assert.ok(dash.includes('No active BINs available'), 'empty active-BIN state');
+  assert.ok(dash.includes("source === 'env_fallback'"), 'UI must ignore env_fallback BIN lists');
   console.log('ok');
 }
 
@@ -123,10 +124,46 @@ async function testPricingOptionsUseLiveBins() {
   console.log('ok');
 }
 
+
+async function testEnvAllowListDoesNotReplaceLiveCatalog() {
+  section('KRIPICARD_ALLOWED_BINS must not reintroduce stale BINs when API is down');
+  process.env.KRIPICARD_API_KEY = 'live-bins-test-key';
+  process.env.KRIPICARD_ALLOWED_BINS = '539502,525847,441357';
+  process.env.KRIPICARD_DEFAULT_BIN = '539502';
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => {
+    const err = new Error('network down');
+    err.code = 'KRIPICARD_NETWORK';
+    throw err;
+  };
+
+  try {
+    delete require.cache[require.resolve(path.join(ROOT, 'lib/kripicard'))];
+    delete require.cache[require.resolve(path.join(ROOT, 'backend/src/services/cardWalletService'))];
+    const {
+      getKripicardBinOptions,
+      resetKripicardBinCacheForTests,
+    } = require(path.join(ROOT, 'backend/src/services/cardWalletService'));
+    resetKripicardBinCacheForTests();
+    const opts = await getKripicardBinOptions({ forceRefresh: true });
+    assert.deepStrictEqual(opts.bins, []);
+    assert.ok(!opts.bins.includes('539502'));
+    assert.ok(!opts.bins.includes('525847'));
+    assert.notStrictEqual(opts.source, 'env_fallback');
+  } finally {
+    global.fetch = originalFetch;
+    delete process.env.KRIPICARD_ALLOWED_BINS;
+    delete process.env.KRIPICARD_DEFAULT_BIN;
+  }
+  console.log('ok');
+}
+
 async function main() {
   testNoHardcodedLegacyBins();
   await testFilterAndPersistOptions();
   await testPricingOptionsUseLiveBins();
+  await testEnvAllowListDoesNotReplaceLiveCatalog();
   console.log('\nAll Kripicard live BIN tests passed.');
 }
 
