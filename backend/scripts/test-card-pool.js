@@ -506,8 +506,8 @@ async function testRouteWiring() {
   assert.ok(userSrc.includes("router.post('/cards/issue'"));
   assert.ok(fetchRoute.includes('fetchAndStorePoolCards'));
   assert.ok(purchaseRoute.includes('assignCardToUser'));
-  assert.ok(issueRoute.includes('issueCardForUser'));
-  assert.ok(issueRoute.includes('createcard') || issueRoute.includes('createExternalCard') || issueRoute.includes('name_on_card'));
+  assert.ok(issueRoute.includes('issueCardForUser') || issueRoute.includes('createAndPersistKripicardCard'));
+  assert.ok(issueRoute.includes('createcard') || issueRoute.includes('createExternalCard') || issueRoute.includes('name_on_card') || issueRoute.includes('createAndPersistKripicardCard'));
   assert.ok(fs.existsSync(path.join(ROOT, 'supabase/card_pools.sql')));
   assert.ok(fs.existsSync(path.join(ROOT, 'lib/cardIssue.js')));
   console.log('ok');
