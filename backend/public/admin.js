@@ -3607,6 +3607,38 @@
       }
     },
 
+    async deleteUser(userId, email) {
+      const id = Number(userId);
+      const userEmail = String(email || '').trim();
+      if (!id) return;
+
+      const ok = window.confirm(
+        'Permanently delete user #' + id + (userEmail ? (' (' + userEmail + ')') : '') + '?\n\n'
+        + 'This removes the account and related test data. This cannot be undone.'
+      );
+      if (!ok) return;
+
+      const typed = window.prompt(
+        'Type the user email exactly to confirm deletion'
+        + (userEmail ? (':\n' + userEmail) : ''),
+        ''
+      );
+      if (typed === null) return;
+
+      const reason = window.prompt('Optional reason for deleting this user (audit log):', 'Test / unwanted account') || '';
+
+      try {
+        const data = await this.api('DELETE', '/api/admin/users/' + id, {
+          confirm_email: String(typed || '').trim(),
+          reason: reason || undefined,
+        });
+        await this.loadUsers({ reset: true });
+        alert((data && data.message) || ('User #' + id + ' deleted'));
+      } catch (err) {
+        alert((err && err.message) || 'Failed to delete user');
+      }
+    },
+
     usersListState: {
       limit: 50,
       offset: 0,
@@ -3700,6 +3732,9 @@
       table.querySelectorAll('.unblock-user-btn').forEach((btn) => {
         btn.addEventListener('click', () => this.setUserBlocked(btn.dataset.uid, 'active'));
       });
+      table.querySelectorAll('.delete-user-btn').forEach((btn) => {
+        btn.addEventListener('click', () => this.deleteUser(btn.dataset.uid, btn.dataset.email));
+      });
     },
 
     renderUsersRowsHtml(users) {
@@ -3713,7 +3748,8 @@
           '<td class="actions-cell">' +
             '<button type="button" class="btn btn-sm btn-secondary view-card-requests">Card Requests</button>' +
             '<button type="button" class="btn btn-sm btn-secondary adj-usdt-wallet" data-uid="' + u.id + '" data-usdt="' + Number(u.balance_usdt || 0) + '">Adjust USDT</button> ' +
-            this.renderUserBlockButton(u) +
+            this.renderUserBlockButton(u) + ' ' +
+            '<button type="button" class="btn btn-sm btn-reject delete-user-btn" data-uid="' + u.id + '" data-email="' + this.esc(u.email || '') + '" title="Permanently delete this user">Delete User</button>' +
           '</td>' +
         '</tr>'
       ).join('');

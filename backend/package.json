@@ -35,6 +35,7 @@
     "backfill:supabase-user-wallets": "node scripts/backfill-supabase-user-wallets.js",
     "test:dashboard-wallet-hydration": "node scripts/test-dashboard-wallet-hydration.js",
     "test:admin-block-user": "node scripts/test-admin-block-user.js",
+    "test:admin-delete-user": "node scripts/test-admin-delete-user.js",
     "test:admin-usdt-adjust-sync": "node scripts/test-admin-usdt-adjust-sync.js",
     "test:admin-ledger-filter-cleanup": "node scripts/test-admin-ledger-filter-cleanup.js",
     "test:admin-usdt-tx-tabs": "node scripts/test-admin-usdt-tx-tabs.js",

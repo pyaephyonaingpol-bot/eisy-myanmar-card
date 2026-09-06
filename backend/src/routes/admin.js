@@ -31,6 +31,7 @@ const SupportThread = require('../models/SupportThread');
 const SupportMessage = require('../models/SupportMessage');
 const User = require('../models/User');
 const { setUserBlockStatus } = require('../services/adminUserBlockService');
+const { deleteUserById } = require('../services/adminUserDeleteService');
 const { creditDepositAndVerify } = require('../services/depositService');
 const { enrichDeposit } = require('../services/depositEnrichment');
 const {
@@ -1528,6 +1529,40 @@ router.post('/users/:userId/status', requirePermission('users'), async (req, res
     const code = err.status || (err.message === 'User not found' ? 404 : 400);
     res.status(code >= 400 && code < 600 ? code : 500).json({
       error: err.message || 'Failed to update user status',
+      code: err.code || undefined,
+    });
+  }
+});
+
+router.delete('/users/:userId', requirePermission('users'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id', code: 'INVALID_USER_ID' });
+
+    const confirmEmail = req.body?.confirm_email || req.body?.confirmEmail || req.query?.confirm_email || null;
+    const reason = req.body?.reason || req.query?.reason || null;
+
+    const result = await deleteUserById(userId, {
+      adminId: req.user?.id || null,
+      adminEmail: req.user?.email || null,
+      reason,
+      confirmEmail,
+    });
+
+    res.json({
+      success: true,
+      message: `User #${result.user.id} (${result.user.email || 'no-email'}) deleted`,
+      deleted: true,
+      user: result.user,
+      sessions_revoked: result.sessions_revoked,
+      related_deleted: result.related_deleted,
+      supabase: result.supabase,
+    });
+  } catch (err) {
+    console.error('[admin/users/delete]', err);
+    const code = err.status || (err.message === 'User not found' ? 404 : 400);
+    res.status(code >= 400 && code < 600 ? code : 500).json({
+      error: err.message || 'Failed to delete user',
       code: err.code || undefined,
     });
   }
