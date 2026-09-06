@@ -240,6 +240,7 @@ async function listCardIssuanceAdminTransactions({ userId, limit = 200 } = {}) {
 
 async function listMmkWithdrawalAdminTransactions({ userId, limit = 200 } = {}) {
   const db = getDb();
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 200, 1), 500);
   const params = [];
   let userFilter = '';
 
@@ -251,7 +252,7 @@ async function listMmkWithdrawalAdminTransactions({ userId, limit = 200 } = {}) 
   // Use SELECT w.* (same approach as MmkWithdrawal.listAll) so drifted
   // production schemas missing newer columns do not 500 the admin Transaction
   // History tab. Map optional columns defensively below.
-  const rows = await db.all(`
+  const mmkRows = await db.all(`
     SELECT
       w.*,
       u.name AS user_name,
@@ -262,9 +263,29 @@ async function listMmkWithdrawalAdminTransactions({ userId, limit = 200 } = {}) 
     ${userFilter}
     ORDER BY w.created_at DESC
     LIMIT ?
-  `, ...params, limit);
+  `, ...params, lim);
 
-  return rows.map((row) => {
+  // USDT → MMK bank (WB-*) are also manual MMK bank payouts — include in this history.
+  const usdtBankParams = [];
+  let usdtUserFilter = '';
+  if (userId) {
+    usdtUserFilter = ' AND w.user_id = ?';
+    usdtBankParams.push(userId);
+  }
+  const usdtBankRows = await db.all(`
+    SELECT
+      w.*,
+      u.name AS user_name,
+      u.email AS user_email
+    FROM usdt_withdrawal_requests w
+    LEFT JOIN users u ON u.id = w.user_id
+    WHERE LOWER(COALESCE(w.payout_method, '')) = 'bank'
+    ${usdtUserFilter}
+    ORDER BY w.created_at DESC
+    LIMIT ?
+  `, ...usdtBankParams, lim);
+
+  const mappedMmk = mmkRows.map((row) => {
     const amountMmk = round2(row.amount_mmk);
     const feeMmk = round2(row.fee_mmk);
     const netMmk = row.net_mmk != null ? round2(row.net_mmk) : round2(amountMmk - feeMmk);
@@ -272,6 +293,7 @@ async function listMmkWithdrawalAdminTransactions({ userId, limit = 200 } = {}) 
       id: row.id,
       ref_code: row.ref_code,
       category: 'mmk_withdrawal',
+      source: 'mmk_wallet',
       user_id: row.user_id,
       user_name: row.user_name,
       user_email: row.user_email,
@@ -279,6 +301,9 @@ async function listMmkWithdrawalAdminTransactions({ userId, limit = 200 } = {}) 
       fee_mmk: feeMmk,
       net_mmk: netMmk,
       fee_percent: row.fee_percent != null ? round2(row.fee_percent) : null,
+      amount_usdt: null,
+      fee_usdt: null,
+      exchange_rate: null,
       bank_name: row.bank_name || null,
       account_name: row.account_name || null,
       account_number: row.account_number || null,
@@ -291,6 +316,40 @@ async function listMmkWithdrawalAdminTransactions({ userId, limit = 200 } = {}) 
       created_at: row.created_at,
     };
   });
+
+  const mappedUsdtBank = usdtBankRows.map((row) => {
+    const amountMmk = round2(row.amount_mmk);
+    return {
+      id: row.id,
+      ref_code: row.ref_code,
+      category: 'mmk_withdrawal',
+      source: 'usdt_bank',
+      user_id: row.user_id,
+      user_name: row.user_name,
+      user_email: row.user_email,
+      amount_mmk: amountMmk,
+      fee_mmk: 0,
+      net_mmk: amountMmk,
+      fee_percent: null,
+      amount_usdt: row.amount_usdt != null ? round2(row.amount_usdt) : null,
+      fee_usdt: row.fee_usdt != null ? round2(row.fee_usdt) : null,
+      exchange_rate: row.exchange_rate != null ? Number(row.exchange_rate) : null,
+      bank_name: row.bank_name || null,
+      account_name: row.account_name || null,
+      account_number: row.account_number || null,
+      status: row.status,
+      admin_note: row.admin_note || null,
+      proof_url: row.proof_url || row.proof_path || null,
+      proof_mime_type: row.proof_mime_type || null,
+      proof_original_name: row.proof_original_name || null,
+      processed_at: row.processed_at || null,
+      created_at: row.created_at,
+    };
+  });
+
+  return [...mappedMmk, ...mappedUsdtBank]
+    .sort((a, b) => (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0))
+    .slice(0, lim);
 }
 
 /**

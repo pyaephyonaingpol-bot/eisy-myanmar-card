@@ -184,43 +184,65 @@ const UsdtWithdrawal = {
     );
   },
 
-  async listAll({ status, limit = 200 } = {}) {
+  async listAll({ status, limit = 200, payoutMethod = null } = {}) {
     const db = getDb();
     const lim = Math.min(Math.max(parseInt(limit, 10) || 200, 1), 500);
     const normalized = status == null || status === '' || status === 'all'
       ? null
       : String(status).trim().toLowerCase();
+    const method = payoutMethod == null || payoutMethod === '' || payoutMethod === 'all'
+      ? null
+      : String(payoutMethod).trim().toLowerCase();
+
+    const methodClause = method ? ' AND LOWER(w.payout_method) = ?' : '';
+    const methodParams = method ? [method] : [];
 
     // open = actionable queue (manual pending + in-flight NOWPayments processing)
     if (normalized === 'open') {
       return db.all(`
-        SELECT w.*, u.name AS user_name, u.email AS user_email
+        SELECT w.*,
+               u.name AS user_name,
+               u.email AS user_email,
+               u.phone AS user_phone,
+               u.balance_mmk AS user_balance_mmk
         FROM ${this.TABLE} w
         LEFT JOIN users u ON u.id = w.user_id
         WHERE LOWER(w.status) IN ('pending', 'processing')
+        ${methodClause}
         ORDER BY w.created_at DESC
         LIMIT ?
-      `, lim);
+      `, ...methodParams, lim);
     }
 
     if (normalized) {
       return db.all(`
-        SELECT w.*, u.name AS user_name, u.email AS user_email
+        SELECT w.*,
+               u.name AS user_name,
+               u.email AS user_email,
+               u.phone AS user_phone,
+               u.balance_mmk AS user_balance_mmk
         FROM ${this.TABLE} w
         LEFT JOIN users u ON u.id = w.user_id
         WHERE LOWER(w.status) = ?
+        ${methodClause}
         ORDER BY w.created_at DESC
         LIMIT ?
-      `, normalized, lim);
+      `, normalized, ...methodParams, lim);
     }
 
     return db.all(`
-      SELECT w.*, u.name AS user_name, u.email AS user_email
+      SELECT w.*,
+             u.name AS user_name,
+             u.email AS user_email,
+             u.phone AS user_phone,
+             u.balance_mmk AS user_balance_mmk
       FROM ${this.TABLE} w
       LEFT JOIN users u ON u.id = w.user_id
+      WHERE 1=1
+      ${methodClause}
       ORDER BY w.created_at DESC
       LIMIT ?
-    `, lim);
+    `, ...methodParams, lim);
   },
 };
 

@@ -523,11 +523,21 @@
           const complete = e.target.closest('[data-action="complete-mmk-wd"]');
           const reject = e.target.closest('[data-action="reject-mmk-wd"]');
           if (complete) {
-            this.reviewMmkWithdrawal(complete.getAttribute('data-id'), 'complete', { triggerBtn: complete });
+            const source = complete.getAttribute('data-source') || 'mmk_wallet';
+            if (source === 'usdt_bank') {
+              this.reviewUsdtWithdrawal(complete.getAttribute('data-id'), 'complete', { triggerBtn: complete });
+            } else {
+              this.reviewMmkWithdrawal(complete.getAttribute('data-id'), 'complete', { triggerBtn: complete });
+            }
             return;
           }
           if (reject) {
-            this.reviewMmkWithdrawal(reject.getAttribute('data-id'), 'reject', { triggerBtn: reject });
+            const source = reject.getAttribute('data-source') || 'mmk_wallet';
+            if (source === 'usdt_bank') {
+              this.reviewUsdtWithdrawal(reject.getAttribute('data-id'), 'reject', { triggerBtn: reject });
+            } else {
+              this.reviewMmkWithdrawal(reject.getAttribute('data-id'), 'reject', { triggerBtn: reject });
+            }
           }
         });
       }
@@ -1949,7 +1959,8 @@
         alert(msg);
         this.closeWithdrawalProofModal();
         await Promise.all([
-          kind === 'usdt' ? this.loadUsdtWithdrawals() : this.loadMmkWithdrawals(),
+          this.loadUsdtWithdrawals(),
+          this.loadMmkWithdrawals(),
           this.loadUsers(),
           this.loadTransactions(),
         ]);
@@ -2911,12 +2922,14 @@
 
         table.innerHTML =
           '<table class="data-table"><thead><tr>' +
-            '<th>Requested</th><th>User</th><th>Ref</th><th>Bank payout details</th>' +
+            '<th>Requested</th><th>User</th><th>Ref</th><th>Source</th><th>Bank payout details</th>' +
             '<th>Amount</th><th>Fee</th><th>Net to send</th><th>Status</th><th>Actions</th>' +
           '</tr></thead><tbody>' +
           rows.map((w) => {
             const status = String(w.status || '').toLowerCase();
             const pending = status === 'pending' || status === 'processing';
+            const source = String(w.source || 'mmk_wallet');
+            const isUsdtBank = source === 'usdt_bank';
             const proofUrl = w.proof_url || w.proof_path || '';
             const proofBtn = proofUrl
               ? ('<button type="button" class="btn btn-sm btn-secondary proof-thumb-btn" data-src="'
@@ -2942,10 +2955,33 @@
                 '<span class="bank-line"><code>' + this.esc(w.account_number || '—') + '</code></span>' +
                 (w.admin_note ? '<span class="bank-line"><small>Note: ' + this.esc(w.admin_note) + '</small></span>' : '') +
               '</div>';
+            const sourceLabel = isUsdtBank
+              ? ('USDT→MMK'
+                + (w.amount_usdt != null
+                  ? '<br><small>$' + Number(w.amount_usdt).toFixed(2)
+                    + (w.exchange_rate ? (' @ ' + Number(w.exchange_rate).toLocaleString()) : '')
+                    + '</small>'
+                  : ''))
+              : 'MMK wallet';
+            const amountCell = isUsdtBank
+              ? (Math.round(Number(w.amount_mmk || 0)).toLocaleString()
+                + '<br><small>$' + Number(w.amount_usdt || 0).toFixed(2) + ' USDT</small>')
+              : Math.round(Number(w.amount_mmk || 0)).toLocaleString();
+            const feeCell = isUsdtBank
+              ? ('$' + Number(w.fee_usdt || 0).toFixed(2))
+              : Math.round(Number(w.fee_mmk || 0)).toLocaleString();
             const actions = pending
               ? ('<div class="mmk-wd-actions">' +
-                  '<button type="button" class="btn btn-sm btn-approve" data-action="complete-mmk-wd" data-id="' + w.id + '">Approve &amp; payout</button>' +
-                  '<button type="button" class="btn btn-sm btn-reject" data-action="reject-mmk-wd" data-id="' + w.id + '">Reject</button>' +
+                  '<button type="button" class="btn btn-sm btn-approve" data-action="complete-mmk-wd" data-id="' + w.id + '"'
+                    + ' data-source="' + this.esc(source) + '"'
+                    + (isUsdtBank
+                      ? (' data-method="bank" data-mmk="' + Math.round(Number(w.amount_mmk || 0)) + '"'
+                        + ' data-rate="' + Number(w.exchange_rate || 0) + '"'
+                        + ' data-usdt="' + Number(w.net_usdt || 0).toFixed(2) + '"')
+                      : '')
+                    + '>Approve &amp; payout</button>' +
+                  '<button type="button" class="btn btn-sm btn-reject" data-action="reject-mmk-wd" data-id="' + w.id + '"'
+                    + ' data-source="' + this.esc(source) + '">Reject</button>' +
                 '</div>')
               : (proofBtn || '<span class="hint">—</span>');
 
@@ -2953,9 +2989,10 @@
               '<td><small>' + this.esc(w.created_at || '—') + '</small></td>' +
               '<td>' + userBlock + '</td>' +
               '<td><code>' + this.esc(w.ref_code || '') + '</code></td>' +
+              '<td>' + sourceLabel + '</td>' +
               '<td>' + bankBlock + '</td>' +
-              '<td>' + Math.round(Number(w.amount_mmk || 0)).toLocaleString() + '</td>' +
-              '<td>' + Math.round(Number(w.fee_mmk || 0)).toLocaleString() + '</td>' +
+              '<td>' + amountCell + '</td>' +
+              '<td>' + feeCell + '</td>' +
               '<td><strong>' + Math.round(Number(w.net_mmk || 0)).toLocaleString() + '</strong></td>' +
               '<td>' + this.statusBadge(w.status) + '</td>' +
               '<td class="actions-cell">' + actions + '</td>' +
@@ -3028,7 +3065,12 @@
         if (txHash) body.tx_hash = txHash;
         const data = await this.api('POST', path, body);
         alert(data.message || 'USDT withdrawal updated');
-        await Promise.all([this.loadUsdtWithdrawals(), this.loadUsers(), this.loadTransactions()]);
+        await Promise.all([
+          this.loadUsdtWithdrawals(),
+          this.loadMmkWithdrawals(),
+          this.loadUsers(),
+          this.loadTransactions(),
+        ]);
       } catch (err) {
         alert(err.message || 'Failed to update USDT withdrawal');
         if (btn) {

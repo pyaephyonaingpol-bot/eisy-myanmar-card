@@ -47,7 +47,9 @@ assert.ok(mmkModel.includes('user_email'), 'model joins user email');
 assert.ok(mmkModel.includes('user_phone'), 'model joins user phone');
 
 assert.ok(adminRoutes.includes("router.get('/withdrawals/mmk'"), 'GET mmk withdrawals route');
+assert.ok(adminRoutes.includes('listMmkBankPayoutQueue'), 'GET mmk uses unified WM+WB queue');
 assert.ok(adminRoutes.includes("/withdrawals/mmk/:id/complete"), 'complete route');
 assert.ok(adminRoutes.includes("/withdrawals/mmk/:id/reject"), 'reject route');
+assert.ok(adminJs.includes("source === 'usdt_bank'"), 'UI routes WB bank actions via usdt handler');
 
 console.log('Admin MMK withdrawals dedicated tab — ok');

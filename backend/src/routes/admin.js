@@ -2298,11 +2298,13 @@ router.post('/withdrawals/usdt/:id/reject', requirePermission('withdrawals'), as
 
 router.get('/withdrawals/mmk', requirePermission('withdrawals'), async (req, res) => {
   try {
+    const { listMmkBankPayoutQueue } = require('../services/mmkBankPayoutQueueService');
     const status = req.query.status;
-    const rows = await MmkWithdrawal.listAll({
+    const rows = await listMmkBankPayoutQueue({
       status: status && status !== 'all' ? status : undefined,
       limit: 500,
     });
+    // Unified queue: MMK wallet (WM-*) + USDT→MMK bank (WB-*) for manual payout.
     res.json({ withdrawals: rows });
   } catch (err) {
     console.error('[admin/withdrawals/mmk GET]', err);
