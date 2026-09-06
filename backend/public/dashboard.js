@@ -4679,6 +4679,16 @@ const Dashboard = {
       };
     }
 
+    const regTermsAcceptedEl = $('regTermsAccepted');
+    if (regTermsAcceptedEl) {
+      regTermsAcceptedEl.addEventListener('change', () => {
+        if (regTermsAcceptedEl.checked) {
+          $('regTermsBlock')?.classList.remove('terms-acceptance-error');
+          this.setInlineError('regAuthError', null);
+        }
+      });
+    }
+
     const registerSendOtpForm = $('registerSendOtpForm');
     if (registerSendOtpForm) {
       registerSendOtpForm.addEventListener('submit', async (e) => {
@@ -4707,9 +4717,11 @@ const Dashboard = {
         if (!termsAccepted) {
           this.toast('Please accept the Terms and Conditions to continue', 'error');
           this.setInlineError('regAuthError', 'You must accept the Terms and Conditions before registering.');
+          $('regTermsBlock')?.classList.add('terms-acceptance-error');
           $('regTermsAccepted')?.focus();
           return;
         }
+        $('regTermsBlock')?.classList.remove('terms-acceptance-error');
 
         const btn = $('registerSendOtp');
         if (btn) {
@@ -4754,9 +4766,11 @@ const Dashboard = {
           if (!termsAccepted) {
             this.toast('Please accept the Terms and Conditions to create your account', 'error');
             this.setInlineError('regAuthError', 'You must accept the Terms and Conditions before creating an account.');
+            $('regTermsBlock')?.classList.add('terms-acceptance-error');
             $('regTermsAccepted')?.focus();
             return;
           }
+          $('regTermsBlock')?.classList.remove('terms-acceptance-error');
           await Auth.completeRegister({
             email: $('regEmail').value.trim(),
             otp: $('regOtp').value.trim(),

@@ -3538,28 +3538,53 @@ html.app-hydrating .wallet-hero-actions-row {
 }
 
 
-/* Registration terms checkbox */
+/* Registration terms checkbox — keep prominent on the Register step */
 .field-checkbox {
-  margin-top: 0.35rem;
+  margin-top: 0.5rem;
+}
+.field-checkbox.terms-acceptance {
+  margin: 0.85rem 0 1rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.08);
+}
+.field-checkbox.terms-acceptance.terms-acceptance-error {
+  border-color: rgba(248, 113, 113, 0.85);
+  background: rgba(239, 68, 68, 0.12);
+  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.35);
 }
 .field-checkbox .checkbox-label {
   display: flex;
   align-items: flex-start;
-  gap: 0.65rem;
-  font-weight: 500;
-  font-size: 0.9rem;
-  line-height: 1.4;
+  gap: 0.7rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.45;
   cursor: pointer;
   color: var(--text, #e2e8f0);
 }
 .field-checkbox input[type="checkbox"] {
-  margin-top: 0.2rem;
-  width: 1.05rem;
-  height: 1.05rem;
+  margin-top: 0.15rem;
+  width: 1.15rem;
+  height: 1.15rem;
   flex-shrink: 0;
   accent-color: var(--accent, #3b82f6);
 }
 .field-checkbox a {
   color: var(--accent, #60a5fa);
   text-decoration: underline;
+  font-weight: 700;
+}
+.field-checkbox em {
+  font-style: normal;
+  font-weight: 600;
+  color: #93c5fd;
+  font-size: 0.85em;
+}
+.terms-reminder {
+  margin: 0.35rem 0 0.85rem;
+}
+.terms-reminder a {
+  color: var(--accent, #60a5fa);
 }

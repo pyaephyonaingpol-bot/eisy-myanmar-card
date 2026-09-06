@@ -833,10 +833,10 @@
           <div class="field"><label for="regPin">6-digit Security PIN</label><input id="regPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="new-password" /></div>
           <p id="regAuthError" class="auth-inline-error hidden"></p>
 
-          <div class="field field-checkbox">
+          <div class="field field-checkbox terms-acceptance" id="regTermsBlock">
             <label class="checkbox-label" for="regTermsAccepted">
-              <input type="checkbox" id="regTermsAccepted" name="terms_accepted" value="1" required />
-              <span>I agree to the <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms and Conditions</a></span>
+              <input type="checkbox" id="regTermsAccepted" name="terms_accepted" value="1" required aria-required="true" />
+              <span>I agree to the <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms and Conditions</a> <em>(required)</em></span>
             </label>
           </div>
           <button type="submit" id="registerSendOtp" class="btn btn-primary">Send Registration OTP</button>
@@ -844,6 +844,7 @@
         <p class="hint">Use a <strong>new email</strong> (not <code>demo@eisy.myanmar</code> — that account exists; use Login tab).</p>
         <form id="registerCompleteForm" class="hidden" style="margin-top:1rem">
           <div class="field"><label for="regOtp">Email OTP</label><input id="regOtp" name="otp" maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" required /></div>
+          <p class="hint terms-reminder">Account creation requires accepting the <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms and Conditions</a> above.</p>
           <button type="submit" id="registerComplete" class="btn btn-primary">Create Account</button>
         </form>
       </div>
