@@ -17,8 +17,7 @@
     "test:dashboard-usdt-wallet": "node backend/scripts/test-dashboard-usdt-wallet-only.js",
     "test:deposits-usdt-only": "node backend/scripts/test-deposits-usdt-only.js",
     "test:admin-usdt-mmk-wd": "node backend/scripts/test-admin-usdt-mmk-withdrawals.js",
-    "vercel-build": "node backend/scripts/test-tron-wallet-init.js || echo \"[vercel-build] TRON wallet init check failed (non-blocking — see /health/tron after deploy)\"; mkdir -p public && cp -R backend/public/. public/",
-    "test:registration-terms": "node backend/scripts/test-registration-terms.js"
+    "vercel-build": "node backend/scripts/test-tron-wallet-init.js || echo \"[vercel-build] TRON wallet init check failed (non-blocking — see /health/tron after deploy)\"; mkdir -p public && cp -R backend/public/. public/"
   },
   "engines": {
     "node": ">=18"
