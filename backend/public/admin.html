@@ -1185,6 +1185,31 @@
     </div>
   </div>
 
+  <div id="deleteUserModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="deleteUserModalTitle" aria-modal="true">
+    <div class="proof-lightbox-backdrop delete-user-modal-backdrop"></div>
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner admin-form-modal-inner" style="max-width:min(440px,100%);width:96vw">
+      <button type="button" id="deleteUserModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+      <h3 id="deleteUserModalTitle" class="kyc-doc-viewer-title">Delete User</h3>
+      <p id="deleteUserModalMeta" class="hint" style="margin-bottom:0.85rem;text-align:left">
+        Permanently remove this account and related test data. This cannot be undone.
+      </p>
+      <div class="delete-user-summary" style="width:100%;text-align:left;margin-bottom:1rem">
+        <p style="margin:0 0 0.35rem"><strong>User ID:</strong> <span id="deleteUserModalId">—</span></p>
+        <p style="margin:0 0 0.35rem"><strong>Email:</strong> <span id="deleteUserModalEmail">—</span></p>
+        <p style="margin:0"><strong>Name:</strong> <span id="deleteUserModalName">—</span></p>
+      </div>
+      <div class="field" style="width:100%;text-align:left">
+        <label for="deleteUserModalReason">Reason / note (optional)</label>
+        <input id="deleteUserModalReason" placeholder="Test / unwanted account" />
+      </div>
+      <p id="deleteUserModalError" class="hint" style="display:none;color:#fca5a5;text-align:left;margin:0.65rem 0 0"></p>
+      <div class="deposit-receipt-actions" style="margin-top:1rem">
+        <button type="button" id="deleteUserModalConfirm" class="btn btn-reject">Confirm Delete</button>
+        <button type="button" id="deleteUserModalCancel" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <div id="withdrawalProofModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="withdrawalProofModalTitle" aria-modal="true">
     <div class="proof-lightbox-backdrop withdrawal-proof-modal-backdrop"></div>
     <div class="proof-lightbox-inner kyc-doc-viewer-inner admin-form-modal-inner" style="max-width:min(520px,100%);width:96vw">

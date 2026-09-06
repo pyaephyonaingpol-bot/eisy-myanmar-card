@@ -70,6 +70,7 @@ async function deleteUserById(userId, {
   adminId = null,
   adminEmail = null,
   reason = null,
+  confirmed = false,
   confirmEmail = null,
 } = {}) {
   const id = Number(userId);
@@ -96,12 +97,20 @@ async function deleteUserById(userId, {
     );
   }
 
+  // Prefer explicit modal confirmation (`confirmed: true`).
+  // Legacy callers may still pass matching confirmEmail.
   const expectedEmail = String(user.email || '').trim().toLowerCase();
   const typed = String(confirmEmail || '').trim().toLowerCase();
-  if (!expectedEmail || typed !== expectedEmail) {
+  const emailConfirmed = Boolean(expectedEmail && typed && typed === expectedEmail);
+  const isConfirmed = confirmed === true
+    || confirmed === 1
+    || confirmed === '1'
+    || String(confirmed || '').trim().toLowerCase() === 'true'
+    || emailConfirmed;
+  if (!isConfirmed) {
     throw Object.assign(
-      new Error('Confirmation email does not match. Type the user email exactly to confirm deletion.'),
-      { status: 400, code: 'CONFIRM_EMAIL_MISMATCH' }
+      new Error('Deletion was not confirmed. Click Confirm Delete in the admin dialog to proceed.'),
+      { status: 400, code: 'DELETE_NOT_CONFIRMED' }
     );
   }
 

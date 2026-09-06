@@ -1540,12 +1540,14 @@ router.delete('/users/:userId', requirePermission('users'), async (req, res) => 
     if (!userId) return res.status(400).json({ error: 'Invalid user id', code: 'INVALID_USER_ID' });
 
     const confirmEmail = req.body?.confirm_email || req.body?.confirmEmail || req.query?.confirm_email || null;
+    const confirmedRaw = req.body?.confirmed ?? req.body?.confirm ?? req.query?.confirmed ?? null;
     const reason = req.body?.reason || req.query?.reason || null;
 
     const result = await deleteUserById(userId, {
       adminId: req.user?.id || null,
       adminEmail: req.user?.email || null,
       reason,
+      confirmed: confirmedRaw,
       confirmEmail,
     });
 
