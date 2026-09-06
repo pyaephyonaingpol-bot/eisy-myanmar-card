@@ -111,7 +111,11 @@ const MmkWithdrawal = {
 
     if (normalized === 'open') {
       return db.all(`
-        SELECT w.*, u.name AS user_name, u.email AS user_email
+        SELECT w.*,
+               u.name AS user_name,
+               u.email AS user_email,
+               u.phone AS user_phone,
+               u.balance_mmk AS user_balance_mmk
         FROM ${this.TABLE} w
         LEFT JOIN users u ON u.id = w.user_id
         WHERE LOWER(w.status) IN ('pending', 'processing')
@@ -122,7 +126,11 @@ const MmkWithdrawal = {
 
     if (normalized) {
       return db.all(`
-        SELECT w.*, u.name AS user_name, u.email AS user_email
+        SELECT w.*,
+               u.name AS user_name,
+               u.email AS user_email,
+               u.phone AS user_phone,
+               u.balance_mmk AS user_balance_mmk
         FROM ${this.TABLE} w
         LEFT JOIN users u ON u.id = w.user_id
         WHERE LOWER(w.status) = ?
@@ -132,7 +140,11 @@ const MmkWithdrawal = {
     }
 
     return db.all(`
-      SELECT w.*, u.name AS user_name, u.email AS user_email
+      SELECT w.*,
+             u.name AS user_name,
+             u.email AS user_email,
+             u.phone AS user_phone,
+             u.balance_mmk AS user_balance_mmk
       FROM ${this.TABLE} w
       LEFT JOIN users u ON u.id = w.user_id
       ORDER BY w.created_at DESC

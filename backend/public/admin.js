@@ -400,8 +400,10 @@
         this.loadP2pSellOrders();
         this.loadUsdtWithdrawals();
         this.loadNowPaymentsPayoutConfig();
-        this.loadMmkWithdrawals();
         if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
+      }
+      if (name === 'mmk-withdrawals') {
+        this.loadMmkWithdrawals();
       }
       if (name === 'support') this.loadSupportThreads();
       if (name === 'cards') {
@@ -482,6 +484,14 @@
 
       $('usdtWithdrawalFilter')?.addEventListener('change', () => this.loadUsdtWithdrawals());
       $('mmkWithdrawalFilter')?.addEventListener('change', () => this.loadMmkWithdrawals());
+      $('mmkWithdrawalRefreshBtn')?.addEventListener('click', () => this.loadMmkWithdrawals());
+      document.querySelectorAll('[data-nav-page]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          const page = btn.getAttribute('data-nav-page');
+          if (page) this.switchTab(page);
+        });
+      });
       document.querySelectorAll('[data-master-wallet-refresh]').forEach((btn) => {
         btn.addEventListener('click', () => this.checkMasterWalletBalance({ force: true }));
       });
@@ -1240,8 +1250,8 @@
       const s = String(status || '').toUpperCase();
       const cls = {
         VERIFIED: 'ok', ACTIVE: 'ok', APPROVED: 'ok', COMPLETED: 'ok',
-        SUBMITTED: 'warn', UNDER_REVIEW: 'warn', PENDING: 'warn', AWAITING_SCREENSHOT: 'warn',
-        SUSPENDED: 'warn',
+        SUBMITTED: 'warn', UNDER_REVIEW: 'warn', PENDING: 'warn', PROCESSING: 'warn',
+        AWAITING_SCREENSHOT: 'warn', SUSPENDED: 'warn',
         FROZEN: 'muted',
         REJECTED: 'err', FAILED: 'err', CANCELLED: 'err', EXPIRED: 'err', TERMINATED: 'err',
       }[s] || 'muted';
@@ -2870,22 +2880,43 @@
     async loadMmkWithdrawals() {
       const table = $('mmkWithdrawalsTable');
       if (!table) return;
-      const filter = ($('mmkWithdrawalFilter') && $('mmkWithdrawalFilter').value) || 'all';
+      const filter = ($('mmkWithdrawalFilter') && $('mmkWithdrawalFilter').value) || 'open';
       try {
         const qs = filter === 'all' ? '?status=all' : ('?status=' + encodeURIComponent(filter));
         const data = await this.api('GET', '/api/admin/withdrawals/mmk' + qs);
         const rows = Array.isArray(data.withdrawals) ? data.withdrawals : [];
+
+        // Summary always uses open queue counts when possible
+        let summaryRows = rows;
+        if (filter !== 'open') {
+          try {
+            const openData = await this.api('GET', '/api/admin/withdrawals/mmk?status=open');
+            summaryRows = Array.isArray(openData.withdrawals) ? openData.withdrawals : [];
+          } catch (_) {
+            summaryRows = rows.filter((w) => ['pending', 'processing'].includes(String(w.status || '').toLowerCase()));
+          }
+        }
+        const pendingCount = summaryRows.filter((w) => String(w.status || '').toLowerCase() === 'pending').length;
+        const processingCount = summaryRows.filter((w) => String(w.status || '').toLowerCase() === 'processing').length;
+        const openNet = summaryRows.reduce((sum, w) => sum + (Number(w.net_mmk) || 0), 0);
+        if ($('mmkWdPendingCount')) $('mmkWdPendingCount').textContent = String(pendingCount);
+        if ($('mmkWdProcessingCount')) $('mmkWdProcessingCount').textContent = String(processingCount);
+        if ($('mmkWdOpenNet')) $('mmkWdOpenNet').textContent = Math.round(openNet).toLocaleString() + ' MMK';
+        if ($('mmkWdShowingCount')) $('mmkWdShowingCount').textContent = String(rows.length);
+
         if (!rows.length) {
-          table.innerHTML = '<p class="hint">No MMK withdrawals found.</p>';
+          table.innerHTML = '<p class="hint">No MMK bank withdrawals for this filter.</p>';
           return;
         }
+
         table.innerHTML =
           '<table class="data-table"><thead><tr>' +
-            '<th>ID</th><th>User</th><th>Ref</th><th>Bank</th><th>Amount</th><th>Fee</th><th>Net</th><th>Status</th><th>Actions</th>' +
+            '<th>Requested</th><th>User</th><th>Ref</th><th>Bank payout details</th>' +
+            '<th>Amount</th><th>Fee</th><th>Net to send</th><th>Status</th><th>Actions</th>' +
           '</tr></thead><tbody>' +
           rows.map((w) => {
-            const pending = ['pending', 'processing'].indexOf(String(w.status || '').toLowerCase()) !== -1;
-            const bank = this.esc((w.bank_name || '') + ' · ' + (w.account_name || '') + ' · ' + (w.account_number || ''));
+            const status = String(w.status || '').toLowerCase();
+            const pending = status === 'pending' || status === 'processing';
             const proofUrl = w.proof_url || w.proof_path || '';
             const proofBtn = proofUrl
               ? ('<button type="button" class="btn btn-sm btn-secondary proof-thumb-btn" data-src="'
@@ -2893,21 +2924,42 @@
                 + '" data-type="' + (String(w.proof_mime_type || '').includes('pdf') ? 'pdf' : 'image')
                 + '">View proof</button>')
               : '';
+            const userBlock =
+              '<div class="mmk-wd-user-cell">' +
+                '<strong>' + this.esc(w.user_name || '—') + '</strong><br>' +
+                '<small>#' + w.user_id +
+                  (w.user_email ? ' · ' + this.esc(w.user_email) : '') +
+                  (w.user_phone ? ' · ' + this.esc(w.user_phone) : '') +
+                '</small>' +
+                (w.user_balance_mmk != null
+                  ? '<br><small>Wallet: ' + Math.round(Number(w.user_balance_mmk) || 0).toLocaleString() + ' MMK</small>'
+                  : '') +
+              '</div>';
+            const bankBlock =
+              '<div class="mmk-wd-bank-cell">' +
+                '<span class="bank-line"><strong>' + this.esc(w.bank_name || '—') + '</strong></span>' +
+                '<span class="bank-line">' + this.esc(w.account_name || '—') + '</span>' +
+                '<span class="bank-line"><code>' + this.esc(w.account_number || '—') + '</code></span>' +
+                (w.admin_note ? '<span class="bank-line"><small>Note: ' + this.esc(w.admin_note) + '</small></span>' : '') +
+              '</div>';
+            const actions = pending
+              ? ('<div class="mmk-wd-actions">' +
+                  '<button type="button" class="btn btn-sm btn-approve" data-action="complete-mmk-wd" data-id="' + w.id + '">Approve &amp; payout</button>' +
+                  '<button type="button" class="btn btn-sm btn-reject" data-action="reject-mmk-wd" data-id="' + w.id + '">Reject</button>' +
+                '</div>')
+              : (proofBtn || '<span class="hint">—</span>');
+
             return '<tr>' +
-              '<td>' + w.id + '</td>' +
-              '<td>' + this.esc(w.user_name || w.user_email || ('#' + w.user_id)) + '<br><small>#' + w.user_id + '</small></td>' +
-              '<td>' + this.esc(w.ref_code || '') + '</td>' +
-              '<td style="max-width:220px;word-break:break-all">' + bank + '</td>' +
+              '<td><small>' + this.esc(w.created_at || '—') + '</small></td>' +
+              '<td>' + userBlock + '</td>' +
+              '<td><code>' + this.esc(w.ref_code || '') + '</code></td>' +
+              '<td>' + bankBlock + '</td>' +
               '<td>' + Math.round(Number(w.amount_mmk || 0)).toLocaleString() + '</td>' +
               '<td>' + Math.round(Number(w.fee_mmk || 0)).toLocaleString() + '</td>' +
-              '<td>' + Math.round(Number(w.net_mmk || 0)).toLocaleString() + '</td>' +
+              '<td><strong>' + Math.round(Number(w.net_mmk || 0)).toLocaleString() + '</strong></td>' +
               '<td>' + this.statusBadge(w.status) + '</td>' +
-              '<td class="actions-cell">' +
-                (pending
-                  ? '<button type="button" class="btn btn-sm btn-approve" data-action="complete-mmk-wd" data-id="' + w.id + '">Complete</button>' +
-                    '<button type="button" class="btn btn-sm btn-reject" data-action="reject-mmk-wd" data-id="' + w.id + '">Reject</button>'
-                  : proofBtn) +
-              '</td></tr>';
+              '<td class="actions-cell">' + actions + '</td>' +
+            '</tr>';
           }).join('') +
           '</tbody></table>';
       } catch (err) {
