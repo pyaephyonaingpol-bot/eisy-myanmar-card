@@ -1571,11 +1571,9 @@ const Dashboard = {
       : [];
     // If pricing loaded with a non-live source (e.g. legacy env_fallback), show empty
     // rather than rendering stale BINs from KRIPICARD_ALLOWED_BINS.
-    const bins = !this.cardPricing
-      ? []
-      : (source === 'env_fallback' || source === 'env' || source === 'unavailable'
-        ? []
-        : fromApi);
+    // Live / empty-live sources always use the API array (may include 441357 etc.).
+    const nonLive = source === 'env_fallback' || source === 'env' || source === 'unavailable';
+    const bins = !this.cardPricing ? [] : (nonLive ? [] : fromApi);
     const defaultBin = String(
       this.cardPricing?.kripicard_default_bin || bins[0] || ''
     ).trim();
