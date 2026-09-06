@@ -3203,10 +3203,18 @@
     async loadUsers() {
       const table = $('usersTable');
       if (!table) return;
+      const countEl = $('usersTableCount');
 
       try {
         const data = await this.api('GET', '/api/admin/users');
         const users = Array.isArray(data.users) ? data.users : [];
+        const total = Number(data.total != null ? data.total : users.length);
+
+        if (countEl) {
+          countEl.textContent = users.length
+            ? ('Showing ' + users.length + ' of ' + total + ' user' + (total === 1 ? '' : 's'))
+            : '';
+        }
 
         if (!users.length) {
           table.innerHTML = '<p class="hint">No users found.</p>';
@@ -3250,6 +3258,7 @@
         });
 
       } catch (err) {
+        if (countEl) countEl.textContent = '';
         table.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
       }
     },

@@ -124,6 +124,82 @@ function ensureSupabaseUserWalletInBackground(userId, options = {}) {
   });
 }
 
+/**
+ * Upsert every Turso user into Supabase user_wallets.
+ * Fixes incomplete mirrors (e.g. only first 15 rows present while Turso has 19).
+ * Pages through Turso in batches; never relies on PostgREST default max-rows.
+ */
+async function backfillAllUserWallets({ pageSize = 100 } = {}) {
+  if (!isSupabaseEnabled()) {
+    return { ok: false, skipped: true, reason: 'supabase_disabled', synced: 0, created: 0, total: 0 };
+  }
+
+  const db = require('../db').getDb();
+  const size = Math.max(1, Math.min(500, Number(pageSize) || 100));
+  let offset = 0;
+  let synced = 0;
+  let created = 0;
+  let failed = 0;
+  let total = 0;
+
+  const countRow = await db.get('SELECT COUNT(*) AS c FROM users');
+  total = Number(countRow?.c || 0);
+
+  while (offset < total) {
+    const batch = await db.all(
+      `SELECT id FROM users ORDER BY id ASC LIMIT ? OFFSET ?`,
+      size,
+      offset
+    );
+    if (!batch.length) break;
+
+    for (const row of batch) {
+      try {
+        const result = await ensureSupabaseUserWallet(row.id, { syncIfExists: true });
+        if (result?.ensured) {
+          synced += 1;
+          if (result.created) created += 1;
+        } else {
+          failed += 1;
+        }
+      } catch (err) {
+        failed += 1;
+        console.warn(`[supabase] backfill user ${row.id}:`, err.message);
+      }
+    }
+
+    offset += batch.length;
+    if (batch.length < size) break;
+  }
+
+  return { ok: failed === 0, skipped: false, synced, created, failed, total };
+}
+
+let _backfillInFlight = null;
+
+function backfillAllUserWalletsInBackground(options = {}) {
+  if (!isSupabaseEnabled()) return;
+  if (_backfillInFlight) return _backfillInFlight;
+  _backfillInFlight = backfillAllUserWallets(options)
+    .then((result) => {
+      if (!result.skipped) {
+        console.info(
+          `[supabase] user_wallets backfill: synced=${result.synced}/${result.total}`
+          + ` created=${result.created} failed=${result.failed}`
+        );
+      }
+      return result;
+    })
+    .catch((err) => {
+      console.warn('[supabase] user_wallets backfill failed:', err.message);
+      return null;
+    })
+    .finally(() => {
+      _backfillInFlight = null;
+    });
+  return _backfillInFlight;
+}
+
 async function syncDeposit(deposit, user) {
   if (!isSupabaseEnabled() || !deposit) return null;
   const u = user || (deposit.user_id ? await User.findById(deposit.user_id) : null);
@@ -277,6 +353,8 @@ module.exports = {
   syncUserWalletById,
   ensureSupabaseUserWallet,
   ensureSupabaseUserWalletInBackground,
+  backfillAllUserWallets,
+  backfillAllUserWalletsInBackground,
   upsertUserWallet,
   syncDeposit,
   syncCardApplication,

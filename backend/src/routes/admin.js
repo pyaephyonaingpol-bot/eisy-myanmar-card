@@ -1329,11 +1329,31 @@ router.post('/balance/adjust', requirePermission('balance_adjust'), async (req, 
 router.get('/users', requirePermission('users'), async (_req, res) => {
   try {
     const db = getDb();
+    // Source of truth is Turso/LibSQL. Do not apply a low row cap — production
+    // previously appeared to show only ~15 users because the Supabase
+    // user_wallets mirror was incomplete (PostgREST/dashboard looked capped).
+    const totalRow = await db.get('SELECT COUNT(*) AS c FROM users');
+    const total = Number(totalRow?.c || 0);
     const users = await db.all(`
       SELECT id, email, name, phone, balance, balance_mmk, balance_usdt, email_verified, auth_status, created_at
-      FROM users ORDER BY created_at DESC LIMIT 200
+      FROM users
+      ORDER BY created_at DESC, id DESC
     `);
-    res.json({ users });
+
+    // Keep Supabase user_wallets in sync so Table Editor / mirror reads show everyone.
+    try {
+      const { backfillAllUserWalletsInBackground } = require('../services/supabaseSyncService');
+      backfillAllUserWalletsInBackground();
+    } catch (syncErr) {
+      console.warn('[admin/users] supabase backfill skipped:', syncErr.message);
+    }
+
+    res.json({
+      users,
+      total,
+      count: users.length,
+      truncated: users.length < total,
+    });
   } catch (err) {
     console.error('[admin/users]', err);
     res.status(500).json({ error: 'Internal server error' });
