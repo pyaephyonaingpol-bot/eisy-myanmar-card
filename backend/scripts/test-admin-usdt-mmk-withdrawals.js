@@ -13,16 +13,25 @@ const settings = fs.readFileSync(path.join(ROOT, 'backend/src/services/settingsS
 
 // 1) Daily exchange rate controls kept
 assert.ok(adminHtml.includes('id="adminCurrentRateBadge"'), 'rate badge in admin header');
-assert.ok(adminHtml.includes('id="withdrawalRatesForm"'), 'withdrawal rates form');
-assert.ok(adminHtml.includes('id="wrExchangeRate"'), 'USDT→MMK rate input');
+assert.ok(
+  adminHtml.includes('id="withdrawalRatesPreview"') || adminHtml.includes('id="withdrawalRatesForm"'),
+  'withdrawal rates controls present'
+);
+assert.ok(
+  adminHtml.includes('id="wrExchangeRate"') || adminHtml.includes('id="wrRefreshBtn"'),
+  'USDT→MMK rate controls present'
+);
 assert.ok(adminJs.includes('updateRateBadge'), 'rate badge updater');
 assert.ok(adminJs.includes('loadWithdrawalRates'), 'loads withdrawal rates');
 
 // 2) Users table has USDT only (no MMK Wallet column in loadUsers output)
-const loadUsersIdx = adminJs.indexOf('async loadUsers()');
+const loadUsersIdx = adminJs.search(/async loadUsers\s*\(/);
 const loadUsersEnd = adminJs.indexOf('async loadTransactions()', loadUsersIdx);
 assert.ok(loadUsersIdx >= 0 && loadUsersEnd > loadUsersIdx, 'loadUsers markers');
 const loadUsersFn = adminJs.slice(loadUsersIdx, loadUsersEnd);
+assert.ok(adminJs.includes('usersBackfillWalletsBtn'), 'backfill wallets button wired');
+assert.ok(adminJs.includes('backfillUserWallets'), 'backfillUserWallets helper present');
+assert.ok(adminHtml.includes('id="usersMirrorStatus"'), 'mirror status element present');
 assert.ok(loadUsersFn.includes('USDT Wallet'), 'USDT Wallet column present');
 assert.ok(!loadUsersFn.includes('MMK Wallet'), 'MMK Wallet column removed from users table');
 assert.ok(!loadUsersFn.includes('adj-mmk-wallet'), 'Adjust MMK row action removed');

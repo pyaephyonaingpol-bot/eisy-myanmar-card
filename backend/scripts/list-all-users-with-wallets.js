@@ -92,6 +92,33 @@ async function queryTurso() {
   return { source: 'turso', total, rows };
 }
 
+async function fetchAllRows(sb, table, columns) {
+  const pageSize = 1000;
+  const all = [];
+  let from = 0;
+  let exactCount = null;
+
+  for (;;) {
+    const to = from + pageSize - 1;
+    const { data, error, count } = await sb
+      .from(table)
+      .select(columns, { count: exactCount == null ? 'exact' : undefined })
+      .order('user_id', { ascending: true })
+      .range(from, to);
+
+    if (error) throw error;
+    if (exactCount == null && typeof count === 'number') exactCount = count;
+    const batch = data || [];
+    all.push(...batch);
+    if (batch.length < pageSize) break;
+    from += pageSize;
+    // Safety: stop if PostgREST max-rows repeats the same page.
+    if (all.length > 100000) break;
+  }
+
+  return { rows: all, count: exactCount ?? all.length };
+}
+
 async function querySupabase() {
   const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
   const rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
@@ -106,19 +133,30 @@ async function querySupabase() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: wallets, error: wErr, count } = await sb
-    .from('user_wallets')
-    .select('user_id, email, name, balance_usdt, balance_mmk, tron_deposit_address, tron_derivation_path, tron_derivation_index, updated_at', { count: 'exact' })
-    .order('user_id', { ascending: true });
-
-  if (wErr) {
+  let wallets;
+  let count;
+  try {
+    const result = await fetchAllRows(
+      sb,
+      'user_wallets',
+      'user_id, email, name, balance_usdt, balance_mmk, tron_deposit_address, tron_derivation_path, tron_derivation_index, updated_at'
+    );
+    wallets = result.rows;
+    count = result.count;
+  } catch (wErr) {
     console.error('[supabase] user_wallets error:', wErr.message);
     return null;
   }
 
   let hd = [];
-  const { data: hdData, error: hdErr } = await sb.from('user_tron_deposit_addresses').select('*');
-  if (!hdErr && hdData) hd = hdData;
+  try {
+    // HD address table may not exist on every project — ignore errors.
+    const hdResult = await fetchAllRows(sb, 'user_tron_deposit_addresses', '*');
+    hd = hdResult.rows;
+  } catch (_) {
+    const { data: hdData, error: hdErr } = await sb.from('user_tron_deposit_addresses').select('*');
+    if (!hdErr && hdData) hd = hdData;
+  }
 
   const rows = (wallets || []).map((w) => {
     const extra = hd.find((h) => String(h.user_id) === String(w.user_id));

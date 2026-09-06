@@ -48,22 +48,50 @@ function assignmentKey(raw) {
   return match ? match[1] : '';
 }
 
+/** Decode a Supabase JWT payload without verifying the signature (shape check only). */
+function decodeJwtPayload(token) {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length < 2) return null;
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function jwtRole(token) {
+  const payload = decodeJwtPayload(token);
+  return payload && typeof payload.role === 'string' ? payload.role : '';
+}
+
 function looksLikePublishableOrAnonKey(value) {
   const key = String(value || '').trim();
   if (!key || key.includes('...')) return false;
   if (/^sb_publishable_/i.test(key)) return true;
-  if (/^eyJ/.test(key) && key.length >= 80) return true;
+  // Never treat a service_role JWT as a browser/anon key (prevents public leaks).
+  if (/service_role/i.test(key) || jwtRole(key) === 'service_role') return false;
+  if (/^eyJ/.test(key) && key.length >= 80) {
+    const role = jwtRole(key);
+    // Accept classic anon JWTs; reject unknown/empty roles that might be secrets.
+    return !role || role === 'anon' || role === 'authenticated';
+  }
   // Legacy JWT anon keys are long; short placeholders are unusable.
-  return key.length >= 40 && !/^sb_secret_/i.test(key) && !/service_role/i.test(key);
+  return key.length >= 40 && !/^sb_secret_/i.test(key);
 }
 
 function looksLikeServiceRoleKey(value) {
   const key = String(value || '').trim();
   if (!key || key.includes('...')) return false;
   if (/^sb_secret_/i.test(key)) return true;
-  if (/service_role/i.test(key)) return true;
-  if (/^eyJ/.test(key) && key.length >= 80) return true;
-  return key.length >= 40;
+  if (/service_role/i.test(key) || jwtRole(key) === 'service_role') return true;
+  if (/^eyJ/.test(key) && key.length >= 80) {
+    const role = jwtRole(key);
+    // Prefer explicit role claim; do not assume every long JWT is service_role.
+    return role === 'service_role';
+  }
+  return false;
 }
 
 function isUsableSecret(value) {
@@ -260,6 +288,11 @@ function resetSupabaseClientForTests() {
   sanitizedLogged = false;
 }
 
+/** Inject a fake Supabase client for unit tests (avoids network). */
+function setSupabaseClientForTests(fakeClient) {
+  client = fakeClient;
+}
+
 module.exports = {
   getSupabase,
   isSupabaseEnabled,
@@ -268,9 +301,12 @@ module.exports = {
   getPublicSupabaseConfig,
   resolveSupabaseCredentials,
   resetSupabaseClientForTests,
+  setSupabaseClientForTests,
   // exposed for unit tests
   extractHttpsUrl,
   extractSecretValue,
   looksLikePublishableOrAnonKey,
   looksLikeServiceRoleKey,
+  decodeJwtPayload,
+  jwtRole,
 };
