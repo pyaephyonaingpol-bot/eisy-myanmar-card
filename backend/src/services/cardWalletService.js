@@ -16,6 +16,7 @@ const {
   debitUsdtForCardPurchase,
   finalizeCardPurchaseWallet,
 } = require('./supabaseWalletLedgerService');
+const { fetchAvailableBins } = require('../../../lib/kripicard');
 
 const CARD_REQUEST_PENDING_MESSAGE =
   'Card request submitted. An admin will process your card shortly (usually within 15-30 mins).';
@@ -24,17 +25,15 @@ const CARD_ISSUED_MESSAGE =
   'Card issued successfully. Your virtual card is ready to use.';
 
 /**
- * Built-in Kripicard BIN catalog shown in the Apply Card dropdown when
- * KRIPICARD_ALLOWED_BINS is unset. Override via env for account-specific BINs.
+ * Live Kripicard BIN options for the Apply Card dropdown.
+ * Prefer the provider /api/external/cards/bins catalog (active only).
+ * Optional KRIPICARD_ALLOWED_BINS intersects / overrides when the API is down.
  */
-const DEFAULT_KRIPICARD_BINS = [
-  '539502',
-  '525847',
-  '441357',
-  '493875',
-  '428803',
-  '493728',
-];
+const BIN_CACHE_TTL_MS = Number(process.env.KRIPICARD_BINS_CACHE_MS) || 60_000;
+let binOptionsCache = {
+  expiresAt: 0,
+  value: null,
+};
 
 function parseBinList(raw) {
   return String(raw || '')
@@ -55,50 +54,112 @@ function uniqueBins(list) {
   return out;
 }
 
-function resolveKripicardBin(requestedBin) {
+function resetKripicardBinCacheForTests() {
+  binOptionsCache = { expiresAt: 0, value: null };
+}
+
+function envBinOptions() {
+  const envDefault = String(process.env.KRIPICARD_DEFAULT_BIN || '').trim();
+  const envAllowed = parseBinList(process.env.KRIPICARD_ALLOWED_BINS);
+  const bins = uniqueBins(envAllowed);
+  const defaultBin = envDefault && (!bins.length || bins.includes(envDefault))
+    ? envDefault
+    : (bins[0] || envDefault || null);
+  const withDefault = uniqueBins(defaultBin ? [defaultBin, ...bins] : bins);
+  return {
+    default_bin: defaultBin || withDefault[0] || null,
+    bins: withDefault,
+    source: bins.length ? 'env' : 'env_empty',
+    details: [],
+  };
+}
+
+/**
+ * Resolve BIN options from Kripicard's live API (active BINs only).
+ * Falls back to KRIPICARD_ALLOWED_BINS when the API is unavailable.
+ * Never returns the old hardcoded catalog (539502 / 525847 / …).
+ */
+async function getKripicardBinOptions({ forceRefresh = false } = {}) {
+  const now = Date.now();
+  if (!forceRefresh && binOptionsCache.value && binOptionsCache.expiresAt > now) {
+    return binOptionsCache.value;
+  }
+
+  const env = envBinOptions();
+  let liveBins = [];
+  let details = [];
+  let source = 'kripicard_api';
+  let apiError = null;
+
+  try {
+    const live = await fetchAvailableBins();
+    liveBins = uniqueBins(live.bins || []);
+    details = Array.isArray(live.details) ? live.details : [];
+  } catch (err) {
+    apiError = err;
+    console.warn(
+      '[cardWallet] Kripicard BIN fetch failed:',
+      err && err.code ? `${err.code}: ${err.message}` : err.message
+    );
+  }
+
+  let bins = liveBins;
+  if (env.bins.length && bins.length) {
+    const allow = new Set(env.bins);
+    bins = bins.filter((b) => allow.has(b));
+    source = 'kripicard_api+env';
+  } else if (!bins.length && env.bins.length) {
+    bins = env.bins;
+    source = 'env_fallback';
+  } else if (!bins.length) {
+    source = apiError ? 'unavailable' : 'kripicard_api_empty';
+  }
+
+  const envDefault = String(process.env.KRIPICARD_DEFAULT_BIN || '').trim();
+  const defaultBin = envDefault && bins.includes(envDefault)
+    ? envDefault
+    : (bins[0] || null);
+
+  const value = {
+    default_bin: defaultBin,
+    bins: uniqueBins(defaultBin ? [defaultBin, ...bins] : bins),
+    source,
+    details,
+    error: apiError
+      ? { code: apiError.code || 'KRIPICARD_BINS_FETCH_FAILED', message: apiError.message }
+      : null,
+  };
+
+  binOptionsCache = {
+    expiresAt: now + BIN_CACHE_TTL_MS,
+    value,
+  };
+  return value;
+}
+
+async function resolveKripicardBin(requestedBin) {
   const requested = String(requestedBin || '').trim();
-  const { default_bin: defaultBin, bins: allowed } = getKripicardBinOptions();
+  const { default_bin: defaultBin, bins: allowed, source } = await getKripicardBinOptions();
 
   const bin = requested || defaultBin;
   if (!bin) {
     const err = new Error(
-      'Card BIN is required. Set KRIPICARD_DEFAULT_BIN / KRIPICARD_ALLOWED_BINS or pass bin in the request.'
+      'Card BIN is required. No active Kripicard BINs are available right now.'
     );
     err.code = 'INVALID_BIN';
     throw err;
   }
 
-  // When an explicit allow-list is configured, enforce it.
-  // Built-in catalog (no env override) still accepts any requested catalog BIN.
+  // Enforce live (or env-fallback) allow-list whenever we have one.
   if (allowed.length && !allowed.includes(String(bin))) {
-    const err = new Error(`BIN ${bin} is not allowed. Allowed: ${allowed.join(', ')}`);
+    const err = new Error(
+      `BIN ${bin} is not available (${source}). Available: ${allowed.join(', ') || 'none'}`
+    );
     err.code = 'INVALID_BIN';
     throw err;
   }
 
   return String(bin);
-}
-
-function getKripicardBinOptions() {
-  const envDefault = String(process.env.KRIPICARD_DEFAULT_BIN || '').trim();
-  const envAllowed = parseBinList(process.env.KRIPICARD_ALLOWED_BINS);
-  const bins = uniqueBins(
-    envAllowed.length ? envAllowed : [...DEFAULT_KRIPICARD_BINS]
-  );
-  const defaultBin = envDefault && bins.includes(envDefault)
-    ? envDefault
-    : (envDefault || bins[0] || null);
-
-  // If env default is outside allow-list, still surface it first for operators.
-  const withDefault = uniqueBins(
-    defaultBin ? [defaultBin, ...bins] : bins
-  );
-
-  return {
-    default_bin: defaultBin || withDefault[0] || null,
-    bins: withDefault,
-    source: envAllowed.length ? 'env' : 'default_catalog',
-  };
 }
 
 async function purchaseCardFromUsdtWallet(userId, {
@@ -116,7 +177,7 @@ async function purchaseCardFromUsdtWallet(userId, {
     throw new Error('You already have a pending card request');
   }
 
-  const resolvedBin = resolveKripicardBin(bin);
+  const resolvedBin = await resolveKripicardBin(bin);
   const nameOnCard = String(cardHolderName || user.name || '').trim();
   if (nameOnCard.length < 2) {
     const err = new Error('Cardholder name must be at least 2 characters');
@@ -442,6 +503,7 @@ module.exports = {
   reloadCardFromUsdtWallet,
   resolveKripicardBin,
   getKripicardBinOptions,
-  DEFAULT_KRIPICARD_BINS,
+  resetKripicardBinCacheForTests,
+  envBinOptions,
   CARD_ISSUED_MESSAGE,
 };
