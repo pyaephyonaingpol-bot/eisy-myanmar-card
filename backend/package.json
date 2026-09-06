@@ -59,6 +59,7 @@
     "test:tron-hd-addresses": "node scripts/test-tron-hd-addresses.js",
     "test:tron-wallet": "node scripts/test-tron-wallet-service.js",
     "test:tron-sweep": "node scripts/test-tron-sweep.js",
+    "test:admin-sweep-button": "node scripts/test-admin-sweep-button.js",
     "sweep:tron-deposits": "node scripts/sweep-tron-deposits.js",
     "test:withdraw-energy": "node scripts/test-withdraw-energy.js",
     "test:tron-transfer-abi": "node scripts/test-tron-transfer-abi.js",

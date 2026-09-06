@@ -60,7 +60,9 @@ npm run sweep:tron-deposits -- --all
 Service: `backend/src/services/tronSweepService.js`  
 CLI: `backend/scripts/sweep-tron-deposits.js`
 
-Env: `TRON_SWEEP_GAS_TRX` (default `1.1`), `TRON_SWEEP_GAS_WAIT_MS`, `TRON_SWEEP_MIN_USDT`.
+Env: `TRON_SWEEP_GAS_TRX` (default `1.1`), `TRON_SWEEP_GAS_WAIT_MS`, `TRON_SWEEP_MIN_USDT` (default `25`).
+
+Admin UI: Overview → Master wallet → **Sweep** (also on the Deposits master-wallet panel). Calls `POST /api/admin/sweep-deposits` and only moves balances at or above the min USDT threshold.
 
 ## Env
 

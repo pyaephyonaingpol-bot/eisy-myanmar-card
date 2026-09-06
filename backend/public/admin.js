@@ -459,6 +459,12 @@
       document.querySelectorAll('[data-master-wallet-refresh]').forEach((btn) => {
         btn.addEventListener('click', () => this.checkMasterWalletBalance({ force: true }));
       });
+      document.querySelectorAll('[data-tron-deposit-sweep]').forEach((btn) => {
+        btn.addEventListener('click', () => this.runTronDepositSweep({ triggerBtn: btn }));
+      });
+      if (this.hasPermission('master_wallet')) {
+        this.loadTronSweepConfig().catch(() => {});
+      }
 
       const usdtWdTable = $('usdtWithdrawalsTable');
       if (usdtWdTable) {
@@ -2477,6 +2483,119 @@
       })();
 
       return this._masterWalletBalanceInFlight;
+    },
+
+    setTronSweepStatus(message, { error = false } = {}) {
+      const targets = [$('masterWalletSweepStatus'), $('masterWalletSweepStatusPanel')].filter(Boolean);
+      targets.forEach((el) => {
+        el.textContent = message || '';
+        el.style.color = error ? '#f87171' : '';
+      });
+    },
+
+    async loadTronSweepConfig() {
+      if (!this.hasPermission('master_wallet')) return null;
+      try {
+        const data = await this.api('GET', '/api/admin/sweep-deposits');
+        const minUsdt = Number(data.min_usdt);
+        if (Number.isFinite(minUsdt)) {
+          this._tronSweepMinUsdt = minUsdt;
+          const label = $('masterWalletSweepMinLabel');
+          if (label) label.textContent = String(minUsdt);
+        }
+        return data;
+      } catch (err) {
+        console.warn('[admin] sweep config', err.message);
+        return null;
+      }
+    },
+
+    formatTronSweepSummary(data) {
+      const sweep = data.sweep || data.summary || data;
+      const minUsdt = Number(data.min_usdt ?? sweep.minUsdt ?? this._tronSweepMinUsdt ?? 25);
+      const checked = Number(sweep.checked || 0);
+      const swept = Number(sweep.swept || 0);
+      const skipped = Number(sweep.skipped || 0);
+      const failed = Number(sweep.failed || 0);
+      const dryRun = Boolean(data.dry_run ?? sweep.dryRun);
+      const prefix = dryRun ? 'Dry-run' : 'Sweep';
+      return (
+        prefix + ' finished — checked ' + checked
+        + ', swept ' + swept
+        + ', skipped ' + skipped
+        + ', failed ' + failed
+        + ' (min ' + minUsdt + ' USDT)'
+      );
+    },
+
+    async runTronDepositSweep(opts = {}) {
+      if (!this.hasPermission('master_wallet')) {
+        this.showAdminToast('Master wallet permission required', 'error');
+        return;
+      }
+      if (this._tronSweepInFlight) {
+        this.showAdminToast('A deposit sweep is already running', 'error');
+        return;
+      }
+
+      let config = null;
+      try {
+        config = await this.loadTronSweepConfig();
+      } catch (_) {
+        config = null;
+      }
+      const minUsdt = Number(
+        config?.min_usdt ?? this._tronSweepMinUsdt ?? 25
+      );
+      const addressCount = Number(config?.count ?? config?.addresses?.length ?? 0);
+      const inFlight = Boolean(config?.in_flight);
+
+      if (inFlight) {
+        this.showAdminToast('A deposit sweep is already in progress on the server', 'error');
+        return;
+      }
+
+      const confirmMsg = [
+        'Run a LIVE USDT sweep from HD deposit addresses → master wallet?',
+        '',
+        'Only addresses with at least ' + minUsdt + ' USDT will be swept.',
+        addressCount ? ('Known custodial addresses: ' + addressCount) : '',
+        '',
+        'This broadcasts on-chain TRX gas top-ups and USDT transfers.',
+      ].filter(Boolean).join('\n');
+
+      if (!window.confirm(confirmMsg)) return;
+
+      const buttons = Array.from(document.querySelectorAll('[data-tron-deposit-sweep]'));
+      const prevLabels = buttons.map((b) => b.textContent);
+      buttons.forEach((b) => {
+        b.disabled = true;
+        b.textContent = 'Sweeping…';
+      });
+      this.setTronSweepStatus('Sweep in progress (min ' + minUsdt + ' USDT)…');
+      this._tronSweepInFlight = true;
+
+      try {
+        const data = await this.api('POST', '/api/admin/sweep-deposits', {
+          dry_run: false,
+        });
+        const summaryText = this.formatTronSweepSummary(data);
+        this.setTronSweepStatus(summaryText, { error: !data.success && Number(data.sweep?.failed || 0) > 0 });
+        this.showAdminToast(summaryText, data.success === false ? 'error' : 'ok');
+        await this.checkMasterWalletBalance({ force: true });
+        return data;
+      } catch (err) {
+        const msg = err.message || 'Sweep failed';
+        this.setTronSweepStatus(msg, { error: true });
+        this.showAdminToast(msg, 'error');
+        throw err;
+      } finally {
+        this._tronSweepInFlight = false;
+        buttons.forEach((b, i) => {
+          b.disabled = false;
+          b.textContent = prevLabels[i] || 'Sweep';
+        });
+      }
     },
 
     async loadNowPaymentsPayoutConfig() {

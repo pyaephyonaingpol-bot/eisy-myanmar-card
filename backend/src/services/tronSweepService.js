@@ -39,10 +39,10 @@ function getSweepGasTrx() {
   return Number.isFinite(n) && n > 0 ? n : 1.1;
 }
 
-/** Skip USDT sweep when deposit balance is below this (USDT). */
+/** Skip USDT sweep when deposit balance is below this (USDT). Default 25. */
 function getMinSweepUsdt() {
-  const n = Number(process.env.TRON_SWEEP_MIN_USDT || 0.01);
-  return Number.isFinite(n) && n >= 0 ? n : 0.01;
+  const n = Number(process.env.TRON_SWEEP_MIN_USDT || 25);
+  return Number.isFinite(n) && n >= 0 ? n : 25;
 }
 
 /** Wait after TRX top-up before broadcasting USDT transfer (ms). */
