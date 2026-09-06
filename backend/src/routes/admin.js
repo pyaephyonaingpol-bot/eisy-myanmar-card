@@ -1770,6 +1770,12 @@ const {
   getMinSweepUsdt,
   isSweepInFlight,
 } = require('../services/tronSweepService');
+const {
+  resyncHdDepositAddresses,
+} = require('../services/tronDepositAddressService');
+const {
+  isHdEnabled: isTronHdEnabled,
+} = require('../services/tronHdWalletService');
 
 /** Non-secret NOWPayments payout config readiness (for Vercel env debugging). */
 router.get('/nowpayments/payout-config', requirePermission('withdrawals'), async (_req, res) => {
@@ -1946,6 +1952,133 @@ router.get('/sweep-deposits', requirePermission('master_wallet'), async (req, re
     res.status(500).json({
       success: false,
       error: err.message || 'Failed to list sweepable addresses',
+    });
+  }
+});
+
+/**
+ * POST /api/admin/tron/resync-hd-addresses
+ * Re-derive custodial TRC20 deposit addresses from the production HD seed and
+ * overwrite mismatched Turso rows (also syncs Supabase when configured).
+ *
+ * Body: { user_ids?: number[], user_id?: number, dry_run?: boolean, sync_supabase?: boolean, limit?: number }
+ */
+router.post('/tron/resync-hd-addresses', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    if (!isTronHdEnabled()) {
+      return res.status(503).json({
+        success: false,
+        error: 'TRON HD is not configured on this deployment',
+        code: 'TRON_HD_NOT_CONFIGURED',
+      });
+    }
+
+    const body = req.body || {};
+    const dryRun = Boolean(body.dry_run ?? body.dryRun);
+    const syncSupabase = body.sync_supabase != null || body.syncSupabase != null
+      ? Boolean(body.sync_supabase ?? body.syncSupabase)
+      : true;
+    const limit = body.limit != null ? Number(body.limit) : 500;
+
+    let userIds = null;
+    if (Array.isArray(body.user_ids) || Array.isArray(body.userIds)) {
+      userIds = body.user_ids || body.userIds;
+    } else if (body.user_id != null || body.userId != null) {
+      userIds = [body.user_id ?? body.userId];
+    }
+
+    const summary = await resyncHdDepositAddresses({
+      userIds,
+      dryRun,
+      syncSupabase,
+      limit,
+    });
+
+    TransactionLog.create({
+      userId: req.user?.id || null,
+      type: 'other',
+      direction: 'neutral',
+      description: dryRun
+        ? `Admin dry-run TRON HD address resync (${summary.checked} users)`
+        : `Admin TRON HD address resync (${summary.updated} updated / ${summary.checked} checked)`,
+      createdBy: 'admin',
+      metadata: {
+        action: 'resync_hd_addresses',
+        dry_run: dryRun,
+        sync_supabase: syncSupabase,
+        checked: summary.checked,
+        updated: summary.updated,
+        unchanged: summary.unchanged,
+        failed: summary.failed,
+        user_ids: userIds,
+      },
+    }).catch((err) => {
+      console.warn('[admin/tron/resync-hd-addresses] audit log skipped:', err.message);
+    });
+
+    const status = summary.failed > 0 ? 207 : 200;
+    res.status(status).json({
+      success: summary.ok,
+      message: dryRun
+        ? 'Dry-run complete — no deposit addresses were rewritten'
+        : 'TRON HD deposit addresses resynced from production seed',
+      resync: summary,
+    });
+  } catch (err) {
+    console.error('[admin/tron/resync-hd-addresses]', err.code || '', err.message);
+    const status = err.code === 'TRON_HD_NOT_CONFIGURED' ? 503 : 500;
+    res.status(status).json({
+      success: false,
+      error: err.message || 'HD address resync failed',
+      code: err.code || 'TRON_HD_RESYNC_FAILED',
+    });
+  }
+});
+
+/**
+ * GET /api/admin/tron/resync-hd-addresses
+ * Preview stored vs seed-derived custodial addresses (no writes).
+ * Query: ?user_ids=15,16,17 or omit for all custodial rows.
+ */
+router.get('/tron/resync-hd-addresses', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    if (!isTronHdEnabled()) {
+      return res.status(503).json({
+        success: false,
+        error: 'TRON HD is not configured on this deployment',
+        code: 'TRON_HD_NOT_CONFIGURED',
+      });
+    }
+
+    let userIds = null;
+    if (req.query.user_ids || req.query.userIds) {
+      userIds = String(req.query.user_ids || req.query.userIds)
+        .split(',')
+        .map((v) => Number(String(v).trim()))
+        .filter((id) => Number.isInteger(id) && id > 0);
+    } else if (req.query.user_id || req.query.userId) {
+      userIds = [Number(req.query.user_id || req.query.userId)];
+    }
+
+    const limit = req.query.limit != null ? Number(req.query.limit) : 500;
+    const summary = await resyncHdDepositAddresses({
+      userIds,
+      dryRun: true,
+      syncSupabase: false,
+      limit,
+    });
+
+    res.json({
+      success: true,
+      preview: true,
+      resync: summary,
+    });
+  } catch (err) {
+    console.error('[admin/tron/resync-hd-addresses GET]', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to preview HD address resync',
+      code: err.code || 'TRON_HD_RESYNC_FAILED',
     });
   }
 });

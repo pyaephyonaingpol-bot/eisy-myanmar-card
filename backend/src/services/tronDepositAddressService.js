@@ -267,8 +267,112 @@ async function resolveUserTrc20DepositAddress(userId, sharedGatewayFn) {
   return { address: shared, source: 'shared', index: null, path: null };
 }
 
+/**
+ * Re-derive custodial TRC20 deposit addresses from the production HD seed and
+ * overwrite mismatched local rows (optionally syncing Supabase mirrors).
+ *
+ * @param {{ userIds?: number[], dryRun?: boolean, syncSupabase?: boolean, limit?: number }} opts
+ */
+async function resyncHdDepositAddresses({
+  userIds = null,
+  dryRun = false,
+  syncSupabase = true,
+  limit = 500,
+} = {}) {
+  if (!isHdEnabled()) {
+    const err = new Error('TRON HD is not configured — cannot resync deposit addresses');
+    err.code = 'TRON_HD_NOT_CONFIGURED';
+    throw err;
+  }
+
+  let ids = Array.isArray(userIds)
+    ? userIds.map((v) => Number(v)).filter((id) => Number.isInteger(id) && id > 0)
+    : null;
+
+  if (!ids || ids.length === 0) {
+    const { getDb } = require('../db');
+    const rows = await getDb().all(`
+      SELECT DISTINCT user_id
+      FROM user_usdt_wallet_addresses
+      WHERE network = 'TRC20' AND address_type = 'custodial'
+      ORDER BY user_id ASC
+      LIMIT ?
+    `, Math.min(Math.max(Number(limit) || 500, 1), 5000));
+    ids = (rows || []).map((r) => Number(r.user_id)).filter((id) => Number.isInteger(id) && id > 0);
+  }
+
+  const results = [];
+  let updated = 0;
+  let unchanged = 0;
+  let failed = 0;
+
+  for (const userId of ids) {
+    try {
+      const derived = getPublicDepositAddressForUser(userId);
+      const existing = await UserUsdtWalletAddress.findCustodial(userId, 'TRC20');
+      const previousAddress = existing?.address || null;
+      const matches = Boolean(
+        previousAddress
+        && previousAddress === derived.address
+        && existing?.derivation_index != null
+      );
+
+      if (dryRun) {
+        results.push({
+          ok: true,
+          dry_run: true,
+          user_id: userId,
+          previous_address: previousAddress,
+          address: derived.address,
+          derivation_index: derived.index,
+          derivation_path: derived.path,
+          changed: !matches,
+        });
+        if (matches) unchanged += 1;
+        else updated += 1;
+        continue;
+      }
+
+      const assigned = await ensureUserTronDepositAddress(userId, { syncSupabase });
+      const changed = !matches;
+      if (changed) updated += 1;
+      else unchanged += 1;
+      results.push({
+        ok: true,
+        dry_run: false,
+        user_id: userId,
+        previous_address: previousAddress,
+        address: assigned.address,
+        derivation_index: assigned.index,
+        derivation_path: assigned.path,
+        changed,
+        created: Boolean(assigned.created),
+      });
+    } catch (err) {
+      failed += 1;
+      results.push({
+        ok: false,
+        user_id: userId,
+        error: err.message || 'resync failed',
+        code: err.code || 'TRON_HD_RESYNC_FAILED',
+      });
+    }
+  }
+
+  return {
+    ok: failed === 0,
+    dry_run: Boolean(dryRun),
+    checked: ids.length,
+    updated,
+    unchanged,
+    failed,
+    results,
+  };
+}
+
 module.exports = {
   ensureUserTronDepositAddress,
   resolveUserTrc20DepositAddress,
   syncTronDepositAddressToSupabase,
+  resyncHdDepositAddresses,
 };

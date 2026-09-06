@@ -7,6 +7,7 @@
  *   node scripts/backfill-supabase-tron-hd-addresses.js
  *   node scripts/backfill-supabase-tron-hd-addresses.js --dry-run
  *   node scripts/backfill-supabase-tron-hd-addresses.js --skip-local
+ *   node scripts/backfill-supabase-tron-hd-addresses.js --users=15,16,17 --skip-local
  */
 'use strict';
 
@@ -23,9 +24,28 @@ const {
 const { UserUsdtWalletAddress } = require('../src/models/UserUsdtWalletAddress');
 const { initDb, getDb, closeDb } = require('../src/db');
 
+function parseUsersArg(argv) {
+  const eq = argv.find((a) => a.startsWith('--users='));
+  if (eq) {
+    return eq.slice('--users='.length)
+      .split(',')
+      .map((v) => Number(String(v).trim()))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  }
+  const idx = argv.indexOf('--users');
+  if (idx >= 0 && argv[idx + 1]) {
+    return String(argv[idx + 1])
+      .split(',')
+      .map((v) => Number(String(v).trim()))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  }
+  return null;
+}
+
 const opts = {
   dryRun: process.argv.includes('--dry-run') || process.argv.includes('-n'),
   skipLocal: process.argv.includes('--skip-local'),
+  users: parseUsersArg(process.argv),
 };
 
 function resolveSupabase() {
@@ -181,9 +201,15 @@ async function main() {
   const sb = createClient(url, key, { auth: { persistSession: false } });
   console.log(`[backfill-hd] supabase=${url} keyLen=${key.length}`);
 
-  const localIds = await loadLocalUserIds();
-  const remoteIds = await loadSupabaseUserIds(sb);
-  const userIds = [...new Set([...localIds, ...remoteIds])].sort((a, b) => a - b);
+  let userIds;
+  if (opts.users && opts.users.length > 0) {
+    userIds = [...new Set(opts.users)].sort((a, b) => a - b);
+    console.log(`[backfill-hd] filtering to --users=${userIds.join(',')}`);
+  } else {
+    const localIds = await loadLocalUserIds();
+    const remoteIds = await loadSupabaseUserIds(sb);
+    userIds = [...new Set([...localIds, ...remoteIds])].sort((a, b) => a - b);
+  }
   console.log(`[backfill-hd] users=${userIds.length} dryRun=${opts.dryRun}`);
   console.log(`[backfill-hd] ids=${userIds.join(',')}`);
 
