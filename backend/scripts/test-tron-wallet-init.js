@@ -79,8 +79,16 @@ async function main() {
 
   if (!report.env.MASTER_PRIVATE_KEY) {
     console.error('\nFAIL: MASTER_PRIVATE_KEY is not set in this process environment.');
-    console.error('Vercel Production secrets are not injected into Cloud Agents by default.');
-    console.error('After deploy, verify with: curl -sS https://eisymyanmar.com/health/tron');
+    if (process.env.VERCEL === '1') {
+      console.error(
+        `Vercel ${process.env.VERCEL_ENV || 'build'} is missing MASTER_PRIVATE_KEY `
+        + '(and aliases). Set it under Project → Settings → Environment Variables '
+        + 'for Production and Preview, then redeploy.'
+      );
+    } else {
+      console.error('Vercel Production secrets are not injected into Cloud Agents by default.');
+      console.error('After deploy, verify with: curl -sS https://eisymyanmar.com/health/tron');
+    }
     process.exit(2);
   }
 
