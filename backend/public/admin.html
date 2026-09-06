@@ -730,15 +730,6 @@
           <button type="button" id="usersBackfillWalletsBtn" class="btn btn-sm btn-secondary">Sync Supabase wallet mirrors</button>
         </p>
         <div id="usersTable" class="data-table-wrap"><p class="hint">Loading users…</p></div>
-        <form id="balanceAdjustUsdtForm" class="form" style="margin-top:1rem">
-          <h3 style="margin:0 0 0.75rem">Manual USDT Wallet Adjustment</h3>
-          <div class="field-row">
-            <div class="field"><label for="adjUsdtUserId">User ID</label><input id="adjUsdtUserId" type="number" required /></div>
-            <div class="field"><label for="adjAmountUsdt">Amount USDT (+/-)</label><input id="adjAmountUsdt" type="number" step="0.01" required placeholder="10.00" /></div>
-          </div>
-          <div class="field"><label for="adjUsdtReason">Reason / Note</label><input id="adjUsdtReason" placeholder="Manual USDT top-up correction" required /></div>
-          <button type="submit" class="btn btn-primary">Adjust USDT Wallet</button>
-        </form>
         <details style="margin-top:1rem">
           <summary class="hint">Legacy wallet adjustments (deprecated)</summary>
           <form id="balanceAdjustForm" class="form" style="margin-top:0.75rem">
@@ -757,8 +748,8 @@
             </div>
             <button type="submit" class="btn btn-secondary">Adjust USD Wallet</button>
           </form>
+          <pre class="output" id="balanceAdjustLegacyOut"></pre>
         </details>
-        <pre class="output" id="balanceAdjustOut"></pre>
       </section>
 
       <section id="tabTransactions" class="panel app-page" data-page="transactions">
@@ -1065,6 +1056,27 @@
         <p id="kycDocumentViewerPlaceholderText">No document image attached</p>
       </div>
       <p id="kycDocumentViewerCaption" class="proof-lightbox-caption"></p>
+    </div>
+  </div>
+
+  <div id="balanceAdjustModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="balanceAdjustModalTitle" aria-modal="true">
+    <div class="proof-lightbox-backdrop balance-adjust-modal-backdrop"></div>
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner admin-form-modal-inner" style="max-width:min(480px,100%);width:96vw">
+      <button type="button" id="balanceAdjustModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+      <h3 id="balanceAdjustModalTitle" class="kyc-doc-viewer-title">Adjust USDT Wallet</h3>
+      <p id="balanceAdjustModalMeta" class="hint" style="margin-bottom:1rem;text-align:left"></p>
+      <form id="balanceAdjustUsdtForm" class="form" style="width:100%;text-align:left">
+        <div class="field-row">
+          <div class="field"><label for="adjUsdtUserId">User ID</label><input id="adjUsdtUserId" type="number" required /></div>
+          <div class="field"><label for="adjAmountUsdt">Amount USDT (+/-)</label><input id="adjAmountUsdt" type="number" step="0.01" required placeholder="10.00" /></div>
+        </div>
+        <div class="field"><label for="adjUsdtReason">Reason / Note</label><input id="adjUsdtReason" placeholder="Manual USDT top-up correction" required /></div>
+        <div class="deposit-receipt-actions" style="margin-top:0.75rem">
+          <button type="submit" class="btn btn-primary">Adjust USDT Wallet</button>
+          <button type="button" id="balanceAdjustModalCancel" class="btn btn-secondary">Cancel</button>
+        </div>
+      </form>
+      <pre class="output" id="balanceAdjustOut" style="width:100%;margin-top:0.85rem;text-align:left"></pre>
     </div>
   </div>
 
