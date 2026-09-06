@@ -832,6 +832,13 @@
           <div class="field"><label for="regPhone">Phone (optional)</label><input id="regPhone" name="phone" placeholder="+959..." /></div>
           <div class="field"><label for="regPin">6-digit Security PIN</label><input id="regPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="new-password" /></div>
           <p id="regAuthError" class="auth-inline-error hidden"></p>
+
+          <div class="field field-checkbox">
+            <label class="checkbox-label" for="regTermsAccepted">
+              <input type="checkbox" id="regTermsAccepted" name="terms_accepted" value="1" required />
+              <span>I agree to the <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms and Conditions</a></span>
+            </label>
+          </div>
           <button type="submit" id="registerSendOtp" class="btn btn-primary">Send Registration OTP</button>
         </form>
         <p class="hint">Use a <strong>new email</strong> (not <code>demo@eisy.myanmar</code> — that account exists; use Login tab).</p>
@@ -1526,6 +1533,6 @@
   <script src="/src/components/index.js?v=20260817m2"></script>
   <script src="/nav.js?v=20260816kb2"></script>
   <script src="/viewport.js?v=20260821scroll"></script>
-  <script src="/dashboard.js?v=20260906binFallbackUsActive"></script>
+  <script src="/dashboard.js?v=m20260906termsAccept"></script>
 </body>
 </html>

@@ -228,9 +228,10 @@ const Auth = {
     return this.api('POST', '/api/auth/register/send-otp', { email });
   },
 
-  async completeRegister({ email, otp, name, phone, pin }) {
+  async completeRegister({ email, otp, name, phone, pin, termsAccepted }) {
     const data = await this.api('POST', '/api/auth/register/complete', {
       email, otp, name, phone, pin, confirm_pin: pin,
+      terms_accepted: Boolean(termsAccepted),
     });
     const user = {
       ...data.user,

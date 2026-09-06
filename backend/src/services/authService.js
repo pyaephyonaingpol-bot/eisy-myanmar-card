@@ -18,6 +18,9 @@ const {
 } = require('./cryptoService');
 
 const OTP_EXPIRY_MINUTES = parseInt(process.env.OTP_EXPIRY_MINUTES || '10', 10);
+
+/** Current Terms & Conditions document version stored on accept. */
+const TERMS_VERSION = process.env.TERMS_VERSION || '1.0';
 const SESSION_EXPIRY_DAYS = parseInt(process.env.SESSION_EXPIRY_DAYS || '30', 10);
 
 function otpExpiresAt() {
@@ -107,11 +110,26 @@ async function sendRegistrationOtp(email, ipAddress) {
   };
 }
 
-async function completeRegistration({ email, otp, name, phone, pin, ipAddress, deviceName, devicePlatform }) {
+
+function isTermsAcceptedFlag(value) {
+  if (value === true || value === 1 || value === '1') return true;
+  if (typeof value === 'string' && ['true', 'yes', 'on', 'accepted'].includes(value.trim().toLowerCase())) {
+    return true;
+  }
+  return false;
+}
+
+async function completeRegistration({ email, otp, name, phone, pin, ipAddress, deviceName, devicePlatform, termsAccepted}) {
   const normalized = normalizeEmail(email);
   if (!validatePinFormat(pin)) {
     throw new Error('PIN must be exactly 6 digits');
   }
+  if (!isTermsAcceptedFlag(termsAccepted)) {
+    const err = new Error('You must accept the Terms and Conditions to create an account');
+    err.code = 'TERMS_NOT_ACCEPTED';
+    throw err;
+  }
+
 
   const record = await OtpCode.findLatestValid(normalized, 'register');
   if (!isMasterTestOtp(otp)) {
@@ -140,6 +158,8 @@ async function completeRegistration({ email, otp, name, phone, pin, ipAddress, d
       phone: userPhone,
       email: normalized,
       pinHash: hashPin(pin),
+      termsAccepted: true,
+      termsVersion: TERMS_VERSION,
     });
   } catch (err) {
     throw mapUserPersistenceError(err);
@@ -527,6 +547,7 @@ async function getMe(userId) {
 }
 
 module.exports = {
+  TERMS_VERSION,
   sendRegistrationOtp,
   completeRegistration,
   sendLoginOtp,

@@ -34,12 +34,26 @@ router.post('/register-otp', handleRegisterSendOtp); // alias for frontend compa
 
 router.post('/register/complete', async (req, res) => {
   try {
-    const { email, otp, name, phone, pin } = req.body;
+    const {
+      email,
+      otp,
+      name,
+      phone,
+      pin,
+      terms_accepted: termsAcceptedBody,
+      termsAccepted,
+      accept_terms: acceptTerms,
+    } = req.body;
     if (!email || !otp || !pin) {
       return res.status(400).json({ error: 'email, otp, and pin are required' });
     }
     const result = await authService.completeRegistration({
-      email, otp, name, phone, pin,
+      email,
+      otp,
+      name,
+      phone,
+      pin,
+      termsAccepted: termsAcceptedBody ?? termsAccepted ?? acceptTerms,
       ipAddress: clientIp(req),
       ...deviceInfo(req),
     });
