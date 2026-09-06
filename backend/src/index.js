@@ -181,6 +181,40 @@ app.get('/health/tron', async (_req, res) => {
   }
 });
 
+/**
+ * Public Turso ↔ Supabase user_wallets mirror probe (counts only, no PII).
+ * Lets ops verify the admin users list source-of-truth is fully mirrored
+ * without needing a local DATABASE_AUTH_TOKEN — the server already has one.
+ */
+app.get('/health/user-mirror', async (_req, res) => {
+  const out = {
+    status: 'error',
+    timestamp: new Date().toISOString(),
+    turso_users: null,
+    supabase_wallets: null,
+    missing_count: null,
+    in_sync: false,
+    supabase_enabled: false,
+  };
+  try {
+    const { getUserWalletsMirrorStatus } = require('./services/supabaseSyncService');
+    const mirror = await getUserWalletsMirrorStatus();
+    out.supabase_enabled = Boolean(mirror.enabled);
+    out.turso_users = mirror.turso_total;
+    out.supabase_wallets = mirror.supabase_total;
+    out.missing_count = Array.isArray(mirror.missing_user_ids)
+      ? mirror.missing_user_ids.length
+      : null;
+    out.in_sync = Boolean(mirror.in_sync);
+    if (mirror.reason) out.reason = mirror.reason;
+    out.status = mirror.in_sync ? 'ok' : (mirror.enabled ? 'degraded' : 'error');
+    return res.status(mirror.in_sync ? 200 : 503).json(out);
+  } catch (err) {
+    out.error = err.message || 'user-mirror health check failed';
+    return res.status(503).json(out);
+  }
+});
+
 app.use('/api/config', require('./routes/config'));
 app.use('/api/qr', require('./routes/qr'));
 app.use('/api/auth', authRoutes);
