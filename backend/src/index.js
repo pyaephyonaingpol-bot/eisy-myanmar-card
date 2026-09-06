@@ -218,8 +218,12 @@ app.get('/health/tron', async (_req, res) => {
  * Public Turso ↔ Supabase user_wallets mirror probe (counts only, no PII).
  * Lets ops verify the admin users list source-of-truth is fully mirrored
  * without needing a local DATABASE_AUTH_TOKEN — the server already has one.
+ *
+ * When the mirror is incomplete, this probe also runs an idempotent Turso→Supabase
+ * user_wallets backfill (server-side only) so production can self-heal after deploy
+ * without an admin session. Query ?repair=0 to skip the heal and only report counts.
  */
-app.get('/health/user-mirror', async (_req, res) => {
+app.get('/health/user-mirror', async (req, res) => {
   const out = {
     status: 'error',
     timestamp: new Date().toISOString(),
@@ -228,10 +232,46 @@ app.get('/health/user-mirror', async (_req, res) => {
     missing_count: null,
     in_sync: false,
     supabase_enabled: false,
+    repair: null,
   };
   try {
-    const { getUserWalletsMirrorStatus } = require('./services/supabaseSyncService');
-    const mirror = await getUserWalletsMirrorStatus();
+    const {
+      getUserWalletsMirrorStatus,
+      backfillAllUserWallets,
+    } = require('./services/supabaseSyncService');
+    let mirror = await getUserWalletsMirrorStatus();
+    const repairParam = String(req.query?.repair ?? '1').trim().toLowerCase();
+    const allowRepair = repairParam !== '0' && repairParam !== 'false' && repairParam !== 'no';
+
+    if (allowRepair && mirror.enabled && !mirror.in_sync) {
+      const beforeMissing = Array.isArray(mirror.missing_user_ids)
+        ? mirror.missing_user_ids.length
+        : null;
+      try {
+        const result = await backfillAllUserWallets();
+        mirror = await getUserWalletsMirrorStatus();
+        out.repair = {
+          attempted: true,
+          before_missing: beforeMissing,
+          after_missing: Array.isArray(mirror.missing_user_ids)
+            ? mirror.missing_user_ids.length
+            : null,
+          synced: result?.synced ?? null,
+          created: result?.created ?? null,
+          failed: result?.failed ?? null,
+          total: result?.total ?? null,
+          ok: Boolean(result?.ok),
+        };
+      } catch (repairErr) {
+        out.repair = {
+          attempted: true,
+          error: repairErr.message || 'repair_failed',
+        };
+      }
+    } else if (!allowRepair) {
+      out.repair = { attempted: false, skipped: true, reason: 'repair_disabled' };
+    }
+
     out.supabase_enabled = Boolean(mirror.enabled);
     out.turso_users = mirror.turso_total;
     out.supabase_wallets = mirror.supabase_total;
@@ -319,6 +359,28 @@ async function start() {
     logNowPaymentsPayoutConfigAtBoot();
   } catch (err) {
     console.warn('[nowpayments-payout] boot config log skipped:', err.message);
+  }
+
+  try {
+    const { isSupabaseEnabled } = require('./lib/supabase');
+    if (isSupabaseEnabled()) {
+      const {
+        getUserWalletsMirrorStatus,
+        backfillAllUserWalletsInBackground,
+      } = require('./services/supabaseSyncService');
+      const mirror = await getUserWalletsMirrorStatus();
+      if (mirror.enabled && !mirror.in_sync) {
+        console.warn(
+          `[supabase] user_wallets mirror incomplete `
+          + `(turso=${mirror.turso_total} supabase=${mirror.supabase_total} `
+          + `missing=${Array.isArray(mirror.missing_user_ids) ? mirror.missing_user_ids.length : '?'})`
+          + ' — starting background backfill'
+        );
+        backfillAllUserWalletsInBackground();
+      }
+    }
+  } catch (err) {
+    console.warn('[supabase] user mirror boot check skipped:', err.message);
   }
 
   const { processExpiredP2pOrders } = require('./services/p2pOrderExpiryService');

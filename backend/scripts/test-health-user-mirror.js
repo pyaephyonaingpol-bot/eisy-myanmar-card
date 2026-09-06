@@ -19,9 +19,11 @@ async function main() {
   const indexSrc = fs.readFileSync(path.join(__dirname, '../src/index.js'), 'utf8');
   assert.ok(indexSrc.includes('/health/user-mirror'), 'health user-mirror route registered');
   assert.ok(indexSrc.includes('getUserWalletsMirrorStatus'), 'health route uses mirror helper');
+  assert.ok(indexSrc.includes('backfillAllUserWallets'), 'health route can self-heal via backfill');
   assert.ok(indexSrc.includes('turso_users'), 'response includes turso_users');
   assert.ok(indexSrc.includes('supabase_wallets'), 'response includes supabase_wallets');
   assert.ok(indexSrc.includes('missing_count'), 'response includes missing_count');
+  assert.ok(indexSrc.includes('repair:'), 'response includes repair metadata');
   assert.ok(
     /payload\.users\s*=\s*\{\s*turso:/.test(indexSrc) || indexSrc.includes('users = { turso:'),
     '/health includes best-effort Turso user count'
@@ -30,11 +32,21 @@ async function main() {
     indexSrc.includes('Array.isArray(mirror.missing_user_ids)'),
     'health route derives missing_count from mirror ids'
   );
+  const routeStart = indexSrc.indexOf('/health/user-mirror');
+  const routeSlice = indexSrc.slice(routeStart, routeStart + 3500);
   assert.ok(
-    !/missing_user_ids\s*:/.test(
-      indexSrc.slice(indexSrc.indexOf('/health/user-mirror'), indexSrc.indexOf('/health/user-mirror') + 1200)
-    ),
+    !/\bmissing_user_ids\s*:/.test(routeSlice),
     'public JSON payload must not expose missing_user_ids field'
+  );
+  assert.ok(
+    routeSlice.includes('allowRepair') && routeSlice.includes('repairParam'),
+    'repair can be disabled with ?repair=0'
+  );
+
+  const apiSrc = fs.readFileSync(path.join(__dirname, '../api/index.js'), 'utf8');
+  assert.ok(
+    apiSrc.includes('backfillAllUserWalletsInBackground'),
+    'vercel bootstrap triggers background mirror backfill'
   );
 
   const dbFile = path.join(os.tmpdir(), `eisy-health-mirror-${Date.now()}.db`);
