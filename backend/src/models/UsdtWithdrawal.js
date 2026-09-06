@@ -138,8 +138,6 @@ const UsdtWithdrawal = {
     processedBy,
     payoutProvider,
     payoutCurrency,
-    nowpaymentsPayoutId,
-    nowpaymentsWithdrawalId,
   } = {}) {
     const db = getDb();
     const nextStatus = status || null;
@@ -154,8 +152,6 @@ const UsdtWithdrawal = {
           processed_by = COALESCE(?, processed_by),
           payout_provider = COALESCE(?, payout_provider),
           payout_currency = COALESCE(?, payout_currency),
-          nowpayments_payout_id = COALESCE(?, nowpayments_payout_id),
-          nowpayments_withdrawal_id = COALESCE(?, nowpayments_withdrawal_id),
           updated_at = datetime('now')
           ${processedAt}
       WHERE id = ?
@@ -166,23 +162,10 @@ const UsdtWithdrawal = {
     processedBy ?? null,
     payoutProvider || null,
     payoutCurrency || null,
-    nowpaymentsPayoutId != null ? String(nowpaymentsPayoutId) : null,
-    nowpaymentsWithdrawalId != null ? String(nowpaymentsWithdrawalId) : null,
     id);
     return this.findById(id);
   },
 
-  async findByNowPaymentsPayoutId(payoutId) {
-    if (payoutId == null || String(payoutId).trim() === '') return null;
-    const db = getDb();
-    return db.get(
-      `SELECT * FROM ${this.TABLE}
-       WHERE nowpayments_payout_id = ? OR nowpayments_withdrawal_id = ?
-       LIMIT 1`,
-      String(payoutId),
-      String(payoutId)
-    );
-  },
 
   async listAll({ status, limit = 200, payoutMethod = null } = {}) {
     const db = getDb();
@@ -197,7 +180,7 @@ const UsdtWithdrawal = {
     const methodClause = method ? ' AND LOWER(w.payout_method) = ?' : '';
     const methodParams = method ? [method] : [];
 
-    // open = actionable queue (manual pending + in-flight NOWPayments processing)
+    // open = actionable queue (pending + processing)
     if (normalized === 'open') {
       return db.all(`
         SELECT w.*,

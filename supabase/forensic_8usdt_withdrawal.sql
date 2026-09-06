@@ -65,7 +65,7 @@ WHERE
 ORDER BY created_at DESC
 LIMIT 100;
 
--- 4) Legacy NOWPayments `transactions` table (if present)
+-- 4) Legacy provider `transactions` table (if present)
 SELECT *
 FROM public.transactions
 WHERE

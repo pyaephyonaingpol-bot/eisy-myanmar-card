@@ -37,11 +37,11 @@ async function main() {
     INSERT INTO usdt_withdrawal_requests (
       user_id, ref_code, payout_method, network, wallet_address,
       amount_usdt, fee_usdt, net_usdt, fee_type, status,
-      payout_provider, nowpayments_payout_id
+      payout_provider
     ) VALUES
-    (?, 'WD-PENDING', 'crypto', 'TRC20', 'Tpending', 10, 1, 9, 'fixed', 'pending', NULL, NULL),
-    (?, 'WD-3723', 'crypto', 'TRC20', 'Tproc', 20, 1, 19, 'fixed', 'processing', 'nowpayments', 'np-batch-3723'),
-    (?, 'WD-DONE', 'crypto', 'TRC20', 'Tdone', 5, 1, 4, 'fixed', 'completed', NULL, NULL)
+    (?, 'WD-PENDING', 'crypto', 'TRC20', 'Tpending', 10, 1, 9, 'fixed', 'pending', NULL),
+    (?, 'WD-3723', 'crypto', 'TRC20', 'Tproc', 20, 1, 19, 'fixed', 'processing', 'tron_master_wallet'),
+    (?, 'WD-DONE', 'crypto', 'TRC20', 'Tdone', 5, 1, 4, 'fixed', 'completed', NULL)
   `, userId, userId, userId);
 
   const all = await UsdtWithdrawal.listAll({ status: 'all' });
@@ -55,7 +55,7 @@ async function main() {
   assert.deepStrictEqual(pending.map((r) => r.ref_code), ['WD-PENDING']);
   assert.strictEqual(processing.length, 1);
   assert.strictEqual(processing[0].ref_code, 'WD-3723');
-  assert.strictEqual(processing[0].nowpayments_payout_id, 'np-batch-3723');
+  assert.strictEqual(processing[0].payout_provider, 'tron_master_wallet');
   assert.deepStrictEqual(completed.map((r) => r.ref_code), ['WD-DONE']);
   assert.deepStrictEqual(
     open.map((r) => r.ref_code).sort(),

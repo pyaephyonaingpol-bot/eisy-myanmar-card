@@ -43,8 +43,6 @@ const ALLOWED_HEADERS = [
   'X-Listener-Secret',
   'X-Device-Name',
   'X-Device-Platform',
-  'X-NOWPAYMENTS-SIG',
-  'x-nowpayments-sig',
   'BinancePay-Timestamp',
   'BinancePay-Nonce',
   'BinancePay-Signature',

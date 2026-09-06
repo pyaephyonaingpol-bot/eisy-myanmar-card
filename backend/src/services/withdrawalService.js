@@ -28,9 +28,6 @@ const {
   proofUpdateFields,
   notifyUserOfPayoutProof,
 } = require('./withdrawalProofService');
-// NOWPayments payout helpers are retained for legacy IPN / admin tools only —
-// user-facing crypto withdrawals use master-wallet TronWeb (manual energy).
-
 function generateRefCode(prefix = 'WD') {
   const num = Math.floor(1000 + Math.random() * 9000);
   return `${prefix}-${num}`;
@@ -59,7 +56,7 @@ function normalizeNetwork(network) {
 
 function normalizePayoutMethod(method) {
   const m = String(method || 'crypto').trim().toLowerCase();
-  if (m === 'crypto' || m === 'wallet' || m === 'onchain' || m === 'nowpayments' || m === 'np') {
+  if (m === 'crypto' || m === 'wallet' || m === 'onchain') {
     return 'crypto';
   }
   if (m === 'bank' || m === 'mmk_bank' || m === 'fiat') return 'bank';

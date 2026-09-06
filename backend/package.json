@@ -15,9 +15,6 @@
     "test:frontend-lib": "node scripts/test-frontend-lib-modules.js",
     "test:frontend-modular": "node scripts/test-frontend-modular-layers.js",
     "test:deposit-profit": "node scripts/test-deposit-profit-tracking.js",
-    "test:nowpayments-ipn": "node scripts/test-nowpayments-ipn.js",
-    "test:nowpayments-payout": "node scripts/test-nowpayments-payout.js",
-    "test:nowpayments-payout-config": "node scripts/test-nowpayments-payout-config.js",
     "test:withdraw-rollback": "node scripts/test-withdraw-rollback.js",
     "test:wallet-security-incident": "node scripts/test-wallet-security-incident.js",
     "list:users-wallets": "node scripts/list-all-users-with-wallets.js",
@@ -73,7 +70,8 @@
     "test:admin-env-ensure": "node scripts/test-admin-env-ensure.js",
     "ensure:env-admin": "node scripts/ensure-env-admin.js",
     "test:user-app-perf": "node scripts/test-user-app-perf-guards.js",
-    "test:admin-mmk-tx-schema-drift": "node scripts/test-admin-mmk-tx-schema-drift.js"
+    "test:admin-mmk-tx-schema-drift": "node scripts/test-admin-mmk-tx-schema-drift.js",
+    "test:payment-gateway-cleanup": "node scripts/test-payment-gateway-cleanup.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",

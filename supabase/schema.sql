@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS card_reload_requests (
 CREATE INDEX IF NOT EXISTS idx_card_reload_user ON card_reload_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_card_reload_status ON card_reload_requests(status);
 
--- Custom TRON USDT (TRC20) payment gateway orders (replaces NOWPayments Supabase sync).
+-- Custom TRON USDT (TRC20) payment gateway orders (custom TRON USDT gateway orders).
 CREATE TABLE IF NOT EXISTS orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id TEXT NOT NULL UNIQUE,

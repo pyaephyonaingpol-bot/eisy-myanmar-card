@@ -1,3 +1,4 @@
+-- HISTORICAL: NOWPayments integration removed; columns retained for existing DBs.
 -- NOWPayments mass-payout tracking on USDT withdrawals
 ALTER TABLE usdt_withdrawal_requests ADD COLUMN payout_provider TEXT;
 ALTER TABLE usdt_withdrawal_requests ADD COLUMN payout_currency TEXT;

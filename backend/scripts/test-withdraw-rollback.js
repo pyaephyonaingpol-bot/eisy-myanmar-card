@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Regression: platform fee credit must not leak "cannot rollback - no transaction is active"
- * during USDT withdrawals (NOWPayments path).
+ * during USDT withdrawals.
  * Run: node backend/scripts/test-withdraw-rollback.js
  */
 'use strict';
@@ -16,8 +16,6 @@ process.chdir(path.join(__dirname, '..'));
 async function main() {
   const dbFile = path.join(os.tmpdir(), `eisy-withdraw-rollback-${Date.now()}.db`);
   process.env.DATABASE_URL = `file:${dbFile}`;
-  process.env.NOWPAYMENTS_PAYOUTS_ENABLED = 'false';
-  process.env.NOWPAYMENTS_REQUIRE_LIVE_PAYOUT = 'false';
   process.env.NODE_ENV = process.env.NODE_ENV || 'test';
   process.env.WITHDRAWALS_PAUSED = 'false';
   process.env.AUTO_ONCHAIN_WITHDRAWALS = 'false';
@@ -82,7 +80,7 @@ async function main() {
   let created;
   try {
     created = await createUsdtWithdrawalRequest(userId, {
-      payout_method: 'nowpayments',
+      payout_method: 'crypto',
       network: 'TRC20',
       wallet_address: 'THqZv26HgwMFwMq5eXX4mgGNK9ey9Auotr',
       amount_usdt: 25,

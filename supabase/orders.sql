@@ -1,7 +1,7 @@
 -- Custom TRON USDT (TRC20) payment gateway — orders table
 -- Run in Supabase SQL Editor when enabling the on-chain deposit gateway.
 --
--- Replaces the legacy NOWPayments Supabase schema (supabase/nowpayments_transactions.sql).
+-- Custom TRON USDT gateway orders table.
 -- Each row tracks one deposit order: amount owed, assigned TRON deposit address, and status.
 
 CREATE TABLE IF NOT EXISTS orders (
