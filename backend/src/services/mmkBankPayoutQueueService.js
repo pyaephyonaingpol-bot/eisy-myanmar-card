@@ -24,6 +24,8 @@ function mapMmkWalletRow(row) {
   const netMmk = row.net_mmk != null ? Number(row.net_mmk) : amountMmk - feeMmk;
   return {
     id: row.id,
+    // Composite key avoids numeric id collisions across WM/WB tables.
+    queue_key: `mmk_wallet:${row.id}`,
     source: 'mmk_wallet',
     source_label: 'MMK wallet',
     ref_code: row.ref_code,
@@ -57,6 +59,7 @@ function mapUsdtBankRow(row) {
   const amountMmk = Number(row.amount_mmk) || 0;
   return {
     id: row.id,
+    queue_key: `usdt_bank:${row.id}`,
     source: 'usdt_bank',
     source_label: 'USDT → MMK bank',
     ref_code: row.ref_code,

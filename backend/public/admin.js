@@ -522,22 +522,14 @@
         mmkWdTable.addEventListener('click', (e) => {
           const complete = e.target.closest('[data-action="complete-mmk-wd"]');
           const reject = e.target.closest('[data-action="reject-mmk-wd"]');
+          // Always use the source-aware MMK bank payout handlers — WB-* and WM-*
+          // share numeric IDs across tables, so data-source / data-queue-key are required.
           if (complete) {
-            const source = complete.getAttribute('data-source') || 'mmk_wallet';
-            if (source === 'usdt_bank') {
-              this.reviewUsdtWithdrawal(complete.getAttribute('data-id'), 'complete', { triggerBtn: complete });
-            } else {
-              this.reviewMmkWithdrawal(complete.getAttribute('data-id'), 'complete', { triggerBtn: complete });
-            }
+            this.reviewMmkWithdrawal(complete.getAttribute('data-id'), 'complete', { triggerBtn: complete });
             return;
           }
           if (reject) {
-            const source = reject.getAttribute('data-source') || 'mmk_wallet';
-            if (source === 'usdt_bank') {
-              this.reviewUsdtWithdrawal(reject.getAttribute('data-id'), 'reject', { triggerBtn: reject });
-            } else {
-              this.reviewMmkWithdrawal(reject.getAttribute('data-id'), 'reject', { triggerBtn: reject });
-            }
+            this.reviewMmkWithdrawal(reject.getAttribute('data-id'), 'reject', { triggerBtn: reject });
           }
         });
       }
@@ -1894,8 +1886,20 @@
       document.body.classList.remove('sidebar-scroll-lock');
     },
 
-    openWithdrawalProofModal({ kind = 'mmk', id, meta = '', defaultNote = 'Bank transfer completed' } = {}) {
+    openWithdrawalProofModal({
+      kind = 'mmk',
+      id,
+      source = null,
+      queueKey = null,
+      meta = '',
+      defaultNote = 'Bank transfer completed',
+    } = {}) {
+      const resolvedSource = source
+        || (kind === 'usdt' ? 'usdt_bank' : 'mmk_wallet');
+      const resolvedQueueKey = queueKey || (resolvedSource + ':' + String(id != null ? id : ''));
       if ($('wdProofKind')) $('wdProofKind').value = kind;
+      if ($('wdProofSource')) $('wdProofSource').value = resolvedSource;
+      if ($('wdProofQueueKey')) $('wdProofQueueKey').value = resolvedQueueKey;
       if ($('wdProofId')) $('wdProofId').value = id != null ? String(id) : '';
       if ($('wdProofNote')) $('wdProofNote').value = defaultNote;
       if ($('wdProofFile')) $('wdProofFile').value = '';
@@ -1903,7 +1907,7 @@
       if (metaEl) metaEl.textContent = meta || 'Upload the bank/KPay/WavePay payment slip to attach and email to the user.';
       const title = $('withdrawalProofModalTitle');
       if (title) {
-        title.textContent = kind === 'usdt'
+        title.textContent = resolvedSource === 'usdt_bank'
           ? 'Complete USDT→MMK bank payout'
           : 'Complete MMK bank withdrawal';
       }
@@ -1922,6 +1926,8 @@
 
     async submitWithdrawalProofModal() {
       const kind = ($('wdProofKind')?.value || 'mmk').toLowerCase();
+      const source = ($('wdProofSource')?.value || (kind === 'usdt' ? 'usdt_bank' : 'mmk_wallet')).toLowerCase();
+      const queueKey = $('wdProofQueueKey')?.value || (source + ':' + ($('wdProofId')?.value || ''));
       const wdId = $('wdProofId')?.value || '';
       if (!wdId) return;
 
@@ -1931,6 +1937,8 @@
 
       const formData = new FormData();
       formData.append('admin_note', note);
+      formData.append('source', source);
+      formData.append('queue_key', queueKey);
       if (file) formData.append('proof', file, file.name);
 
       const submitBtn = $('wdProofSubmitBtn');
@@ -1943,9 +1951,9 @@
       if (out) out.textContent = 'Uploading…';
 
       try {
-        const path = kind === 'usdt'
-          ? '/api/admin/withdrawals/usdt/' + encodeURIComponent(wdId) + '/complete'
-          : '/api/admin/withdrawals/mmk/' + encodeURIComponent(wdId) + '/complete';
+        // Always use the unified MMK bank payout endpoint so WB-* and WM-* both
+        // resolve against the correct table via `source` / `queue_key`.
+        const path = '/api/admin/withdrawals/mmk/' + encodeURIComponent(wdId) + '/complete';
         const data = await this.apiFormData('POST', path, formData);
         const emailInfo = data.proof_email || data.withdrawal?.proof_email;
         let msg = data.message || 'Withdrawal completed';
@@ -2974,6 +2982,7 @@
               ? ('<div class="mmk-wd-actions">' +
                   '<button type="button" class="btn btn-sm btn-approve" data-action="complete-mmk-wd" data-id="' + w.id + '"'
                     + ' data-source="' + this.esc(source) + '"'
+                    + ' data-queue-key="' + this.esc(w.queue_key || (source + ':' + w.id)) + '"'
                     + (isUsdtBank
                       ? (' data-method="bank" data-mmk="' + Math.round(Number(w.amount_mmk || 0)) + '"'
                         + ' data-rate="' + Number(w.exchange_rate || 0) + '"'
@@ -2981,7 +2990,8 @@
                       : '')
                     + '>Approve &amp; payout</button>' +
                   '<button type="button" class="btn btn-sm btn-reject" data-action="reject-mmk-wd" data-id="' + w.id + '"'
-                    + ' data-source="' + this.esc(source) + '">Reject</button>' +
+                    + ' data-source="' + this.esc(source) + '"'
+                    + ' data-queue-key="' + this.esc(w.queue_key || (source + ':' + w.id)) + '">Reject</button>' +
                 '</div>')
               : (proofBtn || '<span class="hint">—</span>');
 
@@ -3028,6 +3038,8 @@
         this.openWithdrawalProofModal({
           kind: 'usdt',
           id: wdId,
+          source: (btn && btn.getAttribute('data-source')) || 'usdt_bank',
+          queueKey: (btn && btn.getAttribute('data-queue-key')) || ('usdt_bank:' + wdId),
           meta,
           defaultNote,
         });
@@ -3086,13 +3098,18 @@
       if (!wdId) return;
 
       const btn = options.triggerBtn || null;
+      const source = (btn && btn.getAttribute('data-source')) || 'mmk_wallet';
+      const queueKey = (btn && btn.getAttribute('data-queue-key')) || (source + ':' + wdId);
 
       if (action === 'complete') {
         this._wdProofTriggerBtn = btn;
         this.openWithdrawalProofModal({
-          kind: 'mmk',
+          kind: source === 'usdt_bank' ? 'usdt' : 'mmk',
           id: wdId,
-          meta: 'MMK withdrawal #' + wdId + ' — attach the bank transfer slip to save on the transaction and email the user.',
+          source,
+          queueKey,
+          meta: (source === 'usdt_bank' ? 'USDT→MMK bank payout' : 'MMK withdrawal')
+            + ' #' + wdId + ' — attach the bank transfer slip to save on the transaction and email the user.',
           defaultNote: 'Bank transfer completed',
         });
         return;
@@ -3112,10 +3129,20 @@
       }
 
       try {
+        // Unified reject endpoint — source/queue_key select the correct table.
         const path = '/api/admin/withdrawals/mmk/' + encodeURIComponent(wdId) + '/reject';
-        const data = await this.api('POST', path, { admin_note: note });
+        const data = await this.api('POST', path, {
+          admin_note: note,
+          source,
+          queue_key: queueKey,
+        });
         alert(data.message || 'MMK withdrawal updated');
-        await Promise.all([this.loadMmkWithdrawals(), this.loadUsers(), this.loadTransactions()]);
+        await Promise.all([
+          this.loadMmkWithdrawals(),
+          this.loadUsdtWithdrawals(),
+          this.loadUsers(),
+          this.loadTransactions(),
+        ]);
       } catch (err) {
         alert(err.message || 'Failed to update MMK withdrawal');
         if (btn) {
