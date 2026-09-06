@@ -75,16 +75,26 @@ app.use(express.static(PUBLIC_DIR, {
 }));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
-app.get('/health', (_req, res) => {
-  const { getDatabaseInfo } = require('./db');
+app.get('/health', async (_req, res) => {
+  const { getDatabaseInfo, getDb } = require('./db');
   const { getSecurityStatus } = require('./services/securityFlags');
-  res.json({
+  const payload = {
     status: 'ok',
     service: 'Eisy Myanmar Backend',
     timestamp: new Date().toISOString(),
     database: getDatabaseInfo(),
     security: getSecurityStatus(),
-  });
+  };
+  // Best-effort Turso user count so ops can verify the admin list source-of-truth
+  // size after deploy without a local DATABASE_AUTH_TOKEN.
+  try {
+    const db = getDb();
+    const row = await db.get('SELECT COUNT(*) AS c FROM users');
+    payload.users = { turso: Number(row?.c || 0) };
+  } catch (err) {
+    payload.users = { turso: null, error: err.message || 'count_failed' };
+  }
+  res.json(payload);
 });
 
 /**

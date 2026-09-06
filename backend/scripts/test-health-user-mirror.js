@@ -23,6 +23,10 @@ async function main() {
   assert.ok(indexSrc.includes('supabase_wallets'), 'response includes supabase_wallets');
   assert.ok(indexSrc.includes('missing_count'), 'response includes missing_count');
   assert.ok(
+    /payload\.users\s*=\s*\{\s*turso:/.test(indexSrc) || indexSrc.includes('users = { turso:'),
+    '/health includes best-effort Turso user count'
+  );
+  assert.ok(
     indexSrc.includes('Array.isArray(mirror.missing_user_ids)'),
     'health route derives missing_count from mirror ids'
   );
