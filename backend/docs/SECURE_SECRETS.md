@@ -73,8 +73,6 @@ grep '^SUPABASE_SERVICE_ROLE_KEY=' backend/.env | cut -d= -f2- | \
 npx vercel --prod
 ```
 
-NOWPayments helper (existing): `./scripts/sync-nowpayments-env-to-vercel.sh --check` then `--vercel`.
-
 ## 5. Update secrets in Cursor Cloud
 
 Cloud Agent / Environment secrets UI — same **names** as Vercel, bare values.
@@ -94,7 +92,7 @@ curl -sS https://eisymyanmar.com/api/config/supabase
 balances, and **`address_consistency`** — if `TRON_MASTER_WALLET` is set it must match
 the address derived from `MASTER_PRIVATE_KEY` (`code: MASTER_ADDRESS_MISMATCH` otherwise).
 
-Admin checks (authenticated): master wallet balance, NOWPayments payout-config, `admin_api_key_configured`.
+Admin checks (authenticated): master wallet balance, `admin_api_key_configured`.
 
 ## 7. Rotation checklist (wallet / Supabase incident)
 

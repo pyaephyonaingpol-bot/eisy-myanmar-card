@@ -31,7 +31,6 @@ app.use(express.json({
       req.originalUrl
       && (
         req.originalUrl.startsWith('/api/webhook/')
-        || req.originalUrl.startsWith('/api/nowpayments/')
       )
     ) {
       req.rawBody = buf.toString('utf8');
@@ -295,9 +294,6 @@ app.use('/api/deposit', depositRoutes);
 app.use('/api/tron/orders', require('./routes/tronOrders'));
 app.use('/api/tron/wallet', require('./routes/tronWallet'));
 app.use('/api/webhook', require('./routes/webhook'));
-const nowPaymentsRoutes = require('../../server/routes/nowpayments');
-app.use('/api/nowpayments', nowPaymentsRoutes);
-app.post('/api/create-payment', requireAuth, requireSensitive, nowPaymentsRoutes.createPaymentHandler);
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/support', supportRoutes);
@@ -370,13 +366,6 @@ async function start() {
     }
   } catch (err) {
     console.warn('[admin] env super-admin ensure failed:', err.message);
-  }
-
-  try {
-    const { logNowPaymentsPayoutConfigAtBoot } = require('./services/nowPaymentsPayoutService');
-    logNowPaymentsPayoutConfigAtBoot();
-  } catch (err) {
-    console.warn('[nowpayments-payout] boot config log skipped:', err.message);
   }
 
   try {

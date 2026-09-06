@@ -1865,11 +1865,6 @@ const {
   completeMmkBankPayout,
   rejectMmkBankPayout,
 } = require('../services/withdrawalService');
-const {
-  triggerNowPaymentsPayoutForWithdrawal,
-  isNowPaymentsPayoutsEnabled,
-  getNowPaymentsPayoutConfigStatus,
-} = require('../services/nowPaymentsPayoutService');
 const { walletPayload: adminWalletPayload } = require('../services/walletService');
 const { getMasterWalletInfo } = require('../services/tronMasterWalletService');
 const {
@@ -1885,17 +1880,6 @@ const {
 const {
   isHdEnabled: isTronHdEnabled,
 } = require('../services/tronHdWalletService');
-
-/** Non-secret NOWPayments payout config readiness (for Vercel env debugging). */
-router.get('/nowpayments/payout-config', requirePermission('withdrawals'), async (_req, res) => {
-  try {
-    const status = getNowPaymentsPayoutConfigStatus();
-    res.json({ success: true, nowpayments_payouts: status });
-  } catch (err) {
-    console.error('[admin/nowpayments/payout-config]', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 /** TRON master wallet TRX + USDT balances (for withdrawal funding checks). */
 router.get('/master-wallet-balance', requirePermission('master_wallet'), async (_req, res) => {
@@ -2230,53 +2214,17 @@ router.post(
       });
     } catch (err) {
       console.error('[admin/withdrawals/usdt complete]', err.code || '', err.message);
-      const status = ['INSUFFICIENT_USDT', 'INSUFFICIENT_TRX', 'MASTER_KEY_MISSING',
-        'NOWPAYMENTS_NOT_CONFIGURED', 'NOWPAYMENTS_PAYOUT_AUTH_MISSING'].includes(err.code)
+      const status = ['INSUFFICIENT_USDT', 'INSUFFICIENT_TRX', 'MASTER_KEY_MISSING'].includes(err.code)
         ? 422
         : 400;
       res.status(status).json({
         error: err.message || 'Failed to complete withdrawal',
         code: err.code || undefined,
         details: err.details || undefined,
-        nowpayments: err.nowpayments || undefined,
       });
     }
   }
 );
-
-/** Explicitly submit / retry a NOWPayments mass payout for a pending crypto withdrawal. */
-router.post('/withdrawals/usdt/:id/nowpayments-payout', requirePermission('withdrawals'), async (req, res) => {
-  try {
-    if (!isNowPaymentsPayoutsEnabled()) {
-      return res.status(503).json({
-        success: false,
-        error: 'NOWPayments payouts are not enabled',
-        code: 'NOWPAYMENTS_PAYOUTS_DISABLED',
-      });
-    }
-    const id = parseInt(req.params.id, 10);
-    const row = await UsdtWithdrawal.findById(id);
-    if (!row) {
-      return res.status(404).json({ error: 'USDT withdrawal not found' });
-    }
-    const result = await triggerNowPaymentsPayoutForWithdrawal(row, { force: true });
-    res.status(201).json({
-      success: true,
-      provider: 'nowpayments',
-      message: result.message,
-      payout_id: result.payout_id,
-      withdrawal: result.withdrawal,
-    });
-  } catch (err) {
-    console.error('[admin/withdrawals/usdt nowpayments-payout]', err.code || '', err.message);
-    res.status(400).json({
-      success: false,
-      error: err.message || 'NOWPayments payout failed',
-      code: err.code,
-      nowpayments: err.nowpayments,
-    });
-  }
-});
 
 router.post('/withdrawals/usdt/:id/reject', requirePermission('withdrawals'), async (req, res) => {
   try {

@@ -46,10 +46,6 @@ If a manual `tx_hash` is provided, the on-chain send is skipped.
 - TRC20 payouts never debit/credit MMK
 - USDT→bank and MMK bank withdrawals stay manual/admin bank rails
 
-## Legacy NOWPayments payouts
-
-NOWPayments mass-payout code remains in the repo for historical IPN / admin
-tools, but **user-facing withdrawals no longer use it**. Prefer master-wallet TRC20.
 
 ## Key files
 

@@ -40,8 +40,6 @@ function mapUsdtWithdrawal(row) {
     status: row.status,
     admin_note: row.admin_note,
     tx_hash: row.tx_hash,
-    nowpayments_payout_id: row.nowpayments_payout_id || null,
-    nowpayments_withdrawal_id: row.nowpayments_withdrawal_id || null,
     proof_url: row.proof_url || row.proof_path || null,
     proof_mime_type: row.proof_mime_type || null,
     proof_original_name: row.proof_original_name || null,
@@ -231,12 +229,7 @@ router.post('/usdt', requireAuth, requireSensitive, requireWithdrawalsEnabled, a
       ? 503
       : err.code === 'INSUFFICIENT_USDT_BALANCE'
       ? 402
-      : ([
-        'NOWPAYMENTS_PAYOUT_CONFIG_INCOMPLETE',
-        'NOWPAYMENTS_PAYOUTS_DISABLED',
-        'NOWPAYMENTS_NOT_CONFIGURED',
-        'NOWPAYMENTS_PAYOUT_AUTH_MISSING',
-      ].includes(err.code) ? 503 : 400);
+      : 400;
     res.status(status).json({
       error: err.message || 'Withdrawal failed',
       code: err.code,

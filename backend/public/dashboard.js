@@ -5691,7 +5691,7 @@ const Dashboard = {
   getWithdrawPayoutMethod() {
     const raw = String($('withdrawPayoutMethod')?.value || 'crypto').trim().toLowerCase();
     if (raw === 'bank') return 'bank';
-    // Legacy "nowpayments" option maps to crypto (master-wallet TRC20).
+    // Normalize payout method aliases to crypto (master-wallet TRC20).
     return 'crypto';
   },
 

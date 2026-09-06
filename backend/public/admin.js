@@ -399,7 +399,6 @@
         this.loadP2pDisputes();
         this.loadP2pSellOrders();
         this.loadUsdtWithdrawals();
-        this.loadNowPaymentsPayoutConfig();
         if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
       }
       if (name === 'mmk-withdrawals') {
@@ -1028,7 +1027,7 @@
         tasks.push(this.loadDeposits(), this.loadP2pDisputes(), this.loadP2pBuyOrders(), this.loadP2pSellOrders());
       }
       if (this.hasPermission('withdrawals')) {
-        tasks.push(this.loadUsdtWithdrawals(), this.loadMmkWithdrawals(), this.loadNowPaymentsPayoutConfig());
+        tasks.push(this.loadUsdtWithdrawals(), this.loadMmkWithdrawals());
       }
       if (this.hasPermission('cards')) {
         tasks.push(this.loadPendingCards(), this.loadIssuedCards(), this.loadPendingReloads());
@@ -2797,35 +2796,6 @@
       }
     },
 
-    async loadNowPaymentsPayoutConfig() {
-      const el = $('nowpaymentsPayoutConfigStatus');
-      if (!el) return;
-      try {
-        const data = await this.api('GET', '/api/admin/nowpayments/payout-config');
-        const s = data.nowpayments_payouts || {};
-        const bits = [
-          s.ready ? 'ready' : 'NOT READY',
-          'enabled=' + Boolean(s.enabled),
-          'require_live=' + Boolean(s.require_live),
-          'api_key=' + Boolean(s.has?.api_key),
-          'email=' + Boolean(s.has?.email),
-          'password=' + Boolean(s.has?.password),
-          '2fa=' + Boolean(s.has?.payout_2fa),
-        ];
-        let msg = 'NOWPayments payouts: ' + bits.join(' · ');
-        if (Array.isArray(s.missing) && s.missing.length) {
-          msg += ' — missing Vercel env: ' + s.missing.join(', ');
-        }
-        if (Array.isArray(s.warnings) && s.warnings.length) {
-          msg += ' — ' + s.warnings[0];
-        }
-        el.textContent = msg;
-        el.style.color = s.ready ? '' : '#b45309';
-      } catch (err) {
-        el.textContent = 'NOWPayments payout config check failed: ' + (err.message || 'error');
-        el.style.color = '#ef4444';
-      }
-    },
 
     async loadUsdtWithdrawals() {
       const table = $('usdtWithdrawalsTable');
@@ -2842,7 +2812,7 @@
         table.innerHTML =
           '<table class="data-table"><thead><tr>' +
             '<th>ID</th><th>User</th><th>Ref</th><th>Method</th><th>Destination</th>' +
-            '<th>USDT</th><th>Fee</th><th>Rate</th><th>MMK to Send</th><th>NP ID</th><th>Status</th><th>Actions</th>' +
+            '<th>USDT</th><th>Fee</th><th>Rate</th><th>MMK to Send</th><th>Status</th><th>Actions</th>' +
           '</tr></thead><tbody>' +
           rows.map((w) => {
             const status = String(w.status || '').toLowerCase();
@@ -2861,10 +2831,6 @@
               ? ('<strong>' + mmkAmount.toLocaleString() + ' MMK</strong>' +
                 '<br><small>Send via bank / KPay / WavePay</small>')
               : ('$' + Number(w.net_usdt || 0).toFixed(2) + ' USDT');
-            const npId = w.nowpayments_payout_id || w.nowpayments_withdrawal_id || '';
-            const npLabel = npId
-              ? this.esc(String(npId)) + (w.payout_provider ? '<br><small>' + this.esc(w.payout_provider) + '</small>' : '')
-              : '—';
             const completeLabel = isBank ? 'Mark MMK Sent' : 'Complete';
             return '<tr>' +
               '<td>' + w.id + '</td>' +
@@ -2876,7 +2842,6 @@
               '<td>$' + Number(w.fee_usdt || 0).toFixed(2) + '</td>' +
               '<td>' + rateLabel + '</td>' +
               '<td>' + mmkLabel + '</td>' +
-              '<td style="max-width:140px;word-break:break-all;font-size:0.85em">' + npLabel + '</td>' +
               '<td>' + this.statusBadge(w.status) + '</td>' +
               '<td class="actions-cell">' +
                 (actionable
