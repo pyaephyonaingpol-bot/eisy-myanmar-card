@@ -32,16 +32,18 @@ function testUiUsdtOnly() {
   assert.ok(!formHtml.includes('cardPaymentMethodDetails'), 'no manual bank QR details block');
   assert.ok(formHtml.includes('cardHolderNameInput'), 'name on card field');
   assert.ok(formHtml.includes('cardBinSelect'), 'BIN select');
-  assert.ok(formHtml.includes('539502'), 'default BIN seeded in HTML');
-  assert.ok(formHtml.includes('525847'), 'second BIN seeded in HTML');
-  assert.ok(formHtml.includes('441357'), 'third BIN seeded in HTML');
-  assert.ok(!formHtml.includes('Loading BINs'), 'no loading placeholder');
+  assert.ok(formHtml.includes('Loading available BINs'), 'loading placeholder while live BINs fetch');
+  assert.ok(!formHtml.includes('539502'), 'outdated BIN 539502 must not be hardcoded');
+  assert.ok(!formHtml.includes('525847'), 'outdated BIN 525847 must not be hardcoded');
+  assert.ok(!formHtml.includes('441357'), 'outdated BIN 441357 must not be hardcoded');
   assert.ok(!formHtml.includes('id="pbMmkRow"'), 'MMK pricing row removed from apply form');
   assert.ok(formHtml.includes('id="pbUsdtRow"'), 'USDT pricing row present');
   assert.ok(formHtml.includes('usdt_parity_rate') || formHtml.includes('1 USDT'), 'USDT parity rate label');
 
-  assert.ok(dash.includes('FALLBACK_BINS'), 'client fallback BIN list');
+  assert.ok(!dash.includes('FALLBACK_BINS'), 'no hardcoded client FALLBACK_BINS');
+  assert.ok(!dash.includes('539502'), 'dashboard must not hardcode outdated BINs');
   assert.ok(dash.includes('populateCardBinOptions'), 'BIN population helper');
+  assert.ok(dash.includes('No active BINs available') || dash.includes('Loading available BINs'), 'empty/loading BIN UI states');
   assert.ok(dash.includes("wallet_type: 'usdt'"), 'submit forces usdt');
   assert.ok(!dash.includes("pay_from_wallet && walletType === 'mmk'"), 'no MMK wallet branch in submit');
   assert.ok(!dash.includes('populateDepositFromCardRequest'), 'orphan MMK deposit-from-card helper removed');
@@ -127,7 +129,7 @@ async function testIssuanceHelpers() {
   delete require.cache[require.resolve(path.join(ROOT, 'backend/src/services/cardWalletService'))];
   delete require.cache[require.resolve(path.join(ROOT, 'lib/cardIssue'))];
 
-  const { resolveKripicardBin, getKripicardBinOptions, purchaseCardFromUsdtWallet } = require(
+  const { purchaseCardFromUsdtWallet } = require(
     path.join(ROOT, 'backend/src/services/cardWalletService')
   );
   const { resolveIssuanceCurrency } = require(path.join(ROOT, 'lib/cardIssue'));
@@ -144,31 +146,72 @@ async function testIssuanceHelpers() {
   assert.ok(currencyErr);
   assert.strictEqual(currencyErr.code, 'USDT_ONLY_CARD_ISSUANCE');
 
+  process.env.KRIPICARD_API_KEY = 'test-kripicard-key';
   process.env.KRIPICARD_DEFAULT_BIN = '428803';
   process.env.KRIPICARD_ALLOWED_BINS = '428803,411111';
-  assert.strictEqual(resolveKripicardBin(), '428803');
-  assert.strictEqual(resolveKripicardBin('411111'), '411111');
-  let binErr = null;
-  try {
-    resolveKripicardBin('999999');
-  } catch (e) {
-    binErr = e;
-  }
-  assert.ok(binErr);
-  assert.strictEqual(binErr.code, 'INVALID_BIN');
-  const opts = getKripicardBinOptions();
-  assert.deepStrictEqual(opts.bins, ['428803', '411111']);
 
+  // Env allow-list is used when the live Kripicard BIN API is unreachable.
+  const originalFetch = global.fetch;
+  global.fetch = async () => {
+    const err = new Error('network down');
+    err.code = 'KRIPICARD_NETWORK';
+    throw err;
+  };
+  try {
+    const {
+      resolveKripicardBin: resolveBin,
+      getKripicardBinOptions: getBins,
+      resetKripicardBinCacheForTests,
+    } = require(path.join(ROOT, 'backend/src/services/cardWalletService'));
+    resetKripicardBinCacheForTests();
+
+    assert.strictEqual(await resolveBin(), '428803');
+    assert.strictEqual(await resolveBin('411111'), '411111');
+    let binErr = null;
+    try {
+      await resolveBin('999999');
+    } catch (e) {
+      binErr = e;
+    }
+    assert.ok(binErr);
+    assert.strictEqual(binErr.code, 'INVALID_BIN');
+    const opts = await getBins({ forceRefresh: true });
+    assert.deepStrictEqual(opts.bins, ['428803', '411111']);
+    assert.ok(opts.source === 'env_fallback' || opts.source === 'env', opts.source);
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  // Live API path: only active BINs returned (maintenance filtered out).
   delete process.env.KRIPICARD_ALLOWED_BINS;
   delete process.env.KRIPICARD_DEFAULT_BIN;
   delete require.cache[require.resolve(path.join(ROOT, 'backend/src/services/cardWalletService'))];
-  const refreshed = require(path.join(ROOT, 'backend/src/services/cardWalletService'));
-  const catalog = refreshed.getKripicardBinOptions();
-  assert.ok(catalog.bins.length >= 3, 'default BIN catalog must be non-empty');
-  assert.ok(catalog.bins.includes('539502'));
-  assert.ok(catalog.bins.includes('525847'));
-  assert.ok(catalog.bins.includes('441357'));
-  assert.strictEqual(catalog.source, 'default_catalog');
+  delete require.cache[require.resolve(path.join(ROOT, 'lib/kripicard'))];
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async text() {
+      return JSON.stringify({
+        success: true,
+        bins: [
+          { bin: '400011', status: 'active' },
+          { bin: '539502', status: 'maintenance' },
+          { bin: '400022', available: true },
+        ],
+      });
+    },
+  });
+  try {
+    const refreshed = require(path.join(ROOT, 'backend/src/services/cardWalletService'));
+    refreshed.resetKripicardBinCacheForTests();
+    const catalog = await refreshed.getKripicardBinOptions({ forceRefresh: true });
+    assert.ok(catalog.bins.includes('400011'));
+    assert.ok(catalog.bins.includes('400022'));
+    assert.ok(!catalog.bins.includes('539502'), 'maintenance BIN filtered out');
+    assert.strictEqual(catalog.source, 'kripicard_api');
+  } finally {
+    global.fetch = originalFetch;
+  }
   console.log('ok');
 }
 

@@ -480,7 +480,7 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
   try {
     const settings = await getCardPricingSettings();
     const currentRate = await getCurrentRateSummary();
-    const bins = getKripicardBinOptions();
+    const bins = await getKripicardBinOptions();
     res.json({
       card_issuance_fee_usd: settings.card_issuance_fee_usd,
       platform_markup_usd: settings.card_issuance_fee_usd,

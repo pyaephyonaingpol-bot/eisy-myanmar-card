@@ -1563,20 +1563,29 @@ const Dashboard = {
     const select = $('cardBinSelect');
     if (!select) return;
 
-    // Client fallback so the dropdown never renders empty / "No Options"
-    // when pricing hasn't loaded or env BINs are unset.
-    const FALLBACK_BINS = ['539502', '525847', '441357', '493875', '428803', '493728'];
+    // Live BINs from GET /api/user/card/pricing (Kripicard /api/external/cards/bins).
+    // Do not fall back to hardcoded legacy BINs — they may be inactive on Kripicard.
     const fromApi = Array.isArray(this.cardPricing?.kripicard_bins)
       ? this.cardPricing.kripicard_bins.map((b) => String(b || '').trim()).filter(Boolean)
       : [];
-    const bins = fromApi.length ? fromApi : FALLBACK_BINS;
+    const bins = fromApi;
     const defaultBin = String(
       this.cardPricing?.kripicard_default_bin || bins[0] || ''
     ).trim();
+    const source = String(this.cardPricing?.kripicard_bins_source || '');
+    const prev = select.value;
+
+    if (!bins.length) {
+      const loading = !this.cardPricing;
+      select.required = !loading;
+      select.innerHTML = loading
+        ? '<option value="" disabled selected>Loading available BINs…</option>'
+        : '<option value="" disabled selected>No active BINs available</option>';
+      select.value = '';
+      return;
+    }
 
     select.required = true;
-
-    const prev = select.value;
     select.innerHTML = bins.map((bin) =>
       `<option value="${this.esc(bin)}">${this.esc(bin)}</option>`
     ).join('');
@@ -1587,6 +1596,10 @@ const Dashboard = {
       select.value = defaultBin;
     } else {
       select.value = bins[0];
+    }
+
+    if (source) {
+      select.dataset.binSource = source;
     }
   },
 
