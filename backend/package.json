@@ -31,6 +31,7 @@
     "test:withdrawal-fee-dashboard": "node scripts/test-withdrawal-fee-dashboard.js",
     "test:supabase-env-config": "node scripts/test-supabase-env-config.js",
     "test:admin-users-list-complete": "node scripts/test-admin-users-list-complete.js",
+    "test:supabase-wallet-upsert-adaptive": "node scripts/test-supabase-wallet-upsert-adaptive.js",
     "backfill:supabase-user-wallets": "node scripts/backfill-supabase-user-wallets.js",
     "test:dashboard-wallet-hydration": "node scripts/test-dashboard-wallet-hydration.js",
     "test:admin-block-user": "node scripts/test-admin-block-user.js",

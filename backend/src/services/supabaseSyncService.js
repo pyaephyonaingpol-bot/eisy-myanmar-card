@@ -27,6 +27,53 @@ async function upsertRow(table, row) {
   return row;
 }
 
+/**
+ * Upsert into user_wallets, stripping columns the live schema does not have.
+ * Production currently lacks balance_mmk / auth_status / is_blocked — a hard
+ * upsert of those fields silently blocked sync for users 16+ (mirror stuck at 15).
+ */
+async function upsertUserWalletAdaptive(sb, row) {
+  let payload = { ...row };
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const { error } = await sb.from('user_wallets').upsert(payload, { onConflict: 'user_id' });
+    if (!error) return { ok: true, row: payload, error: null };
+
+    const msg = String(error.message || '');
+    const missing =
+      msg.match(/'([^']+)' column/i)
+      || msg.match(/column\s+user_wallets\.([a-z0-9_]+)/i)
+      || msg.match(/Could not find the '([^']+)' column/i);
+    const col = missing?.[1];
+    if (!col || !Object.prototype.hasOwnProperty.call(payload, col)) {
+      // Last resort: columns known to exist in production today.
+      const minimal = {
+        user_id: row.user_id,
+        email: row.email ?? null,
+        name: row.name ?? null,
+        balance_usdt: Number(row.balance_usdt ?? 0),
+        updated_at: row.updated_at,
+      };
+      if (row.tron_deposit_address) {
+        minimal.tron_deposit_address = row.tron_deposit_address;
+        minimal.tron_derivation_index = row.tron_derivation_index ?? null;
+        minimal.tron_derivation_path = row.tron_derivation_path ?? null;
+      }
+      const { error: minErr } = await sb.from('user_wallets').upsert(minimal, { onConflict: 'user_id' });
+      if (minErr) {
+        console.error('[supabase/sync] user_wallets upsert failed:', minErr.message);
+        return { ok: false, row: null, error: minErr.message };
+      }
+      if (col) {
+        console.warn(`[supabase/sync] user_wallets missing column ${col} — wrote core fields only`);
+      }
+      return { ok: true, row: minimal, error: null };
+    }
+    delete payload[col];
+    console.warn(`[supabase/sync] stripping unavailable user_wallets column: ${col}`);
+  }
+  return { ok: false, row: null, error: 'user_wallets upsert retries exhausted' };
+}
+
 async function upsertUserWallet(user) {
   if (!isSupabaseEnabled() || !user) return null;
   const { isUserBlocked, normalizeAuthStatus } = require('../lib/userAuthStatus');
@@ -56,9 +103,9 @@ async function upsertUserWallet(user) {
   }
 
   const sb = getSupabase();
-  const { error } = await sb.from('user_wallets').upsert(row, { onConflict: 'user_id' });
-  if (error) console.error('[supabase/sync] user_wallets upsert failed:', error.message);
-  return row;
+  if (!sb) return null;
+  const result = await upsertUserWalletAdaptive(sb, row);
+  return result.ok ? result.row : null;
 }
 
 async function syncUserWalletById(userId) {
