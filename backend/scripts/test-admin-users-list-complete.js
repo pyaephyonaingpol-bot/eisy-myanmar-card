@@ -33,20 +33,43 @@ function fakeJwt(role) {
 }
 
 function makeFakeSupabase(upserted) {
+  const walletIds = new Set();
   const from = (table) => {
     const api = {
       select() { return api; },
       eq() { return api; },
       ilike() { return api; },
       order() { return api; },
-      range() { return api; },
+      range(fromIdx, toIdx) {
+        api._from = fromIdx;
+        api._to = toIdx;
+        return api;
+      },
       maybeSingle: async () => ({ data: null, error: null }),
       upsert: async (row) => {
         if (table === 'user_wallets') {
           upserted.push(String(row.user_id));
+          walletIds.add(String(row.user_id));
         }
         return { data: row, error: null };
       },
+      then: undefined,
+    };
+    // Make thenable for `await sb.from(...).select(...).range(...)`
+    api.then = (resolve, reject) => {
+      try {
+        if (table === 'user_wallets') {
+          const ids = [...walletIds].sort((a, b) => Number(a) - Number(b));
+          const fromIdx = api._from == null ? 0 : api._from;
+          const toIdx = api._to == null ? ids.length - 1 : api._to;
+          const slice = ids.slice(fromIdx, toIdx + 1).map((user_id) => ({ user_id }));
+          resolve({ data: slice, error: null, count: ids.length });
+          return;
+        }
+        resolve({ data: [], error: null, count: 0 });
+      } catch (err) {
+        reject(err);
+      }
     };
     return api;
   };
@@ -65,6 +88,13 @@ async function main() {
   const adminJs = fs.readFileSync(path.join(__dirname, '../public/admin.js'), 'utf8');
   assert.ok(adminJs.includes('usersTableCount'), 'admin UI shows user count');
   assert.ok(adminJs.includes('Showing '), 'admin UI renders Showing X of Y');
+  assert.ok(adminJs.includes('usersMirrorStatus'), 'admin UI shows mirror status');
+  assert.ok(adminJs.includes('backfillUserWallets'), 'admin UI can trigger wallet backfill');
+  assert.ok(adminJs.includes('usersBackfillWalletsBtn'), 'backfill button wired');
+
+  const adminHtml = fs.readFileSync(path.join(__dirname, '../public/admin.html'), 'utf8');
+  assert.ok(adminHtml.includes('id="usersMirrorStatus"'), 'mirror status element in HTML');
+  assert.ok(adminHtml.includes('id="usersBackfillWalletsBtn"'), 'backfill button in HTML');
 
   const adminRoute = fs.readFileSync(path.join(__dirname, '../src/routes/admin.js'), 'utf8');
   assert.ok(!/FROM users[\s\S]{0,220}LIMIT\s+15\b/i.test(adminRoute), 'must not hard-cap users at 15');
@@ -73,7 +103,13 @@ async function main() {
     adminRoute.includes('backfillAllUserWalletsInBackground'),
     'admin users list triggers Supabase backfill'
   );
+  assert.ok(adminRoute.includes('getUserWalletsMirrorStatus'), 'admin users returns mirror status');
+  assert.ok(adminRoute.includes('/users/backfill-wallets'), 'admin backfill wallets route exists');
   assert.ok(adminRoute.includes('total'), 'admin users response includes total');
+
+  const syncSrc = fs.readFileSync(path.join(__dirname, '../src/services/supabaseSyncService.js'), 'utf8');
+  assert.ok(syncSrc.includes('getUserWalletsMirrorStatus'), 'mirror status helper exported');
+  assert.ok(syncSrc.includes('.range(from, to)'), 'mirror status paginates past PostgREST defaults');
 
   const {
     looksLikePublishableOrAnonKey,
@@ -139,6 +175,13 @@ async function main() {
     assert.strictEqual(backfill.failed || 0, 0, 'backfill has no failures');
     assert.strictEqual(upserted.length, TARGET, 'upsert called once per user');
     assert.strictEqual(new Set(upserted).size, TARGET, 'each user upserted');
+
+    const mirror = await sync.getUserWalletsMirrorStatus();
+    assert.strictEqual(mirror.enabled, true);
+    assert.strictEqual(mirror.turso_total, TARGET);
+    assert.strictEqual(mirror.supabase_total, TARGET);
+    assert.deepStrictEqual(mirror.missing_user_ids, []);
+    assert.strictEqual(mirror.in_sync, true, 'mirror status reports full sync');
 
     console.log('ok — admin users list returns all', TARGET, 'users and backfills Supabase mirrors');
   } finally {

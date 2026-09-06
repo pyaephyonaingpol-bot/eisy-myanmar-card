@@ -1326,7 +1326,7 @@ router.post('/balance/adjust', requirePermission('balance_adjust'), async (req, 
   }
 });
 
-router.get('/users', requirePermission('users'), async (_req, res) => {
+router.get('/users', requirePermission('users'), async (req, res) => {
   try {
     const db = getDb();
     // Source of truth is Turso/LibSQL. Do not apply a low row cap — production
@@ -1340,12 +1340,21 @@ router.get('/users', requirePermission('users'), async (_req, res) => {
       ORDER BY created_at DESC, id DESC
     `);
 
-    // Keep Supabase user_wallets in sync so Table Editor / mirror reads show everyone.
+    const sync = require('../services/supabaseSyncService');
+    const awaitSync = String(req.query.sync || '').trim() === '1';
+    let mirror = null;
+    let backfill = null;
     try {
-      const { backfillAllUserWalletsInBackground } = require('../services/supabaseSyncService');
-      backfillAllUserWalletsInBackground();
+      if (awaitSync) {
+        backfill = await sync.backfillAllUserWallets();
+        mirror = await sync.getUserWalletsMirrorStatus();
+      } else {
+        sync.backfillAllUserWalletsInBackground();
+        mirror = await sync.getUserWalletsMirrorStatus();
+      }
     } catch (syncErr) {
-      console.warn('[admin/users] supabase backfill skipped:', syncErr.message);
+      console.warn('[admin/users] supabase mirror status skipped:', syncErr.message);
+      mirror = { enabled: false, reason: syncErr.message };
     }
 
     res.json({
@@ -1353,10 +1362,24 @@ router.get('/users', requirePermission('users'), async (_req, res) => {
       total,
       count: users.length,
       truncated: users.length < total,
+      mirror,
+      backfill,
     });
   } catch (err) {
     console.error('[admin/users]', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/users/backfill-wallets', requirePermission('users'), async (_req, res) => {
+  try {
+    const sync = require('../services/supabaseSyncService');
+    const backfill = await sync.backfillAllUserWallets();
+    const mirror = await sync.getUserWalletsMirrorStatus();
+    res.json({ ok: Boolean(backfill?.ok || backfill?.skipped), backfill, mirror });
+  } catch (err) {
+    console.error('[admin/users/backfill-wallets]', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
 

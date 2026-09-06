@@ -595,6 +595,8 @@
         });
       }
 
+      $('usersBackfillWalletsBtn')?.addEventListener('click', () => this.backfillUserWallets());
+
       const balanceUsdForm = $('balanceAdjustUsdForm');
       if (balanceUsdForm) {
         balanceUsdForm.addEventListener('submit', async (e) => {
@@ -3200,13 +3202,16 @@
       }
     },
 
-    async loadUsers() {
+    async loadUsers(opts = {}) {
       const table = $('usersTable');
       if (!table) return;
       const countEl = $('usersTableCount');
+      const mirrorEl = $('usersMirrorStatus');
+      const awaitSync = Boolean(opts.sync);
 
       try {
-        const data = await this.api('GET', '/api/admin/users');
+        const path = awaitSync ? '/api/admin/users?sync=1' : '/api/admin/users';
+        const data = await this.api('GET', path);
         const users = Array.isArray(data.users) ? data.users : [];
         const total = Number(data.total != null ? data.total : users.length);
 
@@ -3214,6 +3219,21 @@
           countEl.textContent = users.length
             ? ('Showing ' + users.length + ' of ' + total + ' user' + (total === 1 ? '' : 's'))
             : '';
+        }
+
+        if (mirrorEl) {
+          const m = data.mirror;
+          if (m && m.enabled && m.turso_total != null && m.supabase_total != null) {
+            const missing = Array.isArray(m.missing_user_ids) ? m.missing_user_ids.length : 0;
+            mirrorEl.textContent = m.in_sync
+              ? ('Supabase mirror in sync (' + m.supabase_total + ' wallet' + (m.supabase_total === 1 ? '' : 's') + ')')
+              : ('Supabase mirror: ' + m.supabase_total + ' / ' + m.turso_total
+                + ' wallets' + (missing ? (' — missing ' + missing) : ''));
+          } else if (m && m.reason) {
+            mirrorEl.textContent = 'Supabase mirror unavailable: ' + m.reason;
+          } else {
+            mirrorEl.textContent = '';
+          }
         }
 
         if (!users.length) {
@@ -3242,7 +3262,7 @@
             '</tbody>' +
           '</table>';
 
-                table.querySelectorAll('.adj-usdt-wallet').forEach((btn) => {
+        table.querySelectorAll('.adj-usdt-wallet').forEach((btn) => {
           btn.addEventListener('click', () => {
             if ($('adjUsdtUserId')) $('adjUsdtUserId').value = btn.dataset.uid;
             if ($('adjAmountUsdt')) $('adjAmountUsdt').value = '';
@@ -3259,7 +3279,36 @@
 
       } catch (err) {
         if (countEl) countEl.textContent = '';
+        if (mirrorEl) mirrorEl.textContent = '';
         table.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+      }
+    },
+
+    async backfillUserWallets() {
+      const btn = $('usersBackfillWalletsBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Syncing…';
+      }
+      try {
+        const data = await this.api('POST', '/api/admin/users/backfill-wallets', {});
+        await this.loadUsers({ sync: false });
+        const m = data && data.mirror;
+        if (m && m.in_sync) {
+          alert('Supabase wallet mirrors are in sync (' + m.supabase_total + ' / ' + m.turso_total + ').');
+        } else if (m) {
+          alert('Backfill finished. Supabase ' + m.supabase_total + ' / Turso ' + m.turso_total
+            + (m.missing_user_ids && m.missing_user_ids.length
+              ? ('. Missing ids: ' + m.missing_user_ids.join(', '))
+              : '.'));
+        }
+      } catch (err) {
+        alert(err.message || 'Backfill failed');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Sync Supabase wallet mirrors';
+        }
       }
     },
 

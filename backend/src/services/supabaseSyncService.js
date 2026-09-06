@@ -247,6 +247,81 @@ function backfillAllUserWalletsInBackground(options = {}) {
   return _backfillInFlight;
 }
 
+/**
+ * Compare Turso users vs Supabase user_wallets (paginated) so admins can see
+ * whether the mirror is complete — not stuck on PostgREST's default page size.
+ */
+async function getUserWalletsMirrorStatus() {
+  const db = require('../db').getDb();
+  const tursoRow = await db.get('SELECT COUNT(*) AS c FROM users');
+  const tursoTotal = Number(tursoRow?.c || 0);
+  const tursoIds = (await db.all('SELECT id FROM users ORDER BY id ASC')).map((r) => String(r.id));
+
+  if (!isSupabaseEnabled()) {
+    return {
+      enabled: false,
+      turso_total: tursoTotal,
+      supabase_total: null,
+      missing_user_ids: tursoIds,
+      in_sync: false,
+      reason: 'supabase_disabled',
+    };
+  }
+
+  const sb = getSupabase();
+  if (!sb) {
+    return {
+      enabled: false,
+      turso_total: tursoTotal,
+      supabase_total: null,
+      missing_user_ids: tursoIds,
+      in_sync: false,
+      reason: 'supabase_client_unavailable',
+    };
+  }
+
+  const pageSize = 1000;
+  const supabaseIds = [];
+  let from = 0;
+  let exactCount = null;
+  for (;;) {
+    const to = from + pageSize - 1;
+    const { data, error, count } = await sb
+      .from('user_wallets')
+      .select('user_id', { count: exactCount == null ? 'exact' : undefined })
+      .order('user_id', { ascending: true })
+      .range(from, to);
+    if (error) {
+      return {
+        enabled: true,
+        turso_total: tursoTotal,
+        supabase_total: null,
+        missing_user_ids: tursoIds,
+        in_sync: false,
+        reason: error.message,
+      };
+    }
+    if (exactCount == null && typeof count === 'number') exactCount = count;
+    const batch = data || [];
+    for (const row of batch) supabaseIds.push(String(row.user_id));
+    if (batch.length < pageSize) break;
+    from += pageSize;
+    if (supabaseIds.length > 100000) break;
+  }
+
+  const supabaseSet = new Set(supabaseIds);
+  const missing = tursoIds.filter((id) => !supabaseSet.has(id));
+  const supabaseTotal = exactCount != null ? exactCount : supabaseIds.length;
+
+  return {
+    enabled: true,
+    turso_total: tursoTotal,
+    supabase_total: supabaseTotal,
+    missing_user_ids: missing,
+    in_sync: missing.length === 0 && supabaseTotal >= tursoTotal,
+  };
+}
+
 async function syncDeposit(deposit, user) {
   if (!isSupabaseEnabled() || !deposit) return null;
   const u = user || (deposit.user_id ? await User.findById(deposit.user_id) : null);
@@ -402,6 +477,7 @@ module.exports = {
   ensureSupabaseUserWalletInBackground,
   backfillAllUserWallets,
   backfillAllUserWalletsInBackground,
+  getUserWalletsMirrorStatus,
   upsertUserWallet,
   syncDeposit,
   syncCardApplication,
