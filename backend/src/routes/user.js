@@ -480,7 +480,10 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
   try {
     const settings = await getCardPricingSettings();
     const currentRate = await getCurrentRateSummary();
-    const bins = await getKripicardBinOptions();
+    const bins = await getKripicardBinOptions({ pricingSettings: settings });
+    const binCatalog = Array.isArray(bins.catalog) && bins.catalog.length
+      ? bins.catalog
+      : (Array.isArray(bins.details) ? bins.details : []);
     res.json({
       card_issuance_fee_usd: settings.card_issuance_fee_usd,
       platform_markup_usd: settings.card_issuance_fee_usd,
@@ -503,7 +506,10 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
       kripicard_default_bin: bins.default_bin,
       kripicard_bins: bins.bins,
       kripicard_bins_source: bins.source,
-      // Safe debug aids when the live catalog is empty (no secrets / raw body).
+      // BIN fee/markup catalog (populated for builtin_fallback; may be empty for live lists).
+      kripicard_bin_catalog: binCatalog,
+      kripicard_bins_fallback_reason: bins.fallback_reason || undefined,
+      // Safe debug aids when the resolved catalog is still empty (no secrets / raw body).
       kripicard_bins_raw_keys: bins.bins.length ? undefined : bins.raw_keys,
       kripicard_bins_error: bins.bins.length ? undefined : (bins.error || undefined),
       withdrawal_fees: await getWithdrawalFeeSettings(),

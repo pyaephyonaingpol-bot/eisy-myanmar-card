@@ -1563,15 +1563,15 @@ const Dashboard = {
     const select = $('cardBinSelect');
     if (!select) return;
 
-    // ONLY live Kripicard BINs from GET /api/user/card/pricing.
-    // Never keep/seed a hardcoded legacy BIN catalog in this select.
+    // Kripicard BINs from GET /api/user/card/pricing (live API, or known-active
+    // builtin_fallback such as US 441357 when live catalog is empty).
+    // Never keep/seed a hardcoded legacy multi-BIN catalog in this select.
     const source = String(this.cardPricing?.kripicard_bins_source || '');
     const fromApi = Array.isArray(this.cardPricing?.kripicard_bins)
       ? this.cardPricing.kripicard_bins.map((b) => String(b || '').trim()).filter(Boolean)
       : [];
-    // If pricing loaded with a non-live source (e.g. legacy env_fallback), show empty
-    // rather than rendering stale BINs from KRIPICARD_ALLOWED_BINS.
-    // Live / empty-live sources always use the API array (may include 441357 etc.).
+    // Reject stale env-only sources. Accept live API + builtin_fallback so the
+    // known-active US BIN still populates when Kripicard returns nothing.
     const nonLive = source === 'env_fallback' || source === 'env' || source === 'unavailable';
     const bins = !this.cardPricing ? [] : (nonLive ? [] : fromApi);
     const defaultBin = String(

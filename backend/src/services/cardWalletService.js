@@ -29,12 +29,60 @@ const CARD_ISSUED_MESSAGE =
  * Prefer the provider /api/external/cards/bins catalog (active only).
  * Optional KRIPICARD_ALLOWED_BINS may intersect the live list, but must NEVER
  * replace it — that was how stale/inactive BINs kept appearing in the UI.
+ *
+ * When the live catalog is empty/unavailable, fall back to the known-active US
+ * BIN below so Apply Card still works. Do NOT revive the old multi-BIN env
+ * catalog (539502 / 525847 / …).
  */
 const BIN_CACHE_TTL_MS = Number(process.env.KRIPICARD_BINS_CACHE_MS) || 60_000;
 let binOptionsCache = {
   expiresAt: 0,
   value: null,
 };
+
+/**
+ * Known-active Kripicard US BIN used when live fetch returns nothing.
+ * Fee structure: card load (min $10) goes to Kripicard; $5 platform markup is
+ * our custom issuance fee (USDT≈USD), retained in-platform.
+ */
+const KRIPICARD_KNOWN_ACTIVE_BIN_CATALOG = Object.freeze([
+  Object.freeze({
+    bin: '441357',
+    brand: 'visa',
+    country: 'US',
+    currency: 'USD',
+    label: 'US Visa 441357',
+    min_load_usd: 10,
+    issuance_fee_usd: 5,
+    platform_markup_usd: 5,
+    payment_currency: 'USDT',
+    status: 'active',
+  }),
+]);
+
+function buildKnownActiveBinFallback(pricingSettings = null) {
+  // Prefer live admin pricing settings when provided; otherwise catalog defaults.
+  const minLoad = Number(pricingSettings?.minimum_initial_deposit_usd);
+  const issuanceFee = Number(pricingSettings?.card_issuance_fee_usd);
+  const catalog = KRIPICARD_KNOWN_ACTIVE_BIN_CATALOG.map((entry) => ({
+    ...entry,
+    min_load_usd: Number.isFinite(minLoad) && minLoad > 0 ? minLoad : entry.min_load_usd,
+    issuance_fee_usd:
+      Number.isFinite(issuanceFee) && issuanceFee >= 0 ? issuanceFee : entry.issuance_fee_usd,
+    platform_markup_usd:
+      Number.isFinite(issuanceFee) && issuanceFee >= 0 ? issuanceFee : entry.platform_markup_usd,
+  }));
+  const bins = uniqueBins(catalog.map((entry) => entry.bin));
+  return {
+    default_bin: bins[0] || null,
+    bins,
+    source: 'builtin_fallback',
+    details: catalog,
+    catalog,
+    raw_keys: [],
+    error: null,
+  };
+}
 
 function parseBinList(raw) {
   return String(raw || '')
@@ -77,11 +125,14 @@ function envBinOptions() {
 
 /**
  * Resolve BIN options from Kripicard's live API (active BINs only).
- * Never falls back to KRIPICARD_ALLOWED_BINS / hardcoded catalogs for the UI —
- * those env lists still contain inactive BINs in many deploys.
- * Env allow-list only intersects a successful live response.
+ * Never falls back to KRIPICARD_ALLOWED_BINS for the UI — that env list still
+ * contains inactive BINs in many deploys. Env allow-list only intersects a
+ * successful live response.
+ *
+ * If the live catalog is empty/unavailable, use the known-active US BIN
+ * (441357) with its fee/markup structure so the dropdown stays usable.
  */
-async function getKripicardBinOptions({ forceRefresh = false } = {}) {
+async function getKripicardBinOptions({ forceRefresh = false, pricingSettings = null } = {}) {
   const now = Date.now();
   if (!forceRefresh && binOptionsCache.value && binOptionsCache.expiresAt > now) {
     return binOptionsCache.value;
@@ -123,7 +174,24 @@ async function getKripicardBinOptions({ forceRefresh = false } = {}) {
       source = 'kripicard_api';
     }
   } else if (!bins.length) {
-    source = apiError ? 'unavailable' : 'kripicard_api_empty';
+    // Live catalog empty/failed — use known-active US BIN (not the stale env list).
+    const fallback = buildKnownActiveBinFallback(pricingSettings);
+    console.warn(
+      `[cardWallet] Live Kripicard BINs empty (${apiError ? 'fetch_error' : 'empty_catalog'}); ` +
+        `using builtin fallback BIN ${fallback.bins.join(',')}`
+    );
+    const value = {
+      ...fallback,
+      error: apiError
+        ? { code: apiError.code || 'KRIPICARD_BINS_FETCH_FAILED', message: apiError.message }
+        : null,
+      fallback_reason: apiError ? 'fetch_error' : 'empty_catalog',
+    };
+    binOptionsCache = {
+      expiresAt: now + BIN_CACHE_TTL_MS,
+      value,
+    };
+    return value;
   }
 
   const envDefault = String(process.env.KRIPICARD_DEFAULT_BIN || '').trim();
@@ -136,6 +204,7 @@ async function getKripicardBinOptions({ forceRefresh = false } = {}) {
     bins: uniqueBins(defaultBin ? [defaultBin, ...bins] : bins),
     source,
     details,
+    catalog: details,
     raw_keys: rawKeys,
     error: apiError
       ? { code: apiError.code || 'KRIPICARD_BINS_FETCH_FAILED', message: apiError.message }
@@ -166,8 +235,8 @@ async function resolveKripicardBin(requestedBin) {
     throw err;
   }
 
-  // Live catalog is authoritative. An empty list means the provider returned
-  // nothing (or the fetch failed) — do not accept arbitrary/env BINs.
+  // Resolved catalog (live or known-active builtin fallback) is authoritative.
+  // Do not accept arbitrary env BINs outside that list.
   if (!allowed.length || !allowed.includes(String(bin))) {
     const err = new Error(
       `BIN ${bin} is not available (${source}). Available: ${allowed.join(', ') || 'none'}`
@@ -522,5 +591,7 @@ module.exports = {
   getKripicardBinOptions,
   resetKripicardBinCacheForTests,
   envBinOptions,
+  buildKnownActiveBinFallback,
+  KRIPICARD_KNOWN_ACTIVE_BIN_CATALOG,
   CARD_ISSUED_MESSAGE,
 };

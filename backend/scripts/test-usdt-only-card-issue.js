@@ -35,7 +35,7 @@ function testUiUsdtOnly() {
   assert.ok(formHtml.includes('Loading available BINs'), 'loading placeholder while live BINs fetch');
   assert.ok(!formHtml.includes('539502'), 'outdated BIN 539502 must not be hardcoded');
   assert.ok(!formHtml.includes('525847'), 'outdated BIN 525847 must not be hardcoded');
-  assert.ok(!formHtml.includes('441357'), 'outdated BIN 441357 must not be hardcoded');
+  assert.ok(!formHtml.includes('441357'), 'fallback BIN 441357 must not be seeded in HTML (backend supplies it)');
   assert.ok(!formHtml.includes('id="pbMmkRow"'), 'MMK pricing row removed from apply form');
   assert.ok(formHtml.includes('id="pbUsdtRow"'), 'USDT pricing row present');
   assert.ok(formHtml.includes('usdt_parity_rate') || formHtml.includes('1 USDT'), 'USDT parity rate label');
@@ -166,19 +166,22 @@ async function testIssuanceHelpers() {
     resetKripicardBinCacheForTests();
 
     // Env allow-list must NOT populate the dropdown when the live API is down.
+    // Known-active builtin fallback (441357) may populate so users can still issue.
     const opts = await getBins({ forceRefresh: true });
-    assert.deepStrictEqual(opts.bins, []);
-    assert.ok(
-      opts.source === 'unavailable' || opts.source === 'kripicard_api_empty',
-      opts.source
-    );
+    assert.ok(!opts.bins.includes('428803'), 'env allow-list BIN must not appear');
+    assert.ok(!opts.bins.includes('411111'), 'env allow-list BIN must not appear');
+    assert.notStrictEqual(opts.source, 'env_fallback');
+    assert.notStrictEqual(opts.source, 'env');
+    assert.deepStrictEqual(opts.bins, ['441357']);
+    assert.strictEqual(opts.source, 'builtin_fallback');
+    assert.strictEqual(await resolveBin('441357'), '441357');
     let binErr = null;
     try {
       await resolveBin('428803');
     } catch (e) {
       binErr = e;
     }
-    assert.ok(binErr, 'must reject issuance when no live BINs are available');
+    assert.ok(binErr, 'must reject env-only BINs outside builtin/live catalog');
     assert.strictEqual(binErr.code, 'INVALID_BIN');
   } finally {
     global.fetch = originalFetch;
