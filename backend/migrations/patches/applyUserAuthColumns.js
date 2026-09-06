@@ -25,6 +25,12 @@ async function applyUserAuthColumns(db, columnExists) {
     ON users(email)
     WHERE email IS NOT NULL;
   `);
+
+  // Admin users list filters by auth_status; create after the column exists.
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_users_auth_status
+    ON users (auth_status);
+  `);
 }
 
 module.exports = { applyUserAuthColumns };

@@ -96,16 +96,22 @@ async function main() {
   assert.ok(adminHtml.includes('id="usersMirrorStatus"'), 'mirror status element in HTML');
   assert.ok(adminHtml.includes('id="usersBackfillWalletsBtn"'), 'backfill button in HTML');
 
+  const migration = fs.readFileSync(path.join(__dirname, '../migrations/051_users_list_indexes.sql'), 'utf8');
+  assert.ok(migration.includes('idx_users_created_at_id') || migration.includes('created_at'), 'users list created_at index migration exists');
+  const authPatch = fs.readFileSync(path.join(__dirname, '../migrations/patches/applyUserAuthColumns.js'), 'utf8');
+  assert.ok(authPatch.includes('idx_users_auth_status'), 'auth_status index created after auth columns patch');
+
+
   const adminRoute = fs.readFileSync(path.join(__dirname, '../src/routes/admin.js'), 'utf8');
   assert.ok(!/FROM users[\s\S]{0,220}LIMIT\s+15\b/i.test(adminRoute), 'must not hard-cap users at 15');
-  assert.ok(!/FROM users[\s\S]{0,220}LIMIT\s+200\b/i.test(adminRoute), 'must not silently cap admin users at 200');
-  assert.ok(
-    adminRoute.includes('backfillAllUserWalletsInBackground'),
-    'admin users list triggers Supabase backfill'
-  );
-  assert.ok(adminRoute.includes('getUserWalletsMirrorStatus'), 'admin users returns mirror status');
+  assert.ok(adminRoute.includes('listForAdmin'), 'admin users list uses User.listForAdmin');
+  assert.ok(adminRoute.includes('has_more'), 'admin users response includes has_more');
+  assert.ok(adminRoute.includes('/users/mirror-status'), 'mirror status is a separate route');
   assert.ok(adminRoute.includes('/users/backfill-wallets'), 'admin backfill wallets route exists');
   assert.ok(adminRoute.includes('total'), 'admin users response includes total');
+  assert.ok(!adminRoute.includes('backfillAllUserWalletsInBackground'), 'list route must not trigger background backfill');
+  assert.ok(adminJs.includes('usersLoadMoreBtn') || adminJs.includes('usersGoNextPage'), 'admin UI supports pagination');
+  assert.ok(adminJs.includes('limit') && adminJs.includes('offset'), 'admin UI requests limit/offset');
 
   const syncSrc = fs.readFileSync(path.join(__dirname, '../src/services/supabaseSyncService.js'), 'utf8');
   assert.ok(syncSrc.includes('getUserWalletsMirrorStatus'), 'mirror status helper exported');
@@ -161,12 +167,24 @@ async function main() {
     const totalRow = await db.get('SELECT COUNT(*) AS c FROM users');
     assert.strictEqual(Number(totalRow.c), TARGET, `seeded ${TARGET} users`);
 
-    const users = await db.all(`
-      SELECT id, email, name, phone, balance, balance_mmk, balance_usdt, email_verified, auth_status, created_at
-      FROM users
-      ORDER BY created_at DESC, id DESC
-    `);
-    assert.strictEqual(users.length, TARGET, 'admin query returns every user');
+    const page1 = await User.listForAdmin({ limit: 7, offset: 0 });
+    assert.strictEqual(page1.total, TARGET, 'paginated total covers every Turso user');
+    assert.strictEqual(page1.count, 7, 'first page respects limit');
+    assert.strictEqual(page1.has_more, true, 'first page reports has_more');
+
+    const seen = new Set(page1.users.map((u) => u.id));
+    let offset = page1.limit;
+    while (offset < page1.total) {
+      const page = await User.listForAdmin({ limit: 7, offset });
+      assert.ok(page.users.length > 0, 'subsequent pages return rows');
+      for (const u of page.users) seen.add(u.id);
+      offset += page.limit;
+      if (!page.has_more) break;
+    }
+    assert.strictEqual(seen.size, TARGET, 'paging walks the complete user set');
+
+    const lean = page1.users[0] || {};
+    assert.ok(!('phone' in lean) && !('balance_mmk' in lean), 'list payload stays lean (no unused profile fields)');
     assert.ok(sync.isSupabaseEnabled(), 'supabase enabled for backfill');
 
     const backfill = await sync.backfillAllUserWallets({ pageSize: 7 });
@@ -180,7 +198,8 @@ async function main() {
     assert.strictEqual(mirror.enabled, true);
     assert.strictEqual(mirror.turso_total, TARGET);
     assert.strictEqual(mirror.supabase_total, TARGET);
-    assert.deepStrictEqual(mirror.missing_user_ids, []);
+    assert.strictEqual(mirror.missing_count, 0);
+    assert.ok(mirror.missing_user_ids == null || mirror.missing_user_ids.length === 0);
     assert.strictEqual(mirror.in_sync, true, 'mirror status reports full sync');
 
     console.log('ok — admin users list returns all', TARGET, 'users and backfills Supabase mirrors');

@@ -741,12 +741,28 @@
       <section id="tabUsers" class="panel app-page" data-page="users">
         <h2>Users &amp; Wallet Adjustments</h2>
         <p class="hint" style="margin-bottom:0.75rem">Users hold a USDT wallet balance only. Use Adjust USDT for manual corrections.</p>
+        <div class="admin-toolbar" id="usersToolbar" style="margin-bottom:0.65rem">
+          <input id="usersSearchInput" type="search" placeholder="Search name, email, or ID" autocomplete="off" />
+          <select id="usersStatusFilter" aria-label="Filter by status">
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="blocked">Blocked</option>
+          </select>
+          <button type="button" id="usersSearchBtn" class="btn btn-secondary btn-sm">Search</button>
+          <button type="button" id="usersRefreshBtn" class="btn btn-secondary btn-sm">Refresh</button>
+        </div>
         <p id="usersTableCount" class="hint" style="margin-bottom:0.35rem"></p>
         <p id="usersMirrorStatus" class="hint" style="margin-bottom:0.5rem"></p>
         <p style="margin-bottom:0.75rem">
           <button type="button" id="usersBackfillWalletsBtn" class="btn btn-sm btn-secondary">Sync Supabase wallet mirrors</button>
         </p>
         <div id="usersTable" class="data-table-wrap"><p class="hint">Loading users…</p></div>
+        <div class="admin-toolbar" id="usersPager" style="margin-top:0.75rem;display:none">
+          <button type="button" id="usersPrevBtn" class="btn btn-secondary btn-sm">Previous</button>
+          <span id="usersPageLabel" class="hint"></span>
+          <button type="button" id="usersNextBtn" class="btn btn-secondary btn-sm">Next</button>
+          <button type="button" id="usersLoadMoreBtn" class="btn btn-secondary btn-sm">Load more</button>
+        </div>
         <details style="margin-top:1rem">
           <summary class="hint">Legacy wallet adjustments (deprecated)</summary>
           <form id="balanceAdjustForm" class="form" style="margin-top:0.75rem">
