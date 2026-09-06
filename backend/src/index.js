@@ -87,6 +87,100 @@ app.get('/health', (_req, res) => {
   });
 });
 
+/**
+ * Safe TRON master-wallet readiness probe (no private key, truncated address only).
+ * Used to verify Vercel env wiring after key rotation.
+ */
+app.get('/health/tron', async (_req, res) => {
+  const { envIsSet, firstEnv } = require('./lib/envAliases');
+  const {
+    getMasterWalletAddress,
+    getMasterWalletInfo,
+  } = require('./services/tronMasterWalletService');
+
+  const env = {
+    MASTER_PRIVATE_KEY: envIsSet(
+      'MASTER_PRIVATE_KEY',
+      'MASTER_WALLET_PRIVATE_KEY',
+      'TRON_MASTER_PRIVATE_KEY'
+    ),
+    TRON_MASTER_WALLET: envIsSet(
+      'TRON_MASTER_WALLET',
+      'MASTER_WALLET_ADDRESS',
+      'MASTER_TRON_ADDRESS',
+      'TRON_MASTER_ADDRESS'
+    ),
+    TRON_API_KEY: envIsSet('TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY'),
+  };
+
+  const out = {
+    status: 'error',
+    timestamp: new Date().toISOString(),
+    env,
+    wallet: null,
+    trongrid: null,
+    balance: null,
+  };
+
+  try {
+    if (!env.MASTER_PRIVATE_KEY && !env.TRON_MASTER_WALLET) {
+      out.error = 'MASTER_PRIVATE_KEY (or TRON_MASTER_WALLET) is not configured';
+      return res.status(503).json(out);
+    }
+
+    const address = getMasterWalletAddress();
+    out.wallet = {
+      address_masked: address.length > 10
+        ? `${address.slice(0, 4)}…${address.slice(-4)}`
+        : address,
+      explicit_address_env: env.TRON_MASTER_WALLET,
+    };
+
+    const host = firstEnv('TRON_FULL_HOST', 'TRONGRID_FULL_HOST') || 'https://api.trongrid.io';
+    const apiKey = firstEnv('TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY');
+    const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
+    if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
+    const tgRes = await fetch(`${host.replace(/\/$/, '')}/wallet/getnowblock`, {
+      method: 'POST',
+      headers,
+      body: '{}',
+      signal: AbortSignal.timeout(12000),
+    });
+    let block = null;
+    if (tgRes.ok) {
+      const body = await tgRes.json().catch(() => ({}));
+      block = body?.block_header?.raw_data?.number ?? null;
+    }
+    out.trongrid = {
+      ok: tgRes.ok,
+      http_status: tgRes.status,
+      host,
+      api_key_configured: Boolean(apiKey),
+      block,
+    };
+
+    try {
+      const info = await getMasterWalletInfo();
+      out.balance = {
+        usdt: info.usdtBalance,
+        trx: info.trxBalance,
+        source: info.source,
+        trx_low: info.trxLow,
+      };
+    } catch (balErr) {
+      out.balance = { error: balErr.code || balErr.message };
+    }
+
+    const ok = Boolean(out.wallet && out.trongrid?.ok && out.balance && out.balance.usdt != null);
+    out.status = ok ? 'ok' : 'degraded';
+    return res.status(ok ? 200 : 503).json(out);
+  } catch (err) {
+    out.error = err.message || 'TRON health check failed';
+    out.code = err.code || undefined;
+    return res.status(503).json(out);
+  }
+});
+
 app.use('/api/config', require('./routes/config'));
 app.use('/api/qr', require('./routes/qr'));
 app.use('/api/auth', authRoutes);

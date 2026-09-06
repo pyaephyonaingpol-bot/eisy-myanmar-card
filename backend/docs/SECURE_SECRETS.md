@@ -11,9 +11,10 @@ platform env in cloud).
 | Supabase URL | `NEXT_PUBLIC_SUPABASE_URL` (alias `SUPABASE_URL`) | Vercel + Cursor Cloud |
 | Supabase anon (browser) | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Vercel + Cursor Cloud |
 | Supabase service role | `SUPABASE_SERVICE_ROLE_KEY` | Vercel + Cursor Cloud (**server only**) |
-| TRON hot wallet key | `MASTER_PRIVATE_KEY` | Vercel + Cursor Cloud |
+| TRON hot wallet key | `MASTER_PRIVATE_KEY` (aliases: `MASTER_WALLET_PRIVATE_KEY`, `TRON_MASTER_PRIVATE_KEY`) | Vercel + Cursor Cloud |
+| TRON hot wallet address (optional) | `MASTER_WALLET_ADDRESS` (aliases: `TRON_MASTER_WALLET`, `MASTER_TRON_ADDRESS`, `TRON_MASTER_ADDRESS`) | Vercel + Cursor Cloud |
 | TRON HD deposit mnemonic | `TRON_HD_MNEMONIC` | Vercel + Cursor Cloud |
-| TronGrid API key | `TRONGRID_API_KEY` | Vercel + Cursor Cloud |
+| TronGrid API key | `TRONGRID_API_KEY` (aliases: `TRON_API_KEY`, `TRON_PRO_API_KEY`) | Vercel + Cursor Cloud |
 | Auth HMAC | `AUTH_SECRET` | Vercel + Cursor Cloud |
 | Admin bootstrap key | `ADMIN_API_KEY` | Vercel + Cursor Cloud |
 
@@ -83,9 +84,12 @@ Do **not** put secrets in committed `environment.json`.
 
 ```bash
 node backend/scripts/check-env-config.js
-# or against a running deploy:
-curl -sS https://YOUR_DOMAIN/api/config/supabase
-# → { enabled, url, anonKey } only — never the service role
+npm run test:tron-wallet-init --prefix backend   # needs local/process env
+# or against a running deploy (no private key in response):
+curl -sS https://eisymyanmar.com/health/tron
+curl -sS https://eisymyanmar.com/api/config/supabase
+# → supabase: { enabled, url, anonKey } only — never the service role
+# → tron: env SET/MISSING flags, masked address, TronGrid ping, balances
 ```
 
 Admin checks (authenticated): master wallet balance, NOWPayments payout-config, `admin_api_key_configured`.

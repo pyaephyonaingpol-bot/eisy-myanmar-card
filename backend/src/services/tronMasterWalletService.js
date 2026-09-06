@@ -268,7 +268,7 @@ async function transferUsdtTrc20({ toAddress, amountUsdt }) {
 
 /** Prefer explicit MASTER_WALLET_ADDRESS; otherwise derive from MASTER_PRIVATE_KEY. */
 function getMasterWalletAddress() {
-  const configured = firstEnv('MASTER_WALLET_ADDRESS', 'MASTER_TRON_ADDRESS', 'TRON_MASTER_ADDRESS');
+  const configured = firstEnv('MASTER_WALLET_ADDRESS', 'TRON_MASTER_WALLET', 'MASTER_TRON_ADDRESS', 'TRON_MASTER_ADDRESS');
   if (configured) {
     if (!isLikelyTronAddress(configured)) {
       const err = new Error(

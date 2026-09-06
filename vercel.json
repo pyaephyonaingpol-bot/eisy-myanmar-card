@@ -3,7 +3,7 @@
   "version": 2,
   "framework": null,
   "installCommand": "npm install",
-  "buildCommand": "mkdir -p public && cp -R backend/public/. public/",
+  "buildCommand": "node backend/scripts/test-tron-wallet-init.js && mkdir -p public && cp -R backend/public/. public/",
   "outputDirectory": "public",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
