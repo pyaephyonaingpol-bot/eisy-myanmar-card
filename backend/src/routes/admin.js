@@ -1565,7 +1565,11 @@ router.get('/transactions', requirePermission('transactions'), async (req, res) 
     res.json({ category: 'all', transactions });
   } catch (err) {
     console.error('[admin/transactions]', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({
+      error: 'Internal server error',
+      detail: err && err.message ? String(err.message) : undefined,
+      code: err && err.code ? String(err.code) : undefined,
+    });
   }
 });
 
