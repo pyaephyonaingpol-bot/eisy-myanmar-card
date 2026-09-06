@@ -27,6 +27,34 @@ async function upsertRow(table, row) {
   return row;
 }
 
+async function upsertUserWalletAdaptive(sb, row) {
+  let payload = { ...row };
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const { error } = await sb.from('user_wallets').upsert(payload, { onConflict: 'user_id' });
+    if (!error) return { ok: true, error: null };
+    const msg = String(error.message || '');
+    const missing = msg.match(/'([^']+)' column/i) || msg.match(/column\s+user_wallets\.([a-z0-9_]+)/i);
+    const col = missing?.[1];
+    if (!col || !Object.prototype.hasOwnProperty.call(payload, col)) {
+      // Last resort: core columns known to exist in production today.
+      const minimal = {
+        user_id: row.user_id,
+        email: row.email ?? null,
+        name: row.name ?? null,
+        balance_usdt: Number(row.balance_usdt ?? 0),
+        updated_at: row.updated_at,
+      };
+      const { error: minErr } = await sb.from('user_wallets').upsert(minimal, { onConflict: 'user_id' });
+      if (minErr) console.error('[supabase/sync] user_wallets upsert failed:', minErr.message);
+      else if (col) console.warn(`[supabase/sync] user_wallets missing column ${col} — wrote core fields only`);
+      return { ok: !minErr, error: minErr?.message || msg };
+    }
+    delete payload[col];
+    console.warn(`[supabase/sync] stripping unavailable user_wallets column: ${col}`);
+  }
+  return { ok: false, error: 'user_wallets upsert retries exhausted' };
+}
+
 async function upsertUserWallet(user) {
   if (!isSupabaseEnabled() || !user) return null;
   const { isUserBlocked, normalizeAuthStatus } = require('../lib/userAuthStatus');
@@ -56,8 +84,7 @@ async function upsertUserWallet(user) {
   }
 
   const sb = getSupabase();
-  const { error } = await sb.from('user_wallets').upsert(row, { onConflict: 'user_id' });
-  if (error) console.error('[supabase/sync] user_wallets upsert failed:', error.message);
+  await upsertUserWalletAdaptive(sb, row);
   return row;
 }
 
