@@ -563,7 +563,7 @@
       if (balanceForm) {
         balanceForm.addEventListener('submit', async (e) => {
           e.preventDefault();
-          const out = $('balanceAdjustOut');
+          const out = $('balanceAdjustLegacyOut');
           try {
             const data = await this.api('POST', '/api/admin/balance/adjust', {
               user_id: parseInt($('adjUserId').value, 10),
@@ -607,7 +607,7 @@
       if (balanceUsdForm) {
         balanceUsdForm.addEventListener('submit', async (e) => {
           e.preventDefault();
-          const out = $('balanceAdjustOut');
+          const out = $('balanceAdjustLegacyOut');
           try {
             const data = await this.api('POST', '/api/admin/balance/adjust', {
               user_id: parseInt($('adjUsdUserId').value, 10),
@@ -672,6 +672,17 @@
       $('issueCardModalForm')?.addEventListener('submit', (e) => {
         e.preventDefault();
         this.submitIssueCardModal();
+      });
+
+      $('balanceAdjustModalClose')?.addEventListener('click', () => this.closeBalanceAdjustModal());
+      $('balanceAdjustModalCancel')?.addEventListener('click', () => this.closeBalanceAdjustModal());
+      $('balanceAdjustModal')?.querySelector('.balance-adjust-modal-backdrop')
+        ?.addEventListener('click', () => this.closeBalanceAdjustModal());
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (!$('balanceAdjustModal')?.classList.contains('hidden')) {
+          this.closeBalanceAdjustModal();
+        }
       });
 
       const pendingReloadsTable = $('pendingReloadsTable');
@@ -1783,6 +1794,34 @@
 
     closeIssueCardModal() {
       $('issueCardModal')?.classList.add('hidden');
+      document.body.classList.remove('sidebar-scroll-lock');
+    },
+
+    openBalanceAdjustModal({ userId = '', balanceUsdt = 0 } = {}) {
+      const uid = String(userId || '').trim();
+      const bal = Number(balanceUsdt || 0);
+      if ($('adjUsdtUserId')) $('adjUsdtUserId').value = uid;
+      if ($('adjAmountUsdt')) $('adjAmountUsdt').value = '';
+      if ($('adjUsdtReason')) {
+        $('adjUsdtReason').value = uid
+          ? ('Manual USDT wallet adjustment for user #' + uid + ' (current: $' + bal.toFixed(2) + ' USDT)')
+          : '';
+      }
+      const meta = $('balanceAdjustModalMeta');
+      if (meta) {
+        meta.textContent = uid
+          ? ('User #' + uid + ' · Current balance: $' + bal.toFixed(2) + ' USDT')
+          : 'Enter a user ID and USDT amount to credit or debit.';
+      }
+      const out = $('balanceAdjustOut');
+      if (out) out.textContent = '';
+      $('balanceAdjustModal')?.classList.remove('hidden');
+      document.body.classList.add('sidebar-scroll-lock');
+      ($('adjAmountUsdt') || $('adjUsdtUserId'))?.focus();
+    },
+
+    closeBalanceAdjustModal() {
+      $('balanceAdjustModal')?.classList.add('hidden');
       document.body.classList.remove('sidebar-scroll-lock');
     },
 
@@ -3383,10 +3422,10 @@
 
         table.querySelectorAll('.adj-usdt-wallet').forEach((btn) => {
           btn.addEventListener('click', () => {
-            if ($('adjUsdtUserId')) $('adjUsdtUserId').value = btn.dataset.uid;
-            if ($('adjAmountUsdt')) $('adjAmountUsdt').value = '';
-            if ($('adjUsdtReason')) $('adjUsdtReason').value = 'Manual USDT wallet adjustment for user #' + btn.dataset.uid + ' (current: $' + Number(btn.dataset.usdt).toFixed(2) + ' USDT)';
-            $('balanceAdjustUsdtForm')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            this.openBalanceAdjustModal({
+              userId: btn.dataset.uid,
+              balanceUsdt: btn.dataset.usdt,
+            });
           });
         });
         table.querySelectorAll('.block-user-btn').forEach((btn) => {

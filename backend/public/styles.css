@@ -1000,6 +1000,18 @@ a.btn { text-decoration: none; }
 .proof-lightbox-caption { margin-top: 1rem; color: var(--text-secondary); font-size: 0.85rem; text-align: center; }
 
 .kyc-doc-viewer-inner { width: min(960px, 96vw); max-height: 92vh; }
+.admin-form-modal-inner {
+  background: var(--bg-elevated, var(--bg-surface, #fff));
+  border: 1px solid var(--border, rgba(148,163,184,0.35));
+  border-radius: var(--radius-lg, 12px);
+  padding: 1.35rem 1.2rem 1.2rem;
+  box-shadow: var(--shadow-lg);
+  align-items: stretch;
+  overflow: auto;
+  max-height: min(92vh, 720px);
+}
+.admin-form-modal-inner .kyc-doc-viewer-title { text-align: left; }
+.admin-form-modal-inner .form .field { text-align: left; }
 .kyc-doc-viewer-title { margin: 0 0 1rem; font-size: 1rem; font-weight: 600; color: var(--text-primary); text-align: center; }
 .kyc-doc-viewer-img { max-width: 100%; max-height: calc(92vh - 7rem); width: auto; height: auto; }
 .kyc-doc-viewer-placeholder {

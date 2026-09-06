@@ -66,7 +66,8 @@
     "check:env": "node scripts/check-env-config.js",
     "test:tron-wallet-init": "node scripts/test-tron-wallet-init.js",
     "backfill:supabase-tron-hd": "node scripts/backfill-supabase-tron-hd-addresses.js",
-    "test:admin-tron-hd-resync": "node scripts/test-admin-tron-hd-resync.js"
+    "test:admin-tron-hd-resync": "node scripts/test-admin-tron-hd-resync.js",
+    "test:admin-balance-adjust-modal": "node scripts/test-admin-balance-adjust-modal.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
