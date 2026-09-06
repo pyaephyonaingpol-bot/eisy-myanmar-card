@@ -258,7 +258,12 @@ router.post('/auth/ensure-env-admin', async (req, res) => {
         code: 'ADMIN_API_KEY_REQUIRED',
       });
     }
-    const result = await ensureEnvSuperAdmin({ source: 'api' });
+    const result = await ensureEnvSuperAdmin({
+      source: 'api',
+      email: req.body?.email || req.body?.admin_email || null,
+      password: req.body?.password || req.body?.admin_password || null,
+      name: req.body?.name || req.body?.admin_name || null,
+    });
     if (result.skipped) {
       return res.status(400).json({
         success: false,

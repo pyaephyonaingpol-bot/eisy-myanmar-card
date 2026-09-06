@@ -336,13 +336,21 @@ function readEnvAdminCredentials() {
  * Idempotent: creates the user if missing, or promotes + refreshes password
  * when the row exists. Safe to run on every boot.
  */
-async function ensureEnvSuperAdmin({ source = 'boot' } = {}) {
-  const { email, password, name } = readEnvAdminCredentials();
+async function ensureEnvSuperAdmin({
+  source = 'boot',
+  email: emailOverride = null,
+  password: passwordOverride = null,
+  name: nameOverride = null,
+} = {}) {
+  const fromEnv = readEnvAdminCredentials();
+  const email = normalizeEmail(emailOverride || fromEnv.email || '');
+  const password = String(passwordOverride || fromEnv.password || '');
+  const name = String(nameOverride || fromEnv.name || '').trim() || null;
   if (!email || !password) {
     return {
       ok: false,
       skipped: true,
-      reason: 'ADMIN_EMAIL or ADMIN_PASSWORD unset',
+      reason: 'ADMIN_EMAIL or ADMIN_PASSWORD unset (and no override provided)',
       email: email || null,
     };
   }
