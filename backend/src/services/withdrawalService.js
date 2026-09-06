@@ -729,6 +729,106 @@ function assertMmkToUsdtForbidden() {
   throw err;
 }
 
+/**
+ * Resolve a unified MMK-bank payout queue item (WM-* or WB-*) and complete it.
+ * `source` is required to avoid numeric id collisions across tables.
+ */
+function normalizeMmkBankPayoutSource(source) {
+  const s = String(source || '').trim().toLowerCase();
+  if (s === 'usdt_bank' || s === 'usdt' || s === 'wb') return 'usdt_bank';
+  if (s === 'mmk_wallet' || s === 'mmk' || s === 'wm' || s === '') return 'mmk_wallet';
+  const err = new Error(`Unknown payout source "${source}"`);
+  err.code = 'INVALID_PAYOUT_SOURCE';
+  throw err;
+}
+
+function parseMmkBankQueueKey(queueKey) {
+  const raw = String(queueKey || '').trim();
+  const match = /^(mmk_wallet|usdt_bank):(\d+)$/i.exec(raw);
+  if (!match) return null;
+  return { source: match[1].toLowerCase(), id: parseInt(match[2], 10) };
+}
+
+async function completeMmkBankPayout({ id, source, queueKey, adminNote, adminId, proofFile, proofBase64, proofOriginalName } = {}) {
+  const parsed = parseMmkBankQueueKey(queueKey);
+  const resolvedSource = normalizeMmkBankPayoutSource(parsed?.source || source);
+  const resolvedId = parsed?.id || parseInt(id, 10);
+  if (!Number.isFinite(resolvedId) || resolvedId <= 0) {
+    throw new Error('MMK withdrawal not found');
+  }
+
+  if (resolvedSource === 'usdt_bank') {
+    const row = await UsdtWithdrawal.findById(resolvedId);
+    if (!row || String(row.payout_method || '').toLowerCase() !== 'bank') {
+      throw new Error('MMK bank payout not found');
+    }
+    return completeUsdtWithdrawal(resolvedId, {
+      adminNote,
+      adminId,
+      skipOnChain: true,
+      proofFile,
+      proofBase64,
+      proofOriginalName,
+    });
+  }
+
+  // Default source is mmk_wallet. If that row is missing but a USDT→bank row
+  // exists at the same numeric id, surface a clear source-required error instead
+  // of a bare "not found" (the original admin-panel alert).
+  const mmkRow = await MmkWithdrawal.findById(resolvedId);
+  if (!mmkRow) {
+    const usdt = await UsdtWithdrawal.findById(resolvedId);
+    if (usdt && String(usdt.payout_method || '').toLowerCase() === 'bank') {
+      const hint = new Error(
+        'MMK withdrawal not found — this ID belongs to a USDT→MMK bank payout; pass source=usdt_bank (or queue_key)'
+      );
+      hint.code = 'MMK_PAYOUT_SOURCE_REQUIRED';
+      throw hint;
+    }
+    throw new Error('MMK withdrawal not found');
+  }
+
+  return completeMmkWithdrawal(resolvedId, {
+    adminNote,
+    adminId,
+    proofFile,
+    proofBase64,
+    proofOriginalName,
+  });
+}
+
+async function rejectMmkBankPayout({ id, source, queueKey, adminNote, adminId } = {}) {
+  const parsed = parseMmkBankQueueKey(queueKey);
+  const resolvedSource = normalizeMmkBankPayoutSource(parsed?.source || source);
+  const resolvedId = parsed?.id || parseInt(id, 10);
+  if (!Number.isFinite(resolvedId) || resolvedId <= 0) {
+    throw new Error('MMK withdrawal not found');
+  }
+
+  if (resolvedSource === 'usdt_bank') {
+    const row = await UsdtWithdrawal.findById(resolvedId);
+    if (!row || String(row.payout_method || '').toLowerCase() !== 'bank') {
+      throw new Error('MMK bank payout not found');
+    }
+    return rejectUsdtWithdrawal(resolvedId, { adminNote, adminId });
+  }
+
+  const mmkRow = await MmkWithdrawal.findById(resolvedId);
+  if (!mmkRow) {
+    const usdt = await UsdtWithdrawal.findById(resolvedId);
+    if (usdt && String(usdt.payout_method || '').toLowerCase() === 'bank') {
+      const hint = new Error(
+        'MMK withdrawal not found — this ID belongs to a USDT→MMK bank payout; pass source=usdt_bank (or queue_key)'
+      );
+      hint.code = 'MMK_PAYOUT_SOURCE_REQUIRED';
+      throw hint;
+    }
+    throw new Error('MMK withdrawal not found');
+  }
+
+  return rejectMmkWithdrawal(resolvedId, { adminNote, adminId });
+}
+
 module.exports = {
   createUsdtWithdrawalRequest,
   createMmkBankWithdrawalRequest,
@@ -737,6 +837,10 @@ module.exports = {
   rejectUsdtWithdrawal,
   completeMmkWithdrawal,
   rejectMmkWithdrawal,
+  completeMmkBankPayout,
+  rejectMmkBankPayout,
+  parseMmkBankQueueKey,
+  normalizeMmkBankPayoutSource,
   assertMmkToUsdtForbidden,
   normalizeNetwork,
   normalizePayoutMethod,

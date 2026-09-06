@@ -1862,6 +1862,8 @@ const {
   rejectUsdtWithdrawal,
   completeMmkWithdrawal,
   rejectMmkWithdrawal,
+  completeMmkBankPayout,
+  rejectMmkBankPayout,
 } = require('../services/withdrawalService');
 const {
   triggerNowPaymentsPayoutForWithdrawal,
@@ -2319,7 +2321,13 @@ router.post(
   async (req, res) => {
     try {
       const id = parseInt(req.params.id, 10);
-      const withdrawal = await completeMmkWithdrawal(id, {
+      // Unified MMK bank queue may include WB-* (usdt_bank) rows — route by source.
+      const source = req.body.source || req.body.payout_source || req.query.source || 'mmk_wallet';
+      const queueKey = req.body.queue_key || req.body.queueKey || null;
+      const withdrawal = await completeMmkBankPayout({
+        id,
+        source,
+        queueKey,
         adminNote: req.body.admin_note,
         adminId: req.user?.id,
         proofFile: req.file || null,
@@ -2328,9 +2336,10 @@ router.post(
       });
       res.json({
         success: true,
-        message: `MMK withdrawal ${withdrawal.ref_code} marked completed`,
+        message: `MMK bank payout ${withdrawal.ref_code} marked completed`,
         withdrawal,
         proof_email: withdrawal.proof_email || null,
+        source: String(source || 'mmk_wallet'),
       });
     } catch (err) {
       console.error('[admin/withdrawals/mmk complete]', err);
@@ -2342,16 +2351,22 @@ router.post(
 router.post('/withdrawals/mmk/:id/reject', requirePermission('withdrawals'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const withdrawal = await rejectMmkWithdrawal(id, {
+    const source = req.body.source || req.body.payout_source || req.query.source || 'mmk_wallet';
+    const queueKey = req.body.queue_key || req.body.queueKey || null;
+    const withdrawal = await rejectMmkBankPayout({
+      id,
+      source,
+      queueKey,
       adminNote: req.body.admin_note || req.body.rejection_reason,
       adminId: req.user?.id,
     });
     const user = await User.findById(withdrawal.user_id);
     res.json({
       success: true,
-      message: `MMK withdrawal ${withdrawal.ref_code} rejected — balance refunded`,
+      message: `MMK bank payout ${withdrawal.ref_code} rejected — balance refunded`,
       withdrawal,
       wallet: user ? adminWalletPayload(user) : null,
+      source: String(source || 'mmk_wallet'),
     });
   } catch (err) {
     console.error('[admin/withdrawals/mmk reject]', err);
