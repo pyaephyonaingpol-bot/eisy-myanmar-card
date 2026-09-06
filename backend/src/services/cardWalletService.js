@@ -27,7 +27,8 @@ const CARD_ISSUED_MESSAGE =
 /**
  * Live Kripicard BIN options for the Apply Card dropdown.
  * Prefer the provider /api/external/cards/bins catalog (active only).
- * Optional KRIPICARD_ALLOWED_BINS intersects / overrides when the API is down.
+ * Optional KRIPICARD_ALLOWED_BINS may intersect the live list, but must NEVER
+ * replace it — that was how stale/inactive BINs kept appearing in the UI.
  */
 const BIN_CACHE_TTL_MS = Number(process.env.KRIPICARD_BINS_CACHE_MS) || 60_000;
 let binOptionsCache = {
@@ -76,8 +77,9 @@ function envBinOptions() {
 
 /**
  * Resolve BIN options from Kripicard's live API (active BINs only).
- * Falls back to KRIPICARD_ALLOWED_BINS when the API is unavailable.
- * Never returns the old hardcoded catalog (539502 / 525847 / …).
+ * Never falls back to KRIPICARD_ALLOWED_BINS / hardcoded catalogs for the UI —
+ * those env lists still contain inactive BINs in many deploys.
+ * Env allow-list only intersects a successful live response.
  */
 async function getKripicardBinOptions({ forceRefresh = false } = {}) {
   const now = Date.now();
@@ -104,13 +106,20 @@ async function getKripicardBinOptions({ forceRefresh = false } = {}) {
   }
 
   let bins = liveBins;
-  if (env.bins.length && bins.length) {
+  if (bins.length && env.bins.length) {
     const allow = new Set(env.bins);
-    bins = bins.filter((b) => allow.has(b));
-    source = 'kripicard_api+env';
-  } else if (!bins.length && env.bins.length) {
-    bins = env.bins;
-    source = 'env_fallback';
+    const filtered = bins.filter((b) => allow.has(b));
+    // Only apply the env intersect when it still leaves at least one live BIN.
+    // An outdated allow-list must not wipe (or replace) the live catalog.
+    if (filtered.length) {
+      bins = filtered;
+      source = 'kripicard_api+env';
+    } else {
+      console.warn(
+        '[cardWallet] KRIPICARD_ALLOWED_BINS matched no live BINs; ignoring env allow-list'
+      );
+      source = 'kripicard_api';
+    }
   } else if (!bins.length) {
     source = apiError ? 'unavailable' : 'kripicard_api_empty';
   }
@@ -139,7 +148,11 @@ async function getKripicardBinOptions({ forceRefresh = false } = {}) {
 
 async function resolveKripicardBin(requestedBin) {
   const requested = String(requestedBin || '').trim();
-  const { default_bin: defaultBin, bins: allowed, source } = await getKripicardBinOptions();
+  const {
+    default_bin: defaultBin,
+    bins: allowed,
+    source,
+  } = await getKripicardBinOptions();
 
   const bin = requested || defaultBin;
   if (!bin) {
@@ -150,8 +163,9 @@ async function resolveKripicardBin(requestedBin) {
     throw err;
   }
 
-  // Enforce live (or env-fallback) allow-list whenever we have one.
-  if (allowed.length && !allowed.includes(String(bin))) {
+  // Live catalog is authoritative. An empty list means the provider returned
+  // nothing (or the fetch failed) — do not accept arbitrary/env BINs.
+  if (!allowed.length || !allowed.includes(String(bin))) {
     const err = new Error(
       `BIN ${bin} is not available (${source}). Available: ${allowed.join(', ') || 'none'}`
     );

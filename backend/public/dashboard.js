@@ -1563,16 +1563,22 @@ const Dashboard = {
     const select = $('cardBinSelect');
     if (!select) return;
 
-    // Live BINs from GET /api/user/card/pricing (Kripicard /api/external/cards/bins).
-    // Do not fall back to hardcoded legacy BINs — they may be inactive on Kripicard.
+    // ONLY live Kripicard BINs from GET /api/user/card/pricing.
+    // Never keep/seed a hardcoded legacy BIN catalog in this select.
+    const source = String(this.cardPricing?.kripicard_bins_source || '');
     const fromApi = Array.isArray(this.cardPricing?.kripicard_bins)
       ? this.cardPricing.kripicard_bins.map((b) => String(b || '').trim()).filter(Boolean)
       : [];
-    const bins = fromApi;
+    // If pricing loaded with a non-live source (e.g. legacy env_fallback), show empty
+    // rather than rendering stale BINs from KRIPICARD_ALLOWED_BINS.
+    const bins = !this.cardPricing
+      ? []
+      : (source === 'env_fallback' || source === 'env' || source === 'unavailable'
+        ? []
+        : fromApi);
     const defaultBin = String(
       this.cardPricing?.kripicard_default_bin || bins[0] || ''
     ).trim();
-    const source = String(this.cardPricing?.kripicard_bins_source || '');
     const prev = select.value;
 
     if (!bins.length) {
@@ -1582,10 +1588,12 @@ const Dashboard = {
         ? '<option value="" disabled selected>Loading available BINs…</option>'
         : '<option value="" disabled selected>No active BINs available</option>';
       select.value = '';
+      select.dataset.binSource = source || (loading ? 'loading' : 'unavailable');
       return;
     }
 
     select.required = true;
+    // Replace every option — never append onto leftover HTML seeds.
     select.innerHTML = bins.map((bin) =>
       `<option value="${this.esc(bin)}">${this.esc(bin)}</option>`
     ).join('');
@@ -1598,9 +1606,7 @@ const Dashboard = {
       select.value = bins[0];
     }
 
-    if (source) {
-      select.dataset.binSource = source;
-    }
+    select.dataset.binSource = source || 'kripicard_api';
   },
 
   getSelectedCardBin() {

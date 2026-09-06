@@ -165,19 +165,21 @@ async function testIssuanceHelpers() {
     } = require(path.join(ROOT, 'backend/src/services/cardWalletService'));
     resetKripicardBinCacheForTests();
 
-    assert.strictEqual(await resolveBin(), '428803');
-    assert.strictEqual(await resolveBin('411111'), '411111');
+    // Env allow-list must NOT populate the dropdown when the live API is down.
+    const opts = await getBins({ forceRefresh: true });
+    assert.deepStrictEqual(opts.bins, []);
+    assert.ok(
+      opts.source === 'unavailable' || opts.source === 'kripicard_api_empty',
+      opts.source
+    );
     let binErr = null;
     try {
-      await resolveBin('999999');
+      await resolveBin('428803');
     } catch (e) {
       binErr = e;
     }
-    assert.ok(binErr);
+    assert.ok(binErr, 'must reject issuance when no live BINs are available');
     assert.strictEqual(binErr.code, 'INVALID_BIN');
-    const opts = await getBins({ forceRefresh: true });
-    assert.deepStrictEqual(opts.bins, ['428803', '411111']);
-    assert.ok(opts.source === 'env_fallback' || opts.source === 'env', opts.source);
   } finally {
     global.fetch = originalFetch;
   }
