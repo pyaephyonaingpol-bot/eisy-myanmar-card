@@ -5271,8 +5271,10 @@ const Dashboard = {
       return;
     }
 
-    this.initNavigationIfNeeded();
+    // Start hydration BEFORE nav init so the initial home onChange
+    // does not race bootstrap and double-fetch wallet/deposits.
     const hydrateToken = this.beginHydration();
+    this.initNavigationIfNeeded();
     this.applySessionUserToUI();
 
     const finishHydration = () => this.endHydration(hydrateToken);
@@ -6794,8 +6796,8 @@ const Dashboard = {
       return;
     }
 
-    // Honor cards TTL for silent/background refreshes.
-    if (!forceRefresh && this.allCards.length && this._isFresh('cards')) {
+    // Honor cards TTL for silent/background refreshes (including empty lists).
+    if (!forceRefresh && this._isFresh('cards')) {
       return;
     }
 

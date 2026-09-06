@@ -19,6 +19,14 @@ assert.ok(dash.includes("reloads:"), 'TTL includes reloads');
 assert.ok(dash.includes("p2p:"), 'TTL includes p2p');
 assert.ok(dash.includes("kyc:"), 'TTL includes kyc');
 assert.ok(dash.includes('_hydrating'), 'hydration flag tracked');
+assert.ok(
+  dash.indexOf('const hydrateToken = this.beginHydration()') < dash.indexOf('this.initNavigationIfNeeded()', dash.indexOf('refreshAuthUI')),
+  'beginHydration runs before initNavigationIfNeeded in refreshAuthUI'
+);
+assert.ok(
+  dash.includes("if (!forceRefresh && this._isFresh('cards'))"),
+  'empty card lists still honor cards TTL'
+);
 assert.ok(dash.includes('!this._hydrating || force'), 'home skips loads while hydrating');
 assert.ok(dash.includes("Honor cards TTL"), 'loadAllCards honors TTL');
 assert.ok(dash.includes("Dashboard no longer mounts #txHistory") || dash.includes('avoid a wasted round-trip'), 'loadTransactions short-circuits without DOM');
