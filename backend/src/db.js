@@ -1,6 +1,7 @@
 const { runMigrations, columnExists, tableExists } = require('../migrations/runner');
 const { applyUserAuthColumns } = require('../migrations/patches/applyUserAuthColumns');
 const { ensureAuthTables } = require('../migrations/patches/ensureAuthTables');
+const { ensureMmkWithdrawalColumns } = require('../migrations/patches/ensureMmkWithdrawalColumns');
 const { createLibsqlDb } = require('./lib/libsqlDb');
 const { getDatabaseConfig, getDatabaseInfo } = require('./lib/databaseConfig');
 
@@ -47,6 +48,7 @@ async function initDb() {
   await runMigrations(db);
   await applyUserAuthColumns(db, columnExists);
   await ensureAuthTables(db);
+  await ensureMmkWithdrawalColumns(db, columnExists, tableExists);
 
   try {
     const { migrateAllLegacyUsdBalances } = require('./services/walletService');

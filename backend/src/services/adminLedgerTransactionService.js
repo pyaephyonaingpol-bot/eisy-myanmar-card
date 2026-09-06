@@ -248,51 +248,46 @@ async function listMmkWithdrawalAdminTransactions({ userId, limit = 200 } = {}) 
     params.push(userId);
   }
 
+  // Use SELECT w.* (same approach as MmkWithdrawal.listAll) so drifted
+  // production schemas missing newer columns do not 500 the admin Transaction
+  // History tab. Map optional columns defensively below.
   const rows = await db.all(`
     SELECT
-      w.id,
-      w.user_id,
-      w.ref_code,
-      w.amount_mmk,
-      w.fee_mmk,
-      w.net_mmk,
-      w.fee_percent,
-      w.bank_name,
-      w.account_name,
-      w.account_number,
-      w.status,
-      w.admin_note,
-      w.processed_at,
-      w.created_at,
+      w.*,
       u.name AS user_name,
       u.email AS user_email
     FROM mmk_withdrawal_requests w
     LEFT JOIN users u ON u.id = w.user_id
     WHERE 1=1
     ${userFilter}
-    ORDER BY COALESCE(w.processed_at, w.created_at) DESC
+    ORDER BY w.created_at DESC
     LIMIT ?
   `, ...params, limit);
 
-  return rows.map((row) => ({
-    id: row.id,
-    ref_code: row.ref_code,
-    category: 'mmk_withdrawal',
-    user_id: row.user_id,
-    user_name: row.user_name,
-    user_email: row.user_email,
-    amount_mmk: round2(row.amount_mmk),
-    fee_mmk: round2(row.fee_mmk),
-    net_mmk: round2(row.net_mmk),
-    fee_percent: row.fee_percent != null ? round2(row.fee_percent) : null,
-    bank_name: row.bank_name,
-    account_name: row.account_name,
-    account_number: row.account_number,
-    status: row.status,
-    admin_note: row.admin_note,
-    processed_at: row.processed_at,
-    created_at: row.created_at,
-  }));
+  return rows.map((row) => {
+    const amountMmk = round2(row.amount_mmk);
+    const feeMmk = round2(row.fee_mmk);
+    const netMmk = row.net_mmk != null ? round2(row.net_mmk) : round2(amountMmk - feeMmk);
+    return {
+      id: row.id,
+      ref_code: row.ref_code,
+      category: 'mmk_withdrawal',
+      user_id: row.user_id,
+      user_name: row.user_name,
+      user_email: row.user_email,
+      amount_mmk: amountMmk,
+      fee_mmk: feeMmk,
+      net_mmk: netMmk,
+      fee_percent: row.fee_percent != null ? round2(row.fee_percent) : null,
+      bank_name: row.bank_name || null,
+      account_name: row.account_name || null,
+      account_number: row.account_number || null,
+      status: row.status,
+      admin_note: row.admin_note || null,
+      processed_at: row.processed_at || null,
+      created_at: row.created_at,
+    };
+  });
 }
 
 /**
