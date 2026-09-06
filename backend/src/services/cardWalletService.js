@@ -92,11 +92,13 @@ async function getKripicardBinOptions({ forceRefresh = false } = {}) {
   let details = [];
   let source = 'kripicard_api';
   let apiError = null;
+  let rawKeys = [];
 
   try {
     const live = await fetchAvailableBins();
     liveBins = uniqueBins(live.bins || []);
     details = Array.isArray(live.details) ? live.details : [];
+    rawKeys = Array.isArray(live.raw_keys) ? live.raw_keys : [];
   } catch (err) {
     apiError = err;
     console.warn(
@@ -134,6 +136,7 @@ async function getKripicardBinOptions({ forceRefresh = false } = {}) {
     bins: uniqueBins(defaultBin ? [defaultBin, ...bins] : bins),
     source,
     details,
+    raw_keys: rawKeys,
     error: apiError
       ? { code: apiError.code || 'KRIPICARD_BINS_FETCH_FAILED', message: apiError.message }
       : null,
