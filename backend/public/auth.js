@@ -135,7 +135,7 @@ const Auth = {
   },
 
   async api(method, path, body, opts = {}) {
-    console.log(`[Auth.api] ${method} ${path}`, body || '');
+    if (window.__EISY_DEBUG_API) console.log(`[Auth.api] ${method} ${path}`, body || '');
     const timeoutMs = Number.isFinite(opts.timeoutMs)
       ? Math.max(1000, opts.timeoutMs)
       : 25000;
@@ -165,7 +165,7 @@ const Auth = {
         throw new Error(`Invalid server response (${res.status})`);
       }
 
-      console.log(`[Auth.api] ${method} ${path} → ${res.status}`, data);
+      if (window.__EISY_DEBUG_API) console.log(`[Auth.api] ${method} ${path} → ${res.status}`, data);
 
       if (!res.ok) {
         const err = new Error(data.error || `HTTP ${res.status}`);

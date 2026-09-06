@@ -26,6 +26,9 @@ const Dashboard = {
     paymentMethods: 300000,
     cards: 20000,
     transactions: 45000,
+    reloads: 25000,
+    p2p: 20000,
+    kyc: 60000,
   },
 
   _markFetched(key) {
@@ -127,14 +130,23 @@ const Dashboard = {
     document.documentElement.classList.toggle('app-hydrating', Boolean(on));
   },
 
+  setPageLoading(page, on) {
+    const panel = document.querySelector(`.app-page[data-page="${page}"]`);
+    if (!panel) return;
+    panel.classList.toggle('is-page-loading', Boolean(on));
+    panel.setAttribute('aria-busy', on ? 'true' : 'false');
+  },
+
   beginHydration() {
     this._hydrationToken = (this._hydrationToken || 0) + 1;
+    this._hydrating = true;
     this.setHydrating(true);
     return this._hydrationToken;
   },
 
   endHydration(token) {
     if (token != null && token !== this._hydrationToken) return;
+    this._hydrating = false;
     this.setHydrating(false);
   },
 
@@ -190,9 +202,10 @@ const Dashboard = {
     this.updateCardPricingBreakdown();
     this.updateHomeRateSummary();
     if (Auth.user) {
-      this.loadAllCards({ preserveSelection: true, silent: true });
-      this.loadDepositHistory();
-      this.loadReloadHistory();
+      // Re-render from cache; only fetch when stale.
+      this.loadAllCards({ preserveSelection: true, silent: true, forceRefresh: false });
+      this.loadDepositHistory({ force: false });
+      this.loadReloadHistory({ force: false });
     }
   },
 
@@ -255,43 +268,53 @@ const Dashboard = {
 
   onPageChange(page, opts = {}) {
     const force = Boolean(opts.forceReload);
-    if (page === 'deposits') {
-      this.loadDepositHistory({ force });
-      this.populateReloadCardSelect();
-      if (opts.depositTab === 'usdt') this.openUsdtTopUpModal();
-    }
-    if (page === 'usdt-wallet') this.loadUsdtWalletPage(force);
-    if (page === 'rates') {
-      this.renderRatesPage();
-      // Always refresh withdrawal fees when visiting Rates so admin updates show promptly.
-      this.loadWithdrawalFees({ force: true }).catch(() => {});
-    }
-    if (page === 'p2p') {
-      if (opts.p2pTab) this.switchP2pTab(opts.p2pTab);
-      this.loadP2pPage();
-    }
-    if (page === 'settings') {
-      this.loadSupportThreads();
-      this.loadKycStatusUI();
-      this.updateChangePasswordUI();
-    }
-    if (page === 'profile') {
-      this.updateProfileFormUI();
-      this.loadWallet({ force: false });
-    }
-    if (page === 'cards') {
-      const hasPending = (this.allCards || []).some((c) => this.isCardPending(c));
-      this.loadAllCards({
-        preserveSelection: true,
-        silent: true,
-        forceRefresh: force || hasPending || !this._isFresh('cards'),
-      });
-      this.loadReloadHistory();
-    }
-    if (page === 'home') {
-      this.updateHomeRateSummary();
-      this.loadDepositHistory({ force });
-      this.loadWallet({ force });
+    this.setPageLoading(page, true);
+    try {
+      if (page === 'deposits') {
+        this.loadDepositHistory({ force });
+        this.populateReloadCardSelect();
+        if (opts.depositTab === 'usdt') this.openUsdtTopUpModal();
+      }
+      if (page === 'usdt-wallet') this.loadUsdtWalletPage(force);
+      if (page === 'rates') {
+        this.renderRatesPage();
+        // Honor TTL — force only when explicitly requested.
+        this.loadWithdrawalFees({ force }).catch(() => {});
+      }
+      if (page === 'p2p') {
+        if (opts.p2pTab) this.switchP2pTab(opts.p2pTab);
+        this.loadP2pPage({ force });
+      }
+      if (page === 'settings') {
+        this.loadSupportThreads();
+        this.loadKycStatusUI();
+        this.updateChangePasswordUI();
+      }
+      if (page === 'profile') {
+        this.updateProfileFormUI();
+        this.loadWallet({ force: false });
+      }
+      if (page === 'cards') {
+        const hasPending = (this.allCards || []).some((c) => this.isCardPending(c));
+        this.loadAllCards({
+          preserveSelection: true,
+          silent: true,
+          forceRefresh: force || hasPending || !this._isFresh('cards'),
+        });
+        this.loadReloadHistory({ force });
+      }
+      if (page === 'home') {
+        this.updateHomeRateSummary();
+        // Bootstrap already loads wallet/deposits — skip duplicate home fetches while hydrating.
+        if (!this._hydrating || force) {
+          this.loadDepositHistory({ force });
+          this.loadWallet({ force });
+        }
+      }
+    } finally {
+      // Keep skeleton briefly so navigation feels instant even if data is cached.
+      clearTimeout(this._pageLoadingTimer);
+      this._pageLoadingTimer = setTimeout(() => this.setPageLoading(page, false), 180);
     }
   },
 
@@ -308,19 +331,23 @@ const Dashboard = {
         && Auth.isLoggedIn()
         && !Auth.needsPinUnlock()
       ) {
-        const hasPending = (this.allCards || []).some((c) => this.isCardPending(c));
-        if (hasPending || !this._isFresh('cards')) {
-          this.loadAllCards({ preserveSelection: true, silent: true });
-        }
-        // Re-check balances only when stale (avoid hammering on every tab focus).
-        if (!this._isFresh('wallet')) this.loadWallet();
-        if (
-          typeof AppNav !== 'undefined'
-          && AppNav.currentPage === 'usdt-wallet'
-          && !this._isFresh('usdtWallet')
-        ) {
-          this.loadUsdtWalletPage(false);
-        }
+        clearTimeout(this._visibilityRefreshTimer);
+        this._visibilityRefreshTimer = setTimeout(() => {
+          if (document.visibilityState !== 'visible') return;
+          const hasPending = (this.allCards || []).some((c) => this.isCardPending(c));
+          if (hasPending || !this._isFresh('cards')) {
+            this.loadAllCards({ preserveSelection: true, silent: true });
+          }
+          // Re-check balances only when stale (avoid hammering on every tab focus).
+          if (!this._isFresh('wallet')) this.loadWallet();
+          if (
+            typeof AppNav !== 'undefined'
+            && AppNav.currentPage === 'usdt-wallet'
+            && !this._isFresh('usdtWallet')
+          ) {
+            this.loadUsdtWalletPage(false);
+          }
+        }, 400);
       }
     });
 
@@ -1963,7 +1990,12 @@ const Dashboard = {
       || Auth.user?.is_kyc_verified === true;
   },
 
-  async loadKycStatus() {
+  async loadKycStatus(opts = {}) {
+    const force = Boolean(opts && opts.force);
+    if (!force && this._isFresh('kyc') && this._kycStatus) {
+      this.updateKycSettingsUI?.();
+      return this._kycStatus;
+    }
     if (!Auth.isLoggedIn()) {
       this._kycStatus = null;
       return null;
@@ -1971,6 +2003,7 @@ const Dashboard = {
     try {
       const data = await Auth.api('GET', '/api/kyc/status');
       this._kycStatus = data;
+      this._markFetched('kyc');
       if (Auth.user) {
         Auth.user.kyc_status = data.kyc_status;
         Auth.user.is_kyc_verified = data.is_verified;
@@ -2965,7 +2998,7 @@ const Dashboard = {
     hint.textContent = `Attached: ${file.name} — click Send to share in chat`;
   },
 
-  async loadP2pPage() {
+  async loadP2pPage(opts = {}) {
     if (!Auth.isLoggedIn()) {
       $('p2pActiveOrdersSection')?.classList.add('hidden');
       $('p2pMyAdsSection')?.classList.add('hidden');
@@ -2973,12 +3006,15 @@ const Dashboard = {
       if (el) el.innerHTML = '<p class="hint">Log in to view P2P market.</p>';
       return;
     }
+    const force = Boolean(opts && opts.force);
+    if (!force && this._isFresh('p2p')) return;
     await Promise.all([
       this.loadP2pActiveOrders(),
       this.loadP2pMarket(),
       this.loadMyP2pAds(),
-      this.loadKycStatus(),
+      this.loadKycStatus({ force: false }),
     ]);
+    this._markFetched('p2p');
   },
 
   async loadP2pMarket() {
@@ -5235,8 +5271,10 @@ const Dashboard = {
       return;
     }
 
-    this.initNavigationIfNeeded();
+    // Start hydration BEFORE nav init so the initial home onChange
+    // does not race bootstrap and double-fetch wallet/deposits.
     const hydrateToken = this.beginHydration();
+    this.initNavigationIfNeeded();
     this.applySessionUserToUI();
 
     const finishHydration = () => this.endHydration(hydrateToken);
@@ -5263,6 +5301,7 @@ const Dashboard = {
 
       await Promise.allSettled([
         this.loadWallet({ force: true }),
+        // #txHistory is not mounted — loadTransactions no-ops quickly, keep call for future UI.
         this.loadTransactions(),
         this.loadDepositHistory(),
         this.loadCardPricing(),
@@ -6480,27 +6519,42 @@ const Dashboard = {
       </table>`;
   },
 
-  async loadReloadHistory(preloadedReloads = null) {
+  async loadReloadHistory(preloadedReloads = null, opts = {}) {
     if (!Auth.isLoggedIn()) return;
     const targets = [$('cardsReloadHistoryTable')].filter(Boolean);
     if (!targets.length) return;
-    try {
-      let reloads = preloadedReloads;
-      if (!reloads) {
-        if (window.SupabaseBridge?.isReady() && Auth.user?.id) {
-          reloads = await window.SupabaseBridge.fetchUserReloads(Auth.user.id);
-        }
-        if (reloads == null) {
-          const data = await Auth.api('GET', '/api/user/reloads');
-          reloads = data.reloads || [];
-        }
-      }
-      const html = this.renderReloadHistoryTable(reloads);
-      targets.forEach((el) => { el.innerHTML = html; });
-    } catch (err) {
-      const msg = `<p class="hint">${err.message || 'Failed to load reload history'}</p>`;
-      targets.forEach((el) => { el.innerHTML = msg; });
+    const force = Boolean(opts.force) || (preloadedReloads != null && typeof preloadedReloads === 'object' && !Array.isArray(preloadedReloads) && preloadedReloads.force);
+    // Support both loadReloadHistory(rows) and loadReloadHistory({ force: true })
+    if (preloadedReloads && !Array.isArray(preloadedReloads) && typeof preloadedReloads === 'object') {
+      opts = preloadedReloads;
+      preloadedReloads = null;
     }
+    const doForce = Boolean(opts.force);
+    if (!doForce && preloadedReloads == null && this._isFresh('reloads')) return;
+
+    const run = async () => {
+      try {
+        let reloads = Array.isArray(preloadedReloads) ? preloadedReloads : null;
+        if (!reloads) {
+          if (window.SupabaseBridge?.isReady() && Auth.user?.id) {
+            reloads = await window.SupabaseBridge.fetchUserReloads(Auth.user.id);
+          }
+          if (reloads == null) {
+            const data = await Auth.api('GET', '/api/user/reloads');
+            reloads = data.reloads || [];
+          }
+        }
+        this._markFetched('reloads');
+        const html = this.renderReloadHistoryTable(reloads);
+        targets.forEach((el) => { el.innerHTML = html; });
+      } catch (err) {
+        const msg = `<p class="hint">${err.message || 'Failed to load reload history'}</p>`;
+        targets.forEach((el) => { el.innerHTML = msg; });
+      }
+    };
+
+    if (Array.isArray(preloadedReloads)) return run();
+    return this._withInflight('reloads', run, { force: doForce });
   },
 
   renderDepositHistoryRow(d) {
@@ -6634,11 +6688,16 @@ const Dashboard = {
 
   async loadTransactions() {
     if (!Auth.isLoggedIn()) return;
-    try {
-      const { transactions } = await Auth.api('GET', '/api/user/transactions');
-      const el = $('txHistory');
-      if (!el) return;
-      el.innerHTML = transactions.length ? `
+    const el = $('txHistory');
+    // Dashboard no longer mounts #txHistory — avoid a wasted round-trip on every bootstrap.
+    if (!el) return;
+    if (this._isFresh('transactions')) return;
+    return this._withInflight('transactions', async () => {
+      try {
+        const { transactions } = await Auth.api('GET', '/api/user/transactions');
+        if (!el.isConnected) return;
+        this._markFetched('transactions');
+        el.innerHTML = transactions.length ? `
         <table class="data-table">
           <thead><tr><th>Time</th><th>Type</th><th>USD</th><th>Description</th></tr></thead>
           <tbody>${transactions.map((t) => `
@@ -6650,9 +6709,10 @@ const Dashboard = {
             </tr>
           `).join('')}</tbody>
         </table>` : '<p class="hint">No transactions yet.</p>';
-    } catch (err) {
-      console.warn('[tx history]', err.message);
-    }
+      } catch (err) {
+        console.warn('[tx history]', err.message);
+      }
+    });
   },
 
   async loadSupportThreads() {
@@ -6733,6 +6793,11 @@ const Dashboard = {
     if (Auth.needsPinUnlock()) {
       if (!this.allCards.length) this.applyCachedCardsIfAvailable();
       if (!silent) $('pinUnlockModal')?.classList.remove('hidden');
+      return;
+    }
+
+    // Honor cards TTL for silent/background refreshes (including empty lists).
+    if (!forceRefresh && this._isFresh('cards')) {
       return;
     }
 

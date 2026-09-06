@@ -101,11 +101,22 @@ const AppNav = {
 
   syncFromHash() {
     const page = this.pageFromHash() || this.defaultPage;
+    // Avoid re-running page loaders when hashchange echoes a navigate we just did.
+    if (page === this.currentPage) return;
     this.navigate(page, { pushHash: false });
   },
 
   navigate(page, opts = {}) {
-    const { pushHash = false, replace = false } = opts;
+    const { pushHash = false, replace = false, forceReload = false } = opts;
+    // Same-page navigations (e.g. hash echoes) should not re-fire onChange loaders.
+    if (page === this.currentPage && !forceReload && !opts.depositTab && !opts.p2pTab) {
+      if (pushHash) {
+        const hash = `#${this.hashPrefix}${page}`;
+        if (replace) history.replaceState(null, '', hash);
+        else if (window.location.hash !== hash) window.location.hash = hash;
+      }
+      return;
+    }
     const pages = this.root.querySelectorAll(this.pageSelector);
     const navItems = this.root.querySelectorAll(this.navSelector);
     let found = false;

@@ -3483,3 +3483,56 @@ html.app-hydrating .wallet-hero-actions-row {
   font-size: 0.82rem;
 }
 
+
+
+/* ── Per-page navigation loading skeletons ── */
+.app-page.is-page-loading {
+  position: relative;
+}
+.app-page.is-page-loading::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.04) 0%,
+    rgba(15, 23, 42, 0.0) 40%
+  );
+}
+.app-page.is-page-loading .data-table-wrap,
+.app-page.is-page-loading .card-selector-section,
+.app-page.is-page-loading .p2p-market-list,
+.app-page.is-page-loading .usdt-wallet-panel,
+.app-page.is-page-loading .pending-requests-list {
+  position: relative;
+  min-height: 4.5rem;
+}
+.app-page.is-page-loading .data-table-wrap::after,
+.app-page.is-page-loading .card-selector-section::after,
+.app-page.is-page-loading .p2p-market-list::after,
+.app-page.is-page-loading .usdt-wallet-panel::after,
+.app-page.is-page-loading .pending-requests-list::after {
+  content: '';
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  top: 0.75rem;
+  height: 3rem;
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.12) 0%,
+    rgba(148, 163, 184, 0.22) 50%,
+    rgba(148, 163, 184, 0.12) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeletonPulse 1.1s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.app-page:not(.is-active) {
+  content-visibility: auto;
+  contain-intrinsic-size: 800px;
+}
