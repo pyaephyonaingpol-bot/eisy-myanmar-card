@@ -23,6 +23,10 @@ async function main() {
   );
   assert.ok(syncSrc.includes('upsertUserWalletAdaptive'), 'adaptive upsert helper present');
   assert.ok(
+    syncSrc.includes('PROD_USER_WALLET_COLUMNS') || syncSrc.includes('pickProdUserWalletColumns'),
+    'prefers known production user_wallets columns'
+  );
+  assert.ok(
     syncSrc.includes('stripping unavailable user_wallets column'),
     'logs stripped columns'
   );

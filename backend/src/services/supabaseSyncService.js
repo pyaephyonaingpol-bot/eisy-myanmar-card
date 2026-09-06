@@ -28,12 +28,37 @@ async function upsertRow(table, row) {
 }
 
 /**
+ * Columns confirmed present on production `user_wallets` (2026-09).
+ * Omit everything else on the first write so backfill does not burn retries
+ * on known-missing fields (the original 15-of-19 stall).
+ */
+const PROD_USER_WALLET_COLUMNS = new Set([
+  'user_id',
+  'email',
+  'name',
+  'balance_usdt',
+  'updated_at',
+  'tron_deposit_address',
+  'tron_derivation_index',
+  'tron_derivation_path',
+]);
+
+function pickProdUserWalletColumns(row) {
+  const out = {};
+  for (const [key, value] of Object.entries(row || {})) {
+    if (PROD_USER_WALLET_COLUMNS.has(key)) out[key] = value;
+  }
+  return out;
+}
+
+/**
  * Upsert into user_wallets, stripping columns the live schema does not have.
  * Production currently lacks balance_mmk / auth_status / is_blocked — a hard
  * upsert of those fields silently blocked sync for users 16+ (mirror stuck at 15).
  */
 async function upsertUserWalletAdaptive(sb, row) {
-  let payload = { ...row };
+  // Prefer the known-good production shape first; fall back to adaptive strip.
+  let payload = pickProdUserWalletColumns(row);
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const { error } = await sb.from('user_wallets').upsert(payload, { onConflict: 'user_id' });
     if (!error) return { ok: true, row: payload, error: null };
@@ -76,16 +101,13 @@ async function upsertUserWalletAdaptive(sb, row) {
 
 async function upsertUserWallet(user) {
   if (!isSupabaseEnabled() || !user) return null;
-  const { isUserBlocked, normalizeAuthStatus } = require('../lib/userAuthStatus');
-  const authStatus = normalizeAuthStatus(user.auth_status);
+  // Do not send balance_mmk / auth_status / is_blocked — production schema
+  // rejects them and previously stalled the mirror at 15 of 19 users.
   const row = {
     user_id: String(user.id),
     email: user.email || null,
     name: user.name || null,
-    balance_mmk: Number(user.balance_mmk ?? 0),
     balance_usdt: Number(user.balance_usdt ?? 0),
-    auth_status: authStatus,
-    is_blocked: isUserBlocked(authStatus),
     updated_at: nowIso(),
   };
 
