@@ -355,6 +355,24 @@ async function start() {
   await initDb();
 
   try {
+    const { ensureEnvSuperAdmin } = require('./services/adminAuthService');
+    const ensured = await ensureEnvSuperAdmin({ source: 'boot' });
+    if (ensured.skipped) {
+      console.log('[admin] env super-admin ensure skipped:', ensured.reason);
+    } else {
+      console.log(
+        '[admin] env super-admin ensured:',
+        ensured.user?.email,
+        `created=${ensured.created}`,
+        `promoted=${ensured.promoted}`,
+        `password_synced=${ensured.password_synced}`
+      );
+    }
+  } catch (err) {
+    console.warn('[admin] env super-admin ensure failed:', err.message);
+  }
+
+  try {
     const { logNowPaymentsPayoutConfigAtBoot } = require('./services/nowPaymentsPayoutService');
     logNowPaymentsPayoutConfigAtBoot();
   } catch (err) {

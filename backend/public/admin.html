@@ -416,11 +416,28 @@
     <div class="boot-splash-hint">Loading…</div>
   </div>
   <script>
-    setTimeout(function () {
-      document.documentElement.classList.add('app-ready');
-      var splash = document.getElementById('adminBootSplash');
-      if (splash) { splash.hidden = true; splash.setAttribute('aria-busy', 'false'); }
-    }, 8000);
+    (function () {
+      function dismissAdminSplash() {
+        document.documentElement.classList.add('app-ready');
+        var splash = document.getElementById('adminBootSplash');
+        if (splash) {
+          splash.hidden = true;
+          splash.setAttribute('aria-busy', 'false');
+          splash.style.pointerEvents = 'none';
+        }
+      }
+      // If no stored admin session, do not block the login form with the splash.
+      try {
+        var keys = (window.Eisy && window.Eisy.storageKeys) || {};
+        var tokenKey = keys.ADMIN_TOKEN || 'eisy_admin_token';
+        if (!localStorage.getItem(tokenKey)) {
+          dismissAdminSplash();
+          return;
+        }
+      } catch (_) { /* ignore */ }
+      // Fallback if admin.js fails to load / hang during session restore.
+      setTimeout(dismissAdminSplash, 1500);
+    })();
   </script>
 
   <div id="adminBootError" role="alert"></div>

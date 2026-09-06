@@ -18,6 +18,8 @@ const {
   removeAdmin,
   setAdminPassword,
   adminPublic,
+  ensureEnvSuperAdmin,
+  getEnvAdminMappingStatus,
 } = require('../services/adminAuthService');
 const { permissionsForRole, pagesForRole, ALL_ADMIN_ROLES, ROLE_LABELS, roleHasPermission } = require('../lib/adminRoles');
 const UserSession = require('../models/UserSession');
@@ -190,11 +192,43 @@ router.get('/auth/status', async (_req, res) => {
     const adminCount = await User.countAdmins();
     const bootstrapAvailable = adminCount === 0;
     const { isProductionRuntime } = require('../services/securityFlags');
+    const { getDatabaseInfo } = require('../lib/databaseConfig');
+    const dbInfo = getDatabaseInfo();
+    const envAdmin = await getEnvAdminMappingStatus();
     const payload = {
       has_admins: adminCount > 0,
+      admin_count: adminCount,
       bootstrap_available: bootstrapAvailable,
       admin_api_key_configured: Boolean(String(process.env.ADMIN_API_KEY || '').trim()),
       uses_default_admin_api_key: isDefaultAdminApiKey(),
+      database: {
+        mode: dbInfo.mode,
+        driver: dbInfo.driver,
+        persistent: dbInfo.persistent,
+        // Mask credentials; show host/path so local-vs-Turso mismatches are obvious.
+        url: dbInfo.url
+          ? String(dbInfo.url).replace(/\/\/([^@/]+)@/, '//***@')
+          : null,
+        file_path: dbInfo.filePath || null,
+        warning: dbInfo.warning || null,
+      },
+      env_admin: {
+        email_configured: envAdmin.env_admin_email_configured,
+        password_configured: envAdmin.env_admin_password_configured,
+        mapped: envAdmin.mapped,
+        is_super_admin: Boolean(envAdmin.is_super_admin),
+        user_id: envAdmin.user?.id || null,
+        email: envAdmin.user?.email || null,
+      },
+      supabase_browser: (() => {
+        try {
+          const { getPublicSupabaseConfig } = require('../lib/supabase');
+          const pub = getPublicSupabaseConfig();
+          return { enabled: Boolean(pub.enabled), url_configured: Boolean(pub.url) };
+        } catch (_) {
+          return { enabled: false, url_configured: false };
+        }
+      })(),
     };
     // Never expose the bootstrap key in production — that leaked the default
     // "eisy-admin-dev-key" and enabled unauthenticated admin takeover.
@@ -205,6 +239,47 @@ router.get('/auth/status', async (_req, res) => {
   } catch (err) {
     console.error('[admin/auth/status]', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/admin/auth/ensure-env-admin
+ * Upsert ADMIN_EMAIL as super_admin using ADMIN_PASSWORD from server env.
+ * Auth: X-Admin-Key (ADMIN_API_KEY). Works even when admins already exist —
+ * used to heal local↔production login drift.
+ */
+router.post('/auth/ensure-env-admin', async (req, res) => {
+  try {
+    const provided = req.headers['x-admin-key'] || req.body?.admin_api_key;
+    const expected = configuredAdminApiKey();
+    if (!provided || provided !== expected) {
+      return res.status(401).json({
+        error: 'Valid ADMIN_API_KEY required',
+        code: 'ADMIN_API_KEY_REQUIRED',
+      });
+    }
+    const result = await ensureEnvSuperAdmin({ source: 'api' });
+    if (result.skipped) {
+      return res.status(400).json({
+        success: false,
+        error: result.reason || 'ADMIN_EMAIL / ADMIN_PASSWORD not configured on server',
+        result,
+      });
+    }
+    res.json({
+      success: true,
+      message: 'Env super admin ensured in the active database',
+      result: {
+        created: result.created,
+        promoted: result.promoted,
+        password_synced: result.password_synced,
+        previous_role: result.previous_role,
+        user: result.user,
+      },
+    });
+  } catch (err) {
+    console.error('[admin/auth/ensure-env-admin]', err.message);
+    res.status(400).json({ error: err.message || 'Failed to ensure env admin' });
   }
 });
 

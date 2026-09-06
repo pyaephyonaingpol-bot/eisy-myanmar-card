@@ -147,8 +147,11 @@ html.kb-open body {
   color: var(--text-secondary);
   transition: opacity 0.22s ease, visibility 0.22s ease;
 }
+#appBootSplash[aria-busy="false"],
 #appBootSplash[hidden],
+#adminBootSplash[aria-busy="false"],
 #adminBootSplash[hidden],
+
 html.app-ready #appBootSplash,
 html.app-ready #adminBootSplash {
   display: none !important;

@@ -322,6 +322,116 @@ async function setAdminPassword(userId, password, actorId) {
   return adminPublic(await User.findById(userId));
 }
 
+function readEnvAdminCredentials() {
+  const email = normalizeEmail(process.env.ADMIN_EMAIL || '');
+  const password = String(process.env.ADMIN_PASSWORD || '');
+  const name = String(process.env.ADMIN_NAME || '').trim() || null;
+  return { email, password, name };
+}
+
+/**
+ * Ensure ADMIN_EMAIL / ADMIN_PASSWORD from env map to a super_admin row in the
+ * active database (Turso in production, local file DB in agent/dev).
+ *
+ * Idempotent: creates the user if missing, or promotes + refreshes password
+ * when the row exists. Safe to run on every boot.
+ */
+async function ensureEnvSuperAdmin({ source = 'boot' } = {}) {
+  const { email, password, name } = readEnvAdminCredentials();
+  if (!email || !password) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: 'ADMIN_EMAIL or ADMIN_PASSWORD unset',
+      email: email || null,
+    };
+  }
+
+  const pwdCheck = validatePasswordFormat(password);
+  if (!pwdCheck.ok) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: pwdCheck.error || 'ADMIN_PASSWORD failed format validation',
+      email,
+    };
+  }
+
+  let user = await User.findByEmail(email);
+  let created = false;
+  let promoted = false;
+  let passwordUpdated = false;
+
+  if (!user) {
+    const phone = `admin.${email.replace(/[^a-z0-9]/gi, '').slice(0, 18)}`;
+    user = await User.create({
+      name: name || email.split('@')[0],
+      phone,
+      email,
+      pinHash: hashPin(DEFAULT_TEST_PIN),
+    });
+    await User.verifyEmail(user.id);
+    created = true;
+  } else if (name && name !== user.name) {
+    await User.updateProfile(user.id, { name });
+  }
+
+  const beforeRole = user.admin_role || null;
+  if (beforeRole !== ROLES.SUPER_ADMIN) {
+    await User.setAdminRole(user.id, ROLES.SUPER_ADMIN);
+    promoted = true;
+  }
+
+  // Always align password with env so local/prod share the same operator login
+  // when both load the same ADMIN_* secrets.
+  await User.updatePassword(user.id, hashPassword(password));
+  passwordUpdated = true;
+
+  if (user.auth_status && String(user.auth_status).toLowerCase() !== 'active') {
+    await User.setAuthStatus(user.id, 'active');
+  }
+
+  const fresh = await User.findById(user.id);
+  await TransactionLog.create({
+    userId: fresh.id,
+    type: 'admin_env_ensure',
+    description:
+      `Env super_admin ensured (${source}): created=${created} promoted=${promoted} `
+      + `password_synced=${passwordUpdated}`,
+    createdBy: 'system',
+  }).catch(() => {});
+
+  return {
+    ok: true,
+    skipped: false,
+    created,
+    promoted,
+    password_synced: passwordUpdated,
+    previous_role: beforeRole,
+    user: adminPublic(fresh),
+  };
+}
+
+async function getEnvAdminMappingStatus() {
+  const { email } = readEnvAdminCredentials();
+  if (!email) {
+    return {
+      env_admin_email_configured: false,
+      env_admin_password_configured: Boolean(String(process.env.ADMIN_PASSWORD || '').trim()),
+      mapped: false,
+      user: null,
+    };
+  }
+  const user = await User.findByEmail(email);
+  return {
+    env_admin_email_configured: true,
+    env_admin_password_configured: Boolean(String(process.env.ADMIN_PASSWORD || '').trim()),
+    mapped: Boolean(user?.admin_role && isValidRole(user.admin_role)),
+    is_super_admin: user?.admin_role === ROLES.SUPER_ADMIN,
+    user: user ? adminPublic(user) : null,
+  };
+}
+
 module.exports = {
   adminPublic,
   loginAdmin,
@@ -332,4 +442,8 @@ module.exports = {
   removeAdmin,
   setAdminPassword,
   sessionPayload,
+  ensureEnvSuperAdmin,
+  getEnvAdminMappingStatus,
+  readEnvAdminCredentials,
 };
+
