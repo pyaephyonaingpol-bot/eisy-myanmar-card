@@ -50,6 +50,29 @@ async function bootstrap() {
     } catch (err) {
       console.warn('[nowpayments-payout] boot config log skipped:', err.message);
     }
+    // Best-effort: heal incomplete user_wallets mirrors on cold start so the
+    // admin list source-of-truth is fully dual-written without an admin click.
+    try {
+      const { isSupabaseEnabled } = require('../src/lib/supabase');
+      if (isSupabaseEnabled()) {
+        const {
+          getUserWalletsMirrorStatus,
+          backfillAllUserWalletsInBackground,
+        } = require('../src/services/supabaseSyncService');
+        const mirror = await getUserWalletsMirrorStatus();
+        if (mirror.enabled && !mirror.in_sync) {
+          console.warn(
+            `[vercel] user_wallets mirror incomplete `
+            + `(turso=${mirror.turso_total} supabase=${mirror.supabase_total} `
+            + `missing=${Array.isArray(mirror.missing_user_ids) ? mirror.missing_user_ids.length : '?'})`
+            + ' — starting background backfill'
+          );
+          backfillAllUserWalletsInBackground();
+        }
+      }
+    } catch (err) {
+      console.warn('[vercel] user mirror bootstrap check skipped:', err.message);
+    }
     console.log('[vercel] Express serverless handler ready', {
       env: process.env.VERCEL_ENV || process.env.NODE_ENV,
       hasBinanceKey: Boolean(process.env.BINANCE_API_KEY || process.env.BINANCE_PAY_API_KEY),
