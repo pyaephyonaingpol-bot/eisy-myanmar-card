@@ -27,11 +27,19 @@ function testNoHardcodedLegacyBins() {
   );
   const lib = fs.readFileSync(path.join(ROOT, 'lib/kripicard.js'), 'utf8');
 
-  for (const legacy of ['539502', '525847', '441357', '493875', '428803', '493728']) {
+  // Stale multi-BIN catalog must stay out of HTML/dashboard. Known-active
+  // US BIN 441357 may exist as a backend builtin_fallback only.
+  for (const legacy of ['539502', '525847', '493875', '428803', '493728']) {
     assert.ok(!html.includes(legacy), `HTML must not seed ${legacy}`);
     assert.ok(!dash.includes(`'${legacy}'`), `dashboard must not hardcode ${legacy}`);
   }
-  assert.ok(!service.includes('DEFAULT_KRIPICARD_BINS'), 'built-in catalog removed');
+  assert.ok(!html.includes('value="441357"'), 'HTML must not seed fallback BIN 441357 as an option value');
+  assert.ok(!html.includes('>441357<'), 'HTML must not seed fallback BIN 441357 as option text');
+  assert.ok(!dash.includes("'441357'"), 'dashboard must not hardcode fallback BIN option');
+  assert.ok(!service.includes('DEFAULT_KRIPICARD_BINS'), 'old multi-BIN built-in catalog removed');
+  assert.ok(service.includes('KRIPICARD_KNOWN_ACTIVE_BIN_CATALOG'), 'known-active fallback catalog present');
+  assert.ok(service.includes("'441357'"), 'fallback catalog defines US BIN 441357');
+  assert.ok(service.includes('builtin_fallback'), 'builtin_fallback source wired');
   assert.ok(lib.includes('fetchAvailableBins'), 'lib fetches live BINs');
   assert.ok(lib.includes('/api/external/cards/bins'), 'bins endpoint wired');
   assert.ok(dash.includes('populateCardBinOptions'), 'dropdown populate helper');
@@ -147,14 +155,72 @@ async function testEnvAllowListDoesNotReplaceLiveCatalog() {
     } = require(path.join(ROOT, 'backend/src/services/cardWalletService'));
     resetKripicardBinCacheForTests();
     const opts = await getKripicardBinOptions({ forceRefresh: true });
-    assert.deepStrictEqual(opts.bins, []);
-    assert.ok(!opts.bins.includes('539502'));
-    assert.ok(!opts.bins.includes('525847'));
+    // Must NOT revive the stale env allow-list (539502/525847).
+    // May use the known-active builtin fallback (441357) so Apply Card still works.
+    assert.ok(!opts.bins.includes('539502'), 'stale BIN 539502 must not appear');
+    assert.ok(!opts.bins.includes('525847'), 'stale BIN 525847 must not appear');
     assert.notStrictEqual(opts.source, 'env_fallback');
+    assert.notStrictEqual(opts.source, 'env');
+    assert.deepStrictEqual(opts.bins, ['441357']);
+    assert.strictEqual(opts.source, 'builtin_fallback');
+    assert.strictEqual(opts.default_bin, '441357');
+    assert.ok(opts.catalog?.[0]?.platform_markup_usd > 0, 'fallback includes platform markup');
+    assert.ok(opts.catalog?.[0]?.min_load_usd > 0, 'fallback includes min load fee structure');
   } finally {
     global.fetch = originalFetch;
     delete process.env.KRIPICARD_ALLOWED_BINS;
     delete process.env.KRIPICARD_DEFAULT_BIN;
+  }
+  console.log('ok');
+}
+
+
+async function testBuiltinFallbackWhenLiveEmpty() {
+  section('known-active US BIN 441357 fallback when live catalog is empty');
+  process.env.KRIPICARD_API_KEY = 'live-bins-test-key';
+  delete process.env.KRIPICARD_ALLOWED_BINS;
+  delete process.env.KRIPICARD_DEFAULT_BIN;
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async text() {
+      return JSON.stringify({ success: true, data: [] });
+    },
+  });
+
+  try {
+    delete require.cache[require.resolve(path.join(ROOT, 'lib/kripicard'))];
+    delete require.cache[require.resolve(path.join(ROOT, 'backend/src/services/cardWalletService'))];
+    const {
+      getKripicardBinOptions,
+      resolveKripicardBin,
+      resetKripicardBinCacheForTests,
+      buildKnownActiveBinFallback,
+    } = require(path.join(ROOT, 'backend/src/services/cardWalletService'));
+    resetKripicardBinCacheForTests();
+
+    const priced = buildKnownActiveBinFallback({
+      minimum_initial_deposit_usd: 10,
+      card_issuance_fee_usd: 5,
+    });
+    assert.deepStrictEqual(priced.bins, ['441357']);
+    assert.strictEqual(priced.catalog[0].issuance_fee_usd, 5);
+    assert.strictEqual(priced.catalog[0].platform_markup_usd, 5);
+    assert.strictEqual(priced.catalog[0].min_load_usd, 10);
+    assert.strictEqual(priced.catalog[0].country, 'US');
+
+    const opts = await getKripicardBinOptions({
+      forceRefresh: true,
+      pricingSettings: { minimum_initial_deposit_usd: 10, card_issuance_fee_usd: 5 },
+    });
+    assert.deepStrictEqual(opts.bins, ['441357']);
+    assert.strictEqual(opts.source, 'builtin_fallback');
+    assert.strictEqual(await resolveKripicardBin(), '441357');
+    assert.strictEqual(await resolveKripicardBin('441357'), '441357');
+  } finally {
+    global.fetch = originalFetch;
   }
   console.log('ok');
 }
@@ -164,6 +230,7 @@ async function main() {
   await testFilterAndPersistOptions();
   await testPricingOptionsUseLiveBins();
   await testEnvAllowListDoesNotReplaceLiveCatalog();
+  await testBuiltinFallbackWhenLiveEmpty();
   console.log('\nAll Kripicard live BIN tests passed.');
 }
 
