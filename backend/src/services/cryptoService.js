@@ -1,7 +1,8 @@
+const { firstEnv } = require('../lib/envAliases');
 const crypto = require('crypto');
 
 const DEV_AUTH_SECRET = 'eisy-dev-secret-change-in-production';
-const AUTH_SECRET = process.env.AUTH_SECRET || DEV_AUTH_SECRET;
+const AUTH_SECRET = firstEnv('AUTH_SECRET', 'JWT_SECRET') || DEV_AUTH_SECRET;
 // Sensitive PIN tokens previously defaulted to 7 days — far too long for withdrawals.
 // Default: 15 minutes. Override with PIN_TOKEN_TTL_HOURS (fractional hours allowed).
 const PIN_TOKEN_TTL_HOURS = parseFloat(process.env.PIN_TOKEN_TTL_HOURS || '0.25', 10);
@@ -12,7 +13,7 @@ const DEFAULT_TEST_PIN = '123456';
 const MASTER_TEST_OTP = process.env.MASTER_TEST_OTP || '';
 
 function isUsingDefaultAuthSecret() {
-  return !process.env.AUTH_SECRET || process.env.AUTH_SECRET === DEV_AUTH_SECRET;
+  return !firstEnv('AUTH_SECRET', 'JWT_SECRET') || firstEnv('AUTH_SECRET', 'JWT_SECRET') === DEV_AUTH_SECRET;
 }
 
 if (isUsingDefaultAuthSecret()) {

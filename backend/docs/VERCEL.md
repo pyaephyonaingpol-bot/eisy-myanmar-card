@@ -31,6 +31,8 @@ Legacy `/uploads/*` paths are still served by Express for local dev and older ro
 
 ## Required Vercel Environment Variables
 
+Paste **bare values only** into the Vercel env UI (never commit `.env` files). Full rotation / push workflow: [`SECURE_SECRETS.md`](./SECURE_SECRETS.md).
+
 | Variable | Purpose |
 |----------|---------|
 | `BINANCE_API_KEY` | Binance Pay Certificate SN / API key |

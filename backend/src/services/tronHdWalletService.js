@@ -14,13 +14,14 @@ const { mnemonicToSeedSync, validateMnemonic } = require('@scure/bip39');
 const { wordlist } = require('@scure/bip39/wordlists/english');
 const { HDKey } = require('@scure/bip32');
 const { TronWeb } = require('tronweb');
+const { firstEnv } = require('../lib/envAliases');
 
 const TRON_COIN_TYPE = 195;
 const DEFAULT_ACCOUNT = 0;
 const DEFAULT_CHANGE = 0;
 
 function isHdEnabled() {
-  const flag = String(process.env.TRON_HD_ENABLED || 'true').trim().toLowerCase();
+  const flag = String(firstEnv('TRON_HD_ENABLED') || 'true').trim().toLowerCase();
   if (flag === 'false' || flag === '0' || flag === 'off') return false;
   try {
     return Boolean(getHdSeedBuffer());
@@ -30,7 +31,7 @@ function isHdEnabled() {
 }
 
 function getHdSeedBuffer() {
-  const mnemonic = String(process.env.TRON_HD_MNEMONIC || '').trim();
+  const mnemonic = firstEnv('TRON_HD_MNEMONIC');
   if (mnemonic) {
     if (!validateMnemonic(mnemonic, wordlist)) {
       const err = new Error('TRON_HD_MNEMONIC is not a valid BIP39 mnemonic');
@@ -40,7 +41,7 @@ function getHdSeedBuffer() {
     return Buffer.from(mnemonicToSeedSync(mnemonic));
   }
 
-  const seedHex = String(process.env.TRON_HD_SEED_HEX || '').trim().replace(/^0x/i, '');
+  const seedHex = firstEnv('TRON_HD_SEED_HEX').replace(/^0x/i, '');
   if (seedHex) {
     if (!/^[0-9a-fA-F]+$/.test(seedHex) || seedHex.length < 32 || seedHex.length % 2 !== 0) {
       const err = new Error('TRON_HD_SEED_HEX must be even-length hex (≥16 bytes)');
@@ -50,7 +51,11 @@ function getHdSeedBuffer() {
     return Buffer.from(seedHex, 'hex');
   }
 
-  const masterKey = String(process.env.MASTER_PRIVATE_KEY || '').trim().replace(/^0x/i, '');
+  const masterKey = firstEnv(
+    'MASTER_PRIVATE_KEY',
+    'MASTER_WALLET_PRIVATE_KEY',
+    'TRON_MASTER_PRIVATE_KEY'
+  ).replace(/^0x/i, '');
   if (masterKey && /^[0-9a-fA-F]{64}$/.test(masterKey)) {
     // Non-BIP39 fallback: treat master private key bytes as BIP32 seed entropy.
     return Buffer.from(masterKey, 'hex');

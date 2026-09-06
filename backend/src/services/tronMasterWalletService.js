@@ -51,9 +51,16 @@ const USDT_TRC20_ABI = [
   },
 ];
 
+const { firstEnv } = require('../lib/envAliases');
+
 function getMasterPrivateKey() {
-  const raw = process.env.MASTER_PRIVATE_KEY;
-  if (raw == null || String(raw).trim() === '') {
+  // Prefer MASTER_PRIVATE_KEY. Accept common paste aliases + strip accidental KEY= prefixes.
+  const raw = firstEnv(
+    'MASTER_PRIVATE_KEY',
+    'MASTER_WALLET_PRIVATE_KEY',
+    'TRON_MASTER_PRIVATE_KEY'
+  );
+  if (!raw) {
     const err = new Error(
       'MASTER_PRIVATE_KEY is not configured. Set it in the environment (never hardcode).'
     );
@@ -74,7 +81,7 @@ function getMasterPrivateKey() {
 
 function createTronWeb(privateKey) {
   const headers = {};
-  const apiKey = process.env.TRONGRID_API_KEY || process.env.TRON_PRO_API_KEY;
+  const apiKey = firstEnv('TRONGRID_API_KEY', 'TRON_PRO_API_KEY', 'TRON_API_KEY');
   if (apiKey) {
     headers['TRON-PRO-API-KEY'] = apiKey;
   }
@@ -261,7 +268,7 @@ async function transferUsdtTrc20({ toAddress, amountUsdt }) {
 
 /** Prefer explicit MASTER_WALLET_ADDRESS; otherwise derive from MASTER_PRIVATE_KEY. */
 function getMasterWalletAddress() {
-  const configured = String(process.env.MASTER_WALLET_ADDRESS || '').trim();
+  const configured = firstEnv('MASTER_WALLET_ADDRESS', 'MASTER_TRON_ADDRESS', 'TRON_MASTER_ADDRESS');
   if (configured) {
     if (!isLikelyTronAddress(configured)) {
       const err = new Error(
@@ -340,7 +347,7 @@ async function fetchJsonTimed(url, options = {}, timeoutMs = BALANCE_FETCH_TIMEO
 
 function tronApiHeaders() {
   const headers = { Accept: 'application/json' };
-  const apiKey = process.env.TRONGRID_API_KEY || process.env.TRON_PRO_API_KEY;
+  const apiKey = firstEnv('TRONGRID_API_KEY', 'TRON_PRO_API_KEY', 'TRON_API_KEY');
   if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
   return headers;
 }
