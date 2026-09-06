@@ -735,6 +735,11 @@
         e.preventDefault();
         this.submitWithdrawalProofModal();
       });
+      $('deleteUserModalClose')?.addEventListener('click', () => this.closeDeleteUserModal());
+      $('deleteUserModalCancel')?.addEventListener('click', () => this.closeDeleteUserModal());
+      $('deleteUserModal')?.querySelector('.delete-user-modal-backdrop')
+        ?.addEventListener('click', () => this.closeDeleteUserModal());
+      $('deleteUserModalConfirm')?.addEventListener('click', () => this.confirmDeleteUserModal());
       document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
         if (!$('balanceAdjustModal')?.classList.contains('hidden')) {
@@ -742,6 +747,9 @@
         }
         if (!$('withdrawalProofModal')?.classList.contains('hidden')) {
           this.closeWithdrawalProofModal();
+        }
+        if (!$('deleteUserModal')?.classList.contains('hidden')) {
+          this.closeDeleteUserModal();
         }
       });
 
@@ -3607,36 +3615,94 @@
       }
     },
 
-    async deleteUser(userId, email) {
+    openDeleteUserModal({ userId, email = '', name = '' } = {}) {
       const id = Number(userId);
-      const userEmail = String(email || '').trim();
       if (!id) return;
+      this._deleteUserPending = {
+        id,
+        email: String(email || '').trim(),
+        name: String(name || '').trim(),
+      };
+      if ($('deleteUserModalId')) $('deleteUserModalId').textContent = String(id);
+      if ($('deleteUserModalEmail')) {
+        $('deleteUserModalEmail').textContent = this._deleteUserPending.email || '—';
+      }
+      if ($('deleteUserModalName')) {
+        $('deleteUserModalName').textContent = this._deleteUserPending.name || '—';
+      }
+      if ($('deleteUserModalReason')) {
+        $('deleteUserModalReason').value = 'Test / unwanted account';
+      }
+      const errEl = $('deleteUserModalError');
+      if (errEl) {
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+      }
+      const confirmBtn = $('deleteUserModalConfirm');
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Confirm Delete';
+      }
+      $('deleteUserModal')?.classList.remove('hidden');
+      document.body.classList.add('sidebar-scroll-lock');
+      $('deleteUserModalConfirm')?.focus();
+    },
 
-      const ok = window.confirm(
-        'Permanently delete user #' + id + (userEmail ? (' (' + userEmail + ')') : '') + '?\n\n'
-        + 'This removes the account and related test data. This cannot be undone.'
-      );
-      if (!ok) return;
+    closeDeleteUserModal() {
+      $('deleteUserModal')?.classList.add('hidden');
+      document.body.classList.remove('sidebar-scroll-lock');
+      this._deleteUserPending = null;
+      const errEl = $('deleteUserModalError');
+      if (errEl) {
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+      }
+    },
 
-      const typed = window.prompt(
-        'Type the user email exactly to confirm deletion'
-        + (userEmail ? (':\n' + userEmail) : ''),
-        ''
-      );
-      if (typed === null) return;
+    async confirmDeleteUserModal() {
+      const pending = this._deleteUserPending;
+      if (!pending || !pending.id) return;
 
-      const reason = window.prompt('Optional reason for deleting this user (audit log):', 'Test / unwanted account') || '';
+      const reason = String($('deleteUserModalReason')?.value || '').trim();
+      const confirmBtn = $('deleteUserModalConfirm');
+      const errEl = $('deleteUserModalError');
+      if (errEl) {
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+      }
+      if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Deleting…';
+      }
 
       try {
-        const data = await this.api('DELETE', '/api/admin/users/' + id, {
-          confirm_email: String(typed || '').trim(),
+        const data = await this.api('DELETE', '/api/admin/users/' + pending.id, {
+          confirmed: true,
           reason: reason || undefined,
         });
+        this.closeDeleteUserModal();
         await this.loadUsers({ reset: true });
-        alert((data && data.message) || ('User #' + id + ' deleted'));
+        alert((data && data.message) || ('User #' + pending.id + ' deleted'));
       } catch (err) {
-        alert((err && err.message) || 'Failed to delete user');
+        if (errEl) {
+          errEl.textContent = (err && err.message) || 'Failed to delete user';
+          errEl.style.display = 'block';
+        } else {
+          alert((err && err.message) || 'Failed to delete user');
+        }
+        if (confirmBtn) {
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'Confirm Delete';
+        }
       }
+    },
+
+    deleteUser(userId, email, name) {
+      this.openDeleteUserModal({
+        userId,
+        email,
+        name,
+      });
     },
 
     usersListState: {
@@ -3733,7 +3799,11 @@
         btn.addEventListener('click', () => this.setUserBlocked(btn.dataset.uid, 'active'));
       });
       table.querySelectorAll('.delete-user-btn').forEach((btn) => {
-        btn.addEventListener('click', () => this.deleteUser(btn.dataset.uid, btn.dataset.email));
+        btn.addEventListener('click', () => this.deleteUser(
+          btn.dataset.uid,
+          btn.dataset.email,
+          btn.dataset.name
+        ));
       });
     },
 
@@ -3749,7 +3819,7 @@
             '<button type="button" class="btn btn-sm btn-secondary view-card-requests">Card Requests</button>' +
             '<button type="button" class="btn btn-sm btn-secondary adj-usdt-wallet" data-uid="' + u.id + '" data-usdt="' + Number(u.balance_usdt || 0) + '">Adjust USDT</button> ' +
             this.renderUserBlockButton(u) + ' ' +
-            '<button type="button" class="btn btn-sm btn-reject delete-user-btn" data-uid="' + u.id + '" data-email="' + this.esc(u.email || '') + '" title="Permanently delete this user">Delete User</button>' +
+            '<button type="button" class="btn btn-sm btn-reject delete-user-btn" data-uid="' + u.id + '" data-email="' + this.esc(u.email || '') + '" data-name="' + this.esc(u.name || '') + '" title="Permanently delete this user">Delete User</button>' +
           '</td>' +
         '</tr>'
       ).join('');

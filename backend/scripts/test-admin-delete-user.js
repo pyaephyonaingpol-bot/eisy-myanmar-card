@@ -94,26 +94,26 @@ async function main() {
       expiresAt: new Date(Date.now() + 86400000).toISOString().slice(0, 19).replace('T', ' '),
     });
 
-    let confirmErr;
+    let unconfirmedErr;
     try {
       await deleteUserById(victim.id, {
         adminId: admin.id,
         adminEmail,
-        confirmEmail: 'wrong@example.com',
+        confirmed: false,
       });
     } catch (err) {
-      confirmErr = err;
+      unconfirmedErr = err;
     }
-    assert(confirmErr, 'wrong confirm email should fail');
-    assert.strictEqual(confirmErr.code, 'CONFIRM_EMAIL_MISMATCH');
-    assert(await User.findById(victim.id), 'user still exists after failed confirm');
+    assert(unconfirmedErr, 'unconfirmed delete should fail');
+    assert.strictEqual(unconfirmedErr.code, 'DELETE_NOT_CONFIRMED');
+    assert(await User.findById(victim.id), 'user still exists after unconfirmed delete');
 
     let selfErr;
     try {
       await deleteUserById(admin.id, {
         adminId: admin.id,
         adminEmail,
-        confirmEmail: adminEmail,
+        confirmed: true,
       });
     } catch (err) {
       selfErr = err;
@@ -126,7 +126,7 @@ async function main() {
       await deleteUserById(admin.id, {
         adminId: victim.id,
         adminEmail: email,
-        confirmEmail: adminEmail,
+        confirmed: true,
       });
     } catch (err) {
       adminErr = err;
@@ -137,7 +137,7 @@ async function main() {
     const result = await deleteUserById(victim.id, {
       adminId: admin.id,
       adminEmail,
-      confirmEmail: email,
+      confirmed: true,
       reason: 'test cleanup',
     });
     assert.strictEqual(result.deleted, true);
@@ -152,10 +152,15 @@ async function main() {
     assert.strictEqual(Number(remainingSessions?.c || 0), 0, 'sessions cascade-removed');
 
     const adminJs = fs.readFileSync(path.join('public', 'admin.js'), 'utf8');
+    const adminHtml = fs.readFileSync(path.join('public', 'admin.html'), 'utf8');
     assert.ok(adminJs.includes('delete-user-btn'), 'admin UI has Delete User button');
     assert.ok(adminJs.includes('/api/admin/users/'), 'admin UI calls users API');
-    assert.ok(adminJs.includes('confirm_email'), 'admin UI sends confirm_email');
-    assert.ok(adminJs.includes('async deleteUser'), 'admin UI has deleteUser handler');
+    assert.ok(adminJs.includes('confirmed: true'), 'admin UI sends confirmed flag');
+    assert.ok(adminJs.includes('openDeleteUserModal'), 'admin UI opens delete modal');
+    assert.ok(adminJs.includes('confirmDeleteUserModal'), 'admin UI has modal confirm handler');
+    assert.ok(!adminJs.includes('Type the user email exactly'), 'admin UI no longer prompts for email typing');
+    assert.ok(adminHtml.includes('id="deleteUserModal"'), 'admin HTML has delete modal');
+    assert.ok(adminHtml.includes('Confirm Delete'), 'admin HTML has Confirm Delete button');
 
     const route = fs.readFileSync(path.join('src', 'routes', 'admin.js'), 'utf8');
     assert.ok(route.includes("router.delete('/users/:userId'"), 'DELETE /users/:userId route exists');
