@@ -14,6 +14,7 @@ const UPLOAD_ROOT = getUploadRoot();
 const DEPOSIT_UPLOAD_DIR = path.join(UPLOAD_ROOT, 'deposits');
 const P2P_UPLOAD_DIR = path.join(UPLOAD_ROOT, 'p2p');
 const KYC_UPLOAD_DIR = path.join(UPLOAD_ROOT, 'kyc');
+const WITHDRAWAL_UPLOAD_DIR = path.join(UPLOAD_ROOT, 'withdrawals');
 
 const IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const VIDEO_MIME = new Set(['video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo']);
@@ -24,6 +25,7 @@ const EXT_BY_MIME = {
   'image/png': '.png',
   'image/webp': '.webp',
   'image/gif': '.gif',
+  'application/pdf': '.pdf',
   'video/mp4': '.mp4',
   'video/webm': '.webm',
   'video/quicktime': '.mov',
@@ -42,9 +44,10 @@ function resolveExtension(file) {
   let ext = path.extname(file.originalname || '').toLowerCase();
   if (EXT_ALIASES[ext]) ext = EXT_ALIASES[ext];
 
-  const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm', '.mov', '.avi'];
+  const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.mp4', '.webm', '.mov', '.avi'];
   if (allowed.includes(ext)) return ext === '.jpeg' ? '.jpg' : ext;
 
+  if (file.mimetype === 'application/pdf') return '.pdf';
   return IMAGE_MIME.has(file.mimetype) ? '.jpg' : '.mp4';
 }
 
@@ -99,6 +102,17 @@ const uploadKycDocuments = multer({
   },
 });
 
+const uploadWithdrawalProof = multer({
+  storage: createCategoryStorage(WITHDRAWAL_UPLOAD_DIR, 'wd-proof'),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!IMAGE_MIME.has(file.mimetype) && file.mimetype !== 'application/pdf') {
+      return cb(new Error('Payment proof must be an image (JPEG, PNG, WebP, GIF) or PDF'));
+    }
+    cb(null, true);
+  },
+});
+
 const uploadKycFields = uploadKycDocuments.fields([
   { name: 'front_photo', maxCount: 1 },
   { name: 'back_photo', maxCount: 1 },
@@ -132,10 +146,63 @@ async function persistKycUpload(file) {
   return result?.publicUrl || null;
 }
 
+function publicWithdrawalUploadPath(filename) {
+  return `/uploads/withdrawals/${filename}`;
+}
+
+async function persistWithdrawalUpload(file) {
+  const result = await persistMulterFile(file, 'withdrawals', { prefix: 'wd-proof' });
+  return {
+    publicUrl: result?.publicUrl || null,
+    filename: result?.filename || null,
+    storage: result?.storage || null,
+    mimeType: file?.mimetype || null,
+    originalName: file?.originalname || null,
+  };
+}
+
+async function saveWithdrawalProofFromBase64(base64Data, { originalName = 'payout-slip.jpg' } = {}) {
+  if (!base64Data || typeof base64Data !== 'string') {
+    throw new Error('Invalid payment proof image data');
+  }
+
+  const { mime, payload } = parseBase64Payload(base64Data);
+  const allowed = new Set([...IMAGE_MIME, 'application/pdf']);
+  if (!allowed.has(mime)) {
+    throw new Error('Payment proof must be an image (JPEG, PNG, WebP, GIF) or PDF');
+  }
+
+  const buffer = Buffer.from(payload, 'base64');
+  if (!buffer.length) {
+    throw new Error('Payment proof image data is empty');
+  }
+  if (buffer.length > 20 * 1024 * 1024) {
+    throw new Error('Payment proof is too large (max 20 MB)');
+  }
+
+  const saved = await persistBuffer({
+    category: 'withdrawals',
+    buffer,
+    mimeType: mime,
+    originalName,
+    prefix: 'wd-proof',
+  });
+
+  return {
+    filename: saved.filename,
+    proofPath: saved.publicUrl,
+    proofUrl: saved.publicUrl,
+    mimeType: mime,
+    originalName: originalName || `payout-slip${path.extname(saved.filename) || '.jpg'}`,
+    storage: saved.storage,
+  };
+}
+
 function getProofType(mimeType) {
   if (!mimeType) return null;
   if (String(mimeType).startsWith('video/')) return 'video';
   if (String(mimeType).startsWith('image/')) return 'image';
+  if (String(mimeType) === 'application/pdf') return 'pdf';
   return null;
 }
 
@@ -215,18 +282,23 @@ module.exports = {
   uploadDepositScreenshot,
   uploadP2pAttachment,
   uploadKycFields,
+  uploadWithdrawalProof,
   DEPOSIT_UPLOAD_DIR,
   P2P_UPLOAD_DIR,
   KYC_UPLOAD_DIR,
+  WITHDRAWAL_UPLOAD_DIR,
   UPLOAD_ROOT,
   publicUploadPath,
   publicP2pUploadPath,
   publicKycUploadPath,
+  publicWithdrawalUploadPath,
   persistDepositUpload,
   persistP2pUpload,
   persistKycUpload,
+  persistWithdrawalUpload,
   getProofType,
   saveP2pProofFromBase64,
   saveDepositScreenshotFromBase64,
+  saveWithdrawalProofFromBase64,
   enrichDeposit,
 };

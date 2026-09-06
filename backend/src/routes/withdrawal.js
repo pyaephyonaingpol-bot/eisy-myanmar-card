@@ -42,6 +42,9 @@ function mapUsdtWithdrawal(row) {
     tx_hash: row.tx_hash,
     nowpayments_payout_id: row.nowpayments_payout_id || null,
     nowpayments_withdrawal_id: row.nowpayments_withdrawal_id || null,
+    proof_url: row.proof_url || row.proof_path || null,
+    proof_mime_type: row.proof_mime_type || null,
+    proof_original_name: row.proof_original_name || null,
     created_at: row.created_at,
     processed_at: row.processed_at,
   };
@@ -61,6 +64,9 @@ function mapMmkWithdrawal(row) {
     account_number: row.account_number,
     status: row.status,
     admin_note: row.admin_note,
+    proof_url: row.proof_url || row.proof_path || null,
+    proof_mime_type: row.proof_mime_type || null,
+    proof_original_name: row.proof_original_name || null,
     created_at: row.created_at,
     processed_at: row.processed_at,
   };

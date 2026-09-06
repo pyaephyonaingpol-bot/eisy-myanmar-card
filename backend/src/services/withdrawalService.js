@@ -23,6 +23,11 @@ const {
   isAutoOnchainWithdrawalEnabled,
   assertMasterWalletTransfersAllowed,
 } = require('./securityFlags');
+const {
+  persistProofFromRequest,
+  proofUpdateFields,
+  notifyUserOfPayoutProof,
+} = require('./withdrawalProofService');
 // NOWPayments payout helpers are retained for legacy IPN / admin tools only —
 // user-facing crypto withdrawals use master-wallet TronWeb (manual energy).
 
@@ -516,7 +521,15 @@ async function processUsdtTrc20Withdrawal(row) {
   };
 }
 
-async function completeUsdtWithdrawal(id, { adminNote, txHash, adminId, skipOnChain } = {}) {
+async function completeUsdtWithdrawal(id, {
+  adminNote,
+  txHash,
+  adminId,
+  skipOnChain,
+  proofFile,
+  proofBase64,
+  proofOriginalName,
+} = {}) {
   const row = await UsdtWithdrawal.findById(id);
   if (!row) throw new Error('USDT withdrawal not found');
   if (!['pending', 'processing'].includes(row.status)) {
@@ -527,6 +540,16 @@ async function completeUsdtWithdrawal(id, { adminNote, txHash, adminId, skipOnCh
   let note = adminNote || null;
 
   const network = normalizeNetwork(row.network);
+  const isBank = row.payout_method === 'bank';
+
+  let proof = null;
+  if (isBank && (proofFile || proofBase64)) {
+    proof = await persistProofFromRequest({
+      file: proofFile,
+      proofBase64,
+      proofOriginalName,
+    });
+  }
 
   const shouldSendOnChain = !skipOnChain
     && row.payout_method === 'crypto'
@@ -558,14 +581,27 @@ async function completeUsdtWithdrawal(id, { adminNote, txHash, adminId, skipOnCh
     }
   }
 
-  return UsdtWithdrawal.updateStatus(id, {
+  const updated = await UsdtWithdrawal.updateStatus(id, {
     status: 'completed',
-    adminNote: note || (row.payout_method === 'bank'
+    adminNote: note || (isBank
       ? 'Bank transfer completed'
       : 'On-chain transfer completed'),
     txHash: resolvedTxHash || null,
     processedBy: adminId || null,
+    ...proofUpdateFields(proof, adminId),
   });
+
+  if (isBank && proof) {
+    const emailResult = await notifyUserOfPayoutProof({
+      userId: row.user_id,
+      withdrawal: updated,
+      proof,
+      kind: 'usdt_bank',
+    });
+    updated.proof_email = emailResult;
+  }
+
+  return updated;
 }
 
 async function rejectUsdtWithdrawal(id, { adminNote, adminId } = {}) {
@@ -609,18 +645,46 @@ async function rejectUsdtWithdrawal(id, { adminNote, adminId } = {}) {
   return updated;
 }
 
-async function completeMmkWithdrawal(id, { adminNote, adminId } = {}) {
+async function completeMmkWithdrawal(id, {
+  adminNote,
+  adminId,
+  proofFile,
+  proofBase64,
+  proofOriginalName,
+} = {}) {
   const row = await MmkWithdrawal.findById(id);
   if (!row) throw new Error('MMK withdrawal not found');
   if (!['pending', 'processing'].includes(row.status)) {
     throw new Error(`Cannot complete withdrawal in status "${row.status}"`);
   }
 
-  return MmkWithdrawal.updateStatus(id, {
+  let proof = null;
+  if (proofFile || proofBase64) {
+    proof = await persistProofFromRequest({
+      file: proofFile,
+      proofBase64,
+      proofOriginalName,
+    });
+  }
+
+  const updated = await MmkWithdrawal.updateStatus(id, {
     status: 'completed',
     adminNote: adminNote || 'Bank transfer completed',
     processedBy: adminId || null,
+    ...proofUpdateFields(proof, adminId),
   });
+
+  if (proof) {
+    const emailResult = await notifyUserOfPayoutProof({
+      userId: row.user_id,
+      withdrawal: updated,
+      proof,
+      kind: 'mmk',
+    });
+    updated.proof_email = emailResult;
+  }
+
+  return updated;
 }
 
 async function rejectMmkWithdrawal(id, { adminNote, adminId } = {}) {

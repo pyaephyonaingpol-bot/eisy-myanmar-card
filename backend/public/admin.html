@@ -1113,6 +1113,33 @@
     </div>
   </div>
 
+  <div id="withdrawalProofModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="withdrawalProofModalTitle" aria-modal="true">
+    <div class="proof-lightbox-backdrop withdrawal-proof-modal-backdrop"></div>
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner admin-form-modal-inner" style="max-width:min(520px,100%);width:96vw">
+      <button type="button" id="withdrawalProofModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+      <h3 id="withdrawalProofModalTitle" class="kyc-doc-viewer-title">Complete bank payout</h3>
+      <p id="withdrawalProofModalMeta" class="hint" style="margin-bottom:1rem;text-align:left"></p>
+      <form id="withdrawalProofForm" class="form" style="width:100%;text-align:left">
+        <input type="hidden" id="wdProofKind" value="mmk" />
+        <input type="hidden" id="wdProofId" value="" />
+        <div class="field">
+          <label for="wdProofNote">Admin note (optional)</label>
+          <input id="wdProofNote" placeholder="Bank transfer completed / KPay ref" />
+        </div>
+        <div class="field">
+          <label for="wdProofFile">Payment proof slip (image or PDF)</label>
+          <input id="wdProofFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" />
+          <p class="hint" style="margin-top:0.35rem">Attached proof is saved on the transaction and emailed to the user via Resend.</p>
+        </div>
+        <div class="deposit-receipt-actions" style="margin-top:0.75rem">
+          <button type="submit" class="btn btn-primary" id="wdProofSubmitBtn">Complete &amp; send proof</button>
+          <button type="button" id="withdrawalProofModalCancel" class="btn btn-secondary">Cancel</button>
+        </div>
+      </form>
+      <pre class="output" id="withdrawalProofOut" style="width:100%;margin-top:0.85rem;text-align:left"></pre>
+    </div>
+  </div>
+
   <div id="issueCardModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="issueCardModalTitle" aria-modal="true">
     <div class="proof-lightbox-backdrop issue-card-modal-backdrop"></div>
     <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:min(520px,100%);width:96vw">

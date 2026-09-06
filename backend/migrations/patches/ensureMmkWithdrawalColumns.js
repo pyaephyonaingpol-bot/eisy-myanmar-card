@@ -16,6 +16,13 @@ const MMK_WITHDRAWAL_COLUMNS = [
   ['processed_at', 'TEXT'],
   // SQLite/LibSQL disallow non-constant defaults on ADD COLUMN.
   ['updated_at', 'TEXT'],
+  // Admin payout proof slip (uploaded on complete → emailed to user).
+  ['proof_path', 'TEXT'],
+  ['proof_url', 'TEXT'],
+  ['proof_mime_type', 'TEXT'],
+  ['proof_original_name', 'TEXT'],
+  ['proof_uploaded_at', 'TEXT'],
+  ['proof_uploaded_by', 'INTEGER'],
 ];
 
 async function ensureMmkWithdrawalColumns(db, columnExists, tableExists) {

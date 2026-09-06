@@ -25,6 +25,7 @@ function getUploadRoot() {
   ensureDir(path.join(root, 'deposits'));
   ensureDir(path.join(root, 'p2p'));
   ensureDir(path.join(root, 'kyc'));
+  ensureDir(path.join(root, 'withdrawals'));
   return root;
 }
 

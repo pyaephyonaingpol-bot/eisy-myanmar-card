@@ -156,4 +156,151 @@ async function sendOtpEmail({ email, otp, purpose }) {
   }
 }
 
-module.exports = { sendOtpEmail, getFromAddress };
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildWithdrawalProofHtml({
+  userName,
+  refCode,
+  amountLabel,
+  bankName,
+  accountName,
+  accountNumber,
+  proofUrl,
+  kind,
+}) {
+  const greeting = userName ? `Hi ${escapeHtml(userName)},` : 'Hi,';
+  const title = kind === 'usdt_bank'
+    ? 'Your USDT → MMK bank payout is complete'
+    : 'Your MMK bank withdrawal is complete';
+  const bankLine = [bankName, accountName, accountNumber].filter(Boolean).map(escapeHtml).join(' · ');
+  const proofBlock = proofUrl
+    ? `<p style="font-size:15px;line-height:1.5">Payment proof: <a href="${escapeHtml(proofUrl)}">View / download slip</a></p>
+       <p style="font-size:13px;color:#555">A copy is also attached to this email when available.</p>`
+    : '<p style="font-size:15px;line-height:1.5">Your payout has been marked complete. Keep this email as your receipt.</p>';
+
+  return `
+    <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111">
+      <h1 style="font-size:22px;margin:0 0 12px">Eisy Myanmar</h1>
+      <p style="font-size:15px;line-height:1.5">${greeting}</p>
+      <p style="font-size:15px;line-height:1.5">${escapeHtml(title)}.</p>
+      <table style="width:100%;border-collapse:collapse;margin:20px 0;font-size:14px">
+        <tr><td style="padding:6px 0;color:#555">Reference</td><td style="padding:6px 0;text-align:right"><strong>${escapeHtml(refCode || '—')}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#555">Amount sent</td><td style="padding:6px 0;text-align:right"><strong>${escapeHtml(amountLabel || '—')}</strong></td></tr>
+        ${bankLine ? `<tr><td style="padding:6px 0;color:#555">Bank</td><td style="padding:6px 0;text-align:right">${bankLine}</td></tr>` : ''}
+      </table>
+      ${proofBlock}
+      <p style="font-size:13px;color:#555;margin-top:24px">If you did not request this withdrawal, contact support immediately.</p>
+    </div>
+  `.trim();
+}
+
+function buildWithdrawalProofText({
+  userName,
+  refCode,
+  amountLabel,
+  bankName,
+  accountName,
+  accountNumber,
+  proofUrl,
+  kind,
+}) {
+  const title = kind === 'usdt_bank'
+    ? 'Your USDT → MMK bank payout is complete'
+    : 'Your MMK bank withdrawal is complete';
+  const bankLine = [bankName, accountName, accountNumber].filter(Boolean).join(' · ');
+  return [
+    'Eisy Myanmar',
+    userName ? `Hi ${userName},` : 'Hi,',
+    '',
+    `${title}.`,
+    `Reference: ${refCode || '—'}`,
+    `Amount sent: ${amountLabel || '—'}`,
+    bankLine ? `Bank: ${bankLine}` : null,
+    proofUrl ? `Payment proof: ${proofUrl}` : 'Your payout has been marked complete.',
+    '',
+    'If you did not request this withdrawal, contact support immediately.',
+  ].filter((line) => line != null).join('\n');
+}
+
+/**
+ * Email payout receipt / payment proof after admin completes a bank withdrawal.
+ */
+async function sendWithdrawalProofEmail({
+  email,
+  userName,
+  refCode,
+  amountLabel,
+  bankName,
+  accountName,
+  accountNumber,
+  proofUrl,
+  attachment,
+  kind = 'mmk',
+} = {}) {
+  const toAddress = normalizeRecipientEmail(email);
+  const fromAddress = getFromAddress();
+
+  if (!toAddress || !toAddress.includes('@')) {
+    throw new Error('Invalid recipient email address');
+  }
+
+  const subject = kind === 'usdt_bank'
+    ? `Payout complete — ${refCode || 'USDT→MMK'}`
+    : `Withdrawal complete — ${refCode || 'MMK bank'}`;
+
+  const html = buildWithdrawalProofHtml({
+    userName, refCode, amountLabel, bankName, accountName, accountNumber, proofUrl, kind,
+  });
+  const text = buildWithdrawalProofText({
+    userName, refCode, amountLabel, bankName, accountName, accountNumber, proofUrl, kind,
+  });
+
+  const resend = getResend();
+  if (!resend) {
+    console.warn('[Eisy Myanmar] RESEND_API_KEY not set — withdrawal proof email logged only');
+    console.log(`[Eisy Myanmar] Withdrawal proof (console) to=${toAddress} ref=${refCode} proof=${proofUrl || 'none'}`);
+    return { sent: false, provider: 'console', reason: 'resend_not_configured' };
+  }
+
+  const payload = {
+    from: fromAddress,
+    to: toAddress,
+    subject,
+    html,
+    text,
+  };
+
+  if (attachment?.content && attachment?.filename) {
+    const contentBuf = Buffer.isBuffer(attachment.content)
+      ? attachment.content
+      : Buffer.from(attachment.content);
+    payload.attachments = [{
+      filename: attachment.filename,
+      content: contentBuf.toString('base64'),
+      content_type: attachment.contentType || undefined,
+    }];
+  }
+
+  try {
+    const { data, error } = await resend.emails.send(payload);
+    if (error) {
+      console.error(`[Eisy Myanmar] Resend withdrawal-proof error to=${toAddress}:`, error);
+      throw new Error(error.message || 'Failed to send withdrawal proof email');
+    }
+    console.log(
+      `[Eisy Myanmar] Withdrawal proof email sent via Resend to=${toAddress} ref=${refCode} id=${data?.id || 'n/a'}`
+    );
+    return { sent: true, provider: 'resend', id: data?.id };
+  } catch (err) {
+    console.error(`[Eisy Myanmar] Withdrawal proof email failed to=${toAddress}:`, err.message || err);
+    throw new Error(err.message || 'Failed to send withdrawal proof email');
+  }
+}
+
+module.exports = { sendOtpEmail, sendWithdrawalProofEmail, getFromAddress };

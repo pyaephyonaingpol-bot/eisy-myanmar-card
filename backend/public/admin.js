@@ -133,6 +133,32 @@
       return data;
     },
 
+    async apiFormData(method, path, formData) {
+      const headers = {};
+      if (this.token) headers.Authorization = 'Bearer ' + this.token;
+      if (this.key) headers['X-Admin-Key'] = this.key;
+      const res = await fetch(path, {
+        method,
+        headers,
+        body: formData,
+      });
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (_) {
+        data = {};
+      }
+      if (res.status === 401) {
+        this.clearSession();
+        this.showLogin();
+        throw new Error(data.error || 'Admin session expired — please sign in again');
+      }
+      if (!res.ok) {
+        throw new Error(data.error || res.statusText || ('HTTP ' + res.status));
+      }
+      return data;
+    },
+
     clearSession() {
       this.token = null;
       this.user = null;
@@ -690,10 +716,21 @@
       $('balanceAdjustModalCancel')?.addEventListener('click', () => this.closeBalanceAdjustModal());
       $('balanceAdjustModal')?.querySelector('.balance-adjust-modal-backdrop')
         ?.addEventListener('click', () => this.closeBalanceAdjustModal());
+      $('withdrawalProofModalClose')?.addEventListener('click', () => this.closeWithdrawalProofModal());
+      $('withdrawalProofModalCancel')?.addEventListener('click', () => this.closeWithdrawalProofModal());
+      $('withdrawalProofModal')?.querySelector('.withdrawal-proof-modal-backdrop')
+        ?.addEventListener('click', () => this.closeWithdrawalProofModal());
+      $('withdrawalProofForm')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.submitWithdrawalProofModal();
+      });
       document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
         if (!$('balanceAdjustModal')?.classList.contains('hidden')) {
           this.closeBalanceAdjustModal();
+        }
+        if (!$('withdrawalProofModal')?.classList.contains('hidden')) {
+          this.closeWithdrawalProofModal();
         }
       });
 
@@ -1837,6 +1874,88 @@
       document.body.classList.remove('sidebar-scroll-lock');
     },
 
+    openWithdrawalProofModal({ kind = 'mmk', id, meta = '', defaultNote = 'Bank transfer completed' } = {}) {
+      if ($('wdProofKind')) $('wdProofKind').value = kind;
+      if ($('wdProofId')) $('wdProofId').value = id != null ? String(id) : '';
+      if ($('wdProofNote')) $('wdProofNote').value = defaultNote;
+      if ($('wdProofFile')) $('wdProofFile').value = '';
+      const metaEl = $('withdrawalProofModalMeta');
+      if (metaEl) metaEl.textContent = meta || 'Upload the bank/KPay/WavePay payment slip to attach and email to the user.';
+      const title = $('withdrawalProofModalTitle');
+      if (title) {
+        title.textContent = kind === 'usdt'
+          ? 'Complete USDT→MMK bank payout'
+          : 'Complete MMK bank withdrawal';
+      }
+      const out = $('withdrawalProofOut');
+      if (out) out.textContent = '';
+      $('withdrawalProofModal')?.classList.remove('hidden');
+      document.body.classList.add('sidebar-scroll-lock');
+      $('wdProofNote')?.focus();
+    },
+
+    closeWithdrawalProofModal() {
+      $('withdrawalProofModal')?.classList.add('hidden');
+      document.body.classList.remove('sidebar-scroll-lock');
+      this._wdProofTriggerBtn = null;
+    },
+
+    async submitWithdrawalProofModal() {
+      const kind = ($('wdProofKind')?.value || 'mmk').toLowerCase();
+      const wdId = $('wdProofId')?.value || '';
+      if (!wdId) return;
+
+      const note = String($('wdProofNote')?.value || '').trim() || 'Bank transfer completed';
+      const fileInput = $('wdProofFile');
+      const file = fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+
+      const formData = new FormData();
+      formData.append('admin_note', note);
+      if (file) formData.append('proof', file, file.name);
+
+      const submitBtn = $('wdProofSubmitBtn');
+      const prevLabel = submitBtn ? submitBtn.textContent : '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Completing…';
+      }
+      const out = $('withdrawalProofOut');
+      if (out) out.textContent = 'Uploading…';
+
+      try {
+        const path = kind === 'usdt'
+          ? '/api/admin/withdrawals/usdt/' + encodeURIComponent(wdId) + '/complete'
+          : '/api/admin/withdrawals/mmk/' + encodeURIComponent(wdId) + '/complete';
+        const data = await this.apiFormData('POST', path, formData);
+        const emailInfo = data.proof_email || data.withdrawal?.proof_email;
+        let msg = data.message || 'Withdrawal completed';
+        if (emailInfo?.sent) msg += ' — proof emailed to user';
+        else if (file && emailInfo && emailInfo.sent === false) {
+          msg += ' — proof saved (email not sent: ' + (emailInfo.reason || 'unavailable') + ')';
+        } else if (file) {
+          msg += ' — proof attached';
+        }
+        if (out) out.textContent = msg;
+        alert(msg);
+        this.closeWithdrawalProofModal();
+        await Promise.all([
+          kind === 'usdt' ? this.loadUsdtWithdrawals() : this.loadMmkWithdrawals(),
+          this.loadUsers(),
+          this.loadTransactions(),
+        ]);
+      } catch (err) {
+        if (out) out.textContent = err.message || 'Failed to complete withdrawal';
+        alert(err.message || 'Failed to complete withdrawal');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = prevLabel || 'Complete & send proof';
+        }
+        if (this._wdProofTriggerBtn) {
+          this._wdProofTriggerBtn.disabled = false;
+        }
+      }
+    },
+
     normalizeCardNumberInput(raw) {
       return String(raw || '').replace(/\D/g, '').slice(0, 16);
     },
@@ -2767,6 +2886,13 @@
           rows.map((w) => {
             const pending = ['pending', 'processing'].indexOf(String(w.status || '').toLowerCase()) !== -1;
             const bank = this.esc((w.bank_name || '') + ' · ' + (w.account_name || '') + ' · ' + (w.account_number || ''));
+            const proofUrl = w.proof_url || w.proof_path || '';
+            const proofBtn = proofUrl
+              ? ('<button type="button" class="btn btn-sm btn-secondary proof-thumb-btn" data-src="'
+                + this.esc(proofUrl) + '" data-caption="' + this.esc(w.ref_code || 'MMK payout proof')
+                + '" data-type="' + (String(w.proof_mime_type || '').includes('pdf') ? 'pdf' : 'image')
+                + '">View proof</button>')
+              : '';
             return '<tr>' +
               '<td>' + w.id + '</td>' +
               '<td>' + this.esc(w.user_name || w.user_email || ('#' + w.user_id)) + '<br><small>#' + w.user_id + '</small></td>' +
@@ -2780,7 +2906,7 @@
                 (pending
                   ? '<button type="button" class="btn btn-sm btn-approve" data-action="complete-mmk-wd" data-id="' + w.id + '">Complete</button>' +
                     '<button type="button" class="btn btn-sm btn-reject" data-action="reject-mmk-wd" data-id="' + w.id + '">Reject</button>'
-                  : '') +
+                  : proofBtn) +
               '</td></tr>';
           }).join('') +
           '</tbody></table>';
@@ -2800,23 +2926,35 @@
       const rate = btn ? Number(btn.getAttribute('data-rate') || 0) : 0;
       const netUsdt = btn ? btn.getAttribute('data-usdt') : '';
 
+      if (action === 'complete' && isBank) {
+        const defaultNote = mmkAmount > 0
+          ? ('MMK sent via bank/KPay/WavePay — ' + mmkAmount.toLocaleString() + ' MMK @ ' + rate.toLocaleString())
+          : 'Bank transfer completed';
+        const meta = 'Confirm MMK payout'
+          + (mmkAmount > 0 ? (' of ' + mmkAmount.toLocaleString() + ' MMK') : '')
+          + (rate > 0 ? (' (rate 1 USDT = ' + rate.toLocaleString() + ' MMK)') : '')
+          + (netUsdt ? (' from $' + netUsdt + ' USDT net') : '')
+          + '.';
+        this._wdProofTriggerBtn = btn;
+        this.openWithdrawalProofModal({
+          kind: 'usdt',
+          id: wdId,
+          meta,
+          defaultNote,
+        });
+        return;
+      }
+
       let note = action === 'reject' ? 'Rejected by admin' : 'Completed by admin';
       let txHash = '';
       try {
         if (action === 'complete') {
-          const defaultNote = isBank && mmkAmount > 0
-            ? ('MMK sent via bank/KPay/WavePay — ' + mmkAmount.toLocaleString() + ' MMK @ ' + rate.toLocaleString())
-            : 'Completed';
-          const promptMsg = isBank && mmkAmount > 0
-            ? ('Confirm MMK payout of ' + mmkAmount.toLocaleString() + ' MMK'
-              + (rate > 0 ? (' (rate 1 USDT = ' + rate.toLocaleString() + ' MMK)') : '')
-              + (netUsdt ? (' from $' + netUsdt + ' USDT net') : '')
-              + '. Admin note / transfer ref (optional):')
-            : 'Admin note / TX hash (optional):';
+          const defaultNote = 'Completed';
+          const promptMsg = 'Admin note / TX hash (optional):';
           const entered = window.prompt(promptMsg, defaultNote);
           if (entered === null) return;
           note = String(entered).trim() || defaultNote;
-          if (!isBank && (/^(0x)?[a-fA-F0-9]{16,}$/.test(note) || /^[A-Za-z0-9]{20,}$/.test(note))) {
+          if (/^(0x)?[a-fA-F0-9]{16,}$/.test(note) || /^[A-Za-z0-9]{20,}$/.test(note)) {
             txHash = note;
           }
         } else {
@@ -2843,7 +2981,7 @@
         alert(err.message || 'Failed to update USDT withdrawal');
         if (btn) {
           btn.disabled = false;
-          btn.textContent = prevLabel || (action === 'complete' ? (isBank ? 'Mark MMK Sent' : 'Complete') : 'Reject');
+          btn.textContent = prevLabel || (action === 'complete' ? 'Complete' : 'Reject');
         }
       }
     },
@@ -2853,23 +2991,34 @@
       const wdId = id != null ? String(id) : '';
       if (!wdId) return;
 
-      let note = action === 'reject' ? 'Rejected by admin' : 'Bank transfer completed';
+      const btn = options.triggerBtn || null;
+
+      if (action === 'complete') {
+        this._wdProofTriggerBtn = btn;
+        this.openWithdrawalProofModal({
+          kind: 'mmk',
+          id: wdId,
+          meta: 'MMK withdrawal #' + wdId + ' — attach the bank transfer slip to save on the transaction and email the user.',
+          defaultNote: 'Bank transfer completed',
+        });
+        return;
+      }
+
+      let note = 'Rejected by admin';
       try {
-        const promptMsg = action === 'reject' ? 'Rejection reason (optional):' : 'Admin note (optional):';
-        const entered = window.prompt(promptMsg, note);
+        const entered = window.prompt('Rejection reason (optional):', note);
         if (entered === null) return;
         note = String(entered).trim() || note;
       } catch (_) {}
 
-      const btn = options.triggerBtn || null;
       const prevLabel = btn ? btn.textContent : '';
       if (btn) {
         btn.disabled = true;
-        btn.textContent = action === 'complete' ? 'Completing…' : 'Rejecting…';
+        btn.textContent = 'Rejecting…';
       }
 
       try {
-        const path = '/api/admin/withdrawals/mmk/' + encodeURIComponent(wdId) + '/' + (action === 'complete' ? 'complete' : 'reject');
+        const path = '/api/admin/withdrawals/mmk/' + encodeURIComponent(wdId) + '/reject';
         const data = await this.api('POST', path, { admin_note: note });
         alert(data.message || 'MMK withdrawal updated');
         await Promise.all([this.loadMmkWithdrawals(), this.loadUsers(), this.loadTransactions()]);
@@ -2877,7 +3026,7 @@
         alert(err.message || 'Failed to update MMK withdrawal');
         if (btn) {
           btn.disabled = false;
-          btn.textContent = prevLabel || (action === 'complete' ? 'Complete' : 'Reject');
+          btn.textContent = prevLabel || 'Reject';
         }
       }
     },
@@ -3769,10 +3918,17 @@
             '<table class="data-table">' +
               '<thead><tr>' +
               '<th>Time</th><th>Reference</th><th>User</th><th>Amount</th>' +
-              '<th>Fee</th><th>Net</th><th>Bank</th><th>Status</th>' +
+              '<th>Fee</th><th>Net</th><th>Bank</th><th>Status</th><th>Proof</th>' +
               '</tr></thead><tbody>' +
-              transactions.map((t) =>
-                '<tr>' +
+              transactions.map((t) => {
+                const proofUrl = t.proof_url || t.proof_path || '';
+                const proofCell = proofUrl
+                  ? ('<button type="button" class="btn btn-sm btn-secondary proof-thumb-btn" data-src="'
+                    + this.esc(proofUrl) + '" data-caption="' + this.esc(t.ref_code || 'Proof')
+                    + '" data-type="' + (String(t.proof_mime_type || '').includes('pdf') ? 'pdf' : 'image')
+                    + '">View</button>')
+                  : '—';
+                return '<tr>' +
                   '<td><small>' + this.esc(t.processed_at || t.created_at || '—') + '</small></td>' +
                   '<td><code>' + this.esc(t.ref_code) + '</code></td>' +
                   '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small></td>' +
@@ -3781,8 +3937,9 @@
                   '<td><strong>' + Math.round(Number(t.net_mmk || 0)).toLocaleString() + ' MMK</strong></td>' +
                   '<td><small>' + this.esc(t.bank_name || '—') + '</small></td>' +
                   '<td><span class="badge">' + this.esc(t.status) + '</span></td>' +
-                '</tr>'
-              ).join('') +
+                  '<td>' + proofCell + '</td>' +
+                '</tr>';
+              }).join('') +
               '</tbody></table>';
           return;
         }
