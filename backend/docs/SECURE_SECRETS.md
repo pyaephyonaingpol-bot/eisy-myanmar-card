@@ -88,9 +88,11 @@ npm run test:tron-wallet-init --prefix backend   # needs local/process env
 # or against a running deploy (no private key in response):
 curl -sS https://eisymyanmar.com/health/tron
 curl -sS https://eisymyanmar.com/api/config/supabase
-# → supabase: { enabled, url, anonKey } only — never the service role
-# → tron: env SET/MISSING flags, masked address, TronGrid ping, balances
 ```
+
+`/health/tron` returns env SET/MISSING flags, a masked address, TronGrid reachability,
+balances, and **`address_consistency`** — if `TRON_MASTER_WALLET` is set it must match
+the address derived from `MASTER_PRIVATE_KEY` (`code: MASTER_ADDRESS_MISMATCH` otherwise).
 
 Admin checks (authenticated): master wallet balance, NOWPayments payout-config, `admin_api_key_configured`.
 

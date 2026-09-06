@@ -13,8 +13,70 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function isMissingSchemaError(message) {
+  const msg = String(message || '').toLowerCase();
+  return msg.includes('could not find') || msg.includes('does not exist') || msg.includes('schema cache');
+}
+
 /**
- * Upsert the derived address onto Supabase user_wallets + user_tron_deposit_addresses.
+ * Upsert with progressive column stripping when Supabase schema is behind.
+ * Live projects often only have user_id/email/name/balance_usdt until
+ * supabase/user_tron_hd_addresses.sql is applied.
+ */
+async function upsertUserWalletAdaptive(sb, patch) {
+  let payload = { ...patch };
+  const stripped = [];
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const { error } = await sb.from('user_wallets').upsert(payload, { onConflict: 'user_id' });
+    if (!error) {
+      return { ok: true, stripped, error: null };
+    }
+    if (!isMissingSchemaError(error.message)) {
+      return { ok: false, stripped, error: error.message };
+    }
+    const colMatch = error.message.match(/'([^']+)' column/i)
+      || error.message.match(/column\s+user_wallets\.([a-z0-9_]+)/i);
+    const missingCol = colMatch?.[1];
+    if (!missingCol || !Object.prototype.hasOwnProperty.call(payload, missingCol)) {
+      const minimal = {
+        user_id: patch.user_id,
+        updated_at: patch.updated_at || nowIso(),
+      };
+      if (patch.email != null) minimal.email = patch.email;
+      if (patch.name != null) minimal.name = patch.name;
+      if (patch.balance_usdt != null) minimal.balance_usdt = patch.balance_usdt;
+      const { error: minErr } = await sb.from('user_wallets').upsert(minimal, { onConflict: 'user_id' });
+      return {
+        ok: !minErr,
+        stripped: [...stripped, ...(missingCol ? [missingCol] : []), 'non_core_columns'],
+        error: minErr?.message || error.message,
+        schemaBehind: true,
+      };
+    }
+    delete payload[missingCol];
+    stripped.push(missingCol);
+  }
+  return { ok: false, stripped, error: 'user_wallets upsert retries exhausted' };
+}
+
+async function upsertHdAddressTable(sb, row) {
+  // Prefer the name referenced by ops (`user_tron_hd_addresses`);
+  // also try the legacy alias created by older SQL.
+  const tables = ['user_tron_hd_addresses', 'user_tron_deposit_addresses'];
+  const errors = [];
+  for (const table of tables) {
+    const { error } = await sb.from(table).upsert(row, { onConflict: 'user_id' });
+    if (!error) return { ok: true, table, error: null };
+    errors.push(`${table}: ${error.message}`);
+    if (!isMissingSchemaError(error.message)) {
+      return { ok: false, table, error: error.message };
+    }
+  }
+  return { ok: false, table: null, error: errors.join(' | '), schemaBehind: true };
+}
+
+/**
+ * Upsert the derived address onto Supabase user_wallets + HD address table.
  */
 async function syncTronDepositAddressToSupabase({
   userId,
@@ -47,34 +109,37 @@ async function syncTronDepositAddressToSupabase({
   if (balanceMmk != null) walletPatch.balance_mmk = Number(balanceMmk);
   if (balanceUsdt != null) walletPatch.balance_usdt = Number(balanceUsdt);
 
-  const { error: walletErr } = await sb
-    .from('user_wallets')
-    .upsert(walletPatch, { onConflict: 'user_id' });
-
-  if (walletErr) {
-    // Columns may not exist until supabase/user_tron_hd_addresses.sql is applied.
-    console.warn('[tron/hd] user_wallets upsert failed:', walletErr.message);
+  const walletResult = await upsertUserWalletAdaptive(sb, walletPatch);
+  if (!walletResult.ok || walletResult.schemaBehind) {
+    console.warn(
+      '[tron/hd] user_wallets upsert:',
+      walletResult.error || 'ok with stripped columns',
+      walletResult.stripped?.length ? `(stripped: ${walletResult.stripped.join(', ')})` : ''
+    );
   }
 
-  const { error: addrErr } = await sb
-    .from('user_tron_deposit_addresses')
-    .upsert({
-      user_id: userIdStr,
-      address,
-      derivation_index: index,
-      derivation_path: path,
-      network: 'TRC20',
-      updated_at: nowIso(),
-    }, { onConflict: 'user_id' });
-
-  if (addrErr) {
-    console.warn('[tron/hd] user_tron_deposit_addresses upsert failed:', addrErr.message);
+  const addrResult = await upsertHdAddressTable(sb, {
+    user_id: userIdStr,
+    address,
+    derivation_index: index,
+    derivation_path: path,
+    network: 'TRC20',
+    updated_at: nowIso(),
+  });
+  if (!addrResult.ok) {
+    console.warn(
+      '[tron/hd] HD address table upsert failed:',
+      addrResult.error,
+      '— apply supabase/user_tron_hd_addresses.sql in the Supabase SQL editor'
+    );
   }
 
   return {
-    ok: !walletErr || !addrErr,
-    walletError: walletErr?.message || null,
-    addressError: addrErr?.message || null,
+    ok: Boolean(walletResult.ok || addrResult.ok),
+    walletError: walletResult.ok ? null : walletResult.error,
+    addressError: addrResult.ok ? null : addrResult.error,
+    addressTable: addrResult.table || null,
+    schemaBehind: Boolean(walletResult.schemaBehind || addrResult.schemaBehind),
   };
 }
 
@@ -122,7 +187,6 @@ async function ensureUserTronDepositAddress(userId, { syncSupabase = true } = {}
   }
 
   if (row) {
-    // Upgrade shared / stale custodial row to the HD address.
     row = await UserUsdtWalletAddress.updateCustodialTrc20(userId, {
       address: derived.address,
       derivationIndex: derived.index,

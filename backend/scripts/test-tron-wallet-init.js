@@ -6,6 +6,10 @@
  * Never prints secret values — only shapes, truncated address, and API reachability.
  *
  * Usage: node backend/scripts/test-tron-wallet-init.js
+ *
+ * On Vercel Preview builds: missing MASTER_PRIVATE_KEY warns and exits 0 so PRs
+ * are not blocked when secrets are Production-only. Production builds still fail.
+ * Address mismatch (key vs TRON_MASTER_WALLET) always fails when both are set.
  */
 const fs = require('fs');
 const path = require('path');
@@ -18,6 +22,7 @@ const {
   getMasterPrivateKey,
   getMasterWalletAddress,
   getMasterWalletInfo,
+  checkMasterWalletAddressConsistency,
 } = require('../src/services/tronMasterWalletService');
 
 function maskAddress(addr) {
@@ -50,6 +55,14 @@ async function pingTronGrid(apiKey) {
   }
 }
 
+function isVercelPreview() {
+  return process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'preview';
+}
+
+function isVercelProduction() {
+  return process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
+}
+
 async function main() {
   const report = {
     env: {
@@ -67,9 +80,11 @@ async function main() {
       TRON_API_KEY: envIsSet('TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY'),
     },
     wallet: null,
+    address_consistency: null,
     trongrid: null,
     balance: null,
     ok: false,
+    vercel_env: process.env.VERCEL_ENV || null,
   };
 
   console.log('TRON wallet init check (secrets never printed)\n');
@@ -97,11 +112,28 @@ async function main() {
       process.exit(0);
     }
     console.error('\nFAIL: MASTER_PRIVATE_KEY is not set in this process environment.');
-    if (process.env.VERCEL === '1') {
+    if (isVercelPreview()) {
+      console.warn(
+        'Preview build: MASTER_PRIVATE_KEY missing (often Production-only). '
+        + 'Skipping hard fail so the Preview deploy can still complete. '
+        + 'Ensure Production has the key, then curl /health/tron after merge.'
+      );
+      report.ok = false;
+      report.skipped = 'preview_missing_master_key';
+      try {
+        fs.mkdirSync('/opt/cursor/artifacts', { recursive: true });
+        fs.writeFileSync(
+          '/opt/cursor/artifacts/tron-wallet-init-check.json',
+          JSON.stringify(report, null, 2)
+        );
+      } catch (_) { /* ignore */ }
+      process.exit(0);
+    }
+    if (isVercelProduction() || process.env.VERCEL === '1') {
       console.error(
         `Vercel ${vercelEnv || 'build'} is missing MASTER_PRIVATE_KEY `
         + '(and aliases). Set it under Project → Settings → Environment Variables '
-        + 'for Production and Preview, then redeploy.'
+        + 'for Production (and Preview if desired), then redeploy.'
       );
     } else {
       console.error('Vercel Production secrets are not injected into Cloud Agents by default.');
@@ -124,10 +156,41 @@ async function main() {
       address_masked: maskAddress(address),
       configured_explicit: report.env.TRON_MASTER_WALLET,
     };
-    console.log(`  ✓ wallet address: ${report.wallet.address_masked}`);
+    console.log(`  ✓ wallet address (effective): ${report.wallet.address_masked}`);
   } catch (err) {
     console.error(`\nFAIL: wallet address: ${err.code || ''} ${err.message}`);
     process.exit(1);
+  }
+
+  if (report.env.MASTER_PRIVATE_KEY && report.env.TRON_MASTER_WALLET) {
+    report.address_consistency = checkMasterWalletAddressConsistency();
+    if (report.address_consistency.match) {
+      console.log(
+        `  ✓ address consistency: explicit ${report.address_consistency.configured_masked}`
+        + ` matches key-derived ${report.address_consistency.derived_masked}`
+      );
+    } else {
+      console.error(
+        '\nFAIL: TRON_MASTER_WALLET does not match MASTER_PRIVATE_KEY-derived address.'
+      );
+      console.error(
+        `  explicit: ${report.address_consistency.configured_masked}`
+        + `  derived: ${report.address_consistency.derived_masked}`
+      );
+      console.error(
+        '  Fix: set TRON_MASTER_WALLET to the address of MASTER_PRIVATE_KEY, '
+        + 'or replace MASTER_PRIVATE_KEY with the key for that address '
+        + '(never commit either value).'
+      );
+      try {
+        fs.mkdirSync('/opt/cursor/artifacts', { recursive: true });
+        fs.writeFileSync(
+          '/opt/cursor/artifacts/tron-wallet-init-check.json',
+          JSON.stringify(report, null, 2)
+        );
+      } catch (_) { /* ignore */ }
+      process.exit(1);
+    }
   }
 
   const apiKey = firstEnv('TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY');
@@ -159,6 +222,7 @@ async function main() {
   report.ok = Boolean(
     report.env.MASTER_PRIVATE_KEY
     && report.wallet
+    && (!report.address_consistency || report.address_consistency.match)
     && report.trongrid?.ok
     && report.balance
     && report.balance.usdt != null
