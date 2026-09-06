@@ -47,6 +47,7 @@ const PERMISSIONS = {
 const PAGE_PERMISSIONS = {
   overview: 'overview',
   deposits: 'deposits',
+  'mmk-withdrawals': 'withdrawals',
   cards: 'cards',
   users: 'users',
   transactions: 'transactions',
