@@ -69,7 +69,8 @@
     "test:admin-tron-hd-resync": "node scripts/test-admin-tron-hd-resync.js",
     "test:admin-balance-adjust-modal": "node scripts/test-admin-balance-adjust-modal.js",
     "test:admin-env-ensure": "node scripts/test-admin-env-ensure.js",
-    "ensure:env-admin": "node scripts/ensure-env-admin.js"
+    "ensure:env-admin": "node scripts/ensure-env-admin.js",
+    "test:user-app-perf": "node scripts/test-user-app-perf-guards.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
