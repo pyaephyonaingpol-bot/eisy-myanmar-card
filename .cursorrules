@@ -1,0 +1,29 @@
+# Eisy Myanmar — Cursor agent rules
+
+## Testing discipline (no infinite loops)
+
+- Do **not** run the same test, check, or validation repeatedly in a loop hoping for a different result.
+- Cap retries: at most **one** intentional retry of the same failing command/test after a focused fix.
+- Prefer a short, deliberate test plan over broad “run everything again” cycles.
+- Never add watchers, CI poll loops, or sleep-based busy-wait loops to “keep testing until green.”
+
+## Unsolicited UI / manual browser tests
+
+- Do **not** start GUI, browser, computer-use, or screen-recording tests unless the user explicitly asks for manual/UI testing, a walkthrough demo, or visual verification.
+- Automated unit/integration scripts the user (or repo scripts) already expect are fine; unsolicited UI exploration is not.
+- If visual confirmation would help but was not requested, ask first or rely on logs/assertions instead.
+
+## Same error twice → stop
+
+If the **same error** (or the same failure signature) occurs **twice**:
+
+1. **Stop** changing code or re-running the failing step in a loop.
+2. Either:
+   - **Ask the user** what to do next, with a concise summary of the repeated error, or
+   - **Analyze the logs directly** (terminal output, server logs, stack traces) and report the root-cause findings before any further fix attempts.
+3. Do not keep applying speculative patches after the second occurrence of the same error.
+
+## General
+
+- Prefer evidence from logs and targeted automated tests over speculative re-runs.
+- Keep changes scoped to the request; do not expand into unrelated refactors while debugging.
