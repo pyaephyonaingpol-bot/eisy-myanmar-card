@@ -8,6 +8,7 @@ const supabaseAdmin = require(path.join(__dirname, '../../../lib/supabaseAdmin')
 
 module.exports = {
   issueCardForUser: cardIssue.issueCardForUser,
+  createAndPersistKripicardCard: cardIssue.createAndPersistKripicardCard,
   validateIssueInput: cardIssue.validateIssueInput,
   storeIssuedCard: cardIssue.storeIssuedCard,
   publicUserCard: cardIssue.publicUserCard,

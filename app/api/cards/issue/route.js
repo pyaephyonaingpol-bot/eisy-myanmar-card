@@ -32,7 +32,10 @@ import { createRequire } from 'node:module';
 import { NextResponse } from 'next/server';
 
 const require = createRequire(import.meta.url);
-const { issueCardForUser, publicUserCard } = require('../../../../lib/cardIssue');
+const {
+  createAndPersistKripicardCard,
+  publicUserCard,
+} = require('../../../../lib/cardIssue');
 const { isSupabaseAdminEnabled } = require('../../../../lib/supabaseAdmin');
 const { purchaseCardFromUsdtWallet } = require('../../../../backend/src/services/cardWalletService');
 const { formatUsdt } = require('../../../../backend/src/services/walletService');
@@ -214,7 +217,7 @@ export async function POST(request) {
     }
 
     if (isAdmin) {
-      const result = await issueCardForUser({
+      const result = await createAndPersistKripicardCard({
         userId,
         nameOnCard: body.name_on_card || body.cardholder_name || body.cardHolderName,
         bin: body.bin ?? body.bank_bin ?? body.bankBin,
