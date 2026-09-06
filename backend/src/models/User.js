@@ -201,6 +201,71 @@ const User = {
     return Number(row?.c || 0);
   },
 
+  /**
+   * Lean admin users list — single-table, no joins.
+   * Supports limit/offset pagination plus optional q / auth_status filters.
+   */
+  async listForAdmin({
+    limit = 50,
+    offset = 0,
+    q = '',
+    status = '',
+  } = {}) {
+    const db = getDb();
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+    const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
+    const query = String(q || '').trim();
+    const authStatus = String(status || '').trim().toLowerCase();
+
+    const where = [];
+    const params = [];
+
+    if (authStatus === 'active' || authStatus === 'blocked') {
+      where.push('LOWER(COALESCE(auth_status, \'active\')) = ?');
+      params.push(authStatus);
+    }
+
+    if (query) {
+      const asId = Number(query);
+      if (Number.isInteger(asId) && String(asId) === query) {
+        where.push('id = ?');
+        params.push(asId);
+      } else {
+        const like = `%${query.toLowerCase()}%`;
+        where.push('(LOWER(COALESCE(email, \'\')) LIKE ? OR LOWER(COALESCE(name, \'\')) LIKE ?)');
+        params.push(like, like);
+      }
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const totalRow = await db.get(
+      `SELECT COUNT(*) AS c FROM users ${whereSql}`,
+      ...params
+    );
+    const total = Number(totalRow?.c || 0);
+
+    const users = await db.all(
+      `SELECT id, email, name, balance_usdt, auth_status, created_at
+       FROM users
+       ${whereSql}
+       ORDER BY created_at DESC, id DESC
+       LIMIT ? OFFSET ?`,
+      ...params,
+      safeLimit,
+      safeOffset
+    );
+
+    return {
+      users,
+      total,
+      count: users.length,
+      limit: safeLimit,
+      offset: safeOffset,
+      has_more: safeOffset + users.length < total,
+    };
+  },
+
   stripPrivate,
   toWalletPublic,
 };

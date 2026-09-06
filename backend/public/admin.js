@@ -602,6 +602,18 @@
       }
 
       $('usersBackfillWalletsBtn')?.addEventListener('click', () => this.backfillUserWallets());
+      $('usersSearchBtn')?.addEventListener('click', () => this.loadUsers({ reset: true }));
+      $('usersRefreshBtn')?.addEventListener('click', () => this.loadUsers({ reset: true }));
+      $('usersSearchInput')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.loadUsers({ reset: true });
+        }
+      });
+      $('usersStatusFilter')?.addEventListener('change', () => this.loadUsers({ reset: true }));
+      $('usersPrevBtn')?.addEventListener('click', () => this.usersGoPrevPage());
+      $('usersNextBtn')?.addEventListener('click', () => this.usersGoNextPage());
+      $('usersLoadMoreBtn')?.addEventListener('click', () => this.usersLoadMore());
 
       const balanceUsdForm = $('balanceAdjustUsdForm');
       if (balanceUsdForm) {
@@ -3360,86 +3372,236 @@
       }
     },
 
+    usersListState: {
+      limit: 50,
+      offset: 0,
+      total: 0,
+      has_more: false,
+      q: '',
+      status: '',
+      loading: false,
+    },
+
+    getUsersListFiltersFromDom() {
+      const qEl = $('usersSearchInput');
+      const statusEl = $('usersStatusFilter');
+      return {
+        q: qEl ? String(qEl.value || '').trim() : (this.usersListState.q || ''),
+        status: statusEl ? String(statusEl.value || '').trim() : (this.usersListState.status || ''),
+      };
+    },
+
+    updateUsersPagerUi() {
+      const pager = $('usersPager');
+      const prevBtn = $('usersPrevBtn');
+      const nextBtn = $('usersNextBtn');
+      const moreBtn = $('usersLoadMoreBtn');
+      const label = $('usersPageLabel');
+      const st = this.usersListState || {};
+      const total = Number(st.total || 0);
+      const limit = Number(st.limit || 50);
+      const offset = Number(st.offset || 0);
+      const shownFrom = total === 0 ? 0 : offset + 1;
+      const shownTo = Math.min(offset + limit, total);
+      const page = limit > 0 ? Math.floor(offset / limit) + 1 : 1;
+      const pages = limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1;
+
+      if (pager) pager.style.display = total > limit || offset > 0 ? '' : 'none';
+      if (label) {
+        label.textContent = total
+          ? ('Page ' + page + ' / ' + pages + ' · ' + shownFrom + '–' + shownTo + ' of ' + total)
+          : '';
+      }
+      if (prevBtn) prevBtn.disabled = offset <= 0 || st.loading;
+      if (nextBtn) nextBtn.disabled = !st.has_more || st.loading;
+      if (moreBtn) {
+        moreBtn.disabled = !st.has_more || st.loading;
+        moreBtn.style.display = st.has_more ? '' : 'none';
+      }
+    },
+
+    renderUsersMirrorStatus(mirror) {
+      const mirrorEl = $('usersMirrorStatus');
+      if (!mirrorEl) return;
+      const m = mirror;
+      if (m && m.enabled && m.turso_total != null && m.supabase_total != null) {
+        const missing = typeof m.missing_count === 'number'
+          ? m.missing_count
+          : (Array.isArray(m.missing_user_ids) ? m.missing_user_ids.length : 0);
+        mirrorEl.textContent = m.in_sync
+          ? ('Supabase mirror in sync (' + m.supabase_total + ' wallet' + (m.supabase_total === 1 ? '' : 's') + ')')
+          : ('Supabase mirror: ' + m.supabase_total + ' / ' + m.turso_total
+            + ' wallets' + (missing ? (' — missing ' + missing) : ''));
+      } else if (m && m.reason) {
+        mirrorEl.textContent = 'Supabase mirror unavailable: ' + m.reason;
+      } else {
+        mirrorEl.textContent = '';
+      }
+    },
+
+    async loadUsersMirrorStatus() {
+      try {
+        const data = await this.api('GET', '/api/admin/users/mirror-status');
+        this.renderUsersMirrorStatus(data && data.mirror);
+      } catch (err) {
+        const mirrorEl = $('usersMirrorStatus');
+        if (mirrorEl) mirrorEl.textContent = 'Supabase mirror status failed: ' + (err.message || 'error');
+      }
+    },
+
+    bindUsersTableRowActions(table) {
+      if (!table) return;
+      table.querySelectorAll('.adj-usdt-wallet').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          this.openBalanceAdjustModal({
+            userId: btn.dataset.uid,
+            balanceUsdt: btn.dataset.usdt,
+          });
+        });
+      });
+      table.querySelectorAll('.block-user-btn').forEach((btn) => {
+        btn.addEventListener('click', () => this.setUserBlocked(btn.dataset.uid, 'blocked'));
+      });
+      table.querySelectorAll('.unblock-user-btn').forEach((btn) => {
+        btn.addEventListener('click', () => this.setUserBlocked(btn.dataset.uid, 'active'));
+      });
+    },
+
+    renderUsersRowsHtml(users) {
+      return users.map((u) =>
+        '<tr>' +
+          '<td>' + u.id + '</td>' +
+          '<td>' + this.esc(u.name || '—') + '</td>' +
+          '<td>' + this.esc(u.email || '—') + '</td>' +
+          '<td><strong>$' + Number(u.balance_usdt || 0).toFixed(2) + ' USDT</strong></td>' +
+          '<td>' + this.esc(this.formatUserAuthStatus(u.auth_status)) + '</td>' +
+          '<td class="actions-cell">' +
+            '<button type="button" class="btn btn-sm btn-secondary view-card-requests">Card Requests</button>' +
+            '<button type="button" class="btn btn-sm btn-secondary adj-usdt-wallet" data-uid="' + u.id + '" data-usdt="' + Number(u.balance_usdt || 0) + '">Adjust USDT</button> ' +
+            this.renderUserBlockButton(u) +
+          '</td>' +
+        '</tr>'
+      ).join('');
+    },
+
     async loadUsers(opts = {}) {
       const table = $('usersTable');
       if (!table) return;
       const countEl = $('usersTableCount');
-      const mirrorEl = $('usersMirrorStatus');
-      const awaitSync = Boolean(opts.sync);
+      const append = Boolean(opts.append);
+      const reset = opts.reset !== false && !append;
+
+      if (!this.usersListState) {
+        this.usersListState = { limit: 50, offset: 0, total: 0, has_more: false, q: '', status: '', loading: false };
+      }
+
+      if (reset) {
+        const filters = this.getUsersListFiltersFromDom();
+        this.usersListState.q = filters.q;
+        this.usersListState.status = filters.status;
+        this.usersListState.offset = 0;
+      } else if (typeof opts.offset === 'number') {
+        this.usersListState.offset = Math.max(0, opts.offset);
+      }
+
+      if (opts.q != null) this.usersListState.q = String(opts.q || '').trim();
+      if (opts.status != null) this.usersListState.status = String(opts.status || '').trim();
+      if (opts.limit != null) this.usersListState.limit = Math.min(Math.max(parseInt(opts.limit, 10) || 50, 1), 200);
+
+      const st = this.usersListState;
+      if (st.loading) return;
+      st.loading = true;
+      this.updateUsersPagerUi();
 
       try {
-        const path = awaitSync ? '/api/admin/users?sync=1' : '/api/admin/users';
-        const data = await this.api('GET', path);
+        const params = new URLSearchParams();
+        params.set('limit', String(st.limit));
+        params.set('offset', String(st.offset));
+        if (st.q) params.set('q', st.q);
+        if (st.status) params.set('status', st.status);
+        // Keep list lean — mirror is loaded separately.
+        const data = await this.api('GET', '/api/admin/users?' + params.toString());
         const users = Array.isArray(data.users) ? data.users : [];
         const total = Number(data.total != null ? data.total : users.length);
+        const limit = Number(data.limit != null ? data.limit : st.limit);
+        const offset = Number(data.offset != null ? data.offset : st.offset);
+        const hasMore = Boolean(data.has_more);
+
+        st.total = total;
+        st.limit = limit;
+        st.offset = offset;
+        st.has_more = hasMore;
 
         if (countEl) {
-          countEl.textContent = users.length
-            ? ('Showing ' + users.length + ' of ' + total + ' user' + (total === 1 ? '' : 's'))
-            : '';
+          const shown = append
+            ? Math.min(offset + users.length, total)
+            : Math.min(offset + users.length, total);
+          countEl.textContent = total
+            ? ('Showing ' + (append ? shown : (users.length ? (offset + 1) + '–' + (offset + users.length) : '0'))
+              + ' of ' + total + ' user' + (total === 1 ? '' : 's'))
+            : 'No users found';
         }
 
-        if (mirrorEl) {
-          const m = data.mirror;
-          if (m && m.enabled && m.turso_total != null && m.supabase_total != null) {
-            const missing = Array.isArray(m.missing_user_ids) ? m.missing_user_ids.length : 0;
-            mirrorEl.textContent = m.in_sync
-              ? ('Supabase mirror in sync (' + m.supabase_total + ' wallet' + (m.supabase_total === 1 ? '' : 's') + ')')
-              : ('Supabase mirror: ' + m.supabase_total + ' / ' + m.turso_total
-                + ' wallets' + (missing ? (' — missing ' + missing) : ''));
-          } else if (m && m.reason) {
-            mirrorEl.textContent = 'Supabase mirror unavailable: ' + m.reason;
-          } else {
-            mirrorEl.textContent = '';
-          }
-        }
+        if (data.mirror) this.renderUsersMirrorStatus(data.mirror);
 
-        if (!users.length) {
+        if (!users.length && !append) {
           table.innerHTML = '<p class="hint">No users found.</p>';
+          this.updateUsersPagerUi();
           return;
         }
 
-        table.innerHTML =
-          '<table class="data-table">' +
-            '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>USDT Wallet</th><th>Status</th><th>Actions</th></tr></thead>' +
-            '<tbody>' +
-            users.map((u) =>
-              '<tr>' +
-                '<td>' + u.id + '</td>' +
-                '<td>' + this.esc(u.name || '—') + '</td>' +
-                '<td>' + this.esc(u.email || '—') + '</td>' +
-                '<td><strong>$' + Number(u.balance_usdt || 0).toFixed(2) + ' USDT</strong></td>' +
-                '<td>' + this.esc(this.formatUserAuthStatus(u.auth_status)) + '</td>' +
-                '<td class="actions-cell">' +
-                  '<button type="button" class="btn btn-sm btn-secondary view-card-requests">Card Requests</button>' +
-                  '<button type="button" class="btn btn-sm btn-secondary adj-usdt-wallet" data-uid="' + u.id + '" data-usdt="' + Number(u.balance_usdt || 0) + '">Adjust USDT</button> ' +
-                  this.renderUserBlockButton(u) +
-                '</td>' +
-              '</tr>'
-            ).join('') +
-            '</tbody>' +
-          '</table>';
+        const rowsHtml = this.renderUsersRowsHtml(users);
+        if (append) {
+          let tbody = table.querySelector('tbody');
+          if (!tbody) {
+            table.innerHTML =
+              '<table class="data-table">' +
+                '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>USDT Wallet</th><th>Status</th><th>Actions</th></tr></thead>' +
+                '<tbody></tbody></table>';
+            tbody = table.querySelector('tbody');
+          }
+          tbody.insertAdjacentHTML('beforeend', rowsHtml);
+          this.bindUsersTableRowActions(tbody);
+        } else {
+          table.innerHTML =
+            '<table class="data-table">' +
+              '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>USDT Wallet</th><th>Status</th><th>Actions</th></tr></thead>' +
+              '<tbody>' + rowsHtml + '</tbody></table>';
+          this.bindUsersTableRowActions(table);
+        }
 
-        table.querySelectorAll('.adj-usdt-wallet').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            this.openBalanceAdjustModal({
-              userId: btn.dataset.uid,
-              balanceUsdt: btn.dataset.usdt,
-            });
-          });
-        });
-        table.querySelectorAll('.block-user-btn').forEach((btn) => {
-          btn.addEventListener('click', () => this.setUserBlocked(btn.dataset.uid, 'blocked'));
-        });
-        table.querySelectorAll('.unblock-user-btn').forEach((btn) => {
-          btn.addEventListener('click', () => this.setUserBlocked(btn.dataset.uid, 'active'));
-        });
-
+        this.updateUsersPagerUi();
+        if (!opts.skipMirror) this.loadUsersMirrorStatus();
       } catch (err) {
         if (countEl) countEl.textContent = '';
-        if (mirrorEl) mirrorEl.textContent = '';
-        table.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+        if (!append) {
+          table.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+        }
+        this.updateUsersPagerUi();
+      } finally {
+        this.usersListState.loading = false;
+        this.updateUsersPagerUi();
       }
+    },
+
+    async usersGoPrevPage() {
+      const st = this.usersListState || { limit: 50, offset: 0 };
+      const nextOffset = Math.max(0, Number(st.offset || 0) - Number(st.limit || 50));
+      await this.loadUsers({ reset: false, append: false, offset: nextOffset, skipMirror: true });
+    },
+
+    async usersGoNextPage() {
+      const st = this.usersListState || { limit: 50, offset: 0, has_more: false };
+      if (!st.has_more) return;
+      const nextOffset = Number(st.offset || 0) + Number(st.limit || 50);
+      await this.loadUsers({ reset: false, append: false, offset: nextOffset, skipMirror: true });
+    },
+
+    async usersLoadMore() {
+      const st = this.usersListState || { limit: 50, offset: 0, has_more: false };
+      if (!st.has_more) return;
+      const nextOffset = Number(st.offset || 0) + Number(st.limit || 50);
+      await this.loadUsers({ reset: false, append: true, offset: nextOffset, skipMirror: true });
     },
 
     async backfillUserWallets() {
@@ -3450,15 +3612,17 @@
       }
       try {
         const data = await this.api('POST', '/api/admin/users/backfill-wallets', {});
-        await this.loadUsers({ sync: false });
+        await this.loadUsers({ reset: true, skipMirror: true });
+        this.renderUsersMirrorStatus(data && data.mirror);
         const m = data && data.mirror;
         if (m && m.in_sync) {
           alert('Supabase wallet mirrors are in sync (' + m.supabase_total + ' / ' + m.turso_total + ').');
         } else if (m) {
+          const missing = typeof m.missing_count === 'number'
+            ? m.missing_count
+            : (m.missing_user_ids && m.missing_user_ids.length) || 0;
           alert('Backfill finished. Supabase ' + m.supabase_total + ' / Turso ' + m.turso_total
-            + (m.missing_user_ids && m.missing_user_ids.length
-              ? ('. Missing ids: ' + m.missing_user_ids.join(', '))
-              : '.'));
+            + (missing ? ('. Missing: ' + missing) : '.'));
         }
       } catch (err) {
         alert(err.message || 'Backfill failed');

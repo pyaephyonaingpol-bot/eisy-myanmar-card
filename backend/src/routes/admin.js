@@ -1408,40 +1408,46 @@ router.post('/balance/adjust', requirePermission('balance_adjust'), async (req, 
 
 router.get('/users', requirePermission('users'), async (req, res) => {
   try {
-    const db = getDb();
-    // Source of truth is Turso/LibSQL. Do not apply a low row cap — production
-    // previously appeared to show only ~15 users because the Supabase
-    // user_wallets mirror was incomplete (PostgREST/dashboard looked capped).
-    const totalRow = await db.get('SELECT COUNT(*) AS c FROM users');
-    const total = Number(totalRow?.c || 0);
-    const users = await db.all(`
-      SELECT id, email, name, phone, balance, balance_mmk, balance_usdt, email_verified, auth_status, created_at
-      FROM users
-      ORDER BY created_at DESC, id DESC
-    `);
+    // Lean paginated list from Turso only — no joins, no mirror/backfill on the
+    // hot path. Full catalog remains reachable via total + limit/offset pages.
+    const page = await User.listForAdmin({
+      limit: req.query.limit,
+      offset: req.query.offset,
+      q: req.query.q,
+      status: req.query.status,
+    });
 
-    const sync = require('../services/supabaseSyncService');
+    const wantMirror = String(req.query.mirror || '').trim() === '1'
+      || String(req.query.sync || '').trim() === '1';
     const awaitSync = String(req.query.sync || '').trim() === '1';
     let mirror = null;
     let backfill = null;
-    try {
-      if (awaitSync) {
-        backfill = await sync.backfillAllUserWallets();
-        mirror = await sync.getUserWalletsMirrorStatus();
-      } else {
-        sync.backfillAllUserWalletsInBackground();
-        mirror = await sync.getUserWalletsMirrorStatus();
+
+    if (wantMirror) {
+      const sync = require('../services/supabaseSyncService');
+      try {
+        if (awaitSync) {
+          backfill = await sync.backfillAllUserWallets();
+        }
+        mirror = await sync.getUserWalletsMirrorStatus({
+          includeMissingIds: String(req.query.include_missing || '').trim() === '1',
+        });
+      } catch (syncErr) {
+        console.warn('[admin/users] supabase mirror status skipped:', syncErr.message);
+        mirror = { enabled: false, reason: syncErr.message };
       }
-    } catch (syncErr) {
-      console.warn('[admin/users] supabase mirror status skipped:', syncErr.message);
-      mirror = { enabled: false, reason: syncErr.message };
     }
 
     res.json({
-      users,
-      total,
-      count: users.length,
-      truncated: users.length < total,
+      users: page.users,
+      total: page.total,
+      count: page.count,
+      limit: page.limit,
+      offset: page.offset,
+      has_more: page.has_more,
+      truncated: page.has_more,
+      q: String(req.query.q || '').trim() || null,
+      status: String(req.query.status || '').trim() || null,
       mirror,
       backfill,
     });
@@ -1451,11 +1457,24 @@ router.get('/users', requirePermission('users'), async (req, res) => {
   }
 });
 
+router.get('/users/mirror-status', requirePermission('users'), async (req, res) => {
+  try {
+    const sync = require('../services/supabaseSyncService');
+    const mirror = await sync.getUserWalletsMirrorStatus({
+      includeMissingIds: String(req.query.include_missing || '').trim() === '1',
+    });
+    res.json({ mirror });
+  } catch (err) {
+    console.error('[admin/users/mirror-status]', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
 router.post('/users/backfill-wallets', requirePermission('users'), async (_req, res) => {
   try {
     const sync = require('../services/supabaseSyncService');
     const backfill = await sync.backfillAllUserWallets();
-    const mirror = await sync.getUserWalletsMirrorStatus();
+    const mirror = await sync.getUserWalletsMirrorStatus({ includeMissingIds: false });
     res.json({ ok: Boolean(backfill?.ok || backfill?.skipped), backfill, mirror });
   } catch (err) {
     console.error('[admin/users/backfill-wallets]', err);
