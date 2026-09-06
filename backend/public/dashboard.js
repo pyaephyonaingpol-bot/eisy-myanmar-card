@@ -952,6 +952,11 @@ const Dashboard = {
     });
 
     $('usdtWalletDepositAddresses')?.addEventListener('click', async (e) => {
+      if (e.target.closest('#btnProvisionUsdtDepositAddresses')) {
+        e.preventDefault();
+        await this.provisionUsdtDepositAddresses();
+        return;
+      }
       const btn = e.target.closest('[data-copy-usdt-address]');
       if (!btn) return;
       const addr = btn.dataset.copyUsdtAddress || '';
@@ -1055,6 +1060,7 @@ const Dashboard = {
 
   /**
    * Map /api/user/wallet (or partial) payloads into USDT wallet page balance fields.
+   * Merges into the cached overview so balance-only refreshes never wipe deposit addresses.
    */
   syncUsdtWalletBalancesFromPayload(data) {
     if (!data) return;
@@ -1063,7 +1069,8 @@ const Dashboard = {
     const total = data.balance_usdt_total
       ?? data.total_usdt
       ?? (Number(available || 0) + Number(locked || 0));
-    this.renderUsdtWalletPage({
+    const merged = {
+      ...(this._usdtWalletCache || {}),
       ...data,
       balance_usdt: available,
       balance_usdt_locked: locked,
@@ -1071,7 +1078,23 @@ const Dashboard = {
       balance_formatted: data.balance_formatted || data.available_formatted || data.usdt_formatted,
       locked_formatted: data.locked_formatted || data.usdt_locked_formatted,
       total_formatted: data.total_formatted || data.usdt_total_formatted,
-    });
+    };
+    // Preserve address lists when the incoming payload is balance-only
+    // (e.g. GET /api/user/wallet does not include deposit_addresses).
+    if (!Object.prototype.hasOwnProperty.call(data, 'deposit_addresses')
+      && this._usdtWalletCache?.deposit_addresses) {
+      merged.deposit_addresses = this._usdtWalletCache.deposit_addresses;
+    }
+    if (!Object.prototype.hasOwnProperty.call(data, 'linked_addresses')
+      && this._usdtWalletCache?.linked_addresses) {
+      merged.linked_addresses = this._usdtWalletCache.linked_addresses;
+    }
+    if (!Object.prototype.hasOwnProperty.call(data, 'escrow_holds')
+      && this._usdtWalletCache?.escrow_holds) {
+      merged.escrow_holds = this._usdtWalletCache.escrow_holds;
+    }
+    this._usdtWalletCache = merged;
+    this.renderUsdtWalletPage(merged);
   },
 
   async loadUsdtWalletPage(forceRefresh = false) {
@@ -1287,16 +1310,25 @@ const Dashboard = {
         : availableText;
     }
 
-    this.renderUsdtEscrowHolds(data.escrow_holds);
+    this.renderUsdtEscrowHolds(
+      Object.prototype.hasOwnProperty.call(data, 'escrow_holds')
+        ? data.escrow_holds
+        : (this._usdtWalletCache?.escrow_holds || data.escrow_holds)
+    );
     if ($('usdtWalletMinDepositHint') && data.minimum_usdt_deposit) {
       $('usdtWalletMinDepositHint').textContent = `Minimum deposit: $${Number(data.minimum_usdt_deposit).toFixed(2)} USDT · TRC20 / BEP20 / ERC20`;
     }
 
     const depositEl = $('usdtWalletDepositAddresses');
-    const addresses = data.deposit_addresses || [];
-    if (depositEl) {
+    // Only rewrite the deposit list when the payload includes address data.
+    // Balance-only refreshes omit deposit_addresses and must not clear the UI.
+    if (depositEl && Object.prototype.hasOwnProperty.call(data, 'deposit_addresses')) {
+      const addresses = Array.isArray(data.deposit_addresses) ? data.deposit_addresses : [];
       if (!addresses.length) {
-        depositEl.innerHTML = '<p class="hint">Deposit addresses are not configured yet. Contact support.</p>';
+        depositEl.innerHTML = `
+          <p class="hint">No deposit addresses yet.</p>
+          <button type="button" class="btn btn-primary btn-sm" id="btnProvisionUsdtDepositAddresses">Generate deposit addresses</button>
+        `;
       } else {
         depositEl.innerHTML = addresses.map((row) => `
           <div class="usdt-wallet-address-card">
@@ -1318,8 +1350,8 @@ const Dashboard = {
     }
 
     const linkedEl = $('usdtLinkedWalletsList');
-    const linked = data.linked_addresses || [];
-    if (linkedEl) {
+    if (linkedEl && Object.prototype.hasOwnProperty.call(data, 'linked_addresses')) {
+      const linked = Array.isArray(data.linked_addresses) ? data.linked_addresses : [];
       linkedEl.innerHTML = linked.length ? linked.map((row) => `
         <div class="usdt-linked-card">
           <div class="usdt-wallet-address-head">
@@ -1335,6 +1367,28 @@ const Dashboard = {
           <p class="hint" id="usdtLinkedBalance-${row.id}" style="margin:0.5rem 0 0"></p>
         </div>
       `).join('') : '<p class="hint">No linked wallets yet.</p>';
+    }
+  },
+
+  async provisionUsdtDepositAddresses() {
+    const depositEl = $('usdtWalletDepositAddresses');
+    const btn = $('btnProvisionUsdtDepositAddresses');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Generating…';
+    }
+    try {
+      await Auth.api('POST', '/api/user/usdt-wallet/provision', null, { timeoutMs: 20000 });
+      this._usdtWalletCache = null;
+      await this.loadUsdtWalletPage(true);
+      this.toast('Deposit addresses ready', 'ok');
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+      this.toast(err.message || 'Could not generate deposit addresses', 'error');
+      if (depositEl && btn) {
+        btn.disabled = false;
+        btn.textContent = 'Generate deposit addresses';
+      }
     }
   },
 
