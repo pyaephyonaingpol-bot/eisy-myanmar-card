@@ -5,13 +5,14 @@ const { getSupabase, isSupabaseEnabled, getSupabaseConfig } = require('../lib/su
 const { getUploadRoot, ensureDir } = require('../paths');
 
 const DEFAULT_BUCKET = 'uploads';
-const CATEGORIES = new Set(['deposits', 'p2p', 'kyc']);
+const CATEGORIES = new Set(['deposits', 'p2p', 'kyc', 'withdrawals']);
 
 const EXT_BY_MIME = {
   'image/jpeg': '.jpg',
   'image/png': '.png',
   'image/webp': '.webp',
   'image/gif': '.gif',
+  'application/pdf': '.pdf',
   'video/mp4': '.mp4',
   'video/webm': '.webm',
   'video/quicktime': '.mov',
@@ -55,9 +56,10 @@ function resolveExtension(mimeType, originalName) {
 
   let ext = path.extname(originalName || '').toLowerCase();
   if (ext === '.jpeg') ext = '.jpg';
-  const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm', '.mov', '.avi'];
+  const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.mp4', '.webm', '.mov', '.avi'];
   if (allowed.includes(ext)) return ext === '.jpeg' ? '.jpg' : ext;
 
+  if (String(mimeType || '') === 'application/pdf') return '.pdf';
   if (String(mimeType || '').startsWith('video/')) return '.mp4';
   return '.jpg';
 }

@@ -284,6 +284,9 @@ async function listMmkWithdrawalAdminTransactions({ userId, limit = 200 } = {}) 
       account_number: row.account_number || null,
       status: row.status,
       admin_note: row.admin_note || null,
+      proof_url: row.proof_url || row.proof_path || null,
+      proof_mime_type: row.proof_mime_type || null,
+      proof_original_name: row.proof_original_name || null,
       processed_at: row.processed_at || null,
       created_at: row.created_at,
     };

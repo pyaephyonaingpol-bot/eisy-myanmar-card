@@ -89,7 +89,11 @@ const {
   listOrderMessagesForAdmin,
   postAdminOrderMessage,
 } = require('../services/p2pOrderChatService');
-const { uploadP2pAttachment, persistP2pUpload } = require('../middleware/upload');
+const {
+  uploadP2pAttachment,
+  persistP2pUpload,
+  uploadWithdrawalProof,
+} = require('../middleware/upload');
 const {
   listPendingReloadRequests,
   approvePendingReload,
@@ -2200,34 +2204,43 @@ router.get('/withdrawals/usdt', requirePermission('withdrawals'), async (req, re
   }
 });
 
-router.post('/withdrawals/usdt/:id/complete', requirePermission('withdrawals'), async (req, res) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const withdrawal = await completeUsdtWithdrawal(id, {
-      adminNote: req.body.admin_note,
-      txHash: req.body.tx_hash,
-      adminId: req.user?.id,
-      skipOnChain: Boolean(req.body.skip_on_chain),
-    });
-    res.json({
-      success: true,
-      message: `USDT withdrawal ${withdrawal.ref_code} marked completed`,
-      withdrawal,
-    });
-  } catch (err) {
-    console.error('[admin/withdrawals/usdt complete]', err.code || '', err.message);
-    const status = ['INSUFFICIENT_USDT', 'INSUFFICIENT_TRX', 'MASTER_KEY_MISSING',
-      'NOWPAYMENTS_NOT_CONFIGURED', 'NOWPAYMENTS_PAYOUT_AUTH_MISSING'].includes(err.code)
-      ? 422
-      : 400;
-    res.status(status).json({
-      error: err.message || 'Failed to complete withdrawal',
-      code: err.code || undefined,
-      details: err.details || undefined,
-      nowpayments: err.nowpayments || undefined,
-    });
+router.post(
+  '/withdrawals/usdt/:id/complete',
+  requirePermission('withdrawals'),
+  uploadWithdrawalProof.single('proof'),
+  async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const withdrawal = await completeUsdtWithdrawal(id, {
+        adminNote: req.body.admin_note,
+        txHash: req.body.tx_hash,
+        adminId: req.user?.id,
+        skipOnChain: Boolean(req.body.skip_on_chain === true || req.body.skip_on_chain === 'true'),
+        proofFile: req.file || null,
+        proofBase64: req.body.proof_base64 || null,
+        proofOriginalName: req.body.proof_original_name || req.file?.originalname || null,
+      });
+      res.json({
+        success: true,
+        message: `USDT withdrawal ${withdrawal.ref_code} marked completed`,
+        withdrawal,
+        proof_email: withdrawal.proof_email || null,
+      });
+    } catch (err) {
+      console.error('[admin/withdrawals/usdt complete]', err.code || '', err.message);
+      const status = ['INSUFFICIENT_USDT', 'INSUFFICIENT_TRX', 'MASTER_KEY_MISSING',
+        'NOWPAYMENTS_NOT_CONFIGURED', 'NOWPAYMENTS_PAYOUT_AUTH_MISSING'].includes(err.code)
+        ? 422
+        : 400;
+      res.status(status).json({
+        error: err.message || 'Failed to complete withdrawal',
+        code: err.code || undefined,
+        details: err.details || undefined,
+        nowpayments: err.nowpayments || undefined,
+      });
+    }
   }
-});
+);
 
 /** Explicitly submit / retry a NOWPayments mass payout for a pending crypto withdrawal. */
 router.post('/withdrawals/usdt/:id/nowpayments-payout', requirePermission('withdrawals'), async (req, res) => {
@@ -2297,23 +2310,32 @@ router.get('/withdrawals/mmk', requirePermission('withdrawals'), async (req, res
   }
 });
 
-router.post('/withdrawals/mmk/:id/complete', requirePermission('withdrawals'), async (req, res) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const withdrawal = await completeMmkWithdrawal(id, {
-      adminNote: req.body.admin_note,
-      adminId: req.user?.id,
-    });
-    res.json({
-      success: true,
-      message: `MMK withdrawal ${withdrawal.ref_code} marked completed`,
-      withdrawal,
-    });
-  } catch (err) {
-    console.error('[admin/withdrawals/mmk complete]', err);
-    res.status(400).json({ error: err.message || 'Failed to complete withdrawal' });
+router.post(
+  '/withdrawals/mmk/:id/complete',
+  requirePermission('withdrawals'),
+  uploadWithdrawalProof.single('proof'),
+  async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const withdrawal = await completeMmkWithdrawal(id, {
+        adminNote: req.body.admin_note,
+        adminId: req.user?.id,
+        proofFile: req.file || null,
+        proofBase64: req.body.proof_base64 || null,
+        proofOriginalName: req.body.proof_original_name || req.file?.originalname || null,
+      });
+      res.json({
+        success: true,
+        message: `MMK withdrawal ${withdrawal.ref_code} marked completed`,
+        withdrawal,
+        proof_email: withdrawal.proof_email || null,
+      });
+    } catch (err) {
+      console.error('[admin/withdrawals/mmk complete]', err);
+      res.status(400).json({ error: err.message || 'Failed to complete withdrawal' });
+    }
   }
-});
+);
 
 router.post('/withdrawals/mmk/:id/reject', requirePermission('withdrawals'), async (req, res) => {
   try {

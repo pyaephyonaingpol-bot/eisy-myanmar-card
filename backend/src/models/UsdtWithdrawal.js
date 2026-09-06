@@ -70,11 +70,51 @@ const UsdtWithdrawal = {
     return row;
   },
 
-  async updateStatus(id, { status, adminNote, txHash, processedBy } = {}) {
+  async updateStatus(id, {
+    status,
+    adminNote,
+    txHash,
+    processedBy,
+    proofPath,
+    proofUrl,
+    proofMimeType,
+    proofOriginalName,
+    proofUploadedAt,
+    proofUploadedBy,
+  } = {}) {
     const db = getDb();
     const processedAt = ['completed', 'rejected', 'cancelled'].includes(status)
       ? ", processed_at = datetime('now')"
       : '';
+
+    const proofSets = [];
+    const proofParams = [];
+    if (proofPath !== undefined) {
+      proofSets.push('proof_path = ?');
+      proofParams.push(proofPath || null);
+    }
+    if (proofUrl !== undefined) {
+      proofSets.push('proof_url = ?');
+      proofParams.push(proofUrl || null);
+    }
+    if (proofMimeType !== undefined) {
+      proofSets.push('proof_mime_type = ?');
+      proofParams.push(proofMimeType || null);
+    }
+    if (proofOriginalName !== undefined) {
+      proofSets.push('proof_original_name = ?');
+      proofParams.push(proofOriginalName || null);
+    }
+    if (proofUploadedAt !== undefined) {
+      proofSets.push('proof_uploaded_at = ?');
+      proofParams.push(proofUploadedAt || null);
+    }
+    if (proofUploadedBy !== undefined) {
+      proofSets.push('proof_uploaded_by = ?');
+      proofParams.push(proofUploadedBy ?? null);
+    }
+    const proofSql = proofSets.length ? `, ${proofSets.join(', ')}` : '';
+
     await db.run(`
       UPDATE ${this.TABLE}
       SET status = ?,
@@ -83,8 +123,9 @@ const UsdtWithdrawal = {
           processed_by = COALESCE(?, processed_by),
           updated_at = datetime('now')
           ${processedAt}
+          ${proofSql}
       WHERE id = ?
-    `, status, adminNote || null, txHash || null, processedBy ?? null, id);
+    `, status, adminNote || null, txHash || null, processedBy ?? null, ...proofParams, id);
     const row = await this.findById(id);
     syncWithdrawalRow(row);
     return row;
