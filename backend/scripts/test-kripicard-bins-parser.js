@@ -151,10 +151,45 @@ async function testPricingOptionsSurface441357() {
   console.log('ok');
 }
 
+function testGenericListDoesNotMaskBins() {
+  section('generic list/items with numeric ids does not mask real bins[] (441357)');
+  const active = extractActiveBins({
+    success: true,
+    data: {
+      list: [
+        { id: 100001, name: 'Visa Product' },
+        { id: 100002, name: 'MC Product' },
+      ],
+      items: [{ code: 200003, title: 'noise' }],
+      bins: [
+        { bin: '441357', status: 'active' },
+        { bin: '539502', status: 'maintenance' },
+      ],
+    },
+  });
+  assert.deepStrictEqual(active, ['441357']);
+  console.log('ok');
+}
+
+function testSingularBinPaths() {
+  section('singular data.bin / data.bankBin paths extract 441357');
+  assert.deepStrictEqual(
+    extractActiveBins({ success: true, data: { bin: 441357 } }),
+    ['441357']
+  );
+  assert.deepStrictEqual(
+    extractActiveBins({ success: true, data: { bankBin: '441357', status: 'active' } }),
+    ['441357']
+  );
+  console.log('ok');
+}
+
 async function main() {
   testDigitKeyedMap();
   testBankBinList();
   testCommaSeparatedAndItems();
+  testGenericListDoesNotMaskBins();
+  testSingularBinPaths();
   await testFetchAvailableBinsUsesParser();
   await testPricingOptionsSurface441357();
   console.log('\nAll Kripicard BIN parser tests passed.');

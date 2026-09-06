@@ -503,6 +503,9 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
       kripicard_default_bin: bins.default_bin,
       kripicard_bins: bins.bins,
       kripicard_bins_source: bins.source,
+      // Safe debug aids when the live catalog is empty (no secrets / raw body).
+      kripicard_bins_raw_keys: bins.bins.length ? undefined : bins.raw_keys,
+      kripicard_bins_error: bins.bins.length ? undefined : (bins.error || undefined),
       withdrawal_fees: await getWithdrawalFeeSettings(),
       deposit_fees: await getDepositFeeSettings(),
     });
