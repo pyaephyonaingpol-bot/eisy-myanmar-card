@@ -96,6 +96,7 @@ app.get('/health/tron', async (_req, res) => {
   const {
     getMasterWalletAddress,
     getMasterWalletInfo,
+    checkMasterWalletAddressConsistency,
   } = require('./services/tronMasterWalletService');
 
   const env = {
@@ -118,6 +119,7 @@ app.get('/health/tron', async (_req, res) => {
     timestamp: new Date().toISOString(),
     env,
     wallet: null,
+    address_consistency: null,
     trongrid: null,
     balance: null,
   };
@@ -135,6 +137,16 @@ app.get('/health/tron', async (_req, res) => {
         : address,
       explicit_address_env: env.TRON_MASTER_WALLET,
     };
+
+    if (env.MASTER_PRIVATE_KEY && env.TRON_MASTER_WALLET) {
+      out.address_consistency = checkMasterWalletAddressConsistency();
+      if (!out.address_consistency.match) {
+        out.status = 'error';
+        out.error =
+          'TRON_MASTER_WALLET does not match the address derived from MASTER_PRIVATE_KEY';
+        out.code = 'MASTER_ADDRESS_MISMATCH';
+      }
+    }
 
     const host = firstEnv('TRON_FULL_HOST', 'TRONGRID_FULL_HOST') || 'https://api.trongrid.io';
     const apiKey = firstEnv('TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY');
@@ -171,7 +183,18 @@ app.get('/health/tron', async (_req, res) => {
       out.balance = { error: balErr.code || balErr.message };
     }
 
-    const ok = Boolean(out.wallet && out.trongrid?.ok && out.balance && out.balance.usdt != null);
+    const addressOk = !out.address_consistency || out.address_consistency.match;
+    const ok = Boolean(
+      addressOk
+      && out.wallet
+      && out.trongrid?.ok
+      && out.balance
+      && out.balance.usdt != null
+    );
+    if (!addressOk) {
+      out.status = 'error';
+      return res.status(503).json(out);
+    }
     out.status = ok ? 'ok' : 'degraded';
     return res.status(ok ? 200 : 503).json(out);
   } catch (err) {

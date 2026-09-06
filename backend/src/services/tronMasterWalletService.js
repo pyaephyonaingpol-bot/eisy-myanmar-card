@@ -266,9 +266,46 @@ async function transferUsdtTrc20({ toAddress, amountUsdt }) {
   };
 }
 
+function getConfiguredMasterWalletAddress() {
+  return firstEnv(
+    'MASTER_WALLET_ADDRESS',
+    'TRON_MASTER_WALLET',
+    'MASTER_TRON_ADDRESS',
+    'TRON_MASTER_ADDRESS'
+  );
+}
+
+/** Address derived from MASTER_PRIVATE_KEY (ignores TRON_MASTER_WALLET). */
+function getDerivedMasterWalletAddress() {
+  const privateKey = getMasterPrivateKey();
+  const tronWeb = createTronWeb(privateKey);
+  return getMasterAddress(tronWeb, privateKey);
+}
+
+/**
+ * Compare explicit address env vs key-derived address.
+ * A mismatch means withdrawals sign from a different wallet than balance checks use.
+ */
+function checkMasterWalletAddressConsistency() {
+  const configured = getConfiguredMasterWalletAddress();
+  const derived = getDerivedMasterWalletAddress();
+  const match = !configured || configured === derived;
+  return {
+    ok: match,
+    match,
+    has_explicit_address: Boolean(configured),
+    configured_masked: configured
+      ? `${configured.slice(0, 4)}…${configured.slice(-4)}`
+      : null,
+    derived_masked: derived
+      ? `${derived.slice(0, 4)}…${derived.slice(-4)}`
+      : null,
+  };
+}
+
 /** Prefer explicit MASTER_WALLET_ADDRESS; otherwise derive from MASTER_PRIVATE_KEY. */
 function getMasterWalletAddress() {
-  const configured = firstEnv('MASTER_WALLET_ADDRESS', 'TRON_MASTER_WALLET', 'MASTER_TRON_ADDRESS', 'TRON_MASTER_ADDRESS');
+  const configured = getConfiguredMasterWalletAddress();
   if (configured) {
     if (!isLikelyTronAddress(configured)) {
       const err = new Error(
@@ -279,9 +316,7 @@ function getMasterWalletAddress() {
     }
     return configured;
   }
-  const privateKey = getMasterPrivateKey();
-  const tronWeb = createTronWeb(privateKey);
-  return getMasterAddress(tronWeb, privateKey);
+  return getDerivedMasterWalletAddress();
 }
 
 function isLikelyTronAddress(addr) {
@@ -511,6 +546,9 @@ module.exports = {
   USDT_TRC20_ABI,
   getMasterPrivateKey,
   getMasterWalletAddress,
+  getConfiguredMasterWalletAddress,
+  getDerivedMasterWalletAddress,
+  checkMasterWalletAddressConsistency,
   getTrxLowThreshold,
   usdtToSun,
   sunToUsdt,
