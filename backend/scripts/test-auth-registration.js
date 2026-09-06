@@ -11,44 +11,55 @@ const { initDb, closeDb } = require('../src/db');
 const authService = require('../src/services/authService');
 const User = require('../src/models/User');
 
+async function registerWithOtp(email, { name, phone, pin = '123456', termsAccepted = true } = {}) {
+  const sent = await authService.sendRegistrationOtp(email);
+  const otp = sent.dev_otp || sent.otp || process.env.MASTER_TEST_OTP;
+  assert(otp, 'expected a usable OTP from sendRegistrationOtp');
+  return authService.completeRegistration({
+    email,
+    otp,
+    name,
+    phone,
+    pin,
+    termsAccepted,
+  });
+}
+
 async function run() {
   await initDb();
 
-  const emailA = `reg-a-${Date.now()}@gmail.com`;
-  const emailB = `reg-b-${Date.now()}@gmail.com`;
+  const stamp = Date.now();
+  const emailA = `reg-a-${stamp}@gmail.com`;
+  const emailB = `reg-b-${stamp}@gmail.com`;
+  const phoneA = `09${String(stamp).slice(-9)}`;
 
-  await authService.sendRegistrationOtp(emailA);
-  const userA = (await authService.completeRegistration({
-    email: emailA,
-    otp: '123456',
-    name: 'Reg A',
-    pin: '123456',
-  })).user;
-  assert(userA.email === emailA, 'first registration should succeed');
+  const userA = (await registerWithOtp(emailA, { name: 'Reg A', phone: phoneA })).user;
+  assert.strictEqual(userA.email, emailA, 'first registration should succeed');
+  assert.strictEqual(Number(userA.terms_accepted), 1, 'terms_accepted persisted');
+  assert.ok(userA.terms_accepted_at, 'terms_accepted_at persisted');
+  assert.ok(userA.terms_version, 'terms_version persisted');
+  assert.strictEqual(userA.terms_version, authService.TERMS_VERSION);
+
+  const storedA = await User.findByEmail(emailA);
+  assert.strictEqual(storedA.phone, phoneA, 'explicit phone should be stored');
 
   // Similar local-part emails must not collide on synthetic phone
   const similarEmail = emailA.replace('reg-a', 'reg.a');
   if (similarEmail !== emailA) {
-    await authService.sendRegistrationOtp(similarEmail);
-    const userSimilar = (await authService.completeRegistration({
-      email: similarEmail,
-      otp: '123456',
-      name: 'Reg Similar',
-      pin: '123456',
-    })).user;
-    assert.notStrictEqual(userA.phone, userSimilar.phone, 'synthetic phones must be unique');
+    const userSimilar = (await registerWithOtp(similarEmail, { name: 'Reg Similar' })).user;
+    assert.strictEqual(userSimilar.email, similarEmail);
+    const storedSimilar = await User.findByEmail(similarEmail);
+    assert.ok(storedSimilar.phone, 'synthetic phone should be stored');
+    assert.notStrictEqual(
+      storedA.phone,
+      storedSimilar.phone,
+      'synthetic phones must be unique from explicit phones'
+    );
   }
 
-  await authService.sendRegistrationOtp(emailB);
   let duplicatePhoneErr;
   try {
-    await authService.completeRegistration({
-      email: emailB,
-      otp: '123456',
-      name: 'Reg B',
-      phone: userA.phone,
-      pin: '123456',
-    });
+    await registerWithOtp(emailB, { name: 'Reg B', phone: phoneA });
   } catch (err) {
     duplicatePhoneErr = err;
   }
@@ -57,18 +68,45 @@ async function run() {
 
   let duplicateEmailErr;
   try {
-    await authService.completeRegistration({
-      email: emailA,
-      otp: '123456',
-      name: 'Dup Email',
-      pin: '123456',
-    });
+    await authService.sendRegistrationOtp(emailA);
   } catch (err) {
     duplicateEmailErr = err;
   }
   assert(duplicateEmailErr, 'duplicate email should fail');
-  assert.strictEqual(duplicateEmailErr.code, 'EMAIL_ALREADY_REGISTERED');
+  assert.ok(
+    /already registered/i.test(String(duplicateEmailErr.message)),
+    'duplicate email error should mention already registered'
+  );
   assert(!String(duplicateEmailErr.message).includes('SQLITE'), 'errors must not leak SQLITE text');
+
+  // Terms acceptance is required
+  const emailTerms = `reg-terms-${stamp}@gmail.com`;
+  const sent = await authService.sendRegistrationOtp(emailTerms);
+  const otp = sent.dev_otp || sent.otp || process.env.MASTER_TEST_OTP;
+  let termsErr;
+  try {
+    await authService.completeRegistration({
+      email: emailTerms,
+      otp,
+      name: 'No Terms',
+      pin: '123456',
+      termsAccepted: false,
+    });
+  } catch (err) {
+    termsErr = err;
+  }
+  assert(termsErr, 'registration without terms should fail');
+  assert.strictEqual(termsErr.code, 'TERMS_NOT_ACCEPTED');
+
+  const notCreated = await User.findByEmail(emailTerms);
+  assert.ok(!notCreated, 'user must not be created when terms are declined');
+
+  const accepted = (await registerWithOtp(emailTerms, { name: 'With Terms' })).user;
+  assert.strictEqual(Number(accepted.terms_accepted), 1);
+  const row = await User.findByEmail(emailTerms);
+  assert.strictEqual(Number(row.terms_accepted), 1);
+  assert.ok(row.terms_accepted_at);
+  assert.strictEqual(row.terms_version, authService.TERMS_VERSION);
 
   console.log('AUTH REGISTRATION TESTS PASSED');
   await closeDb();

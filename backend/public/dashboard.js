@@ -4703,6 +4703,14 @@ const Dashboard = {
           return;
         }
 
+        const termsAccepted = Boolean($('regTermsAccepted')?.checked);
+        if (!termsAccepted) {
+          this.toast('Please accept the Terms and Conditions to continue', 'error');
+          this.setInlineError('regAuthError', 'You must accept the Terms and Conditions before registering.');
+          $('regTermsAccepted')?.focus();
+          return;
+        }
+
         const btn = $('registerSendOtp');
         if (btn) {
           btn.disabled = true;
@@ -4742,12 +4750,20 @@ const Dashboard = {
       registerCompleteForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         try {
+          const termsAccepted = Boolean($('regTermsAccepted')?.checked);
+          if (!termsAccepted) {
+            this.toast('Please accept the Terms and Conditions to create your account', 'error');
+            this.setInlineError('regAuthError', 'You must accept the Terms and Conditions before creating an account.');
+            $('regTermsAccepted')?.focus();
+            return;
+          }
           await Auth.completeRegister({
             email: $('regEmail').value.trim(),
             otp: $('regOtp').value.trim(),
             name: $('regName').value.trim(),
             phone: $('regPhone').value.trim() || undefined,
             pin: $('regPin').value.trim(),
+            termsAccepted: true,
           });
           this.log('Account created and logged in', 'ok');
           this.refreshAuthUI();

@@ -52,6 +52,16 @@ app.get('/dashboard', (_req, res) => {
   res.sendFile(INDEX_HTML);
 });
 
+app.get('/terms', (_req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.sendFile(path.join(PUBLIC_DIR, 'terms.html'));
+});
+
+app.get('/terms.html', (_req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.sendFile(path.join(PUBLIC_DIR, 'terms.html'));
+});
+
 app.get('/admin', (_req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.sendFile(path.join(PUBLIC_DIR, 'admin.html'));

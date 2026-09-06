@@ -10,6 +10,9 @@ const USER_AUTH_COLUMNS = [
   ['last_login_at', 'TEXT'],
   ['updated_at', 'TEXT'],
   ['admin_role', 'TEXT'],
+  ['terms_accepted', 'INTEGER NOT NULL DEFAULT 0'],
+  ['terms_accepted_at', 'TEXT'],
+  ['terms_version', 'TEXT'],
 ];
 
 async function applyUserAuthColumns(db, columnExists) {

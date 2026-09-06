@@ -4,6 +4,7 @@ const PUBLIC_FIELDS = [
   'id', 'name', 'phone', 'email', 'username', 'email_verified', 'kyc_status', 'balance', 'balance_mmk', 'balance_usdt',
   'balance_usdt_locked',
   'auth_status', 'biometrics_enabled', 'last_login_at', 'created_at', 'updated_at',
+  'terms_accepted', 'terms_accepted_at', 'terms_version',
 ];
 
 function stripPrivate(user) {
@@ -58,12 +59,32 @@ const User = {
     return db.get('SELECT * FROM users WHERE phone = ?', phone);
   },
 
-  async create({ name, phone, email, pinHash }) {
+  async create({
+    name,
+    phone,
+    email,
+    pinHash,
+    termsAccepted = false,
+    termsVersion = null,
+  }) {
     const db = getDb();
+    const accepted = termsAccepted ? 1 : 0;
+    const version = accepted && termsVersion ? String(termsVersion) : null;
     const result = await db.run(`
-      INSERT INTO users (name, phone, email, pin_hash, pin_set_at, email_verified, updated_at)
-      VALUES (?, ?, ?, ?, CASE WHEN ? IS NOT NULL THEN datetime('now') ELSE NULL END, 0, datetime('now'))
-    `, name, phone, email || null, pinHash || null, pinHash || null);
+      INSERT INTO users (
+        name, phone, email, pin_hash, pin_set_at, email_verified,
+        terms_accepted, terms_accepted_at, terms_version, updated_at
+      )
+      VALUES (
+        ?, ?, ?, ?,
+        CASE WHEN ? IS NOT NULL THEN datetime('now') ELSE NULL END,
+        0,
+        ?,
+        CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END,
+        ?,
+        datetime('now')
+      )
+    `, name, phone, email || null, pinHash || null, pinHash || null, accepted, accepted, version);
     return this.findById(result.lastID);
   },
 
