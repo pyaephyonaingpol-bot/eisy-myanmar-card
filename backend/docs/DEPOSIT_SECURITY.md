@@ -14,8 +14,9 @@ Detection (webhook + durable poll share `tronDepositCreditService`):
 
 1. **Webhook (primary):** `POST /api/webhook/tron` with `TRON_WEBHOOK_SECRET`
    (or `DEPOSIT_LISTENER_SECRET`) → match pending order → credit ledger.
-2. **Durable poll (fallback):** Vercel Cron `GET /api/cron/tron-deposits` every
-   minute (`CRON_SECRET`), or `POST /api/tron/orders/check/pending`.
+2. **Durable poll (fallback):** Vercel Cron `GET /api/cron/tron-deposits`
+   (daily on Hobby; use an external minute cron or Vercel Pro for frequent polls),
+   or `POST /api/tron/orders/check/pending`.
 3. **In-process poller:** still started for long-lived `npm run dev` / PM2;
    skipped automatically on Vercel serverless.
 

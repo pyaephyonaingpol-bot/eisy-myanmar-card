@@ -69,7 +69,7 @@
   "crons": [
     {
       "path": "/api/cron/tron-deposits",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
