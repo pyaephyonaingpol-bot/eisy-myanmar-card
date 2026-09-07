@@ -1,4 +1,8 @@
 const { getDb } = require('../db');
+const {
+  encryptField,
+  decryptFieldSafe,
+} = require('../services/sensitiveDataCrypto');
 
 const KycSubmission = {
   TABLE: 'kyc_submissions',
@@ -40,6 +44,10 @@ const KycSubmission = {
     selfiePhotoPath,
   }) {
     const db = getDb();
+    // Encrypt PII at rest (passport / NRC number + legal name)
+    const encryptedFullName = encryptField(fullName);
+    const encryptedIdNumber = encryptField(idNumber);
+
     const result = await db.run(`
       INSERT INTO ${this.TABLE} (
         user_id, full_name, id_type, id_number,
@@ -48,9 +56,9 @@ const KycSubmission = {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING_REVIEW')
     `,
       userId,
-      fullName,
+      encryptedFullName,
       idType,
-      idNumber,
+      encryptedIdNumber,
       frontPhotoPath,
       backPhotoPath,
       selfiePhotoPath
@@ -72,16 +80,21 @@ const KycSubmission = {
     return this.findById(id);
   },
 
+  /**
+   * Map DB row → API payload with decrypted PII for authorized consumers.
+   */
   mapForClient(row, { user } = {}) {
     if (!row) return null;
+    const fullName = decryptFieldSafe(row.full_name, { fallback: '[unavailable]' });
+    const idNumber = decryptFieldSafe(row.id_number, { fallback: '[unavailable]' });
     return {
       id: row.id,
       user_id: row.user_id,
       user_name: user?.name || null,
       user_email: user?.email || null,
-      full_name: row.full_name,
+      full_name: fullName,
       id_type: row.id_type,
-      id_number: row.id_number,
+      id_number: idNumber,
       front_photo_path: row.front_photo_path,
       back_photo_path: row.back_photo_path,
       selfie_photo_path: row.selfie_photo_path,

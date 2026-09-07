@@ -2,6 +2,10 @@ const User = require('../models/User');
 const KycSubmission = require('../models/KycSubmission');
 const TransactionLog = require('../models/TransactionLog');
 const { getDb } = require('../db');
+const {
+  decryptFieldSafe,
+  maskSensitive,
+} = require('./sensitiveDataCrypto');
 
 const KYC_STATUSES = ['UNVERIFIED', 'PENDING_REVIEW', 'VERIFIED', 'REJECTED'];
 const P2P_KYC_MESSAGE = 'KYC Verification Required to Trade P2P';
@@ -147,9 +151,10 @@ async function submitKyc(userId, { full_name, id_type, id_number, front_photo_pa
     userId,
     type: 'kyc_submitted',
     referenceId: submission.id,
-    description: `KYC submitted — ${idType} ${idNumber}`,
+    description: `KYC submitted — ${idType} ${maskSensitive(idNumber)}`,
     createdBy: 'user',
-    metadata: { id_type: idType, full_name: fullName },
+    // Never persist full passport/NRC number in audit logs
+    metadata: { id_type: idType, id_number_masked: maskSensitive(idNumber) },
   });
 
   const updatedUser = await User.findById(userId);
@@ -186,11 +191,12 @@ async function approveKyc(submissionId, { reviewedBy = 'admin', adminNote } = {}
     UPDATE users SET kyc_status = 'VERIFIED', updated_at = datetime('now') WHERE id = ?
   `, submission.user_id);
 
+  const approvedName = decryptFieldSafe(submission.full_name, { fallback: 'applicant' });
   await logKycActivity({
     userId: submission.user_id,
     type: 'kyc_verified',
     referenceId: submissionId,
-    description: `KYC approved — ${submission.full_name}`,
+    description: `KYC approved — ${approvedName}`,
     createdBy: reviewedBy,
     metadata: { admin_note: adminNote || null, legacy_type: 'kyc_approved' },
   });

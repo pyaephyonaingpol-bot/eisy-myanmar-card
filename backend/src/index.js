@@ -13,6 +13,12 @@ const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
 const supportRoutes = require('./routes/support');
 const { requireAuth, requireSensitive } = require('./middleware/auth');
+const {
+  createHelmetMiddleware,
+  createApiRateLimiter,
+  createAuthRateLimiter,
+  createKycRateLimiter,
+} = require('./middleware/security');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -21,23 +27,33 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const UPLOAD_DIR = getUploadRoot();
 const INDEX_HTML = path.join(PUBLIC_DIR, 'index.html');
 
+// Required behind Vercel / reverse proxies so rate-limit + client IP are correct
+app.set('trust proxy', 1);
+
+// Security headers (XSS / clickjacking / MIME sniffing / HSTS)
+app.use(createHelmetMiddleware());
+
 app.use(cors(createCorsOptions()));
 app.options('*', cors(createCorsOptions()));
 app.use(express.json({
   limit: '55mb',
   verify: (req, res, buf) => {
-    // Preserve raw body for webhook signature verification
+    // Preserve raw body for webhook signature verification (Binance + Stripe)
     if (
       req.originalUrl
       && (
         req.originalUrl.startsWith('/api/webhook/')
       )
     ) {
+      req.rawBodyBuffer = Buffer.from(buf);
       req.rawBody = buf.toString('utf8');
     }
   },
 }));
 app.use(express.urlencoded({ extended: true, limit: '55mb' }));
+
+// API rate limiting (webhooks skipped inside limiter)
+app.use('/api', createApiRateLimiter());
 
 app.get('/', (_req, res) => {
   if (!fs.existsSync(INDEX_HTML)) {
@@ -319,7 +335,7 @@ app.get('/health/user-mirror', async (req, res) => {
 
 app.use('/api/config', require('./routes/config'));
 app.use('/api/qr', require('./routes/qr'));
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', createAuthRateLimiter(), authRoutes);
 app.use('/api/deposit', depositRoutes);
 app.use('/api/tron/orders', require('./routes/tronOrders'));
 app.use('/api/tron/wallet', require('./routes/tronWallet'));
@@ -327,7 +343,7 @@ app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/support', supportRoutes);
-app.use('/api/kyc', require('./routes/kyc'));
+app.use('/api/kyc', createKycRateLimiter(), require('./routes/kyc'));
 app.use('/api/p2p', require('./routes/p2p'));
 app.use('/api/withdrawal', require('./routes/withdrawal'));
 app.use('/api/withdraw', require('./routes/withdraw'));
