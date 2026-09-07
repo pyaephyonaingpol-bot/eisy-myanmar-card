@@ -6,6 +6,9 @@ const {
   webhookSuccessResponse,
   webhookFailureResponse,
 } = require('../services/binancePayService');
+const {
+  handleStripeWebhook,
+} = require('../services/stripeWebhookService');
 
 const router = express.Router();
 
@@ -33,6 +36,27 @@ router.post('/binance', async (req, res) => {
       return res.json(webhookSuccessResponse());
     }
     return res.status(500).json(webhookFailureResponse(err.message || 'FAIL'));
+  }
+});
+
+/**
+ * Stripe webhook — signature verified via stripe.webhooks.constructEvent + whsec_...
+ * Unverified / forged requests are rejected with 401.
+ * Register in Stripe Dashboard: https://YOUR_DOMAIN/api/webhook/stripe
+ */
+router.post('/stripe', async (req, res) => {
+  try {
+    const result = await handleStripeWebhook(req);
+    return res.status(200).json({ received: true, id: result.id, type: result.type });
+  } catch (err) {
+    const code = err.code || 'STRIPE_WEBHOOK_ERROR';
+    const status = err.status || (code === 'STRIPE_WEBHOOK_INVALID_SIGNATURE' ? 401 : 500);
+    console.error('[webhook/stripe]', err.message, code);
+    return res.status(status).json({
+      error: err.message || 'Webhook error',
+      code,
+      received: false,
+    });
   }
 });
 

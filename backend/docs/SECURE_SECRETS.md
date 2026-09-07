@@ -17,6 +17,9 @@ platform env in cloud).
 | TronGrid API key | `TRONGRID_API_KEY` (aliases: `TRON_API_KEY`, `TRON_PRO_API_KEY`) | Vercel + Cursor Cloud |
 | Auth HMAC | `AUTH_SECRET` | Vercel + Cursor Cloud |
 | Admin bootstrap key | `ADMIN_API_KEY` | Vercel + Cursor Cloud |
+| KYC / passport field encryption | `SENSITIVE_DATA_ENCRYPTION_KEY` (alias `FIELD_ENCRYPTION_KEY`) | Vercel + Cursor Cloud (**server only**, 64 hex chars) |
+| Stripe API | `STRIPE_SECRET_KEY` | Vercel + Cursor Cloud |
+| Stripe webhook signing | `STRIPE_WEBHOOK_SECRET` (`whsec_...`) | Vercel + Cursor Cloud |
 
 Templates (placeholders only): `.env.example`, `backend/.env.example`.
 

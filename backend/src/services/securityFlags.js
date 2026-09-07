@@ -81,11 +81,28 @@ function assertMasterWalletTransfersAllowed(action = 'transfer') {
 }
 
 function getSecurityStatus() {
+  let sensitive_data_encryption = false;
+  let stripe_webhook = false;
+  try {
+    // Lazy require avoids circular init during cold start
+    const { isEncryptionConfigured } = require('./sensitiveDataCrypto');
+    sensitive_data_encryption = isEncryptionConfigured();
+  } catch {
+    sensitive_data_encryption = false;
+  }
+  try {
+    const { isStripeWebhookConfigured } = require('./stripeWebhookService');
+    stripe_webhook = isStripeWebhookConfigured();
+  } catch {
+    stripe_webhook = false;
+  }
   return {
     production: isProductionRuntime(),
     withdrawals_paused: areWithdrawalsPaused(),
     auto_onchain_withdrawals: isAutoOnchainWithdrawalEnabled(),
     master_wallet_transfers_paused: areMasterWalletTransfersPaused(),
+    sensitive_data_encryption,
+    stripe_webhook,
   };
 }
 
