@@ -90,7 +90,20 @@ Root `vercel.json` schedules:
 
 | Path | Schedule | Auth |
 |------|----------|------|
-| `GET /api/cron/tron-deposits` | `* * * * *` (every minute) | `Authorization: Bearer $CRON_SECRET` |
+| `GET /api/cron/tron-deposits` | `0 0 * * *` (daily UTC) | `Authorization: Bearer $CRON_SECRET` |
+
+**Hobby plan note:** Vercel Hobby only allows **one cron run per day**. A
+minute/hourly expression (`* * * * *`) fails the deployment. Keep the daily
+Vercel cron as a safety net; for near-real-time fallback polling on Hobby,
+point an external scheduler (cron-job.org, GitHub Actions, Railway, etc.) at
+the same endpoint every 30–60s:
+
+```bash
+curl -X GET "https://YOUR_DOMAIN/api/cron/tron-deposits" \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+On Vercel Pro you may change the schedule back to `* * * * *` (every minute).
 
 Set `CRON_SECRET` in Vercel env (Vercel injects it automatically for Cron Jobs when configured).
 Also accepts `DEPOSIT_LISTENER_SECRET` via `X-Deposit-Listener-Secret`.
