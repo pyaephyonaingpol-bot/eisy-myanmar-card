@@ -24,7 +24,8 @@ assert.ok(nav.includes('force: true') || nav.includes('{ force: true }') || nav.
 const css = read('backend/public/styles.css');
 assert.ok(css.includes('.app-shell.sidebar-open .sidebar-backdrop'), 'open backdrop rule');
 assert.ok(css.includes('visibility: hidden') || css.includes('display: none'), 'closed backdrop not hit-testable');
-assert.ok(/\.sidebar-toggle[\s\S]{0,120}z-index:\s*130/.test(css), 'toggle above overlays');
+assert.ok(css.includes('header-min-height') && css.includes('sidebar-open .sidebar-backdrop'), 'backdrop clears header/hamburger');
+assert.ok(nav.includes('_sidebarDelegateBound') || nav.includes('data-sidebar-toggle'), 'toggle click wiring');
 console.log('ok');
 
 console.log('\n== Email PIN / password reset ==');
