@@ -56,6 +56,8 @@ function testCardWalletIntegration() {
 
   assert.ok(block.includes('debitUsdtForCardPurchase'), 'Supabase atomic debit first');
   assert.ok(block.indexOf('debitUsdtForCardPurchase') < block.indexOf('issueCardForUser'), 'debit before Kripicard');
+  assert.ok(block.includes('SUPABASE_CARD_PURCHASE_RPC_MISSING'), 'fallback when RPC missing');
+  assert.ok(block.includes('supabaseAtomicDebit'), 'tracks whether RPC debit ran');
   assert.ok(block.includes("outcome: 'refunded'"), 'refund on provider failure');
   assert.ok(block.includes("outcome: 'completed'"), 'finalize after successful issue');
   assert.ok(block.includes('supabase_journal_id'), 'journal id stored on card metadata');

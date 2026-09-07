@@ -33,6 +33,39 @@ function assertRpcOk(data, fallbackCode) {
 }
 
 /**
+ * PostgREST PGRST202 / missing relation — SQL in supabase/wallet_card_purchase.sql
+ * has not been applied to this project yet.
+ */
+function isMissingCardPurchaseRpcError(error) {
+  if (!error) return false;
+  const code = String(error.code || '');
+  const message = String(error.message || '');
+  if (code === 'PGRST202' || code === 'PGRST205' || code === '42883') return true;
+  if (code === 'SUPABASE_CARD_PURCHASE_RPC_MISSING') return true;
+  if (/Could not find the function/i.test(message)) return true;
+  if (/Could not find the table .*wallet_transactions/i.test(message)) return true;
+  if (/debit_usdt_for_card_purchase/i.test(message) && /schema cache|does not exist/i.test(message)) {
+    return true;
+  }
+  if (/finalize_card_purchase_wallet/i.test(message) && /schema cache|does not exist/i.test(message)) {
+    return true;
+  }
+  return false;
+}
+
+function missingRpcError(underlying) {
+  const err = new Error(
+    'Card purchase wallet RPC is not installed on Supabase. '
+    + 'Apply supabase/wallet_card_purchase.sql (debit_usdt_for_card_purchase / '
+    + 'finalize_card_purchase_wallet), or the server will use the Turso debit fallback.'
+  );
+  err.code = 'SUPABASE_CARD_PURCHASE_RPC_MISSING';
+  err.cause = underlying || null;
+  err.provider_code = underlying?.code || null;
+  return err;
+}
+
+/**
  * Atomic Supabase debit: balance check + deduct + pending wallet_transactions row.
  */
 async function debitUsdtForCardPurchase(userId, {
@@ -72,6 +105,9 @@ async function debitUsdtForCardPurchase(userId, {
   });
 
   if (error) {
+    if (isMissingCardPurchaseRpcError(error)) {
+      throw missingRpcError(error);
+    }
     const err = new Error(error.message || 'Supabase debit RPC failed');
     err.code = error.code || 'SUPABASE_RPC_ERROR';
     throw err;
@@ -88,6 +124,7 @@ async function debitUsdtForCardPurchase(userId, {
     balance_after: roundUsdt(result.balance_after),
     status: result.status || 'pending',
     duplicate: Boolean(result.duplicate),
+    mode: 'rpc',
   };
 }
 
@@ -125,6 +162,9 @@ async function finalizeCardPurchaseWallet(journalId, {
   });
 
   if (error) {
+    if (isMissingCardPurchaseRpcError(error)) {
+      throw missingRpcError(error);
+    }
     const err = new Error(error.message || 'Supabase finalize RPC failed');
     err.code = error.code || 'SUPABASE_RPC_ERROR';
     throw err;
@@ -141,6 +181,7 @@ async function finalizeCardPurchaseWallet(journalId, {
     refunded: Boolean(result.refunded),
     duplicate: Boolean(result.duplicate),
     reference_id: result.reference_id || referenceId || null,
+    mode: 'rpc',
   };
 }
 
@@ -148,4 +189,5 @@ module.exports = {
   buildJournalId,
   debitUsdtForCardPurchase,
   finalizeCardPurchaseWallet,
+  isMissingCardPurchaseRpcError,
 };

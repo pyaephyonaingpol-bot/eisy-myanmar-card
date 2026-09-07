@@ -306,36 +306,55 @@ async function purchaseCardFromUsdtWallet(userId, {
 
   let journalId = idempotencyKey;
   let tursoDebited = false;
+  let supabaseAtomicDebit = false;
 
-  const supabaseDebit = await debitUsdtForCardPurchase(userId, {
-    totalAmountUsdt: requiredUsdt,
-    kripicardCostUsd,
-    platformMarkupUsd,
-    idempotencyKey,
-    description: debitDescription,
-    metadata: debitMetadata,
-  });
-  journalId = supabaseDebit.journal_id;
+  try {
+    const supabaseDebit = await debitUsdtForCardPurchase(userId, {
+      totalAmountUsdt: requiredUsdt,
+      kripicardCostUsd,
+      platformMarkupUsd,
+      idempotencyKey,
+      description: debitDescription,
+      metadata: debitMetadata,
+    });
+    journalId = supabaseDebit.journal_id;
+    supabaseAtomicDebit = true;
+  } catch (rpcErr) {
+    // Production may not have supabase/wallet_card_purchase.sql applied yet.
+    // Fall back to Turso debit + user_wallets sync (same path as deposits/withdrawals).
+    if (rpcErr.code !== 'SUPABASE_CARD_PURCHASE_RPC_MISSING') {
+      throw rpcErr;
+    }
+    console.warn(
+      '[cardWallet] Supabase card-purchase RPC missing — using Turso debit fallback. '
+      + 'Apply supabase/wallet_card_purchase.sql for atomic ledger.'
+    );
+  }
 
   try {
     await debitUsdt(userId, requiredUsdt, {
       description: debitDescription,
       createdBy: 'user',
       journalId,
-      metadata: debitMetadata,
+      metadata: {
+        ...debitMetadata,
+        supabase_atomic_debit: supabaseAtomicDebit,
+      },
     });
     tursoDebited = true;
   } catch (tursoErr) {
-    try {
-      await finalizeCardPurchaseWallet(journalId, {
-        outcome: 'refunded',
-        failureReason: `Local ledger sync failed: ${tursoErr.message}`,
-        metadata: { code: tursoErr.code || null, stage: 'turso_mirror_debit' },
-      });
-    } catch (refundErr) {
-      console.error('[cardWallet] Supabase refund failed after Turso debit error:', refundErr);
-      tursoErr.refund_failed = true;
-      tursoErr.refund_error = refundErr.message;
+    if (supabaseAtomicDebit) {
+      try {
+        await finalizeCardPurchaseWallet(journalId, {
+          outcome: 'refunded',
+          failureReason: `Local ledger sync failed: ${tursoErr.message}`,
+          metadata: { code: tursoErr.code || null, stage: 'turso_mirror_debit' },
+        });
+      } catch (refundErr) {
+        console.error('[cardWallet] Supabase refund failed after Turso debit error:', refundErr);
+        tursoErr.refund_failed = true;
+        tursoErr.refund_error = refundErr.message;
+      }
     }
     throw tursoErr;
   }
@@ -358,22 +377,25 @@ async function purchaseCardFromUsdtWallet(userId, {
         platform_markup_usd: platformMarkupUsd,
         total_charge_usdt: requiredUsdt,
         note: note || null,
+        supabase_atomic_debit: supabaseAtomicDebit,
       },
     });
   } catch (issueErr) {
-    try {
-      await finalizeCardPurchaseWallet(journalId, {
-        outcome: 'refunded',
-        failureReason: issueErr.message,
-        metadata: {
-          code: issueErr.code || null,
-          stage: 'kripicard_issue',
-        },
-      });
-    } catch (refundErr) {
-      console.error('[cardWallet] Supabase refund failed after issue error:', refundErr);
-      issueErr.refund_failed = true;
-      issueErr.refund_error = refundErr.message;
+    if (supabaseAtomicDebit) {
+      try {
+        await finalizeCardPurchaseWallet(journalId, {
+          outcome: 'refunded',
+          failureReason: issueErr.message,
+          metadata: {
+            code: issueErr.code || null,
+            stage: 'kripicard_issue',
+          },
+        });
+      } catch (refundErr) {
+        console.error('[cardWallet] Supabase refund failed after issue error:', refundErr);
+        issueErr.refund_failed = true;
+        issueErr.refund_error = refundErr.message;
+      }
     }
 
     if (tursoDebited) {
@@ -386,7 +408,7 @@ async function purchaseCardFromUsdtWallet(userId, {
             purpose: 'card_issuance_refund',
             reason: issueErr.message,
             code: issueErr.code || null,
-            supabase_journal_id: journalId,
+            supabase_journal_id: supabaseAtomicDebit ? journalId : null,
           },
         });
       } catch (tursoRefundErr) {
@@ -413,6 +435,7 @@ async function purchaseCardFromUsdtWallet(userId, {
     platform_markup_usd: platformMarkupUsd,
     total_charge_usdt: requiredUsdt,
     supabase_journal_id: journalId,
+    supabase_atomic_debit: supabaseAtomicDebit,
     payment_method: 'usdt_wallet',
     paid_from_wallet: true,
     wallet_type: 'usdt',
@@ -457,14 +480,16 @@ async function purchaseCardFromUsdtWallet(userId, {
   }
 
   try {
-    await finalizeCardPurchaseWallet(journalId, {
-      outcome: 'completed',
-      referenceId: card.id,
-      metadata: {
-        provider_card_id: cardMetadata.provider_card_id,
-        card_status: card.status,
-      },
-    });
+    if (supabaseAtomicDebit) {
+      await finalizeCardPurchaseWallet(journalId, {
+        outcome: 'completed',
+        referenceId: card.id,
+        metadata: {
+          provider_card_id: cardMetadata.provider_card_id,
+          card_status: card.status,
+        },
+      });
+    }
   } catch (finalizeErr) {
     console.error('[cardWallet] Supabase finalize completed failed:', finalizeErr);
   }
