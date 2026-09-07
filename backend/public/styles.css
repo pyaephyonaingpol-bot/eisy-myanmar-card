@@ -282,11 +282,13 @@ small.hint {
   max-width: 100%;
   box-sizing: border-box;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
   padding-top: max(1.5rem, var(--safe-top));
   padding-bottom: max(1.5rem, var(--safe-bottom));
+  gap: 0;
 }
 .auth-card {
   background: var(--bg-glass-strong); backdrop-filter: blur(16px);
@@ -2462,15 +2464,28 @@ pre.output.hidden { display: none !important; }
   flex-wrap: wrap;
   justify-content: center;
   align-items: center;
-  gap: 0.35rem 0.5rem;
-  margin-top: 1rem;
+  gap: 0.35rem 0.55rem;
+  width: 100%;
+  max-width: 100%;
+  margin: 1.25rem auto 0;
+  padding: 1rem 0.25rem 0;
+  border-top: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.25));
+  box-sizing: border-box;
+  flex-shrink: 0;
+  text-align: center;
   font-size: 0.82rem;
+  line-height: 1.4;
   color: var(--muted, #94a3b8);
+}
+
+.auth-legal-links > * {
+  flex: 0 0 auto;
 }
 
 .auth-legal-links a {
   color: var(--muted, #94a3b8);
   text-decoration: none;
+  padding: 0.15rem 0.1rem;
 }
 
 .auth-legal-links a:hover {
@@ -2784,9 +2799,22 @@ body.sidebar-scroll-lock {
     min-height: var(--app-vh) !important;
     overflow-x: hidden;
     overflow-y: visible;
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
     padding-top: max(2rem, calc(var(--safe-top) + 1.25rem));
     padding-bottom: max(2rem, calc(var(--safe-bottom) + 1.25rem));
+  }
+
+  .auth-card {
+    width: 100%;
+    max-width: min(440px, 100%);
+  }
+
+  .auth-legal-links {
+    margin-top: 1.1rem;
+    padding-top: 0.95rem;
+    justify-content: center;
   }
 
   .app-content > .app-page,

@@ -71,5 +71,22 @@ assert.ok(indexHtml.includes('href="/refund"'), 'footer refund link');
 assert.ok(indexHtml.includes('legal-footer-links') || indexHtml.includes('auth-legal-links'), 'legal link containers');
 assert.ok(styles.includes('.legal-footer-links'), 'footer link styles');
 assert.ok(styles.includes('.auth-legal-links'), 'auth link styles');
+assert.ok(/\.auth-screen\s*\{[^}]*flex-direction:\s*column/s.test(styles), 'auth-screen stacks column');
+// Policy links must sit inside the login card (below forms), not as a flex sibling beside it
+const authScreenIdx = indexHtml.indexOf('id="authScreen"');
+const authCardClose = indexHtml.indexOf('</div>', indexHtml.indexOf('class="auth-card"'));
+const legalNavIdx = indexHtml.indexOf('class="auth-legal-links"');
+assert.ok(authScreenIdx >= 0 && legalNavIdx > authScreenIdx, 'auth legal nav present');
+assert.ok(
+  legalNavIdx < indexHtml.indexOf('<!-- ═══ PIN MODALS', authScreenIdx),
+  'auth legal links remain in auth screen'
+);
+assert.ok(
+  /auth-card[\s\S]*auth-legal-links[\s\S]*<\/div>\s*<\/div>/m.test(
+    indexHtml.slice(authScreenIdx, indexHtml.indexOf('<!-- ═══ PIN MODALS', authScreenIdx))
+  ),
+  'auth-legal-links nested inside auth-card'
+);
+assert.ok(styles.includes('border-top:') && styles.includes('.auth-legal-links'), 'auth legal footer separator');
 
 console.log('\nAll legal pages checks passed.');
