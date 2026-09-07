@@ -159,6 +159,13 @@ html.app-ready #adminBootSplash {
   visibility: hidden;
   pointer-events: none;
 }
+.boot-splash-logo {
+  width: 3.5rem;
+  height: 3.5rem;
+  object-fit: contain;
+  border-radius: 0.85rem;
+  margin-bottom: 0.35rem;
+}
 .boot-splash-brand {
   font-size: 1.15rem;
   font-weight: 700;
@@ -301,6 +308,29 @@ small.hint {
   box-shadow: var(--shadow-lg), var(--ring);
 }
 .auth-card h1 { font-size: 1.75rem; margin-bottom: 0.25rem; }
+.auth-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 0.35rem;
+}
+.auth-brand-logo {
+  width: 4.5rem;
+  height: 4.5rem;
+  object-fit: contain;
+  border-radius: 1rem;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.35);
+}
+.auth-brand-title {
+  font-size: 1.65rem;
+  margin: 0 0 0.2rem;
+  letter-spacing: -0.02em;
+}
+.auth-brand-sub {
+  margin: 0 0 0.85rem;
+}
 .tabs { display: flex; gap: 0.65rem; margin-bottom: 1rem; }
 .tab {
   flex: 1; padding: 0.65rem 0.85rem; border: 1px solid var(--border-subtle);
@@ -972,9 +1002,59 @@ a.btn { text-decoration: none; }
   max-width: 100%;
   flex: 1 1 auto;
 }
-.header-brand-row > div {
+.header-brand-row > div,
+.header-page-meta {
   min-width: 0;
   max-width: 100%;
+}
+.header-logo-mobile {
+  display: none;
+  flex-shrink: 0;
+  line-height: 0;
+}
+.header-logo-mobile .brand-logo-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.55rem;
+}
+
+/* Brand logos — full lockup on desktop chrome; icon mark on compact/mobile */
+.brand-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+  max-width: 100%;
+}
+.brand-logo {
+  display: block;
+  object-fit: contain;
+  max-width: 100%;
+  height: auto;
+}
+.brand-logo-full {
+  width: min(100%, 13.5rem);
+  height: auto;
+  background: #fff;
+  border-radius: 0.65rem;
+  padding: 0.35rem 0.55rem;
+  box-sizing: border-box;
+}
+.brand-logo-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.6rem;
+}
+.brand-link-sidebar .brand-logo-icon {
+  display: none;
+}
+.footer-brand {
+  padding: 0 0.55rem 0.65rem;
+}
+.footer-brand-logo {
+  width: min(100%, 11.5rem);
 }
 .reload-preview-row.reload-preview-sub { font-size: 0.8rem; opacity: 0.85; margin-top: 0.35rem; }
 .summary-item .card-status-pill { display: inline-block; font-size: 0.62rem; }
@@ -2376,7 +2456,7 @@ pre.output.hidden { display: none !important; }
 }
 
 .sidebar-brand {
-  padding: 1.25rem 1.15rem 1rem;
+  padding: 1rem 0.95rem 0.9rem;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
@@ -2391,6 +2471,9 @@ pre.output.hidden { display: none !important; }
   color: var(--text-muted);
   margin-top: 0.2rem;
   line-height: 1.35;
+}
+.brand-link-sidebar {
+  width: 100%;
 }
 
 .sidebar-nav {
@@ -2758,6 +2841,20 @@ body.sidebar-scroll-lock {
 
   .sidebar-toggle {
     display: inline-flex;
+  }
+
+  /* Compact chrome: icon mark in the top header; full lockup stays in the drawer/footer */
+  .header-logo-mobile {
+    display: inline-flex;
+  }
+
+  .header-page-meta .subtitle {
+    display: none;
+  }
+
+  .auth-brand-logo {
+    width: 3.75rem;
+    height: 3.75rem;
   }
 
   .app-main {
