@@ -206,124 +206,38 @@ async function createUsdtDepositRequest(userId, {
     throw new Error('Positive amount_usdt is required');
   }
 
-  const settings = await getCardPricingSettings();
-  const minUsdt = settings.minimum_usdt_deposit ?? 5;
-  if (amount < minUsdt) {
-    throw new Error(`Minimum USDT deposit is $${minUsdt.toFixed(2)} USDT`);
-  }
-
-  const feeBreakdown = calculateDepositFeeBreakdown(amount, { currency: 'USDT', settings });
-  assertValidPaymentAmount(feeBreakdown, { kind: 'USDT deposit' });
-
   const net = String(network || 'TRC20').toUpperCase();
-  if (!['TRC20', 'BEP20'].includes(net)) {
-    throw new Error('network must be TRC20 or BEP20');
+  if (net !== 'TRC20') {
+    const err = new Error('Only USDT TRC20 deposits are supported. Use network TRC20.');
+    err.code = 'USDT_TRC20_ONLY';
+    throw err;
   }
 
-  let depositAddress;
-  let addressSource = 'shared';
-  if (net === 'BEP20') {
-    depositAddress = settings.usdt_bep20_address;
-  } else {
-    const { resolveUserTrc20DepositAddress } = require('./tronDepositAddressService');
-    const sharedGateway = () => {
-      const explicit = String(
-        process.env.TRON_GATEWAY_DEPOSIT_ADDRESS
-        || process.env.MASTER_WALLET_ADDRESS
-        || ''
-      ).trim();
-      if (explicit) return explicit;
-      try {
-        const { getMasterWalletAddress } = require('./tronMasterWalletService');
-        return getMasterWalletAddress();
-      } catch (_) {
-        return settings.usdt_trc20_address || null;
-      }
-    };
-    const resolved = await resolveUserTrc20DepositAddress(userId, sharedGateway);
-    depositAddress = resolved.address;
-    addressSource = resolved.source;
-  }
-
-  if (!depositAddress) {
-    throw new Error('USDT deposit address is not configured');
-  }
-
-  await assertNoRapidDuplicateUsdtDeposit(userId, {
-    amountUsdt: amount,
-    network: net,
-  });
-
-  const refCode = await uniqueRefCode();
-  const grossAmount = feeBreakdown.amount_usdt;
-  const mergedMetadata = {
-    ...(metadata || {}),
-    deposit_currency: 'USDT',
-    usdt_network: net,
-    deposit_address: depositAddress,
-    deposit_address_source: addressSource,
-    amount_usdt: grossAmount,
-    gross_usdt: grossAmount,
-    fee_usdt: feeBreakdown.fee_usdt,
-    net_usdt: feeBreakdown.net_usdt,
-    deposit_channel: metadata?.deposit_channel || 'platform_direct',
-    payment_fee: {
-      operation: 'deposit',
-      currency: 'USDT',
-      gross_usdt: feeBreakdown.amount_usdt,
-      fee_usdt: feeBreakdown.fee_usdt,
-      net_usdt: feeBreakdown.net_usdt,
-      platform_profit_usd: feeBreakdown.fee_usdt,
-      fee_percent: feeBreakdown.fee_percent,
-      minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
-      used_minimum_fee: feeBreakdown.used_minimum_fee,
-      fee_rule: feeBreakdown.fee_rule,
-      fee_label: feeBreakdown.fee_label,
-    },
-    pricing: {
-      amount_usdt: grossAmount,
-      fee_usdt: feeBreakdown.fee_usdt,
-      net_usdt: feeBreakdown.net_usdt,
-      platform_profit_usd: feeBreakdown.fee_usdt,
-      fee_percent: feeBreakdown.fee_percent,
-      minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
-      used_minimum_fee: feeBreakdown.used_minimum_fee,
-      fee_label: feeBreakdown.fee_label,
-      is_usdt_topup: true,
-    },
-  };
-
-  const deposit = await DepositRequest.create({
-    userId,
-    amountMmk: 0,
-    amountUsd: grossAmount,
-    refCode,
-    paymentMethod: `USDT-${net}`,
-    purpose: 'usdt_topup',
-    depositCurrency: 'USDT',
-    usdtNetwork: net,
-    metadata: mergedMetadata,
-    platformProfitUsd: feeBreakdown.fee_usdt,
-  });
-
-  await TransactionLog.create({
-    userId,
-    type: 'deposit_request',
-    direction: 'neutral',
-    amountUsd: grossAmount,
-    referenceType: 'deposit_requests_v2',
-    referenceId: deposit.id,
-    description: `[usdt_topup] USDT deposit requested: ${refCode} via ${net} (fee ${formatUsdt(feeBreakdown.fee_usdt)}, net ${formatUsdt(feeBreakdown.net_usdt)})`,
-    createdBy: 'user',
+  // Canonical path: create Supabase `orders` row + local deposit so webhook
+  // and durable cron/poller can auto-credit the same intent.
+  const { createTronOrder } = require('./tronOrderService');
+  const DepositRequest = require('../models/DepositRequest');
+  const result = await createTronOrder(userId, {
+    amount_usdt: amount,
     metadata: {
-      purpose: 'usdt_topup',
-      network: net,
-      deposit_address: depositAddress,
-      payment_fee: mergedMetadata.payment_fee,
+      deposit_channel: metadata?.deposit_channel || 'platform_direct',
+      ...(metadata || {}),
     },
   });
 
-  return { deposit, depositAddress, network: net, fee_breakdown: feeBreakdown };
+  const deposit = result.deposit?.id
+    ? await DepositRequest.findById(result.deposit.id)
+    : null;
+
+  return {
+    deposit: deposit || result.deposit,
+    depositAddress: result.payment?.deposit_address || null,
+    network: 'TRC20',
+    fee_breakdown: result.fee_breakdown,
+    order: result.order || null,
+    provider: result.provider || 'tron_trc20',
+    payment: result.payment || null,
+  };
 }
 
 /**

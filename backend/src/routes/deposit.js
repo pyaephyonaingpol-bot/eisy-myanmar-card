@@ -128,28 +128,38 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
       });
     }
 
-    const { deposit, depositAddress, network: net, fee_breakdown } = await createUsdtDepositRequest(userId, {
+    const {
+      deposit,
+      depositAddress,
+      network: net,
+      fee_breakdown,
+      order,
+      provider,
+      payment,
+    } = await createUsdtDepositRequest(userId, {
       amount_usdt: amountUsdt,
       network,
       metadata: { deposit_channel: 'platform_direct', ...(req.body.metadata || {}) },
     });
 
-    return res.json({
+    return res.status(201).json({
       success: true,
       message: 'USDT Deposit Request Submitted!',
+      provider: provider || 'tron_trc20',
       deposit: enrichDeposit(deposit),
+      order: order || null,
       deposit_type: 'usdt',
       deposit_channel: 'platform_direct',
       fee_breakdown,
       payment_instructions: {
-        message: `Send exactly ${amountUsdt.toFixed(2)} USDT via ${net} to the platform address below`,
+        message: `Send exactly ${Number(amountUsdt).toFixed(2)} USDT via ${net} to your deposit address below`,
         ref_code: deposit.ref_code,
         network: net,
-        deposit_address: depositAddress,
+        deposit_address: depositAddress || payment?.deposit_address,
         fee_usdt: fee_breakdown?.fee_usdt,
         net_usdt: fee_breakdown?.net_usdt,
         fee_label: fee_breakdown?.fee_label,
-        note: `Service fee is max(2%, $1). Net credit ≈ $${Number(fee_breakdown?.net_usdt || 0).toFixed(2)} USDT after approval.`,
+        note: `Service fee is max(2%, $1). Net credit ≈ $${Number(fee_breakdown?.net_usdt || 0).toFixed(2)} USDT after on-chain confirmation.`,
       },
     });
   } catch (err) {
@@ -163,13 +173,20 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
         existing: err.existing || null,
       });
     }
+    if (['SUPABASE_NOT_CONFIGURED', 'TRON_ORDER_INSERT_FAILED'].includes(err.code)) {
+      return res.status(503).json({ success: false, error: msg, code: err.code });
+    }
     if (
       msg.includes('Minimum')
       || msg.includes('Positive')
       || msg.includes('network must be')
+      || msg.includes('Only USDT TRC20')
       || msg.includes('Invalid')
       || msg.includes('not available')
       || msg.includes('No active bank')
+      || err.code === 'USDT_TRC20_ONLY'
+      || err.code === 'TRON_ORDER_INVALID_AMOUNT'
+      || err.code === 'TRON_ORDER_AMOUNT_TOO_LOW'
       || err.code === 'SQLITE_CONSTRAINT'
     ) {
       return res.status(400).json({

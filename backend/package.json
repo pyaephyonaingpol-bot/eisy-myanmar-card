@@ -56,6 +56,7 @@
     "test:sell-usdt-mmk-modal": "node scripts/test-sell-usdt-mmk-modal.js",
     "test:sell-usdt-bank-validation": "node scripts/test-sell-usdt-bank-validation.js",
     "test:tron-orders": "node scripts/test-tron-orders.js",
+    "test:tron-webhook-credit": "node scripts/test-tron-webhook-credit.js",
     "test:tron-hd-addresses": "node scripts/test-tron-hd-addresses.js",
     "test:tron-wallet": "node scripts/test-tron-wallet-service.js",
     "test:tron-sweep": "node scripts/test-tron-sweep.js",

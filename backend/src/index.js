@@ -304,6 +304,7 @@ app.use('/api/deposit', depositRoutes);
 app.use('/api/tron/orders', require('./routes/tronOrders'));
 app.use('/api/tron/wallet', require('./routes/tronWallet'));
 app.use('/api/webhook', require('./routes/webhook'));
+app.use('/api/cron', require('./routes/cron'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/support', supportRoutes);

@@ -84,6 +84,20 @@ Native `sqlite3` is an **optional** backend dependency for local legacy mode onl
    - `DATABASE_AUTH_TOKEN=…`
 3. Redeploy
 
+## Durable TRON deposit poll (cron)
+
+Root `vercel.json` schedules:
+
+| Path | Schedule | Auth |
+|------|----------|------|
+| `GET /api/cron/tron-deposits` | `* * * * *` (every minute) | `Authorization: Bearer $CRON_SECRET` |
+
+Set `CRON_SECRET` in Vercel env (Vercel injects it automatically for Cron Jobs when configured).
+Also accepts `DEPOSIT_LISTENER_SECRET` via `X-Deposit-Listener-Secret`.
+
+Real-time path: `POST /api/webhook/tron` with `TRON_WEBHOOK_SECRET` (or listener secret).
+Both share `backend/src/services/tronDepositCreditService.js`.
+
 ## Fee logic (deposit create + webhook credit)
 
 ```js

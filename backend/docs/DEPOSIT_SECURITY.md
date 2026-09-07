@@ -7,7 +7,17 @@ Each user gets a unique TRC-20 address stored in:
 - local `user_usdt_wallet_addresses` (with `derivation_index` / `derivation_path`)
 - Supabase `user_wallets.tron_deposit_address` + `user_tron_deposit_addresses`
 
-The TronGrid poller watches **each pending order’s** `deposit_address`.
+All TRC20 deposit intents (including `POST /api/deposit/request`) create a
+Supabase `orders` row via `createTronOrder` so detection is unified.
+
+Detection (webhook + durable poll share `tronDepositCreditService`):
+
+1. **Webhook (primary):** `POST /api/webhook/tron` with `TRON_WEBHOOK_SECRET`
+   (or `DEPOSIT_LISTENER_SECRET`) → match pending order → credit ledger.
+2. **Durable poll (fallback):** Vercel Cron `GET /api/cron/tron-deposits` every
+   minute (`CRON_SECRET`), or `POST /api/tron/orders/check/pending`.
+3. **In-process poller:** still started for long-lived `npm run dev` / PM2;
+   skipped automatically on Vercel serverless.
 
 Withdrawals still pay **from** the hot master wallet (`MASTER_PRIVATE_KEY`).
 Sweeping HD deposits → master is a separate ops step (not automated here).
@@ -17,7 +27,7 @@ to the shared gateway address (`TRON_GATEWAY_DEPOSIT_ADDRESS` / master wallet).
 
 **Sweep (manual only):** `POST /api/admin/sweep-deposits` (super_admin / `master_wallet`)
 sends a small TRX gas top-up from the master wallet to each deposit address, then
-sweeps all USDT back to master. Not started by cron — also available as CLI
+sweeps all USDT back to master. Not started by deposit cron — also available as CLI
 `npm run sweep:tron-deposits`.
 
 ## Guarantees (after hardening)
@@ -59,7 +69,9 @@ sweeps all USDT back to master. Not started by cron — also available as CLI
 ## Required env (production)
 
 ```bash
-DEPOSIT_LISTENER_SECRET=$(openssl rand -hex 32)   # Android listener + verify sim
+DEPOSIT_LISTENER_SECRET=$(openssl rand -hex 32)   # Android listener + worker hooks
+CRON_SECRET=$(openssl rand -hex 32)               # Vercel Cron → /api/cron/tron-deposits
+TRON_WEBHOOK_SECRET=$(openssl rand -hex 32)       # optional; falls back to listener secret
 # Optional:
 USDT_MIN_CONFIRMATIONS=1
 # Never:

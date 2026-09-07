@@ -65,5 +65,11 @@
       "includeFiles": "{backend/**,server/**}",
       "excludeFiles": "{**/node_modules/sqlite3/**,**/node_modules/sqlite/**,backend/node_modules/sqlite3/**,backend/node_modules/sqlite/**,backend/data/**,backend/uploads/**}"
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/tron-deposits",
+      "schedule": "* * * * *"
+    }
+  ]
 }
