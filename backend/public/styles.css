@@ -1026,7 +1026,7 @@ a.btn { text-decoration: none; }
   max-height: 2rem;
 }
 
-/* Brand logos — full lockup in sidebar; icon mark on auth/mobile header */
+/* Brand logos — icon + wordmark in sidebar; icon mark on auth/mobile header */
 .brand-link {
   display: inline-flex;
   align-items: center;
@@ -1047,7 +1047,7 @@ a.btn { text-decoration: none; }
   width: auto;
 }
 .brand-logo-full {
-  max-height: 2.75rem; /* 44px — readable lockup without dominating the rail */
+  max-height: 2.75rem;
   width: auto;
   max-width: min(100%, 12rem);
   height: auto;
@@ -1057,13 +1057,20 @@ a.btn { text-decoration: none; }
   box-sizing: border-box;
 }
 .brand-logo-icon {
-  max-height: 2rem; /* 32px */
+  max-height: 2rem; /* 32px — mobile header */
   max-width: 2rem;
   width: auto;
   height: auto;
   padding: 0;
   border-radius: 0;
   background: transparent;
+}
+.brand-logo-sidebar {
+  max-width: 2.5rem; /* 40px */
+  max-height: 2.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
 }
 .reload-preview-row.reload-preview-sub { font-size: 0.8rem; opacity: 0.85; margin-top: 0.35rem; }
 .summary-item .card-status-pill { display: inline-block; font-size: 0.62rem; }
@@ -2465,18 +2472,29 @@ pre.output.hidden { display: none !important; }
 }
 
 .sidebar-brand {
-  padding: 0.85rem 0.95rem;
+  padding: 1rem 0.95rem;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  min-height: 3.25rem;
+  min-height: 3.75rem;
+}
+.sidebar-brand-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  line-height: 1.2;
 }
 .sidebar-brand-title {
+  display: block;
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .sidebar-brand-sub {
   font-size: 0.72rem;
@@ -2486,6 +2504,9 @@ pre.output.hidden { display: none !important; }
 }
 .brand-link-sidebar {
   width: 100%;
+  gap: 0.7rem;
+  line-height: normal;
+  align-items: center;
 }
 
 .sidebar-nav {
@@ -2868,10 +2889,6 @@ body.sidebar-scroll-lock {
   .auth-brand-logo {
     max-width: 3rem;
     max-height: 3rem;
-  }
-
-  .brand-logo-full {
-    max-height: 2.25rem; /* 36px in drawer */
   }
 
   .app-main {

@@ -40,7 +40,6 @@ console.log('ok');
 console.log('\n== HTML wiring ==');
 const html = read('index.html');
 assert.ok(html.includes('/brand/logo-icon.png'), 'transparent icon used in UI');
-assert.ok(html.includes('/brand/logo-full.png'), 'desktop full logo');
 assert.ok(html.includes('auth-brand-logo'), 'auth brand class');
 assert.ok(html.includes('header-logo-mobile'), 'mobile header logo');
 assert.ok(html.includes('brand-link-sidebar'), 'sidebar brand link');
@@ -75,32 +74,33 @@ const iconBytes = fs.readFileSync(path.join(PUBLIC, 'brand/logo-icon.png'));
 const faviconPng = fs.readFileSync(path.join(PUBLIC, 'favicon.png'));
 assert.ok(Buffer.compare(iconBytes, faviconPng) === 0, 'favicon.png must match brand/logo-icon.png bytes');
 
-// No duplicate footer logo; sidebar keeps a single full lockup
+// No duplicate footer logo; sidebar uses readable icon + text wordmark
 assert.ok(!html.includes('footer-brand-logo'), 'footer logo duplicate removed');
 const sidebarBrand = html.match(/class="sidebar-brand"[\s\S]*?<\/div>/);
 assert.ok(sidebarBrand, 'sidebar-brand block present');
-assert.ok(sidebarBrand[0].includes('brand-logo-full'), 'sidebar uses full logo');
-assert.ok(!sidebarBrand[0].includes('brand-logo-icon'), 'no icon nested in sidebar brand');
-assert.ok((sidebarBrand[0].match(/<img\b/g) || []).length === 1, 'exactly one logo in sidebar brand');
-// Auth + mobile + splash + favicon/apple links use transparent icon
+assert.ok(sidebarBrand[0].includes('brand-logo-sidebar'), 'sidebar uses sidebar icon mark');
+assert.ok(sidebarBrand[0].includes('sidebar-brand-title'), 'sidebar has readable text title');
+assert.ok(sidebarBrand[0].includes('Eisy Myanmar'), 'sidebar title text present');
+assert.ok(!sidebarBrand[0].includes('brand-logo-full'), 'tiny full lockup removed from sidebar');
+assert.ok(!sidebarBrand[0].includes('logo-full.png'), 'full logo image not used in sidebar');
+assert.ok((sidebarBrand[0].match(/<img\b/g) || []).length === 1, 'exactly one logo image in sidebar brand');
+// Auth + mobile + splash + favicon/apple + sidebar icon
 const iconUses = (html.match(/\/brand\/logo-icon\.png/g) || []).length;
-assert.ok(iconUses >= 6, `expected >=6 logo-icon refs (UI+favicon), got ${iconUses}`);
+assert.ok(iconUses >= 7, `expected >=7 logo-icon refs (UI+favicon+sidebar), got ${iconUses}`);
 console.log('ok');
 
 console.log('\n== CSS responsive rules ==');
 const css = read('styles.css');
 assert.ok(css.includes('.auth-brand-logo'), 'auth logo style');
-assert.ok(css.includes('.brand-logo-full'), 'full logo style');
+assert.ok(css.includes('.brand-logo-sidebar'), 'sidebar icon style');
+assert.ok(css.includes('.sidebar-brand-title'), 'sidebar title style');
 assert.ok(css.includes('.header-logo-mobile'), 'mobile header style');
 assert.ok(/\.header-logo-mobile\s*\{[^}]*display:\s*inline-flex/s.test(css), 'mobile logo shown under breakpoint');
-assert.ok(/\.brand-logo-full\s*\{[^}]*max-height:\s*2\.75rem/s.test(css), 'full logo max-height ~44px');
+assert.ok(/\.brand-logo-sidebar\s*\{[^}]*max-height:\s*2\.5rem/s.test(css), 'sidebar icon ~40px');
 assert.ok(/\.brand-logo-icon\s*\{[^}]*max-height:\s*2rem/s.test(css), 'icon max-height ~32px');
 assert.ok(/object-fit:\s*contain/.test(css), 'object-fit contain');
 assert.ok(/\.brand-link\.header-logo-mobile\s*\{[^}]*display:\s*none/s.test(css), 'desktop hides mobile header logo');
-// No white plate box on full logo
-const fullBlock = css.match(/\.brand-logo-full\s*\{[^}]+\}/);
-assert.ok(fullBlock, 'brand-logo-full block present');
-assert.ok(!/background:\s*#fff/i.test(fullBlock[0]), 'full logo must not use white background box');
+assert.ok(/\.brand-link-sidebar\s*\{[^}]*gap:/s.test(css), 'sidebar brand has icon/text gap');
 assert.ok(!/footer-brand-logo/.test(css), 'footer logo styles removed');
 console.log('ok');
 
