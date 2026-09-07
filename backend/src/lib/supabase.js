@@ -81,6 +81,22 @@ function looksLikePublishableOrAnonKey(value) {
   return key.length >= 40 && !/^sb_secret_/i.test(key);
 }
 
+/**
+ * More permissive check for explicitly labeled anon/publishable env slots.
+ * Some projects ship JWTs without a readable role claim; those should still
+ * work for browser Google OAuth when the operator set NEXT_PUBLIC_SUPABASE_ANON_KEY.
+ */
+function acceptExplicitAnonKey(value) {
+  const key = String(value || '').trim();
+  if (!key || key.includes('...')) return false;
+  if (/^sb_publishable_/i.test(key)) return true;
+  if (/^sb_secret_/i.test(key) || /service_role/i.test(key) || jwtRole(key) === 'service_role') {
+    return false;
+  }
+  if (/^eyJ/.test(key) && key.length >= 80) return true;
+  return looksLikePublishableOrAnonKey(key);
+}
+
 function looksLikeServiceRoleKey(value) {
   const key = String(value || '').trim();
   if (!key || key.includes('...')) return false;
@@ -140,7 +156,7 @@ function resolveSupabaseCredentials() {
       if (found && isUsableSecret(found)) serviceKey = found;
     } else if (/ANON|PUBLISHABLE|PUBLIC_KEY/i.test(label)) {
       const found = extractSecretValue(raw);
-      if (found && looksLikePublishableOrAnonKey(found)) anonKey = found;
+      if (found && acceptExplicitAnonKey(found)) anonKey = found;
     }
   }
 
@@ -195,7 +211,9 @@ function resolveSupabaseCredentials() {
       process.env.SUPABASE_KEY,
       process.env.SUPABASE_PUBLIC_KEY
     ));
-    if (looksLikePublishableOrAnonKey(direct)) anonKey = direct;
+    // Explicitly configured anon slots: accept browser-safe keys even when the
+    // JWT role claim is missing/unusual (common with some Supabase projects).
+    if (acceptExplicitAnonKey(direct)) anonKey = direct;
   }
   if (!serviceKey) {
     const direct = extractSecretValue(firstNonEmpty(
@@ -247,7 +265,7 @@ function isSupabaseEnabled() {
 
 function isPublicSupabaseEnabled() {
   const { url, anonKey } = getSupabaseConfig();
-  return Boolean(url && /^https?:\/\//i.test(url) && looksLikePublishableOrAnonKey(anonKey));
+  return Boolean(url && /^https?:\/\//i.test(url) && acceptExplicitAnonKey(anonKey));
 }
 
 function getSupabase() {
@@ -277,10 +295,17 @@ function getSupabase() {
 
 function getPublicSupabaseConfig() {
   const { url, anonKey } = getSupabaseConfig();
-  if (!isPublicSupabaseEnabled()) {
-    return { enabled: false, url: null, anonKey: null };
+  const hasUrl = Boolean(url && /^https?:\/\//i.test(url));
+  const hasAnon = Boolean(anonKey && acceptExplicitAnonKey(anonKey));
+  if (hasUrl && hasAnon) {
+    return { enabled: true, url, anonKey, reason: 'ok' };
   }
-  return { enabled: true, url, anonKey };
+  let reason = 'missing_credentials';
+  if (!hasUrl && !hasAnon) reason = 'missing_url_and_anon_key';
+  else if (!hasUrl) reason = 'missing_url';
+  else if (!hasAnon) reason = 'missing_anon_key';
+  // Never partially leak credentials when disabled.
+  return { enabled: false, url: null, anonKey: null, reason };
 }
 
 function resetSupabaseClientForTests() {
@@ -307,6 +332,7 @@ module.exports = {
   extractSecretValue,
   looksLikePublishableOrAnonKey,
   looksLikeServiceRoleKey,
+  acceptExplicitAnonKey,
   decodeJwtPayload,
   jwtRole,
 };

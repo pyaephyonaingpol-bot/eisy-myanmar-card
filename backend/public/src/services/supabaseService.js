@@ -16,39 +16,57 @@ const SupabaseBridge = {
   _channels: [],
   _walletPollTimer: null,
 
-  async init() {
-    if (this._initPromise) return this._initPromise;
+  async init({ force = false } = {}) {
+    if (this._initPromise && !force) return this._initPromise;
     this._initPromise = (async () => {
       try {
-        const res = await fetch('/api/config/supabase', { credentials: 'same-origin' });
-        if (!res.ok) {
-          console.warn('[SupabaseBridge] Config endpoint failed:', res.status);
-          this.enabled = false;
-          return false;
+        // Prefer build-time public config when present (avoids false negatives if
+        // /api/config/supabase is briefly unavailable on cold start).
+        const baked = window.__EISY_SUPABASE_PUBLIC__;
+        let cfg = null;
+        if (baked?.enabled && baked.url && baked.anonKey) {
+          cfg = baked;
+        } else {
+          const res = await fetch('/api/config/supabase', {
+            credentials: 'same-origin',
+            cache: 'no-store',
+          });
+          if (!res.ok) {
+            console.warn('[SupabaseBridge] Config endpoint failed:', res.status);
+            this.enabled = false;
+            this._initPromise = null; // allow retry
+            return false;
+          }
+          cfg = await res.json();
         }
-        const cfg = await res.json();
         const url = String(cfg?.url || '').trim();
         const anonKey = String(cfg?.anonKey || cfg?.anon_key || '').trim();
         if (!cfg?.enabled || !/^https?:\/\//i.test(url) || !anonKey) {
           console.info(
-            '[SupabaseBridge] Disabled — /api/config/supabase did not return a usable '
-            + 'url + anonKey (optional cloud sync is off; using the local database)'
+            '[SupabaseBridge] Disabled — public Supabase URL/anon key not available '
+            + `(reason=${cfg?.reason || 'unknown'})`
           );
           this.enabled = false;
+          this._initReason = cfg?.reason || 'missing_credentials';
+          // Do not permanently cache a disabled result — env may become ready later.
+          this._initPromise = null;
           return false;
         }
         this._url = url;
         this._anonKey = anonKey;
+        this._initReason = 'ok';
         // Data client: no auth persistence (wallet/realtime only).
         this.client = createClient(url, anonKey, {
           auth: { persistSession: false, autoRefreshToken: false },
         });
         this.enabled = true;
+        window.__EISY_SUPABASE_PUBLIC__ = { enabled: true, url, anonKey, reason: 'ok' };
         console.info('[SupabaseBridge] Connected to', url.replace(/^https?:\/\//i, '').split('/')[0]);
         return true;
       } catch (err) {
         console.warn('[SupabaseBridge] Init failed:', err.message);
         this.enabled = false;
+        this._initPromise = null; // allow retry
         return false;
       }
     })();
@@ -66,7 +84,18 @@ const SupabaseBridge = {
   async getAuthClient() {
     await this.init();
     if (!this.enabled || !this._url || !this._anonKey) {
-      throw new Error('Google Sign-In is unavailable — Supabase is not configured');
+      // One forced retry before giving up (cold-start / race with config API).
+      await this.init({ force: true });
+    }
+    if (!this.enabled || !this._url || !this._anonKey) {
+      const reason = this._initReason || 'missing_credentials';
+      if (reason === 'missing_anon_key') {
+        throw new Error('Google Sign-In needs NEXT_PUBLIC_SUPABASE_ANON_KEY on the server');
+      }
+      if (reason === 'missing_url') {
+        throw new Error('Google Sign-In needs NEXT_PUBLIC_SUPABASE_URL on the server');
+      }
+      throw new Error('Google Sign-In is temporarily unavailable — please try again');
     }
     if (!this.authClient) {
       this.authClient = createClient(this._url, this._anonKey, {
@@ -93,6 +122,10 @@ const SupabaseBridge = {
       },
     });
     if (error) throw error;
+    // Ensure navigation even if the SDK does not auto-redirect in some browsers.
+    if (data?.url && typeof window !== 'undefined') {
+      window.location.assign(data.url);
+    }
     return data;
   },
 

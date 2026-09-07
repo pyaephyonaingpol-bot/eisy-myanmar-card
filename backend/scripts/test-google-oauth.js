@@ -30,6 +30,9 @@ console.log('\n== Frontend OAuth helpers ==');
 const authJs = read('backend/public/auth.js');
 assert.ok(authJs.includes('loginWithGoogle'), 'Auth.loginWithGoogle');
 assert.ok(authJs.includes('completeGoogleOAuth'), 'Auth.completeGoogleOAuth');
+assert.ok(authJs.includes('getSupabasePublicConfig'), 'reads public Supabase config');
+assert.ok(authJs.includes('supabaseConfigError'), 'typed config errors');
+assert.ok(!authJs.includes('Supabase is not configured'), 'no generic false-negative banner text');
 assert.ok(authJs.includes('/api/auth/oauth/google'), 'exchanges via backend');
 assert.ok(authJs.includes('/auth/callback'), 'redirectTo callback');
 
@@ -38,7 +41,14 @@ assert.ok(bridge.includes('signInWithOAuth'), 'signInWithOAuth call');
 assert.ok(bridge.includes("provider: 'google'"), 'google provider');
 assert.ok(bridge.includes('redirectTo'), 'redirectTo option');
 assert.ok(bridge.includes('getAuthClient'), 'dedicated auth client');
+assert.ok(bridge.includes('__EISY_SUPABASE_PUBLIC__'), 'uses baked public config');
+assert.ok(bridge.includes('force'), 'supports forced re-init');
 assert.ok(bridge.includes('exchangeCodeForSession') || bridge.includes('getSession'), 'callback session exchange');
+assert.ok(!bridge.includes('Supabase is not configured'), 'bridge avoids generic false-negative text');
+
+assert.ok(html.includes('supabase-public-config.js'), 'loads baked public config script');
+const baked = read('backend/public/supabase-public-config.js');
+assert.ok(baked.includes('__EISY_SUPABASE_PUBLIC__'), 'baked config global');
 
 const dash = read('backend/public/dashboard.js');
 assert.ok(dash.includes('handleGoogleOAuthCallback'), 'callback handler');
