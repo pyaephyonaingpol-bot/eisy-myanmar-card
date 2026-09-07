@@ -16,38 +16,54 @@ function timingSafeEqualString(a, b) {
   return crypto.timingSafeEqual(left, right);
 }
 
-/**
- * POST /api/tron/orders/check/pending
- * Manual / cron trigger for TronGrid verification (same as background poll).
- */
-router.post('/check/pending', async (req, res) => {
-  const expected = String(process.env.DEPOSIT_LISTENER_SECRET || '').trim();
-  const provided = String(
+function isAuthorizedListenerOrCron(req) {
+  const listenerSecret = String(process.env.DEPOSIT_LISTENER_SECRET || '').trim();
+  const cronSecret = String(process.env.CRON_SECRET || '').trim();
+  const authHeader = String(req.headers.authorization || '').trim();
+  const bearer = authHeader.toLowerCase().startsWith('bearer ')
+    ? authHeader.slice(7).trim()
+    : '';
+  const headerSecret = String(
     req.headers['x-deposit-listener-secret']
     || req.headers['x-listener-secret']
+    || req.headers['x-cron-secret']
     || ''
   ).trim();
+  const provided = bearer || headerSecret;
+  if (listenerSecret && provided && timingSafeEqualString(provided, listenerSecret)) return true;
+  if (cronSecret && provided && timingSafeEqualString(provided, cronSecret)) return true;
+  return false;
+}
 
-  if (expected && provided && timingSafeEqualString(provided, expected)) {
-    try {
-      const result = await verifyPendingTronOrders();
-      return res.json({ success: true, ...result });
-    } catch (err) {
-      console.error('[tron/orders/check]', err.message);
-      return res.status(500).json({
-        success: false,
-        error: err.message || 'TRON order verification failed',
-        code: err.code,
-      });
-    }
+/**
+ * GET|POST /api/tron/orders/check/pending
+ * Manual / cron trigger for TronGrid verification (same as background poll).
+ * Prefer GET /api/cron/tron-deposits for Vercel Cron.
+ */
+async function checkPendingOrders(req, res) {
+  if (!isAuthorizedListenerOrCron(req)) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      code: 'LISTENER_UNAUTHORIZED',
+    });
   }
 
-  return res.status(401).json({
-    success: false,
-    error: 'Unauthorized',
-    code: 'LISTENER_UNAUTHORIZED',
-  });
-});
+  try {
+    const result = await verifyPendingTronOrders();
+    return res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[tron/orders/check]', err.message);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'TRON order verification failed',
+      code: err.code,
+    });
+  }
+}
+
+router.get('/check/pending', checkPendingOrders);
+router.post('/check/pending', checkPendingOrders);
 
 /**
  * POST /api/tron/orders

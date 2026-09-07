@@ -33,5 +33,11 @@
       "includeFiles": "{migrations/**,public/**,src/**,api/**}",
       "excludeFiles": "{**/node_modules/sqlite3/**,**/node_modules/sqlite/**}"
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/tron-deposits",
+      "schedule": "* * * * *"
+    }
+  ]
 }

@@ -32,7 +32,9 @@ Existing routes remain: `/api/tron/orders`, `/api/withdraw`, `/api/withdrawal/us
 ## Flow
 
 1. **Register** → background HD address provision → Supabase `user_wallets` / `user_tron_deposit_addresses`
-2. **Deposit** → `POST /deposits` → user pays unique address → poller / `sync-deposits` credits `balance_usdt`
+2. **Deposit** → `POST /deposits` (or `/api/deposit/request` / `/api/tron/orders`) →
+   user pays unique address → webhook `/api/webhook/tron` credits immediately;
+   durable cron `/api/cron/tron-deposits` + poller / `sync-deposits` are fallbacks
 3. **Withdraw** → `POST /withdraw` → debit ledger → `transferUsdtTrc20` from `MASTER_PRIVATE_KEY`
 4. **Sweep (ops)** → master sends a little TRX for gas → deposit address sends all USDT back to master
 
