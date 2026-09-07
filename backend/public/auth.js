@@ -398,36 +398,97 @@ const Auth = {
 
   /** Start Google OAuth via Supabase (redirects to Google, then /auth/callback). */
   async loginWithGoogle() {
-    const waitForBridge = async () => {
-      for (let i = 0; i < 20; i += 1) {
-        if (window.SupabaseBridge?.signInWithGoogle) return window.SupabaseBridge;
-        await new Promise((r) => setTimeout(r, 100));
-      }
-      return window.SupabaseBridge || null;
-    };
-    const bridge = await waitForBridge();
-    if (!bridge?.signInWithGoogle) {
-      throw new Error('Google Sign-In is unavailable — Supabase is not configured');
+    const cfg = await this.getSupabasePublicConfig();
+    if (!cfg?.enabled || !cfg.url || !cfg.anonKey) {
+      throw new Error(this.supabaseConfigError(cfg));
     }
-    await bridge.signInWithGoogle({
-      redirectTo: `${window.location.origin}/auth/callback`,
+
+    // Prefer the shared bridge when ready; otherwise create a dedicated auth client.
+    const bridge = window.SupabaseBridge;
+    if (bridge?.signInWithGoogle) {
+      try {
+        const data = await bridge.signInWithGoogle({
+          redirectTo: `${window.location.origin}/auth/callback`,
+        });
+        if (data?.url) {
+          window.location.assign(data.url);
+        }
+        return data;
+      } catch (err) {
+        // Fall through to a direct client if the bridge path fails spuriously.
+        console.warn('[Auth] bridge Google sign-in failed, retrying direct client:', err?.message || err);
+      }
+    }
+
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+    const client = createClient(cfg.url, cfg.anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce',
+        storageKey: 'eisy-supabase-auth',
+      },
     });
+    const { data, error } = await client.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: { access_type: 'offline', prompt: 'select_account' },
+      },
+    });
+    if (error) throw error;
+    if (data?.url) {
+      window.location.assign(data.url);
+    }
+    return data;
   },
 
   /** Finish Google OAuth on /auth/callback and create an app session. */
   async completeGoogleOAuth() {
-    const waitForBridge = async () => {
-      for (let i = 0; i < 30; i += 1) {
-        if (window.SupabaseBridge?.getOAuthAccessToken) return window.SupabaseBridge;
-        await new Promise((r) => setTimeout(r, 100));
-      }
-      return window.SupabaseBridge || null;
-    };
-    const bridge = await waitForBridge();
-    if (!bridge?.getOAuthAccessToken) {
-      throw new Error('Google Sign-In is unavailable — Supabase is not configured');
+    const cfg = await this.getSupabasePublicConfig();
+    if (!cfg?.enabled || !cfg.url || !cfg.anonKey) {
+      throw new Error(this.supabaseConfigError(cfg));
     }
-    const { accessToken } = await bridge.getOAuthAccessToken();
+
+    let accessToken = null;
+    const bridge = window.SupabaseBridge;
+    if (bridge?.getOAuthAccessToken) {
+      try {
+        const result = await bridge.getOAuthAccessToken();
+        accessToken = result?.accessToken || null;
+      } catch (err) {
+        console.warn('[Auth] bridge OAuth session exchange failed, retrying direct client:', err?.message || err);
+      }
+    }
+
+    if (!accessToken) {
+      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+      const client = createClient(cfg.url, cfg.anonKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          flowType: 'pkce',
+          storageKey: 'eisy-supabase-auth',
+        },
+      });
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('code')) {
+        const { data, error } = await client.auth.exchangeCodeForSession(window.location.href);
+        if (error) throw error;
+        accessToken = data?.session?.access_token || null;
+      } else {
+        const { data, error } = await client.auth.getSession();
+        if (error) throw error;
+        accessToken = data?.session?.access_token || null;
+      }
+    }
+
+    if (!accessToken) {
+      throw new Error('Google Sign-In did not return a session — please try again');
+    }
+
     const data = await this.api('POST', '/api/auth/oauth/google', {
       access_token: accessToken,
     });
@@ -449,6 +510,63 @@ const Auth = {
     });
     this.rememberAuthSuccess(data, user.email);
     return { ...data, user };
+  },
+
+  async getSupabasePublicConfig() {
+    if (window.__EISY_SUPABASE_PUBLIC__?.enabled
+      && window.__EISY_SUPABASE_PUBLIC__.url
+      && window.__EISY_SUPABASE_PUBLIC__.anonKey) {
+      return window.__EISY_SUPABASE_PUBLIC__;
+    }
+
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const res = await fetch('/api/config/supabase', {
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
+        if (!res.ok) {
+          lastErr = new Error(`Config request failed (${res.status})`);
+        } else {
+          const cfg = await res.json();
+          if (cfg?.enabled && cfg.url && (cfg.anonKey || cfg.anon_key)) {
+            const normalized = {
+              enabled: true,
+              url: String(cfg.url).trim(),
+              anonKey: String(cfg.anonKey || cfg.anon_key).trim(),
+              reason: cfg.reason || 'ok',
+            };
+            window.__EISY_SUPABASE_PUBLIC__ = normalized;
+            return normalized;
+          }
+          return {
+            enabled: false,
+            url: null,
+            anonKey: null,
+            reason: cfg?.reason || 'missing_credentials',
+          };
+        }
+      } catch (err) {
+        lastErr = err;
+      }
+      await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+    }
+    throw lastErr || new Error('Could not load Supabase config');
+  },
+
+  supabaseConfigError(cfg) {
+    const reason = cfg?.reason || 'missing_credentials';
+    if (reason === 'missing_anon_key') {
+      return 'Google Sign-In needs NEXT_PUBLIC_SUPABASE_ANON_KEY on the server';
+    }
+    if (reason === 'missing_url') {
+      return 'Google Sign-In needs NEXT_PUBLIC_SUPABASE_URL on the server';
+    }
+    if (reason === 'missing_url_and_anon_key') {
+      return 'Google Sign-In needs NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY on the server';
+    }
+    return 'Google Sign-In is temporarily unavailable — please try again';
   },
 
   async logout() {

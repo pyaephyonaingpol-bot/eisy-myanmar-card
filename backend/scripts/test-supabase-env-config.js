@@ -117,11 +117,11 @@ function main() {
     process.env.SUPABASE_URL = 'https://example.supabase.co';
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'truncated-anon-key...';
     assert.strictEqual(isPublicSupabaseEnabled(), false);
-    assert.deepStrictEqual(getPublicSupabaseConfig(), {
-      enabled: false,
-      url: null,
-      anonKey: null,
-    });
+    const truncatedCfg = getPublicSupabaseConfig();
+    assert.strictEqual(truncatedCfg.enabled, false);
+    assert.strictEqual(truncatedCfg.url, null);
+    assert.strictEqual(truncatedCfg.anonKey, null);
+    assert.ok(typeof truncatedCfg.reason === 'string' && truncatedCfg.reason.length > 0);
     console.log('ok');
 
     section('frontend bridge validates https url + anonKey');
@@ -132,6 +132,7 @@ function main() {
     assert.ok(bridgeSrc.includes("fetch('/api/config/supabase'"));
     assert.ok(bridgeSrc.includes('/^https?:\\/\\//i.test(url)'));
     assert.ok(bridgeSrc.includes('createClient(url, anonKey'));
+    assert.ok(bridgeSrc.includes('__EISY_SUPABASE_PUBLIC__'));
     console.log('ok');
   } finally {
     restoreEnv(snap);
