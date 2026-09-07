@@ -188,6 +188,35 @@ router.post('/biometrics/login', async (req, res) => {
   }
 });
 
+// ─── Google OAuth (Supabase Auth) ────────────────────────────────
+
+router.post('/oauth/google', async (req, res) => {
+  try {
+    const accessToken = req.body?.access_token || req.body?.accessToken;
+    if (!accessToken) {
+      return res.status(400).json({ error: 'access_token is required', code: 'GOOGLE_TOKEN_REQUIRED' });
+    }
+    const result = await authService.loginWithGoogleOAuth({
+      accessToken,
+      ipAddress: clientIp(req),
+      ...deviceInfo(req),
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    const code = err.code || 'GOOGLE_OAUTH_FAILED';
+    const status =
+      code === 'GOOGLE_TOKEN_REQUIRED' ||
+      code === 'GOOGLE_EMAIL_REQUIRED' ||
+      code === 'GOOGLE_NOT_CONFIGURED'
+        ? 400
+        : code === 'GOOGLE_TOKEN_INVALID'
+          ? 401
+          : 400;
+    console.warn('[auth] Google OAuth failed:', code, err.message);
+    res.status(status).json({ error: err.message || 'Google Sign-In failed', code });
+  }
+});
+
 // ─── Session ────────────────────────────────────────────────────
 
 router.get('/me', requireAuth, async (req, res) => {

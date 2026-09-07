@@ -10,6 +10,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 const SupabaseBridge = {
   client: null,
+  authClient: null,
   enabled: false,
   _initPromise: null,
   _channels: [],
@@ -36,6 +37,9 @@ const SupabaseBridge = {
           this.enabled = false;
           return false;
         }
+        this._url = url;
+        this._anonKey = anonKey;
+        // Data client: no auth persistence (wallet/realtime only).
         this.client = createClient(url, anonKey, {
           auth: { persistSession: false, autoRefreshToken: false },
         });
@@ -53,6 +57,62 @@ const SupabaseBridge = {
 
   isReady() {
     return this.enabled && Boolean(this.client);
+  },
+
+  /**
+   * Auth-capable client (PKCE + session persistence) for Google OAuth.
+   * Kept separate from the wallet bridge so RLS/anon reads stay unchanged.
+   */
+  async getAuthClient() {
+    await this.init();
+    if (!this.enabled || !this._url || !this._anonKey) {
+      throw new Error('Google Sign-In is unavailable — Supabase is not configured');
+    }
+    if (!this.authClient) {
+      this.authClient = createClient(this._url, this._anonKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          flowType: 'pkce',
+          storageKey: 'eisy-supabase-auth',
+        },
+      });
+    }
+    return this.authClient;
+  },
+
+  async signInWithGoogle({ redirectTo } = {}) {
+    const client = await this.getAuthClient();
+    const target = redirectTo || `${window.location.origin}/auth/callback`;
+    const { data, error } = await client.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: target,
+        queryParams: { access_type: 'offline', prompt: 'select_account' },
+      },
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async getOAuthAccessToken() {
+    const client = await this.getAuthClient();
+    // Prefer exchanging an auth code from the callback URL (PKCE).
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get('code');
+    if (code) {
+      const { data, error } = await client.auth.exchangeCodeForSession(window.location.href);
+      if (error) throw error;
+      const token = data?.session?.access_token;
+      if (!token) throw new Error('Google Sign-In did not return a session');
+      return { accessToken: token, user: data.session.user || null };
+    }
+    const { data, error } = await client.auth.getSession();
+    if (error) throw error;
+    const token = data?.session?.access_token;
+    if (!token) throw new Error('No Google session found — please try signing in again');
+    return { accessToken: token, user: data.session.user || null };
   },
 
   async fetchUserWallet(userId, { email } = {}) {
