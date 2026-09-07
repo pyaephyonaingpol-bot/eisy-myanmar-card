@@ -57,6 +57,7 @@
     "test:sell-usdt-bank-validation": "node scripts/test-sell-usdt-bank-validation.js",
     "test:tron-orders": "node scripts/test-tron-orders.js",
     "test:legal-pages": "node scripts/test-legal-pages.js",
+    "test:brand-logos": "node scripts/test-brand-logos.js",
     "test:site-security": "node scripts/test-site-security.js",
     "test:security-frontend-kripicard-compat": "node scripts/test-security-frontend-kripicard-compat.js",
     "test:tron-hd-addresses": "node scripts/test-tron-hd-addresses.js",

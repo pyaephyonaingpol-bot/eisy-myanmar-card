@@ -14,11 +14,12 @@
   <meta name="application-name" content="Eisy Myanmar" />
   <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="icon" href="/favicon.png" type="image/png" />
-  <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
-  <link rel="apple-touch-icon" sizes="192x192" href="/icons/Icon-192.png" />
-  <link rel="apple-touch-icon" sizes="512x512" href="/icons/Icon-512.png" />
-  <link rel="stylesheet" href="/styles.css?v=20260907legalauth" />
+  <link rel="icon" href="/favicon.png?v=20260907brand" type="image/png" />
+  <link rel="icon" href="/favicon.ico?v=20260907brand" sizes="any" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=20260907brand" />
+  <link rel="apple-touch-icon" sizes="192x192" href="/icons/Icon-192.png?v=20260907brand" />
+  <link rel="apple-touch-icon" sizes="512x512" href="/icons/Icon-512.png?v=20260907brand" />
+  <link rel="stylesheet" href="/styles.css?v=20260907brand" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
     /* Early paint lock: avoid auth↔dashboard flash before JS mounts */
@@ -41,6 +42,7 @@
 <body>
 
   <div id="appBootSplash" role="status" aria-live="polite" aria-busy="true">
+    <img class="boot-splash-logo" src="/brand/logo-icon-badge.png" width="64" height="64" alt="" />
     <div class="boot-splash-brand">Eisy Myanmar</div>
     <div class="boot-splash-spinner" aria-hidden="true"></div>
     <div class="boot-splash-hint">Loading…</div>
@@ -791,8 +793,17 @@
   <!-- ═══ AUTH SCREEN ═══ -->
   <div id="authScreen" class="auth-screen">
     <div class="auth-card">
-      <h1>Eisy Myanmar</h1>
-      <p class="subtitle">Secure Virtual Card Platform</p>
+      <div class="auth-brand">
+        <img
+          class="auth-brand-logo"
+          src="/brand/logo-icon-badge.png"
+          width="72"
+          height="72"
+          alt="Eisy Myanmar"
+        />
+        <h1 class="auth-brand-title">Eisy Myanmar</h1>
+        <p class="subtitle auth-brand-sub">Secure Virtual Card Platform</p>
+      </div>
 
       <div id="devOtpBanner" class="dev-otp-banner hidden" role="alert">
         <strong>Dev OTP</strong>
@@ -884,8 +895,22 @@
       <div class="sidebar-backdrop" data-sidebar-backdrop aria-hidden="true"></div>
       <aside class="app-sidebar" id="userSidebar" aria-label="Main navigation">
         <div class="sidebar-brand">
-          <div class="sidebar-brand-title">Eisy Myanmar</div>
-          <div class="sidebar-brand-sub" data-i18n="brand_sub">Virtual Card Platform</div>
+          <a class="brand-link brand-link-sidebar" href="#home" data-goto="home" aria-label="Eisy Myanmar home">
+            <img
+              class="brand-logo brand-logo-full"
+              src="/brand/logo-full.png"
+              alt="Eisy Myanmar Technology Solutions"
+              width="220"
+              height="86"
+            />
+            <img
+              class="brand-logo brand-logo-icon"
+              src="/brand/logo-icon-badge.png"
+              alt="Eisy Myanmar"
+              width="40"
+              height="40"
+            />
+          </a>
         </div>
 
         <nav class="sidebar-nav" aria-label="Dashboard pages">
@@ -924,6 +949,15 @@
         </nav>
 
         <div class="sidebar-footer">
+          <div class="footer-brand">
+            <img
+              class="brand-logo brand-logo-full footer-brand-logo"
+              src="/brand/logo-full.png"
+              alt="Eisy Myanmar Technology Solutions"
+              width="180"
+              height="70"
+            />
+          </div>
           <nav class="legal-footer-links" aria-label="Legal">
             <a href="/terms">Terms</a>
             <a href="/privacy">Privacy</a>
@@ -941,7 +975,16 @@
           <div class="header-inner">
             <div class="header-brand-row">
               <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Open menu" aria-expanded="false" aria-controls="userSidebar">☰</button>
-              <div>
+              <a class="brand-link header-logo-mobile" href="#home" data-goto="home" aria-label="Eisy Myanmar home">
+                <img
+                  class="brand-logo brand-logo-icon"
+                  src="/brand/logo-icon-badge.png"
+                  alt="Eisy Myanmar"
+                  width="36"
+                  height="36"
+                />
+              </a>
+              <div class="header-page-meta">
                 <h1 class="page-heading" data-i18n="nav_dashboard">Dashboard</h1>
                 <p class="subtitle"><span data-i18n="header_signed_in_as">Signed in as</span> <strong id="headerUser">—</strong> · <span id="headerEmail">—</span></p>
               </div>
