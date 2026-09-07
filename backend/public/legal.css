@@ -1,0 +1,79 @@
+/* Shared layout for legal & compliance pages */
+.legal-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.legal-page h1 {
+  font-size: 1.75rem;
+  margin: 0 0 0.35rem;
+  letter-spacing: -0.02em;
+}
+
+.legal-page .meta {
+  color: var(--muted, #94a3b8);
+  font-size: 0.9rem;
+  margin-bottom: 1.75rem;
+}
+
+.legal-page h2 {
+  font-size: 1.1rem;
+  margin: 1.75rem 0 0.55rem;
+}
+
+.legal-page h3 {
+  font-size: 1rem;
+  margin: 1.1rem 0 0.4rem;
+}
+
+.legal-page p,
+.legal-page li {
+  line-height: 1.6;
+  color: var(--text, #e2e8f0);
+  font-size: 0.95rem;
+}
+
+.legal-page ul {
+  padding-left: 1.25rem;
+  margin: 0.4rem 0 0.8rem;
+}
+
+.legal-page li + li {
+  margin-top: 0.35rem;
+}
+
+.legal-back {
+  display: inline-block;
+  margin-bottom: 1.25rem;
+}
+
+.legal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  margin: 0 0 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.25));
+}
+
+.legal-nav a {
+  font-size: 0.9rem;
+}
+
+.legal-company {
+  margin-top: 2rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.25));
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.legal-company p {
+  margin: 0.35rem 0;
+  font-size: 0.9rem;
+}
+
+.legal-company strong {
+  color: var(--text, #e2e8f0);
+}
