@@ -20,6 +20,12 @@ function isWebhookPath(req) {
   return url.startsWith('/api/webhook') || url.startsWith('/webhook');
 }
 
+/** Never throttle CORS preflights — browsers need OPTIONS to succeed for SPA API calls. */
+function shouldSkipRateLimit(req) {
+  if (String(req.method || '').toUpperCase() === 'OPTIONS') return true;
+  return isWebhookPath(req);
+}
+
 /**
  * Security headers (XSS / clickjacking / MIME sniffing / HSTS in production).
  * CSP is intentionally not locked down to `default-src 'self'` only — the SPA
@@ -59,7 +65,7 @@ function createApiRateLimiter() {
     standardHeaders: true,
     legacyHeaders: false,
     handler: rateLimitHandler,
-    skip: isWebhookPath,
+    skip: shouldSkipRateLimit,
   });
 }
 
@@ -71,6 +77,7 @@ function createAuthRateLimiter() {
     standardHeaders: true,
     legacyHeaders: false,
     handler: rateLimitHandler,
+    skip: (req) => String(req.method || '').toUpperCase() === 'OPTIONS',
   });
 }
 
@@ -82,6 +89,7 @@ function createKycRateLimiter() {
     standardHeaders: true,
     legacyHeaders: false,
     handler: rateLimitHandler,
+    skip: (req) => String(req.method || '').toUpperCase() === 'OPTIONS',
   });
 }
 
@@ -91,4 +99,5 @@ module.exports = {
   createAuthRateLimiter,
   createKycRateLimiter,
   isWebhookPath,
+  shouldSkipRateLimit,
 };
