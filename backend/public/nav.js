@@ -37,8 +37,32 @@ const AppNav = {
     const sidebarBackdrop = root.querySelector('[data-sidebar-backdrop]');
     this.sidebarToggle = sidebarToggle;
 
+    // Event delegation: hamburger stays clickable even if the header node is
+    // re-rendered, and works when overlays incorrectly sit above the button.
+    if (!this._sidebarDelegateBound) {
+      this._sidebarDelegateBound = true;
+      document.addEventListener('click', (e) => {
+        const toggle = e.target?.closest?.('[data-sidebar-toggle]');
+        if (toggle && root.contains(toggle)) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.toggleMobileSidebar({ force: true });
+          return;
+        }
+        const backdrop = e.target?.closest?.('[data-sidebar-backdrop]');
+        if (backdrop && root.contains(backdrop)) {
+          e.preventDefault();
+          this.closeMobileSidebar();
+        }
+      }, true);
+    }
+
     if (sidebarToggle) {
-      sidebarToggle.addEventListener('click', () => this.toggleMobileSidebar());
+      sidebarToggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleMobileSidebar({ force: true });
+      });
     }
     if (sidebarBackdrop) {
       sidebarBackdrop.addEventListener('click', () => this.closeMobileSidebar());
@@ -166,8 +190,11 @@ const AppNav = {
     }
   },
 
-  toggleMobileSidebar() {
-    if (!this.isMobileSidebarMode()) return;
+  toggleMobileSidebar(opts = {}) {
+    const { force = false } = opts;
+    // If the visible hamburger was tapped, always toggle — do not no-op when
+    // viewport width is near the breakpoint or a soft keyboard resize glitched.
+    if (!force && !this.isMobileSidebarMode()) return;
     const shell = this.getShell();
     if (!shell) return;
     shell.classList.toggle('sidebar-open');
@@ -178,6 +205,13 @@ const AppNav = {
     const shell = this.getShell();
     if (!shell) return;
     shell.classList.remove('sidebar-open');
+    this.syncSidebarUi();
+  },
+
+  openMobileSidebar() {
+    const shell = this.getShell();
+    if (!shell) return;
+    shell.classList.add('sidebar-open');
     this.syncSidebarUi();
   },
 };

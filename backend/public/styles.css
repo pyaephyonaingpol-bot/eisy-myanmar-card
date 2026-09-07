@@ -2801,7 +2801,8 @@ pre.output.hidden { display: none !important; }
   z-index: 80;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.22s ease;
+  visibility: hidden;
+  transition: opacity 0.22s ease, visibility 0.22s ease;
 }
 
 body.sidebar-scroll-lock {
@@ -2896,7 +2897,7 @@ body.sidebar-scroll-lock {
     min-width: 0;
     flex: 0 0 0;
     margin: 0;
-    z-index: 90;
+    z-index: 120;
     transform: translateX(-105%);
     transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: var(--shadow-lg);
@@ -2907,16 +2908,28 @@ body.sidebar-scroll-lock {
   }
 
   .sidebar-backdrop {
-    display: block;
+    /* Keep closed backdrop out of the hit-test tree (iOS / overlay bugs). */
+    display: none;
   }
 
   .app-shell.sidebar-open .sidebar-backdrop {
+    display: block;
     opacity: 1;
     pointer-events: auto;
+    visibility: visible;
+    z-index: 110;
   }
 
   .sidebar-toggle {
     display: inline-flex;
+    position: relative;
+    z-index: 130;
+  }
+
+  .app-main .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
   }
 
   /* Compact chrome: icon mark in the top header; full lockup stays in the drawer/footer */
@@ -3024,7 +3037,7 @@ body.sidebar-scroll-lock {
   .app-main .header {
     position: sticky;
     top: 0;
-    z-index: 5;
+    z-index: 100;
   }
 
   .panel,

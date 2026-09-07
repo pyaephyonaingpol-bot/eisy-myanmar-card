@@ -21,7 +21,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/brand/logo-icon.png?v=20260907favicon" />
   <link rel="apple-touch-icon" sizes="192x192" href="/brand/logo-icon.png?v=20260907favicon" />
   <link rel="apple-touch-icon" sizes="512x512" href="/brand/logo-icon.png?v=20260907favicon" />
-  <link rel="stylesheet" href="/styles.css?v=20260907google" />
+  <link rel="stylesheet" href="/styles.css?v=20260907menuPin" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
     /* Early paint lock: avoid auth↔dashboard flash before JS mounts */
@@ -838,6 +838,7 @@
         </form>
         <button type="button" id="bioLoginBtn" class="btn btn-secondary" style="margin-top:0.75rem">Login with Biometrics</button>
         <button type="button" id="showOtpLoginBtn" class="btn btn-secondary btn-sm" style="margin-top:0.75rem">Use email OTP instead</button>
+        <button type="button" id="showPasswordResetBtn" class="btn btn-secondary btn-sm" style="margin-top:0.5rem">Forgot password — email reset</button>
         <div id="loginOtpSection" class="hidden" style="margin-top:1rem">
           <form id="loginSendOtpForm">
             <button type="submit" id="loginSendOtp" class="btn btn-secondary">Send Login OTP</button>
@@ -845,6 +846,20 @@
           <form id="loginVerifyForm" class="hidden" style="margin-top:1rem">
             <div class="field"><label for="loginOtp">6-digit OTP</label><input id="loginOtp" name="otp" maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" required /></div>
             <button type="submit" id="loginVerify" class="btn btn-primary">Verify &amp; Login with OTP</button>
+          </form>
+        </div>
+        <div id="passwordResetSection" class="hidden" style="margin-top:1rem">
+          <p class="hint">Reset your account password with a one-time code emailed to you.</p>
+          <form id="passwordResetSendForm">
+            <div class="field"><label for="passwordResetEmail">Email</label><input id="passwordResetEmail" type="email" autocomplete="email" required /></div>
+            <button type="submit" class="btn btn-secondary" style="width:100%">Send password reset code</button>
+          </form>
+          <form id="passwordResetConfirmForm" class="hidden" style="margin-top:0.75rem">
+            <div class="field"><label for="passwordResetOtp">Email code</label><input id="passwordResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
+            <div class="field"><label for="passwordResetNew">New password</label><input id="passwordResetNew" type="password" minlength="6" autocomplete="new-password" required /></div>
+            <div class="field"><label for="passwordResetConfirm">Confirm password</label><input id="passwordResetConfirm" type="password" minlength="6" autocomplete="new-password" required /></div>
+            <p id="passwordResetError" class="error-text"></p>
+            <button type="submit" class="btn btn-primary" style="width:100%">Reset password via email</button>
           </form>
         </div>
         <p class="hint">Returning users: enter your PIN. First time on this device? Use email OTP once, then PIN or biometrics next time.</p>
@@ -867,7 +882,7 @@
           <div class="field"><label for="regName">Name</label><input id="regName" name="name" placeholder="Your Name" /></div>
           <div class="field"><label for="regEmail">Email</label><input id="regEmail" name="email" type="email" placeholder="you@email.com" autocomplete="email" required /></div>
           <div class="field"><label for="regPhone">Phone (optional)</label><input id="regPhone" name="phone" placeholder="+959..." /></div>
-          <div class="field"><label for="regPin">6-digit Security PIN</label><input id="regPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="new-password" /></div>
+          <div class="field"><label for="regPin">6-digit Security PIN <span class="hint">(optional — set after signup)</span></label><input id="regPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="new-password" /></div>
           <p id="regAuthError" class="auth-inline-error hidden"></p>
           <button type="submit" id="registerSendOtp" class="btn btn-primary">Send Registration OTP</button>
         </form>
@@ -894,11 +909,12 @@
   <div id="pinSetupModal" class="modal hidden">
     <div class="modal-box">
       <h3>Set Security PIN</h3>
-      <p class="hint">Choose a 6-digit PIN to protect your balance and card details.</p>
+      <p class="hint">Choose a 6-digit PIN to protect your balance and card details. You need this before using the wallet.</p>
       <form id="pinSetupForm">
-        <div class="field"><input id="setupPin" name="pin" maxlength="6" type="password" placeholder="6-digit PIN" inputmode="numeric" autocomplete="new-password" required /></div>
+        <div class="field"><label for="setupPin">New 6-digit PIN</label><input id="setupPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="new-password" required /></div>
+        <div class="field"><label for="setupPinConfirm">Confirm PIN</label><input id="setupPinConfirm" name="confirm_pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="new-password" required /></div>
         <p id="pinSetupError" class="error-text"></p>
-        <button type="submit" id="pinSetupBtn" class="btn btn-primary">Save PIN</button>
+        <button type="submit" id="pinSetupBtn" class="btn btn-primary" style="width:100%">Save PIN</button>
       </form>
     </div>
   </div>
@@ -907,13 +923,24 @@
     <div class="modal-box">
       <h3>Unlock Sensitive Access</h3>
       <p class="hint">Enter your 6-digit PIN to view balance, card details, and make deposits.</p>
-      <p class="hint" style="margin-top:0.35rem">Testing: use <code>123456</code> or <code>000000</code> if no PIN is set yet.</p>
       <form id="pinUnlockForm">
         <div class="field"><input id="unlockPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="one-time-code" required /></div>
         <p id="pinUnlockError" class="error-text"></p>
         <button type="submit" id="pinUnlockBtn" class="btn btn-primary" style="width:100%;margin-bottom:0.5rem">Verify PIN</button>
-        <button type="button" id="pinResetDefaultBtn" class="btn btn-secondary btn-sm" style="width:100%">Forgot PIN / Reset to 123456</button>
+        <button type="button" id="pinForgotBtn" class="btn btn-secondary btn-sm" style="width:100%">Forgot PIN — email reset</button>
       </form>
+      <div id="pinResetEmailSection" class="hidden" style="margin-top:1rem">
+        <p class="hint">We will email a one-time code to reset your PIN. No default PIN is issued.</p>
+        <div class="field"><label for="pinResetEmail">Email</label><input id="pinResetEmail" type="email" autocomplete="email" placeholder="you@email.com" /></div>
+        <button type="button" id="pinResetSendOtpBtn" class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:0.5rem">Send reset code</button>
+        <form id="pinResetConfirmForm" class="hidden">
+          <div class="field"><label for="pinResetOtp">Email code</label><input id="pinResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
+          <div class="field"><label for="pinResetNew">New 6-digit PIN</label><input id="pinResetNew" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
+          <div class="field"><label for="pinResetConfirm">Confirm PIN</label><input id="pinResetConfirm" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
+          <p id="pinResetError" class="error-text"></p>
+          <button type="submit" class="btn btn-primary" style="width:100%">Reset PIN via email</button>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -1532,6 +1559,16 @@
                   <p id="changePasswordError" class="error-text hidden"></p>
                   <button type="submit" id="changePasswordSubmit" class="btn btn-primary btn-sm">Update Password</button>
                 </form>
+                <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border-subtle)" />
+                <p class="hint" style="margin-bottom:0.5rem">Forgot your current password? Reset it with an email code.</p>
+                <button type="button" id="settingsPasswordResetBtn" class="btn btn-secondary btn-sm">Email me a password reset code</button>
+                <form id="settingsPasswordResetForm" class="form form-compact hidden" style="margin-top:0.75rem">
+                  <div class="field"><label for="settingsPasswordResetOtp">Email code</label><input id="settingsPasswordResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
+                  <div class="field"><label for="settingsPasswordResetNew">New password</label><input id="settingsPasswordResetNew" type="password" minlength="6" autocomplete="new-password" required /></div>
+                  <div class="field"><label for="settingsPasswordResetConfirm">Confirm password</label><input id="settingsPasswordResetConfirm" type="password" minlength="6" autocomplete="new-password" required /></div>
+                  <p id="settingsPasswordResetError" class="error-text hidden"></p>
+                  <button type="submit" class="btn btn-primary btn-sm">Confirm password reset</button>
+                </form>
               </div>
               <div class="settings-card">
                 <h3>Biometric Login</h3>
@@ -1579,7 +1616,7 @@
   <script type="module" src="/supabaseBridge.js?v=20260907googleFix"></script>
   <script>const $ = (id) => document.getElementById(id);</script>
   <script src="/i18n.js?v=20260831sellmmk"></script>
-  <script src="/auth.js?v=20260907googleFix"></script>
+  <script src="/auth.js?v=20260907menuPin"></script>
   <script src="/src/services/apiClient.js?v=20260817m2"></script>
   <script src="/src/services/depositApi.js?v=20260828tron"></script>
   <script src="/src/services/usdtWalletApi.js?v=20260824usdtload"></script>
@@ -1597,8 +1634,8 @@
   <script src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
   <script src="/src/components/activityLog.js?v=20260817m2"></script>
   <script src="/src/components/index.js?v=20260817m2"></script>
-  <script src="/nav.js?v=20260816kb2"></script>
+  <script src="/nav.js?v=20260907menuPin"></script>
   <script src="/viewport.js?v=20260821scroll"></script>
-  <script src="/dashboard.js?v=20260907google"></script>
+  <script src="/dashboard.js?v=20260907menuPin"></script>
 </body>
 </html>

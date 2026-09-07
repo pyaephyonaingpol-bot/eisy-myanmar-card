@@ -20,7 +20,7 @@ async function ensureAuthTables(db) {
         user_id INTEGER,
         email TEXT NOT NULL,
         otp_code TEXT NOT NULL,
-        purpose TEXT NOT NULL CHECK(purpose IN ('register', 'login', 'reset_pin', 'verify_email')),
+        purpose TEXT NOT NULL CHECK(purpose IN ('register', 'login', 'reset_pin', 'verify_email', 'reset_password')),
         expires_at TEXT NOT NULL,
         verified_at TEXT,
         attempts INTEGER DEFAULT 0,
