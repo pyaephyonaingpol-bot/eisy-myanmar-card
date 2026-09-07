@@ -64,9 +64,10 @@ assert.ok(css.includes('.auth-brand-logo'), 'auth logo style');
 assert.ok(css.includes('.brand-logo-full'), 'full logo style');
 assert.ok(css.includes('.header-logo-mobile'), 'mobile header style');
 assert.ok(/\.header-logo-mobile\s*\{[^}]*display:\s*inline-flex/s.test(css), 'mobile logo shown under breakpoint');
-assert.ok(/\.brand-logo-full\s*\{[^}]*max-height:\s*2\.5rem/s.test(css), 'full logo max-height ~40px');
+assert.ok(/\.brand-logo-full\s*\{[^}]*max-height:\s*2\.75rem/s.test(css), 'full logo max-height ~44px');
 assert.ok(/\.brand-logo-icon\s*\{[^}]*max-height:\s*2rem/s.test(css), 'icon max-height ~32px');
 assert.ok(/object-fit:\s*contain/.test(css), 'object-fit contain');
+assert.ok(/\.brand-link\.header-logo-mobile\s*\{[^}]*display:\s*none/s.test(css), 'desktop hides mobile header logo');
 // No white plate box on full logo
 const fullBlock = css.match(/\.brand-logo-full\s*\{[^}]+\}/);
 assert.ok(fullBlock, 'brand-logo-full block present');

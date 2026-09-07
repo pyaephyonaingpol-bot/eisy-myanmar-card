@@ -1016,6 +1016,9 @@ a.btn { text-decoration: none; }
   line-height: 0;
   align-items: center;
 }
+.brand-link.header-logo-mobile {
+  display: none;
+}
 .header-logo-mobile .brand-logo-icon {
   width: auto;
   height: auto;
@@ -1044,9 +1047,9 @@ a.btn { text-decoration: none; }
   width: auto;
 }
 .brand-logo-full {
-  max-height: 2.5rem; /* 40px */
+  max-height: 2.75rem; /* 44px — readable lockup without dominating the rail */
   width: auto;
-  max-width: 100%;
+  max-width: min(100%, 12rem);
   height: auto;
   padding: 0;
   border-radius: 0;
@@ -2853,7 +2856,8 @@ body.sidebar-scroll-lock {
   }
 
   /* Compact chrome: icon mark in the top header; full lockup stays in the drawer/footer */
-  .header-logo-mobile {
+  .header-logo-mobile,
+  .brand-link.header-logo-mobile {
     display: inline-flex;
   }
 
@@ -2867,7 +2871,7 @@ body.sidebar-scroll-lock {
   }
 
   .brand-logo-full {
-    max-height: 2rem; /* 32px in drawer */
+    max-height: 2.25rem; /* 36px in drawer */
   }
 
   .app-main {
