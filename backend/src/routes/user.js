@@ -69,46 +69,67 @@ function mapCardForClient(c) {
 }
 
 function respondCardPurchaseError(res, err, logTag) {
-  if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
+  const message = String(err?.message || 'Unexpected error');
+  const code = err?.code;
+
+  if (code === 'INSUFFICIENT_USDT_BALANCE') {
     return res.status(400).json({
-      error: err.message,
-      code: err.code,
+      error: message,
+      code,
       required_usdt: err.required_usdt,
       available_usdt: err.available_usdt,
     });
   }
   if (
-    err.code === 'USDT_ONLY_CARD_ISSUANCE'
-    || err.code === 'INVALID_BIN'
-    || err.code === 'INVALID_NAME_ON_CARD'
-    || err.code === 'INVALID_AMOUNT'
-    || err.code === 'KRIPICARD_NOT_CONFIGURED'
-    || err.code === 'SUPABASE_NOT_CONFIGURED'
+    code === 'USDT_ONLY_CARD_ISSUANCE'
+    || code === 'INVALID_BIN'
+    || code === 'INVALID_NAME_ON_CARD'
+    || code === 'INVALID_AMOUNT'
+    || code === 'KRIPICARD_NOT_CONFIGURED'
+    || code === 'SUPABASE_NOT_CONFIGURED'
   ) {
-    const status = (err.code === 'KRIPICARD_NOT_CONFIGURED' || err.code === 'SUPABASE_NOT_CONFIGURED')
+    const status = (code === 'KRIPICARD_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED')
       ? 503
       : 400;
-    return res.status(status).json({ error: err.message, code: err.code });
+    return res.status(status).json({ error: message, code });
   }
   if (
-    err.code === 'KRIPICARD_HTTP_ERROR'
-    || err.code === 'KRIPICARD_API_ERROR'
-    || err.code === 'KRIPICARD_TIMEOUT'
-    || err.code === 'KRIPICARD_BAD_RESPONSE'
-    || err.code === 'KRIPICARD_MISSING_CARD_ID'
+    code === 'KRIPICARD_HTTP_ERROR'
+    || code === 'KRIPICARD_API_ERROR'
+    || code === 'KRIPICARD_TIMEOUT'
+    || code === 'KRIPICARD_BAD_RESPONSE'
+    || code === 'KRIPICARD_MISSING_CARD_ID'
   ) {
     return res.status(502).json({
-      error: err.message || 'Card provider issuance failed',
-      code: err.code,
+      error: message || 'Card provider issuance failed',
+      code,
       provider_status: err.status,
       refunded: !err.refund_failed,
     });
   }
-  if (err.message.includes('Minimum initial deposit') || err.message.includes('must be') || err.message.includes('pending')) {
-    return res.status(400).json({ error: err.message, code: err.code });
+  if (
+    code === 'SUPABASE_CARD_PURCHASE_RPC_MISSING'
+    || code === 'SUPABASE_RPC_ERROR'
+    || code === 'PGRST202'
+    || code === 'PGRST205'
+    || code === 'USER_CARD_STORE_FAILED'
+  ) {
+    return res.status(503).json({
+      error: message,
+      code: code === 'PGRST202' || code === 'PGRST205'
+        ? 'SUPABASE_CARD_PURCHASE_RPC_MISSING'
+        : code,
+    });
+  }
+  if (
+    message.includes('Minimum initial deposit')
+    || message.includes('must be')
+    || message.includes('pending')
+  ) {
+    return res.status(400).json({ error: message, code });
   }
   console.error(`[${logTag}]`, err);
-  return res.status(500).json({ error: 'Internal server error' });
+  return res.status(500).json({ error: 'Internal server error', code: code || 'CARD_PURCHASE_FAILED' });
 }
 
 function buildCardPurchaseSuccessPayload(result) {

@@ -1,6 +1,10 @@
 -- Eisy Myanmar — atomic USDT wallet debits for card purchase (Supabase Postgres)
 -- Run in Supabase SQL Editor after supabase/schema.sql.
 --
+-- REQUIRED for atomic card purchase ledger. Until this file is applied, the
+-- Express backend falls back to Turso debit + user_wallets sync so
+-- "Issue Card Instantly" does not return Internal Server Error (PGRST202).
+--
 -- Flow (application layer):
 --   1. debit_usdt_for_card_purchase  — balance check + deduct + pending log (single txn)
 --   2. Kripicard API issue           — external call after RPC succeeds
