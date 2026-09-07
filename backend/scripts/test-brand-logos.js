@@ -44,8 +44,37 @@ assert.ok(html.includes('/brand/logo-full.png'), 'desktop full logo');
 assert.ok(html.includes('auth-brand-logo'), 'auth brand class');
 assert.ok(html.includes('header-logo-mobile'), 'mobile header logo');
 assert.ok(html.includes('brand-link-sidebar'), 'sidebar brand link');
-assert.ok(html.includes('favicon.png'), 'favicon link');
-assert.ok(html.includes('apple-touch-icon.png'), 'apple touch icon');
+// Favicon / apple-touch must use the same file as the dashboard header icon
+assert.ok(
+  /rel=["']icon["'][^>]+href=["']\/brand\/logo-icon\.png/.test(html)
+    || /href=["']\/brand\/logo-icon\.png[^"']*["'][^>]+rel=["']icon["']/.test(html),
+  'favicon link points at /brand/logo-icon.png'
+);
+assert.ok(
+  /rel=["']apple-touch-icon["'][^>]+href=["']\/brand\/logo-icon\.png/.test(html),
+  'apple-touch-icon points at /brand/logo-icon.png'
+);
+assert.ok(!/rel=["']icon["'][^>]+href=["']\/favicon\.png/.test(html), 'legacy /favicon.png icon link removed');
+assert.ok(!/rel=["']apple-touch-icon["'][^>]+href=["']\/apple-touch-icon\.png/.test(html), 'legacy apple-touch path removed');
+
+const adminHtml = read('admin.html');
+assert.ok(
+  /rel=["']icon["'][^>]+href=["']\/brand\/logo-icon\.png/.test(adminHtml),
+  'admin favicon uses logo-icon.png'
+);
+assert.ok(
+  /rel=["']apple-touch-icon["'][^>]+href=["']\/brand\/logo-icon\.png/.test(adminHtml),
+  'admin apple-touch uses logo-icon.png'
+);
+
+const manifest = read('manifest.webmanifest');
+assert.ok(manifest.includes('/brand/logo-icon.png'), 'PWA manifest uses logo-icon.png');
+
+// Fallback /favicon.png must be a byte-identical copy of the header icon
+const iconBytes = fs.readFileSync(path.join(PUBLIC, 'brand/logo-icon.png'));
+const faviconPng = fs.readFileSync(path.join(PUBLIC, 'favicon.png'));
+assert.ok(Buffer.compare(iconBytes, faviconPng) === 0, 'favicon.png must match brand/logo-icon.png bytes');
+
 // No duplicate footer logo; sidebar keeps a single full lockup
 assert.ok(!html.includes('footer-brand-logo'), 'footer logo duplicate removed');
 const sidebarBrand = html.match(/class="sidebar-brand"[\s\S]*?<\/div>/);
@@ -53,9 +82,9 @@ assert.ok(sidebarBrand, 'sidebar-brand block present');
 assert.ok(sidebarBrand[0].includes('brand-logo-full'), 'sidebar uses full logo');
 assert.ok(!sidebarBrand[0].includes('brand-logo-icon'), 'no icon nested in sidebar brand');
 assert.ok((sidebarBrand[0].match(/<img\b/g) || []).length === 1, 'exactly one logo in sidebar brand');
-// Auth + mobile + splash use transparent icon (not white-badge plate)
+// Auth + mobile + splash + favicon/apple links use transparent icon
 const iconUses = (html.match(/\/brand\/logo-icon\.png/g) || []).length;
-assert.ok(iconUses >= 3, `expected >=3 transparent icon refs, got ${iconUses}`);
+assert.ok(iconUses >= 6, `expected >=6 logo-icon refs (UI+favicon), got ${iconUses}`);
 console.log('ok');
 
 console.log('\n== CSS responsive rules ==');
