@@ -98,6 +98,16 @@ app.get('/refund.html', (_req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'refund.html'));
 });
 
+app.get('/about', (_req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.sendFile(path.join(PUBLIC_DIR, 'about.html'));
+});
+
+app.get('/about.html', (_req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.sendFile(path.join(PUBLIC_DIR, 'about.html'));
+});
+
 app.get('/admin', (_req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.sendFile(path.join(PUBLIC_DIR, 'admin.html'));
