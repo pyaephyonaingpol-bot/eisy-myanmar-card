@@ -526,12 +526,149 @@ async function getMe(userId) {
   };
 }
 
+async function loginWithGoogleOAuth({
+  accessToken,
+  ipAddress,
+  deviceName,
+  devicePlatform,
+}) {
+  const token = String(accessToken || '').trim();
+  if (!token) {
+    const err = new Error('Google access token is required');
+    err.code = 'GOOGLE_TOKEN_REQUIRED';
+    throw err;
+  }
+
+  const { getSupabase, getSupabaseConfig, isPublicSupabaseEnabled } = require('../lib/supabase');
+  if (!isPublicSupabaseEnabled()) {
+    const err = new Error('Google Sign-In is not configured on this server');
+    err.code = 'GOOGLE_NOT_CONFIGURED';
+    throw err;
+  }
+
+  // Verify the Supabase Auth JWT and load the Google-linked user.
+  let supabaseUser = null;
+  try {
+    const admin = getSupabase();
+    if (admin?.auth?.getUser) {
+      const { data, error } = await admin.auth.getUser(token);
+      if (error) throw error;
+      supabaseUser = data?.user || null;
+    }
+  } catch (err) {
+    console.warn('[auth] Google token verify via service client failed:', err.message);
+  }
+
+  if (!supabaseUser) {
+    // Fallback: user-scoped client with the access token.
+    try {
+      const { createClient } = require('@supabase/supabase-js');
+      const { url, anonKey } = getSupabaseConfig();
+      const userClient = createClient(url, anonKey, {
+        global: { headers: { Authorization: `Bearer ${token}` } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { data, error } = await userClient.auth.getUser();
+      if (error) throw error;
+      supabaseUser = data?.user || null;
+    } catch (err) {
+      console.warn('[auth] Google token verify via anon client failed:', err.message);
+      const mapped = new Error('Google Sign-In could not be verified. Please try again.');
+      mapped.code = 'GOOGLE_TOKEN_INVALID';
+      throw mapped;
+    }
+  }
+
+  const email = normalizeEmail(supabaseUser?.email);
+  if (!email) {
+    const err = new Error('Google account did not provide an email address');
+    err.code = 'GOOGLE_EMAIL_REQUIRED';
+    throw err;
+  }
+
+  const meta = supabaseUser.user_metadata || {};
+  const displayName = String(
+    meta.full_name || meta.name || [meta.given_name, meta.family_name].filter(Boolean).join(' ') || ''
+  ).trim() || email.split('@')[0];
+
+  let user = await User.findByEmail(email);
+  let created = false;
+  if (!user) {
+    try {
+      const phone = await resolveRegistrationPhone(email, null);
+      user = await User.create({
+        name: displayName,
+        phone,
+        email,
+        pinHash: null,
+      });
+      await User.verifyEmail(user.id);
+      created = true;
+      ensureSupabaseUserWalletInBackground(user.id, { syncIfExists: false });
+      try {
+        const { provisionDepositAddressInBackground } = require('./tronWalletService');
+        provisionDepositAddressInBackground(user.id);
+      } catch (err) {
+        console.warn('[auth] TRON address provision hook failed:', err.message);
+      }
+    } catch (err) {
+      throw mapUserPersistenceError(err);
+    }
+  } else {
+    assertUserNotBlocked(user, { action: 'log in' });
+    if (!user.email_verified) {
+      await User.verifyEmail(user.id);
+    }
+    await User.recordLogin(user.id);
+    ensureSupabaseUserWalletInBackground(user.id);
+  }
+
+  const { sessionToken, session } = await createSession({
+    userId: user.id,
+    ipAddress,
+    deviceName,
+    devicePlatform,
+  });
+
+  await TransactionLog.create({
+    userId: user.id,
+    type: 'login',
+    description: created ? 'User registered via Google OAuth' : 'User logged in via Google OAuth',
+    ipAddress,
+    createdBy: 'user',
+    metadata: {
+      provider: 'google',
+      supabase_user_id: supabaseUser.id || null,
+      created,
+    },
+  }).catch((err) => {
+    console.warn('[auth] Google login transaction log skipped:', err.message);
+  });
+
+  const freshUser = await User.findById(user.id);
+  const hasPin = Boolean(freshUser?.pin_hash);
+  const result = {
+    user: mapPublicUser(freshUser),
+    sessionToken,
+    session,
+    session_expires_at: session?.expires_at || sessionExpiresAt(),
+    has_pin: hasPin,
+    created,
+    ...pinTokenMeta(),
+  };
+  if (hasPin) {
+    result.pin_token = createPinToken(freshUser.id);
+  }
+  return result;
+}
+
 module.exports = {
   sendRegistrationOtp,
   completeRegistration,
   sendLoginOtp,
   verifyLoginOtp,
   loginWithPin,
+  loginWithGoogleOAuth,
   setPin,
   verifyPinCode,
   resetPinToDefault,

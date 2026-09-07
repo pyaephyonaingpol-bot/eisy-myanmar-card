@@ -103,17 +103,46 @@ const Dashboard = {
       this.bindWithdrawUsdt();
       this.bindWithdrawMmk();
       this.bindUsdtWalletPage();
-      Auth.restoreSession()
-        .catch((err) => console.warn('[Dashboard] session restore:', err.message))
-        .finally(() => {
-          Auth.initLoginPanel();
-          this.refreshAuthUI();
-          this.markAppReady();
-        });
+      const finishBoot = () => {
+        Auth.initLoginPanel();
+        this.refreshAuthUI();
+        this.markAppReady();
+      };
+      const boot = async () => {
+        if (this.isGoogleOAuthCallback()) {
+          await this.handleGoogleOAuthCallback();
+          return;
+        }
+        await Auth.restoreSession().catch((err) => console.warn('[Dashboard] session restore:', err.message));
+      };
+      boot()
+        .catch((err) => console.warn('[Dashboard] boot:', err.message))
+        .finally(finishBoot);
     } catch (err) {
       console.error('[Dashboard] init failed:', err);
       this.endHydration();
       this.markAppReady();
+    }
+  },
+
+  isGoogleOAuthCallback() {
+    const path = String(window.location.pathname || '').replace(/\/+$/, '') || '/';
+    return path === '/auth/callback';
+  },
+
+  async handleGoogleOAuthCallback() {
+    const splashHint = document.querySelector('#appBootSplash .boot-splash-hint');
+    if (splashHint) splashHint.textContent = 'Signing in with Google…';
+    try {
+      await Auth.completeGoogleOAuth();
+      this.log('Signed in with Google', 'ok');
+      // Clean OAuth params from the URL without a full reload.
+      history.replaceState(null, '', '/dashboard');
+    } catch (err) {
+      console.error('[Dashboard] Google OAuth callback failed:', err);
+      this.toast(err.message || 'Google Sign-In failed', 'error');
+      history.replaceState(null, '', '/');
+      throw err;
     }
   },
 
@@ -4587,6 +4616,26 @@ const Dashboard = {
       };
     });
 
+    const startGoogleAuth = async (btn) => {
+      if (btn) btn.disabled = true;
+      try {
+        await Auth.loginWithGoogle();
+        // Redirect to Google happens inside signInWithOAuth; keep button disabled.
+      } catch (err) {
+        if (btn) btn.disabled = false;
+        const msg = err?.message || 'Google Sign-In failed';
+        this.toast(msg, 'error');
+        this.log(msg, 'error');
+      }
+    };
+
+    document.querySelectorAll('[data-google-auth]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        startGoogleAuth(btn);
+      });
+    });
+
     const loginPinForm = $('loginPinForm');
     if (loginPinForm) {
       loginPinForm.addEventListener('submit', async (e) => {
@@ -5302,11 +5351,19 @@ const Dashboard = {
       this.updateProfileFormUI();
 
       if (Auth.needsPinUnlock()) {
-        $('pinUnlockModal')?.classList.remove('hidden');
+        const needsSetup = Auth.user && Auth.user.has_pin === false;
+        if (needsSetup) {
+          $('pinSetupModal')?.classList.remove('hidden');
+          $('pinUnlockModal')?.classList.add('hidden');
+        } else {
+          $('pinUnlockModal')?.classList.remove('hidden');
+          $('pinSetupModal')?.classList.add('hidden');
+        }
         this.applyCachedCardsIfAvailable();
         this.setHomeWalletBalanceDisplay('🔒 Locked');
       } else {
         $('pinUnlockModal')?.classList.add('hidden');
+        $('pinSetupModal')?.classList.add('hidden');
         this.applyCachedCardsIfAvailable();
         this.loadAllCards({ preserveSelection: true, silent: true });
       }

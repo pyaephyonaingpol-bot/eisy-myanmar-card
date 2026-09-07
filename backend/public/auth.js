@@ -396,6 +396,61 @@ const Auth = {
     return data;
   },
 
+  /** Start Google OAuth via Supabase (redirects to Google, then /auth/callback). */
+  async loginWithGoogle() {
+    const waitForBridge = async () => {
+      for (let i = 0; i < 20; i += 1) {
+        if (window.SupabaseBridge?.signInWithGoogle) return window.SupabaseBridge;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return window.SupabaseBridge || null;
+    };
+    const bridge = await waitForBridge();
+    if (!bridge?.signInWithGoogle) {
+      throw new Error('Google Sign-In is unavailable — Supabase is not configured');
+    }
+    await bridge.signInWithGoogle({
+      redirectTo: `${window.location.origin}/auth/callback`,
+    });
+  },
+
+  /** Finish Google OAuth on /auth/callback and create an app session. */
+  async completeGoogleOAuth() {
+    const waitForBridge = async () => {
+      for (let i = 0; i < 30; i += 1) {
+        if (window.SupabaseBridge?.getOAuthAccessToken) return window.SupabaseBridge;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return window.SupabaseBridge || null;
+    };
+    const bridge = await waitForBridge();
+    if (!bridge?.getOAuthAccessToken) {
+      throw new Error('Google Sign-In is unavailable — Supabase is not configured');
+    }
+    const { accessToken } = await bridge.getOAuthAccessToken();
+    const data = await this.api('POST', '/api/auth/oauth/google', {
+      access_token: accessToken,
+    });
+    if (!data?.user || !data?.sessionToken) {
+      throw Object.assign(
+        new Error(data?.error || 'Google Sign-In succeeded but no session was returned'),
+        { code: 'SESSION_INCOMPLETE' }
+      );
+    }
+    const user = {
+      ...data.user,
+      has_pin: data.has_pin ?? Boolean(data.user?.has_pin),
+    };
+    this.setSession({
+      sessionToken: data.sessionToken,
+      user,
+      pinToken: data.pin_token || null,
+      ...this.authPayload(data),
+    });
+    this.rememberAuthSuccess(data, user.email);
+    return { ...data, user };
+  },
+
   async logout() {
     try { await this.api('POST', '/api/auth/logout', {}); } catch (_) {}
     this.clear();
