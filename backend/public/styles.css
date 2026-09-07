@@ -358,6 +358,9 @@ small.hint {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+#pinSetupModal {
+  z-index: 110; /* stay above unlock if both ever race open */
+}
 .modal-box {
   background: var(--bg-glass-strong);
   backdrop-filter: blur(16px);
@@ -2882,14 +2885,14 @@ body.sidebar-scroll-lock {
   .app-sidebar {
     position: fixed;
     left: 0;
-    top: 0;
+    top: var(--header-min-height, 3.75rem);
     right: auto;
     bottom: 0;
     /* inset anchoring — never bind to visualViewport/dvh */
     height: auto;
     max-height: none;
     min-height: 0;
-    padding-top: var(--safe-top);
+    padding-top: 0;
     padding-bottom: var(--safe-bottom);
     width: min(280px, 88vw);
     max-width: min(280px, 88vw);
@@ -2918,18 +2921,20 @@ body.sidebar-scroll-lock {
     pointer-events: auto;
     visibility: visible;
     z-index: 110;
+    /* Leave the sticky header (hamburger) uncovered so toggle can close the menu. */
+    top: var(--header-min-height, 3.75rem);
   }
 
   .sidebar-toggle {
     display: inline-flex;
     position: relative;
-    z-index: 130;
+    z-index: 2;
   }
 
   .app-main .header {
     position: sticky;
     top: 0;
-    z-index: 100;
+    z-index: 130;
   }
 
   /* Compact chrome: icon mark in the top header; full lockup stays in the drawer/footer */
@@ -3037,10 +3042,8 @@ body.sidebar-scroll-lock {
   .app-main .header {
     position: sticky;
     top: 0;
-    z-index: 100;
+    z-index: 130;
   }
-
-  .panel,
   .form,
   .field,
   .card-visual,

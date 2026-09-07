@@ -227,6 +227,19 @@ const Dashboard = {
     });
   },
 
+  openPinUnlockModal() {
+    // Never cover the post-registration PIN setup form with the unlock modal.
+    if (!Auth.user?.has_pin) {
+      this.openPinSetupModal();
+      return;
+    }
+    $('pinSetupModal')?.classList.add('hidden');
+    $('pinUnlockModal')?.classList.remove('hidden');
+    requestAnimationFrame(() => {
+      $('unlockPin')?.focus();
+    });
+  },
+
   bindI18n() {
     const refresh = () => this.onLanguageChange();
     document.addEventListener('eisy:langchange', refresh);
@@ -1195,7 +1208,7 @@ const Dashboard = {
         escrowMessage: 'Unlock with PIN to view escrow holds.',
         txMessage: 'Unlock with PIN to view transaction history.',
       });
-      $('pinUnlockModal')?.classList.remove('hidden');
+      this.openPinUnlockModal();
       return;
     }
 
@@ -1239,7 +1252,7 @@ const Dashboard = {
             escrowMessage: 'Unlock with PIN to view escrow holds.',
             txMessage: 'Unlock with PIN to view transaction history.',
           });
-          $('pinUnlockModal')?.classList.remove('hidden');
+          this.openPinUnlockModal();
           return;
         }
 
@@ -1318,7 +1331,7 @@ const Dashboard = {
       await this.loadUsdtWalletPage(true);
       this.loadWallet();
     } catch (err) {
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
       this.toast(err.message || 'Transfer failed', 'error');
       if (statusEl) statusEl.textContent = err.message || 'Transfer failed';
     } finally {
@@ -1456,7 +1469,7 @@ const Dashboard = {
       await this.loadUsdtWalletPage(true);
       this.toast('Deposit addresses ready', 'ok');
     } catch (err) {
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
       this.toast(err.message || 'Could not generate deposit addresses', 'error');
       if (depositEl && btn) {
         btn.disabled = false;
@@ -1849,7 +1862,7 @@ const Dashboard = {
       return;
     }
     if (Auth.needsPinUnlock()) {
-      $('pinUnlockModal')?.classList.remove('hidden');
+      this.openPinUnlockModal();
       this.toast('Unlock your PIN to continue', 'error');
       return;
     }
@@ -3035,7 +3048,7 @@ const Dashboard = {
       this.log(`P2P buy order ${data.order?.ref_code} pending seller release`, 'ok');
       this.loadP2pActiveOrders();
     } catch (err) {
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
       this.toast(err.message || 'Failed to confirm transfer', 'error');
     } finally {
       if (btn) {
@@ -3622,7 +3635,7 @@ const Dashboard = {
       }
       await this.loadP2pActiveOrders();
     } catch (err) {
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
       this.toast(err.message || 'Failed to open dispute', 'error');
     } finally {
       if (btn) btn.disabled = false;
@@ -3978,7 +3991,7 @@ const Dashboard = {
         this.startTronOrderPolling(order.order_id);
       } catch (err) {
         console.error('[tron/deposit] Order creation failed:', err);
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
         this.toast(err.message || 'TRON deposit order failed', 'error');
       } finally {
         this._tronDepositCreateInFlight = false;
@@ -4070,7 +4083,7 @@ const Dashboard = {
           data.message || 'USDT Deposit Submitted Successfully!'
         );
       } catch (err) {
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
         this.toast(err.message || 'Failed to submit USDT proof', 'error');
       } finally {
         // resetUsdtDepositForm clears the busy state; only restore if form still visible
@@ -4721,7 +4734,7 @@ const Dashboard = {
           await Auth.verifyLoginOtp($('loginEmail').value.trim(), $('loginOtp').value.trim());
           this.log('Logged in successfully', 'ok');
           if (Auth.needsPinUnlock()) {
-            $('pinUnlockModal')?.classList.remove('hidden');
+            this.openPinUnlockModal();
           }
           this.refreshAuthUI();
         } catch (err) {
@@ -5062,8 +5075,8 @@ const Dashboard = {
     }
 
     const unlockBtn = $('unlockBtn');
-    if (unlockBtn) unlockBtn.onclick = () => $('pinUnlockModal')?.classList.remove('hidden');
-    $('unlockBtnSettings')?.addEventListener('click', () => $('pinUnlockModal')?.classList.remove('hidden'));
+    if (unlockBtn) unlockBtn.onclick = () => this.openPinUnlockModal();
+    $('unlockBtnSettings')?.addEventListener('click', () => this.openPinUnlockModal());
     $('registerBioBtnSettings')?.addEventListener('click', () => $('registerBioBtn')?.click());
     $('logoutBtnSettings')?.addEventListener('click', () => $('logoutBtn')?.click());
 
@@ -5385,7 +5398,7 @@ const Dashboard = {
           this.loadDepositHistory();
           if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
         } catch (err) {
-          if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
+          if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
           if (err.code === 'INSUFFICIENT_USDT_BALANCE' || err.code === 'USDT_ONLY_CARD_ISSUANCE') {
             this.toast(err.message, 'error');
             if (err.code === 'INSUFFICIENT_USDT_BALANCE' && typeof AppNav !== 'undefined') {
@@ -5413,7 +5426,7 @@ const Dashboard = {
         this.loadWallet();
         this.loadAllCards();
       } catch (err) {
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal').classList.remove('hidden');
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
         showOutput('issueCardOutput', err.message, true);
         this.log(err.message, 'error');
       }
@@ -5521,7 +5534,7 @@ const Dashboard = {
           this.openPinSetupModal();
           $('pinUnlockModal')?.classList.add('hidden');
         } else {
-          $('pinUnlockModal')?.classList.remove('hidden');
+          this.openPinUnlockModal();
           $('pinSetupModal')?.classList.add('hidden');
         }
         this.applyCachedCardsIfAvailable();
@@ -6371,7 +6384,7 @@ const Dashboard = {
         this._usdtWalletCache = null;
         this.loadUsdtWalletPage(true);
       } catch (err) {
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
         this.toast(err.message || 'Withdrawal failed', 'error');
       } finally {
         if (btn) {
@@ -6451,7 +6464,7 @@ const Dashboard = {
         this.toast('MMK withdrawal submitted', 'ok');
         this.log(`MMK withdrawal ${data.ref_code}: ${preview.net_mmk.toLocaleString()} MMK to ${bankName}`, 'ok');
       } catch (err) {
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
         this.toast(err.message || 'MMK withdrawal failed', 'error');
       } finally {
         if (btn) {
@@ -6518,7 +6531,7 @@ const Dashboard = {
         this.loadDepositHistory();
         this.loadTransactions();
       } catch (err) {
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED') $('pinUnlockModal')?.classList.remove('hidden');
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
         if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
           this.toast(err.message, 'error');
           this.openUsdtTopUpModal();
@@ -6978,7 +6991,7 @@ const Dashboard = {
       if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
         this.setUsdtWalletBalancePlaceholders('🔒 Locked');
       }
-      $('pinUnlockModal')?.classList.remove('hidden');
+      this.openPinUnlockModal();
       return;
     }
 
@@ -7005,7 +7018,7 @@ const Dashboard = {
           if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
             this.setUsdtWalletBalancePlaceholders('🔒 Locked');
           }
-          $('pinUnlockModal')?.classList.remove('hidden');
+          this.openPinUnlockModal();
           return;
         }
 
@@ -7031,7 +7044,7 @@ const Dashboard = {
 
     if (Auth.needsPinUnlock()) {
       if (!this.allCards.length) this.applyCachedCardsIfAvailable();
-      if (!silent) $('pinUnlockModal')?.classList.remove('hidden');
+      if (!silent) this.openPinUnlockModal();
       return;
     }
 
@@ -7136,7 +7149,7 @@ const Dashboard = {
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
         if (!this.allCards.length) this.applyCachedCardsIfAvailable();
-        $('pinUnlockModal')?.classList.remove('hidden');
+        this.openPinUnlockModal();
         if ($('sumCard') && !this.allCards.length) $('sumCard').textContent = '🔒 Locked';
         if (!this.allCards.length) this.updateCardStatusSummary(null);
       } else if (!silent) {

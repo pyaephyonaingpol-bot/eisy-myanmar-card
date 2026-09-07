@@ -37,36 +37,28 @@ const AppNav = {
     const sidebarBackdrop = root.querySelector('[data-sidebar-backdrop]');
     this.sidebarToggle = sidebarToggle;
 
-    // Event delegation: hamburger stays clickable even if the header node is
-    // re-rendered, and works when overlays incorrectly sit above the button.
+    // Event delegation only (capture): avoids double-toggle when both a direct
+    // listener and a delegated listener would fire on the same click.
     if (!this._sidebarDelegateBound) {
       this._sidebarDelegateBound = true;
       document.addEventListener('click', (e) => {
         const toggle = e.target?.closest?.('[data-sidebar-toggle]');
-        if (toggle && root.contains(toggle)) {
+        if (toggle && this.root?.contains?.(toggle)) {
           e.preventDefault();
           e.stopPropagation();
           this.toggleMobileSidebar({ force: true });
           return;
         }
         const backdrop = e.target?.closest?.('[data-sidebar-backdrop]');
-        if (backdrop && root.contains(backdrop)) {
+        if (backdrop && this.root?.contains?.(backdrop)) {
           e.preventDefault();
           this.closeMobileSidebar();
         }
       }, true);
     }
 
-    if (sidebarToggle) {
-      sidebarToggle.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.toggleMobileSidebar({ force: true });
-      });
-    }
-    if (sidebarBackdrop) {
-      sidebarBackdrop.addEventListener('click', () => this.closeMobileSidebar());
-    }
+    this.sidebarToggle = sidebarToggle;
+    this.sidebarBackdrop = sidebarBackdrop;
 
     window.addEventListener('resize', () => {
       // Keyboard open/close often fires resize without a width change.
