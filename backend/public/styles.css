@@ -50,10 +50,18 @@
   --app-dvh: 100vh;
   --sidebar-width: 248px;
   --header-min-height: 4.5rem;
+  --safe-top: constant(safe-area-inset-top);
   --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: constant(safe-area-inset-right);
   --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: constant(safe-area-inset-bottom);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: constant(safe-area-inset-left);
   --safe-left: env(safe-area-inset-left, 0px);
+  /* Extra breathing room below the status bar / Dynamic Island */
+  /* Prefer device safe-area; keep a ~pt-12 floor so status bars still clear when env() is 0. */
+  --sidebar-safe-top: max(3rem, calc(var(--safe-top) + 0.75rem));
+  --sidebar-safe-bottom: calc(var(--safe-bottom) + 0.5rem);
 }
 
 @supports (height: 100svh) {
@@ -2893,8 +2901,10 @@ body.sidebar-scroll-lock {
     height: auto;
     max-height: none;
     min-height: 0;
-    padding-top: var(--safe-top);
-    padding-bottom: var(--safe-bottom);
+    /* Keep logo / nav clear of the status bar / Dynamic Island */
+    padding-top: var(--sidebar-safe-top);
+    padding-bottom: var(--sidebar-safe-bottom);
+    padding-left: var(--safe-left);
     width: min(280px, 88vw);
     max-width: min(280px, 88vw);
     /* Fixed drawer must not reserve flex row space (causes mobile overflow) */
@@ -2914,6 +2924,11 @@ body.sidebar-scroll-lock {
 
   .app-shell.sidebar-open .app-sidebar {
     transform: translateX(0);
+  }
+
+  .app-sidebar .sidebar-brand {
+    /* Brand row already sits inside padded drawer; keep compact but not flush. */
+    padding-top: 0.85rem;
   }
 
   .sidebar-backdrop {
@@ -2946,8 +2961,9 @@ body.sidebar-scroll-lock {
   .sidebar-toggle-fab {
     display: none;
     position: fixed;
-    top: max(0.75rem, var(--safe-top));
-    left: 1rem;
+    /* Sit below status bar / Dynamic Island, not under it */
+    top: var(--sidebar-safe-top);
+    left: max(1rem, var(--safe-left));
     z-index: 230;
     box-shadow: var(--shadow-md);
     background: var(--bg-surface);
@@ -2961,6 +2977,7 @@ body.sidebar-scroll-lock {
     position: sticky;
     top: 0;
     z-index: 130;
+    padding-top: max(0.85rem, var(--sidebar-safe-top));
   }
 
   /* Compact chrome: icon mark in the top header; full lockup stays in the drawer/footer */
