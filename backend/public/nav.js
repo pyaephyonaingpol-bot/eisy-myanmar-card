@@ -99,38 +99,26 @@ const AppNav = {
       this.sidebarToggle.setAttribute('aria-label', label);
     }
 
-    // Floating close control lives as a shell sibling of the backdrop/drawer so
-    // it stacks above the full-screen dimmer (header toggle cannot).
-    const fab = this.ensureSidebarFab(shell);
+    // In-drawer close control (aligned with logo/title) — preferred over floating FAB.
+    shell?.querySelectorAll?.('.sidebar-close[data-sidebar-toggle]')?.forEach((btn) => {
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.setAttribute('aria-label', label);
+    });
+
+    // Legacy FAB kept hidden via CSS; do not inject new ones.
+    const fab = shell?.querySelector?.('.sidebar-toggle-fab');
     if (fab) {
-      const showFab = open && this.isMobileSidebarMode();
-      fab.hidden = !showFab;
-      fab.setAttribute('aria-hidden', showFab ? 'false' : 'true');
-      fab.setAttribute('aria-expanded', open ? 'true' : 'false');
-      fab.setAttribute('aria-label', label);
-      fab.classList.toggle('is-visible', showFab);
+      fab.hidden = true;
+      fab.setAttribute('aria-hidden', 'true');
+      fab.classList.remove('is-visible');
     }
 
     document.body.classList.toggle('sidebar-scroll-lock', open && this.isMobileSidebarMode());
   },
 
-  ensureSidebarFab(shell) {
-    if (!shell) return null;
-    let fab = shell.querySelector('.sidebar-toggle-fab');
-    if (fab) return fab;
-    fab = document.createElement('button');
-    fab.type = 'button';
-    fab.className = 'sidebar-toggle sidebar-toggle-fab';
-    fab.setAttribute('data-sidebar-toggle', '');
-    fab.setAttribute('aria-label', 'Close menu');
-    fab.setAttribute('aria-expanded', 'false');
-    fab.hidden = true;
-    fab.innerHTML = '☰';
-    // Insert after backdrop so it stacks with drawer siblings.
-    const backdrop = shell.querySelector('[data-sidebar-backdrop]');
-    if (backdrop?.nextSibling) shell.insertBefore(fab, backdrop.nextSibling);
-    else shell.prepend(fab);
-    return fab;
+  ensureSidebarFab() {
+    // Deprecated — close control lives in `.sidebar-brand`.
+    return null;
   },
 
   handleViewportChange() {
