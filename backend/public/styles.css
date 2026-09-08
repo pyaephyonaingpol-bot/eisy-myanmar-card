@@ -2500,8 +2500,7 @@ pre.output.hidden { display: none !important; }
   width: var(--sidebar-width);
   flex: 0 0 var(--sidebar-width);
   min-width: var(--sidebar-width);
-  background: rgba(15, 23, 42, 0.98);
-  backdrop-filter: blur(14px);
+  background: var(--bg-base);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
@@ -2798,10 +2797,10 @@ pre.output.hidden { display: none !important; }
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.72);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  z-index: 80;
+  background: rgba(2, 6, 23, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 200;
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -2880,19 +2879,21 @@ body.sidebar-scroll-lock {
     display: flex;
     flex-direction: row;
     align-items: stretch;
+    /* Allow fixed hamburger (z-index 220) to stack above drawer/backdrop. */
+    isolation: auto;
   }
 
   .app-sidebar {
     position: fixed;
     left: 0;
-    top: var(--header-min-height, 3.75rem);
+    top: 0;
     right: auto;
     bottom: 0;
     /* inset anchoring — never bind to visualViewport/dvh */
     height: auto;
     max-height: none;
     min-height: 0;
-    padding-top: 0;
+    padding-top: var(--safe-top);
     padding-bottom: var(--safe-bottom);
     width: min(280px, 88vw);
     max-width: min(280px, 88vw);
@@ -2900,10 +2901,15 @@ body.sidebar-scroll-lock {
     min-width: 0;
     flex: 0 0 0;
     margin: 0;
-    z-index: 120;
+    z-index: 210;
     transform: translateX(-105%);
     transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: var(--shadow-lg);
+    /* Opaque drawer — must fully cover page content behind it */
+    background: var(--bg-base);
+    background-color: #0F172A;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .app-shell.sidebar-open .app-sidebar {
@@ -2917,18 +2923,38 @@ body.sidebar-scroll-lock {
 
   .app-shell.sidebar-open .sidebar-backdrop {
     display: block;
+    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     opacity: 1;
     pointer-events: auto;
     visibility: visible;
-    z-index: 110;
-    /* Leave the sticky header (hamburger) uncovered so toggle can close the menu. */
-    top: var(--header-min-height, 3.75rem);
+    z-index: 200;
+    background: rgba(2, 6, 23, 0.82);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
 
   .sidebar-toggle {
     display: inline-flex;
     position: relative;
     z-index: 2;
+  }
+
+  .sidebar-toggle-fab {
+    display: none;
+    position: fixed;
+    top: max(0.75rem, var(--safe-top));
+    left: 1rem;
+    z-index: 230;
+    box-shadow: var(--shadow-md);
+    background: var(--bg-surface);
+  }
+
+  .sidebar-toggle-fab.is-visible {
+    display: inline-flex;
   }
 
   .app-main .header {
