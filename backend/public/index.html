@@ -22,14 +22,14 @@
   <link rel="apple-touch-icon" sizes="192x192" href="/brand/logo-icon.png?v=20260907favicon" />
   <link rel="apple-touch-icon" sizes="512x512" href="/brand/logo-icon.png?v=20260907favicon" />
   <style id="eisy-mobile-scroll-critical">
-    /* Critical: unlock vertical scroll before styles.css (Android Chrome / WebView). */
+    /* Strict critical unlock — Android Chrome / WebView first paint */
     html {
       height: auto !important;
       max-height: none !important;
       min-height: 100% !important;
-      min-height: 100vh !important;
       overflow-x: hidden !important;
       overflow-y: auto !important;
+      position: static !important;
       -webkit-overflow-scrolling: touch !important;
     }
     body {
@@ -38,32 +38,17 @@
       height: auto !important;
       max-height: none !important;
       min-height: 100% !important;
-      min-height: 100vh !important;
       overflow-x: hidden !important;
       overflow-y: auto !important;
       -webkit-overflow-scrolling: touch !important;
-      touch-action: pan-x pan-y manipulation !important;
-    }
-    @media (min-width: 901px) {
-      html.doc-scroll, html.doc-scroll body { /* keep mobile unlock if tagged */ }
-      html:not(.doc-scroll) {
-        height: 100vh !important;
-        max-height: 100vh !important;
-        overflow: hidden !important;
-      }
-      html:not(.doc-scroll) body {
-        position: fixed !important;
-        inset: 0 !important;
-        height: 100vh !important;
-        max-height: 100vh !important;
-        overflow: hidden !important;
-      }
+      touch-action: pan-y manipulation !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20260908androidParity" />
+  <link rel="stylesheet" href="/styles.css?v=20260908strictScroll" />
+  <link rel="stylesheet" href="/android-scroll-fix.css?v=20260908strictScroll" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
-    /* Early: unlock document scroll on Android / touch / narrow viewports. */
+    /* Always unlock document scroll on Android / touch / narrow viewports. */
     (function () {
       try {
         var root = document.documentElement;
@@ -74,6 +59,24 @@
         var webview = /\bwv\b/i.test(ua) || /; wv\)/i.test(ua);
         if (narrow || touch || android || webview) {
           root.classList.add('doc-scroll');
+          root.style.setProperty('height', 'auto', 'important');
+          root.style.setProperty('min-height', '100%', 'important');
+          root.style.setProperty('overflow-y', 'auto', 'important');
+          root.style.setProperty('overflow-x', 'hidden', 'important');
+          root.style.setProperty('position', 'static', 'important');
+          document.addEventListener('DOMContentLoaded', function () {
+            var b = document.body;
+            if (!b) return;
+            b.style.setProperty('height', 'auto', 'important');
+            b.style.setProperty('min-height', '100%', 'important');
+            b.style.setProperty('overflow-y', 'auto', 'important');
+            b.style.setProperty('overflow-x', 'hidden', 'important');
+            b.style.setProperty('position', 'relative', 'important');
+            b.style.removeProperty('top');
+            b.style.removeProperty('bottom');
+            b.style.removeProperty('left');
+            b.style.removeProperty('right');
+          });
         }
       } catch (_) { /* ignore */ }
     })();
@@ -1709,7 +1712,7 @@
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
   <script defer src="/src/components/index.js?v=20260817m2"></script>
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
-  <script defer src="/viewport.js?v=20260908androidParity"></script>
+  <script defer src="/viewport.js?v=20260908strictScroll"></script>
   <script defer src="/dashboard.js?v=20260908bootFast"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

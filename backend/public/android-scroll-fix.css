@@ -1,0 +1,44 @@
+/**
+ * Strict Android / mobile scroll unlock — load AFTER styles.css.
+ * Forces natural document flow: height:auto, min-height:100%, overflow-y:auto.
+ */
+html.doc-scroll,
+html.doc-scroll body,
+html.doc-scroll #dashboardScreen,
+html.doc-scroll #adminApp,
+html.doc-scroll .app-shell,
+html.doc-scroll .app-main,
+html.doc-scroll .app-content,
+html.doc-scroll .auth-screen {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+html.doc-scroll,
+html.doc-scroll body {
+  position: relative !important;
+  inset: auto !important;
+}
+
+html.doc-scroll {
+  position: static !important;
+}
+
+html.doc-scroll #dashboardScreen,
+html.doc-scroll #adminApp,
+html.doc-scroll .app-shell,
+html.doc-scroll .app-main,
+html.doc-scroll .app-content,
+html.doc-scroll .auth-screen,
+html.doc-scroll .header,
+html.doc-scroll .app-main .header {
+  position: relative !important;
+  top: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+}

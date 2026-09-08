@@ -122,16 +122,17 @@ body {
   flex-direction: column;
 }
 
-/* Desktop SPA shell: fixed viewport, inner panes scroll (.app-content). */
+/* Desktop SPA shell: fixed viewport ONLY when not in document-scroll mode.
+   Android/WebView always get .doc-scroll, so they never hit position:fixed. */
 @media (min-width: 901px) {
-  html {
+  html:not(.doc-scroll) {
     height: var(--app-vh);
     max-height: var(--app-vh);
     overflow: hidden;
     overscroll-behavior: none;
   }
 
-  body {
+  html:not(.doc-scroll) body {
     position: fixed;
     inset: 0;
     width: auto;
@@ -145,25 +146,24 @@ body {
     touch-action: manipulation;
   }
 
-  /* While an input is focused on desktop, freeze dynamic sizing hints. */
-  html.kb-open,
-  html.kb-open body {
+  html:not(.doc-scroll).kb-open,
+  html:not(.doc-scroll).kb-open body {
     overflow: hidden !important;
     overscroll-behavior: none !important;
     height: var(--app-vh) !important;
     max-height: var(--app-vh) !important;
   }
 
-  html.has-session #dashboardScreen,
-  html.has-session #adminApp {
+  html:not(.doc-scroll).has-session #dashboardScreen,
+  html:not(.doc-scroll).has-session #adminApp {
     min-height: 0;
     height: 100%;
     height: var(--app-vh);
     max-height: var(--app-vh);
   }
 
-  #dashboardScreen,
-  #adminApp {
+  html:not(.doc-scroll) #dashboardScreen,
+  html:not(.doc-scroll) #adminApp {
     height: 100%;
     height: var(--app-vh);
     max-height: 100%;
@@ -173,7 +173,7 @@ body {
     overflow-x: hidden;
   }
 
-  .app-shell {
+  html:not(.doc-scroll) .app-shell {
     height: 100%;
     max-height: 100%;
     min-height: 0;
@@ -181,7 +181,7 @@ body {
     overflow-x: hidden;
   }
 
-  .app-main {
+  html:not(.doc-scroll) .app-main {
     height: 100%;
     max-height: 100%;
     min-height: 0;
@@ -189,21 +189,20 @@ body {
     overflow-x: hidden;
   }
 
-  .app-content {
+  html:not(.doc-scroll) .app-content {
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
 
-  /* Sticky chrome is safe inside the desktop fixed shell */
-  .header,
-  .app-main .header {
+  html:not(.doc-scroll) .header,
+  html:not(.doc-scroll) .app-main .header {
     position: sticky;
     top: 0;
   }
 
-  .auth-screen {
+  html:not(.doc-scroll) .auth-screen {
     height: 100%;
     max-height: 100%;
     min-height: 0;
@@ -212,23 +211,21 @@ body {
     overflow-y: auto;
   }
 
-  body.sidebar-scroll-lock {
+  html:not(.doc-scroll) body.sidebar-scroll-lock {
     overflow: hidden;
   }
 }
 
-/* Force document-scroll whenever JS tags the page (touch / WebView / Android). */
+/* Force document-scroll whenever JS tags the page (touch / WebView / Android).
+   Strict mobile contract: height:auto, min-height:100%, overflow-y:auto. */
 html.doc-scroll {
   height: auto !important;
   max-height: none !important;
   min-height: 100% !important;
-  min-height: 100vh !important;
-  min-height: -webkit-fill-available !important;
-  min-height: var(--app-vh) !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: contain !important;
   position: static !important;
 }
 
@@ -240,29 +237,31 @@ html.doc-scroll body {
   height: auto !important;
   max-height: none !important;
   min-height: 100% !important;
-  min-height: 100vh !important;
-  min-height: -webkit-fill-available !important;
-  min-height: var(--app-vh) !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-x pan-y manipulation !important;
-  display: flex !important;
-  flex-direction: column !important;
+  touch-action: pan-y manipulation !important;
+  display: block !important;
 }
 
 html.doc-scroll #dashboardScreen,
 html.doc-scroll #adminApp,
 html.doc-scroll .app-shell,
 html.doc-scroll .app-main,
-html.doc-scroll .auth-screen {
+html.doc-scroll .auth-screen,
+html.doc-scroll .app-content {
+  position: relative !important;
+  top: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  inset: auto !important;
   height: auto !important;
   max-height: none !important;
   min-height: 100% !important;
-  min-height: 100vh !important;
-  min-height: var(--app-vh) !important;
-  overflow: visible !important;
-  position: relative !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
 }
 
 /* Android/iOS parity: never sticky-lock the top banner in document-scroll mode */
@@ -273,17 +272,11 @@ html.doc-scroll .app-main .header {
   padding-top: max(0.85rem, var(--safe-top)) !important;
 }
 
-html.doc-scroll .app-content {
-  height: auto !important;
-  max-height: none !important;
-  overflow: visible !important;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Sidebar open: dim page but do not permanently kill document scroll on Android. */
+/* Sidebar open: keep document scroll on Android. */
 html.doc-scroll body.sidebar-scroll-lock {
   overflow-x: hidden !important;
   overflow-y: auto !important;
+  position: relative !important;
 }
 
 /* While the soft keyboard is open, avoid viewport-tied height thrashing (mobile). */
@@ -4119,4 +4112,65 @@ html.app-hydrating .wallet-hero-actions-row {
 .app-page:not(.is-active) {
   content-visibility: auto;
   contain-intrinsic-size: 800px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STRICT Android / mobile document-scroll unlock (last-wins)
+   height:auto + min-height:100% + overflow-y:auto on root wrappers.
+   Desktop fixed shell never applies when html.doc-scroll is present.
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+  html,
+  html.doc-scroll {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    position: static !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  body,
+  html.doc-scroll body {
+    position: relative !important;
+    inset: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y manipulation !important;
+  }
+
+  #dashboardScreen,
+  #adminApp,
+  .app-shell,
+  .app-main,
+  .app-content,
+  .auth-screen,
+  html.doc-scroll #dashboardScreen,
+  html.doc-scroll #adminApp,
+  html.doc-scroll .app-shell,
+  html.doc-scroll .app-main,
+  html.doc-scroll .app-content,
+  html.doc-scroll .auth-screen {
+    position: relative !important;
+    inset: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .header,
+  .app-main .header,
+  html.doc-scroll .header,
+  html.doc-scroll .app-main .header {
+    position: relative !important;
+    top: auto !important;
+  }
 }
