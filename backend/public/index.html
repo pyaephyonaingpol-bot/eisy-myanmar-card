@@ -22,29 +22,62 @@
   <link rel="apple-touch-icon" sizes="192x192" href="/brand/logo-icon.png?v=20260907favicon" />
   <link rel="apple-touch-icon" sizes="512x512" href="/brand/logo-icon.png?v=20260907favicon" />
   <style id="eisy-mobile-scroll-critical">
-    /* Critical: unlock vertical scroll before styles.css loads (mobile / WebView). */
-    @media (max-width: 900px) {
-      html {
-        height: 100% !important;
-        min-height: 100% !important;
-        min-height: 100vh !important;
-        overflow-x: hidden !important;
-        overflow-y: auto !important;
-        -webkit-overflow-scrolling: touch !important;
+    /* Critical: unlock vertical scroll before styles.css (Android Chrome / WebView). */
+    html {
+      height: auto !important;
+      max-height: none !important;
+      min-height: 100% !important;
+      min-height: 100vh !important;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+    }
+    body {
+      position: relative !important;
+      inset: auto !important;
+      height: auto !important;
+      max-height: none !important;
+      min-height: 100% !important;
+      min-height: 100vh !important;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      touch-action: pan-x pan-y manipulation !important;
+    }
+    @media (min-width: 901px) {
+      html.doc-scroll, html.doc-scroll body { /* keep mobile unlock if tagged */ }
+      html:not(.doc-scroll) {
+        height: 100vh !important;
+        max-height: 100vh !important;
+        overflow: hidden !important;
       }
-      body {
-        position: relative !important;
-        height: auto !important;
-        min-height: 100% !important;
-        min-height: 100vh !important;
-        overflow-x: hidden !important;
-        overflow-y: auto !important;
-        -webkit-overflow-scrolling: touch !important;
+      html:not(.doc-scroll) body {
+        position: fixed !important;
+        inset: 0 !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        overflow: hidden !important;
       }
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20260908mobileScroll" />
+  <link rel="stylesheet" href="/styles.css?v=20260908unlockScroll" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
+  <script>
+    /* Early: unlock document scroll on Android / touch / narrow viewports. */
+    (function () {
+      try {
+        var root = document.documentElement;
+        var ua = navigator.userAgent || '';
+        var narrow = window.matchMedia && window.matchMedia('(max-width: 900px)').matches;
+        var touch = window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+        var android = /Android/i.test(ua);
+        var webview = /\bwv\b/i.test(ua) || /; wv\)/i.test(ua);
+        if (narrow || touch || android || webview) {
+          root.classList.add('doc-scroll');
+        }
+      } catch (_) { /* ignore */ }
+    })();
+  </script>
   <script>
     /* Early paint lock: avoid auth↔dashboard flash before JS mounts */
     (function () {
@@ -1676,7 +1709,7 @@
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
   <script defer src="/src/components/index.js?v=20260817m2"></script>
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
-  <script defer src="/viewport.js?v=20260908mobileScroll"></script>
+  <script defer src="/viewport.js?v=20260908unlockScroll"></script>
   <script defer src="/dashboard.js?v=20260908bootFast"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

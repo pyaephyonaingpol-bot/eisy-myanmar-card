@@ -73,9 +73,10 @@
 }
 
 html {
-  /* Scrollable root by default (mobile / WebView / Android Chrome).
+  /* Natural document height + scroll by default (Android Chrome / WebView).
      Desktop ≥901px re-locks to the fixed SPA shell below. */
-  height: 100%;
+  height: auto;
+  max-height: none;
   min-height: 100%;
   min-height: 100vh;
   min-height: -webkit-fill-available;
@@ -98,9 +99,11 @@ body {
   color: var(--text-primary);
   line-height: 1.55;
   position: relative;
+  inset: auto;
   width: 100%;
   max-width: 100%;
-  height: 100%;
+  height: auto;
+  max-height: none;
   min-height: 100%;
   min-height: 100vh;
   min-height: -webkit-fill-available;
@@ -112,7 +115,8 @@ body {
   -webkit-font-smoothing: antialiased;
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
-  touch-action: manipulation;
+  /* Allow vertical panning / scroll on touch devices */
+  touch-action: pan-x pan-y manipulation;
   display: flex;
   flex-direction: column;
 }
@@ -137,6 +141,7 @@ body {
     overflow-x: hidden;
     overscroll-behavior: none;
     display: block;
+    touch-action: manipulation;
   }
 
   /* While an input is focused on desktop, freeze dynamic sizing hints. */
@@ -147,11 +152,57 @@ body {
     height: var(--app-vh) !important;
     max-height: var(--app-vh) !important;
   }
+
+  html.has-session #dashboardScreen,
+  html.has-session #adminApp {
+    min-height: 0;
+    height: 100%;
+    height: var(--app-vh);
+    max-height: var(--app-vh);
+  }
+
+  #dashboardScreen,
+  #adminApp {
+    height: 100%;
+    height: var(--app-vh);
+    max-height: 100%;
+    max-height: var(--app-vh);
+    min-height: 0;
+    overflow: hidden;
+    overflow-x: hidden;
+  }
+
+  .app-shell {
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    overflow-x: hidden;
+  }
+
+  .app-main {
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    overflow-x: hidden;
+  }
+
+  .app-content {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  body.sidebar-scroll-lock {
+    overflow: hidden;
+  }
 }
 
-/* Force document-scroll whenever JS tags the page (touch / WebView / narrow). */
+/* Force document-scroll whenever JS tags the page (touch / WebView / Android). */
 html.doc-scroll {
-  height: 100% !important;
+  height: auto !important;
   max-height: none !important;
   min-height: 100% !important;
   min-height: 100vh !important;
@@ -161,6 +212,7 @@ html.doc-scroll {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
   overscroll-behavior-y: contain;
+  position: static !important;
 }
 
 html.doc-scroll body {
@@ -177,6 +229,7 @@ html.doc-scroll body {
   overflow-x: hidden !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pan-y manipulation !important;
   display: flex !important;
   flex-direction: column !important;
 }
@@ -191,8 +244,10 @@ html.doc-scroll .auth-screen {
   min-height: 100% !important;
   min-height: 100vh !important;
   min-height: var(--app-vh) !important;
+  overflow: visible !important;
   overflow-x: hidden !important;
   overflow-y: visible !important;
+  position: relative !important;
 }
 
 html.doc-scroll .app-content {
@@ -200,6 +255,12 @@ html.doc-scroll .app-content {
   max-height: none !important;
   overflow: visible !important;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Sidebar open: dim page but do not permanently kill document scroll on Android. */
+html.doc-scroll body.sidebar-scroll-lock {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
 }
 
 /* While the soft keyboard is open, avoid viewport-tied height thrashing (mobile). */
@@ -290,10 +351,11 @@ html.has-session #adminApp.hidden {
 }
 html.has-session #dashboardScreen,
 html.has-session #adminApp {
-  min-height: 0;
-  height: 100%;
-  height: var(--app-vh);
-  max-height: var(--app-vh);
+  /* Mobile/default: grow with content. Desktop height lock is in min-width:901px. */
+  min-height: 100%;
+  min-height: var(--app-vh);
+  height: auto;
+  max-height: none;
 }
 
 h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; }
@@ -2585,13 +2647,12 @@ pre.output.hidden { display: none !important; }
 #dashboardScreen {
   width: 100%;
   max-width: 100%;
-  height: 100%;
-  height: var(--app-vh);
-  max-height: 100%;
-  max-height: var(--app-vh);
-  min-height: 0;
+  height: auto;
+  max-height: none;
+  min-height: 100%;
+  min-height: var(--app-vh);
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
@@ -2600,13 +2661,12 @@ pre.output.hidden { display: none !important; }
 #adminApp {
   width: 100%;
   max-width: 100%;
-  height: 100%;
-  height: var(--app-vh);
-  max-height: 100%;
-  max-height: var(--app-vh);
-  min-height: 0;
+  height: auto;
+  max-height: none;
+  min-height: 100%;
+  min-height: var(--app-vh);
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
@@ -2618,14 +2678,15 @@ pre.output.hidden { display: none !important; }
   align-items: stretch;
   width: 100%;
   max-width: 100%;
-  height: 100%;
-  max-height: 100%;
-  min-height: 0;
+  height: auto;
+  max-height: none;
+  min-height: 100%;
+  min-height: var(--app-vh);
   min-width: 0;
   flex: 1 1 auto;
   position: relative;
   isolation: isolate;
-  overflow: hidden;
+  overflow: visible;
   overflow-x: hidden;
 }
 
@@ -2818,10 +2879,10 @@ pre.output.hidden { display: none !important; }
   max-width: 100%;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  max-height: 100%;
+  height: auto;
+  max-height: none;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   overflow-x: hidden;
   position: relative;
   z-index: 2;
@@ -2851,9 +2912,7 @@ pre.output.hidden { display: none !important; }
   flex-direction: column;
   gap: 1.5rem;
   overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  overflow-y: visible;
   box-sizing: border-box;
 }
 
@@ -2966,7 +3025,9 @@ pre.output.hidden { display: none !important; }
 }
 
 body.sidebar-scroll-lock {
-  overflow: hidden;
+  /* Desktop/default: prevent background scroll while a modal/drawer is open.
+     Mobile/doc-scroll overrides keep overflow-y:auto so Android does not lock. */
+  overflow-x: hidden;
 }
 
 @media (max-width: 900px) {
@@ -2977,7 +3038,7 @@ body.sidebar-scroll-lock {
    * - inputs/buttons stay in normal flow near forms instead of being clipped
    */
   html {
-    height: 100% !important;
+    height: auto !important;
     max-height: none !important;
     min-height: 100% !important;
     min-height: 100vh !important;
@@ -3003,6 +3064,7 @@ body.sidebar-scroll-lock {
     overflow-x: hidden !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-x pan-y manipulation !important;
     display: flex;
     flex-direction: column;
   }
@@ -3406,7 +3468,9 @@ body.sidebar-scroll-lock {
   }
 
   body.sidebar-scroll-lock {
-    overflow: hidden !important;
+    /* Keep page scrollable under the drawer on Android; drawer is position:fixed. */
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
   }
 }
 

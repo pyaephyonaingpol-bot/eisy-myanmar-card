@@ -1,14 +1,13 @@
 /**
  * Mobile viewport helpers
  *
- * Document-scroll layout on mobile / coarse-pointer / Android WebView:
- * html/body use height:100% + min-height:100vh + overflow-y:auto rather than
- * a fixed h-screen shell. Do NOT pixel-lock --app-vh while idle — that
- * reintroduces collapse/clipping when browser chrome changes.
+ * Document-scroll layout on mobile / Android Chrome / Android WebView:
+ * html/body use natural height (height:auto) + min-height:100vh + overflow-y:auto.
+ * Do NOT pixel-lock --app-vh while idle — that reintroduces collapse/clipping.
  *
- * Desktop (≥901px) keeps the fixed SPA shell via CSS media query.
+ * Desktop (≥901px, non-Android) keeps the fixed SPA shell via CSS media query.
  */
-(function lockAppViewport() {
+(function unlockMobileDocumentScroll() {
   const root = document.documentElement;
   const mqMobile = window.matchMedia('(max-width: 900px)');
   const mqTouch = window.matchMedia('(hover: none) and (pointer: coarse)');
@@ -16,18 +15,38 @@
   let focusDepth = 0;
   let unlockTimer = 0;
 
+  function isAndroid() {
+    return /Android/i.test(navigator.userAgent || '');
+  }
+
   function isAndroidWebView() {
     const ua = navigator.userAgent || '';
-    // Android WebView markers: "; wv)" or Version/x.x Chrome without "Chrome/" Safari patterns.
     if (/\bwv\b/i.test(ua) || /; wv\)/i.test(ua)) return true;
     if (/Android/i.test(ua) && /Version\/[\d.]+/i.test(ua) && /Chrome/i.test(ua)) return true;
     return false;
   }
 
   function syncDocScrollClass() {
-    const on = mqMobile.matches || mqTouch.matches || isAndroidWebView();
+    // Always unlock on Android (Chrome + WebView), touch, or narrow viewports.
+    const on = mqMobile.matches || mqTouch.matches || isAndroid() || isAndroidWebView();
     root.classList.toggle('doc-scroll', on);
-    if (on) clearPixelLock();
+    if (on) {
+      clearPixelLock();
+      // Belt-and-suspenders: clear any leftover inline overflow locks.
+      try {
+        root.style.removeProperty('overflow');
+        root.style.removeProperty('overflow-y');
+        root.style.removeProperty('height');
+        root.style.removeProperty('max-height');
+        if (document.body) {
+          document.body.style.removeProperty('overflow');
+          document.body.style.removeProperty('overflow-y');
+          document.body.style.removeProperty('height');
+          document.body.style.removeProperty('max-height');
+          document.body.style.removeProperty('position');
+        }
+      } catch (_) { /* ignore */ }
+    }
   }
 
   function isTextEntry(el) {
@@ -58,11 +77,9 @@
     if (!isTextEntry(event.target)) return;
     focusDepth += 1;
     if (focusDepth === 1) {
-      // Never freeze a pixel height on mobile — let the page scroll.
       if (mqMobile.matches || root.classList.contains('doc-scroll')) clearPixelLock();
       setKeyboardClass(true);
     }
-    // Bring the focused field into view after the keyboard settles.
     const target = event.target;
     window.setTimeout(() => {
       try {
@@ -97,7 +114,6 @@
 
   document.addEventListener('focusin', onFocusIn, true);
   document.addEventListener('focusout', onFocusOut, true);
-
   window.addEventListener('orientationchange', onOrientationChange, { passive: true });
 
   if (screen.orientation && screen.orientation.addEventListener) {
@@ -115,7 +131,6 @@
     mqMobile.addListener(syncDocScrollClass);
   }
 
-  // Ensure any leftover pixel lock from a previous build is cleared on boot.
   clearPixelLock();
   syncDocScrollClass();
 })();
