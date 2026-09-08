@@ -42,13 +42,25 @@ console.log('\n== Viewport + critical CSS ==');
 const html = read('backend/public/index.html');
 assert.ok(/name="viewport"[^>]*width=device-width/i.test(html), 'viewport meta');
 assert.ok(html.includes('eisy-mobile-scroll-critical'), 'critical mobile scroll CSS');
-assert.ok(html.includes('styles.css?v=20260908unlockScroll'), 'cache-busted styles');
-assert.ok(html.includes('viewport.js?v=20260908unlockScroll'), 'cache-busted viewport.js');
+assert.ok(html.includes('styles.css?v=20260908androidParity'), 'cache-busted styles');
+assert.ok(html.includes('viewport.js?v=20260908androidParity'), 'cache-busted viewport.js');
 assert.ok(html.includes("classList.add('doc-scroll')") || html.includes('classList.add("doc-scroll")'),
   'early Android/doc-scroll bootstrap');
 const vp = read('backend/public/viewport.js');
 assert.ok(vp.includes('doc-scroll'), 'viewport.js toggles doc-scroll');
 assert.ok(vp.includes('isAndroid') || vp.includes('Android'), 'Android detection');
+console.log('ok');
+
+console.log('\n== Android/iOS layout parity ==');
+assert.ok(/\.auth-screen\s*\{[^}]*position:\s*relative/s.test(css), 'auth-screen relative');
+assert.ok(/\.auth-screen\s*\{[^}]*height:\s*auto/s.test(css), 'auth-screen height auto (not h-screen)');
+assert.ok(/\.auth-screen\s*\{[^}]*overflow:\s*visible/s.test(css), 'auth-screen overflow visible');
+assert.ok(/\.header\s*\{[^}]*position:\s*relative/s.test(css), 'header relative by default');
+assert.ok(
+  /html\.doc-scroll \.header[\s\S]*?position:\s*relative\s*!important/m.test(css),
+  'doc-scroll header stays relative (no sticky overlap)'
+);
+assert.ok(!/--sidebar-safe-top:\s*max\(3rem/.test(css), 'no aggressive 3rem safe-top floor');
 console.log('ok');
 
 console.log('\n== Android WebView injection ==');
