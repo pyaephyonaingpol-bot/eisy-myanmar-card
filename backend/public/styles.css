@@ -2879,6 +2879,8 @@ body.sidebar-scroll-lock {
     display: flex;
     flex-direction: row;
     align-items: stretch;
+    /* Allow fixed hamburger (z-index 220) to stack above drawer/backdrop. */
+    isolation: auto;
   }
 
   .app-sidebar {
@@ -2941,13 +2943,18 @@ body.sidebar-scroll-lock {
     z-index: 2;
   }
 
-  /* Keep hamburger above the full-screen dimmer so the menu can close. */
-  .app-shell.sidebar-open .sidebar-toggle {
+  .sidebar-toggle-fab {
+    display: none;
     position: fixed;
     top: max(0.75rem, var(--safe-top));
     left: 1rem;
-    z-index: 220;
+    z-index: 230;
     box-shadow: var(--shadow-md);
+    background: var(--bg-surface);
+  }
+
+  .sidebar-toggle-fab.is-visible {
+    display: inline-flex;
   }
 
   .app-main .header {

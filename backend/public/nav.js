@@ -43,7 +43,7 @@ const AppNav = {
       this._sidebarDelegateBound = true;
       document.addEventListener('click', (e) => {
         const toggle = e.target?.closest?.('[data-sidebar-toggle]');
-        if (toggle && this.root?.contains?.(toggle)) {
+        if (toggle && (this.root?.contains?.(toggle) || toggle.classList.contains('sidebar-toggle-fab'))) {
           e.preventDefault();
           e.stopPropagation();
           this.toggleMobileSidebar({ force: true });
@@ -90,13 +90,47 @@ const AppNav = {
   syncSidebarUi() {
     const shell = this.getShell();
     const open = Boolean(shell?.classList.contains('sidebar-open'));
+    const label = (typeof I18n !== 'undefined')
+      ? I18n.t(open ? 'close_menu' : 'open_menu')
+      : (open ? 'Close menu' : 'Open menu');
+
     if (this.sidebarToggle) {
       this.sidebarToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      const openKey = open ? 'close_menu' : 'open_menu';
-      const label = (typeof I18n !== 'undefined') ? I18n.t(openKey) : (open ? 'Close menu' : 'Open menu');
       this.sidebarToggle.setAttribute('aria-label', label);
     }
+
+    // Floating close control lives as a shell sibling of the backdrop/drawer so
+    // it stacks above the full-screen dimmer (header toggle cannot).
+    const fab = this.ensureSidebarFab(shell);
+    if (fab) {
+      const showFab = open && this.isMobileSidebarMode();
+      fab.hidden = !showFab;
+      fab.setAttribute('aria-hidden', showFab ? 'false' : 'true');
+      fab.setAttribute('aria-expanded', open ? 'true' : 'false');
+      fab.setAttribute('aria-label', label);
+      fab.classList.toggle('is-visible', showFab);
+    }
+
     document.body.classList.toggle('sidebar-scroll-lock', open && this.isMobileSidebarMode());
+  },
+
+  ensureSidebarFab(shell) {
+    if (!shell) return null;
+    let fab = shell.querySelector('.sidebar-toggle-fab');
+    if (fab) return fab;
+    fab = document.createElement('button');
+    fab.type = 'button';
+    fab.className = 'sidebar-toggle sidebar-toggle-fab';
+    fab.setAttribute('data-sidebar-toggle', '');
+    fab.setAttribute('aria-label', 'Close menu');
+    fab.setAttribute('aria-expanded', 'false');
+    fab.hidden = true;
+    fab.innerHTML = '☰';
+    // Insert after backdrop so it stacks with drawer siblings.
+    const backdrop = shell.querySelector('[data-sidebar-backdrop]');
+    if (backdrop?.nextSibling) shell.insertBefore(fab, backdrop.nextSibling);
+    else shell.prepend(fab);
+    return fab;
   },
 
   handleViewportChange() {

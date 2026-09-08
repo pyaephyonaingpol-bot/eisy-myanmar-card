@@ -28,6 +28,7 @@ assert.ok(/sidebar-open \.sidebar-backdrop[\s\S]{0,220}inset:\s*0/.test(css)
   || /sidebar-open \.sidebar-backdrop[\s\S]{0,220}top:\s*0/.test(css), 'full-screen open backdrop');
 assert.ok(css.includes('background-color: #0F172A') || css.includes('background-color:#0F172A'), 'solid sidebar fill');
 assert.ok(nav.includes('_sidebarDelegateBound') || nav.includes('data-sidebar-toggle'), 'toggle click wiring');
+assert.ok(nav.includes('sidebar-toggle-fab') || nav.includes('ensureSidebarFab'), 'floating close control above overlay');
 console.log('ok');
 
 console.log('\n== Email PIN / password reset ==');
