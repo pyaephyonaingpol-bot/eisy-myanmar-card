@@ -29,6 +29,9 @@ assert.ok(/sidebar-open \.sidebar-backdrop[\s\S]{0,220}inset:\s*0/.test(css)
 assert.ok(css.includes('background-color: #0F172A') || css.includes('background-color:#0F172A'), 'solid sidebar fill');
 assert.ok(nav.includes('_sidebarDelegateBound') || nav.includes('data-sidebar-toggle'), 'toggle click wiring');
 assert.ok(nav.includes('sidebar-toggle-fab') || nav.includes('ensureSidebarFab'), 'floating close control above overlay');
+assert.ok(css.includes('--sidebar-safe-top'), 'sidebar safe-area token');
+assert.ok(css.includes('padding-top: var(--sidebar-safe-top)'), 'drawer uses safe-area top padding');
+assert.ok(css.includes('top: var(--sidebar-safe-top)'), 'fab sits below status bar');
 console.log('ok');
 
 console.log('\n== Email PIN / password reset ==');
