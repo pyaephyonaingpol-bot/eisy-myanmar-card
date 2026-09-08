@@ -20,11 +20,21 @@ assert.ok(html.includes('href="/downloads/eisy-myanmar.apk"'), 'APK href');
 assert.ok(/download(?:=["']eisy-myanmar\.apk["']|\b)/.test(html), 'download attribute present');
 assert.ok(html.includes('Download App (APK)'), 'button label');
 assert.ok(html.includes('apk-download-icon'), 'download icon');
+assert.ok(html.includes('auth-apk-download'), 'footer download wrapper');
+// Button must sit above legal links, not in the brand/header block.
+const brandEnd = html.indexOf('</div>', html.indexOf('auth-brand-sub'));
+const btnIdx = html.indexOf('apk-download-btn');
+const legalIdx = html.indexOf('auth-legal-links');
+assert.ok(btnIdx > brandEnd, 'button is below auth brand header');
+assert.ok(btnIdx > 0 && legalIdx > btnIdx, 'button appears just above legal links');
+const between = html.slice(btnIdx, legalIdx);
+assert.ok(between.includes('Download App (APK)'), 'label is in bottom section');
 console.log('ok');
 
 console.log('\n== Styles ==');
 const css = read('backend/public/styles.css');
 assert.ok(css.includes('.apk-download-btn'), 'button style');
+assert.ok(css.includes('.auth-apk-download'), 'bottom placement wrapper style');
 assert.ok(css.includes('#34d399') || css.includes('emerald'), 'emerald accent');
 assert.ok(css.includes('#1e293b'), 'slate background');
 console.log('ok');
