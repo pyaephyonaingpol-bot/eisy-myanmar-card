@@ -28,21 +28,27 @@ assert.ok(/sidebar-open \.sidebar-backdrop[\s\S]{0,220}inset:\s*0/.test(css)
   || /sidebar-open \.sidebar-backdrop[\s\S]{0,220}top:\s*0/.test(css), 'full-screen open backdrop');
 assert.ok(css.includes('background-color: #0F172A') || css.includes('background-color:#0F172A'), 'solid sidebar fill');
 assert.ok(nav.includes('_sidebarDelegateBound') || nav.includes('data-sidebar-toggle'), 'toggle click wiring');
-assert.ok(nav.includes('sidebar-toggle-fab') || nav.includes('ensureSidebarFab'), 'floating close control above overlay');
+assert.ok(nav.includes('sidebar-toggle-fab') || nav.includes('ensureSidebarFab') || nav.includes('sidebar-close'), 'mobile close control wiring');
+assert.ok(nav.includes('sidebar-close'), 'syncs in-drawer close control');
 assert.ok(css.includes('--sidebar-safe-top'), 'sidebar safe-area token');
 assert.ok(
   css.includes('max(3rem, calc(var(--safe-top) + 0.75rem))'),
   'sidebar safe-top uses pt-12 floor plus device inset'
 );
 assert.ok(css.includes('padding-top: var(--sidebar-safe-top)'), 'drawer uses safe-area top padding');
-assert.ok(css.includes('top: var(--sidebar-safe-top)'), 'fab sits below status bar');
+assert.ok(css.includes('.sidebar-close'), 'in-drawer close control');
+assert.ok(
+  css.includes('display: none !important') && css.includes('.sidebar-toggle-fab'),
+  'floating FAB hidden in favor of aligned close'
+);
 assert.ok(
   css.includes('.app-shell.sidebar-open .header-logo-mobile'),
   'header logo hidden while drawer open (avoids duplicate mark)'
 );
 assert.ok(
-  /sidebar-open \.app-sidebar \.sidebar-brand[\s\S]{0,80}padding-left:\s*3\.15rem/.test(css),
-  'open drawer brand clears floating close control'
+  /sidebar-brand[\s\S]{0,120}align-items:\s*center/.test(css)
+    && /sidebar-brand[\s\S]{0,160}gap:\s*0\.75rem/.test(css),
+  'sidebar brand uses flex align + gap'
 );
 const indexHtml = read('backend/public/index.html');
 assert.ok(!indexHtml.includes('<<<<<<<') && !indexHtml.includes('>>>>>>>'), 'no git conflict markers in index.html');

@@ -10,15 +10,21 @@ const Auth = {
     return (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.DEVICE) || 'eisy_device';
   },
 
+  /** In-memory session mirror — avoids repeated JSON.parse on every getter. */
+  _mem: undefined,
+
   load() {
+    if (this._mem !== undefined) return this._mem;
     try {
-      return JSON.parse(localStorage.getItem(this.STORAGE_KEY) || 'null');
+      this._mem = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || 'null');
     } catch {
-      return null;
+      this._mem = null;
     }
+    return this._mem;
   },
 
   save(data) {
+    this._mem = data;
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
     } catch (err) {
@@ -27,6 +33,7 @@ const Auth = {
   },
 
   clear() {
+    this._mem = null;
     localStorage.removeItem(this.STORAGE_KEY);
   },
 

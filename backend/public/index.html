@@ -21,7 +21,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/brand/logo-icon.png?v=20260907favicon" />
   <link rel="apple-touch-icon" sizes="192x192" href="/brand/logo-icon.png?v=20260907favicon" />
   <link rel="apple-touch-icon" sizes="512x512" href="/brand/logo-icon.png?v=20260907favicon" />
-  <link rel="stylesheet" href="/styles.css?v=20260908fixHeaderSidebar" />
+  <link rel="stylesheet" href="/styles.css?v=20260908sidebarPerf" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
     /* Early paint lock: avoid auth↔dashboard flash before JS mounts */
@@ -950,6 +950,13 @@
       <div class="sidebar-backdrop" data-sidebar-backdrop aria-hidden="true"></div>
       <aside class="app-sidebar" id="userSidebar" aria-label="Main navigation">
         <div class="sidebar-brand">
+          <button
+            type="button"
+            class="sidebar-close"
+            data-sidebar-toggle
+            aria-label="Close menu"
+            aria-controls="userSidebar"
+          >✕</button>
           <a class="brand-link brand-link-sidebar" href="#home" data-goto="home" aria-label="Eisy Myanmar home">
             <img
               class="brand-logo brand-logo-icon brand-logo-sidebar"
@@ -1603,39 +1610,38 @@
     </div>
   </div>
 
-  <script src="/src/lib/config.js?v=20260817m2"></script>
-  <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
-  <script src="/src/lib/constants.js?v=20260817m2"></script>
-  <script src="/src/lib/helpers.js?v=20260817m2"></script>
-  <script src="/src/lib/apiConfig.js?v=20260817m2"></script>
-  <script src="/src/lib/index.js?v=20260817m2"></script>
-  <script src="/src/types/runtime.js?v=20260817m2"></script>
-  <script src="/api-config.js?v=20260817m2"></script>
-  <script src="/vendor/browser-image-compression.js?v=20260812a"></script>
-  <script src="/supabase-public-config.js?v=20260907googleFix"></script>
-  <script type="module" src="/supabaseBridge.js?v=20260907googleFix"></script>
-  <script>const $ = (id) => document.getElementById(id);</script>
-  <script src="/i18n.js?v=20260831sellmmk"></script>
-  <script src="/auth.js?v=20260907menuPin"></script>
-  <script src="/src/services/apiClient.js?v=20260817m2"></script>
-  <script src="/src/services/depositApi.js?v=20260828tron"></script>
-  <script src="/src/services/usdtWalletApi.js?v=20260824usdtload"></script>
-  <script src="/src/services/withdrawalApi.js?v=20260817m2"></script>
-  <script src="/src/services/cardsApi.js?v=20260831cardmodal"></script>
-  <script src="/src/services/accountApi.js?v=20260823profile"></script>
-  <script src="/src/services/p2pApi.js?v=20260819p2p"></script>
-  <script src="/src/services/index.js?v=20260817m2"></script>
-  <script src="/src/hooks/submitBusy.js?v=20260817m2"></script>
-  <script src="/src/hooks/depositFees.js?v=20260821fee"></script>
-  <script src="/src/hooks/depositPolling.js?v=20260828tron"></script>
-  <script src="/src/hooks/index.js?v=20260817m2"></script>
-  <script src="/src/components/toast.js?v=20260817m2"></script>
-  <script src="/src/components/depositFeePreview.js?v=20260817m2"></script>
-  <script src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
-  <script src="/src/components/activityLog.js?v=20260817m2"></script>
-  <script src="/src/components/index.js?v=20260817m2"></script>
-  <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/viewport.js?v=20260821scroll"></script>
-  <script src="/dashboard.js?v=20260907menuPin2"></script>
+  <script defer src="/src/lib/config.js?v=20260817m2"></script>
+  <script defer src="/src/lib/storageKeys.js?v=20260817m2"></script>
+  <script defer src="/src/lib/constants.js?v=20260817m2"></script>
+  <script defer src="/src/lib/helpers.js?v=20260817m2"></script>
+  <script defer src="/src/lib/apiConfig.js?v=20260817m2"></script>
+  <script defer src="/src/lib/index.js?v=20260817m2"></script>
+  <script defer src="/src/types/runtime.js?v=20260817m2"></script>
+  <script defer src="/api-config.js?v=20260817m2"></script>
+  <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
+  <script type="module" src="/supabaseBridge.js?v=20260908bootFast"></script>
+  <script defer src="/i18n.js?v=20260831sellmmk"></script>
+  <script defer src="/auth.js?v=20260908bootFast"></script>
+  <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
+  <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
+  <script defer src="/src/services/usdtWalletApi.js?v=20260824usdtload"></script>
+  <script defer src="/src/services/withdrawalApi.js?v=20260817m2"></script>
+  <script defer src="/src/services/cardsApi.js?v=20260831cardmodal"></script>
+  <script defer src="/src/services/accountApi.js?v=20260823profile"></script>
+  <script defer src="/src/services/p2pApi.js?v=20260819p2p"></script>
+  <script defer src="/src/services/index.js?v=20260817m2"></script>
+  <script defer src="/src/hooks/submitBusy.js?v=20260817m2"></script>
+  <script defer src="/src/hooks/depositFees.js?v=20260821fee"></script>
+  <script defer src="/src/hooks/depositPolling.js?v=20260828tron"></script>
+  <script defer src="/src/hooks/index.js?v=20260817m2"></script>
+  <script defer src="/src/components/toast.js?v=20260817m2"></script>
+  <script defer src="/src/components/depositFeePreview.js?v=20260817m2"></script>
+  <script defer src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
+  <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
+  <script defer src="/src/components/index.js?v=20260817m2"></script>
+  <script defer src="/nav.js?v=20260908sidebarPerf"></script>
+  <script defer src="/viewport.js?v=20260821scroll"></script>
+  <script defer src="/dashboard.js?v=20260908bootFast"></script>
+  <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
 </html>

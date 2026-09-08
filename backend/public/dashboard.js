@@ -113,11 +113,22 @@ const Dashboard = {
           await this.handleGoogleOAuthCallback();
           return;
         }
+        // Paint immediately from cached session; revalidate in the background.
+        if (Auth.sessionToken) {
+          finishBoot();
+          await Auth.restoreSession()
+            .then(() => this.refreshAuthUI())
+            .catch((err) => console.warn('[Dashboard] session restore:', err.message));
+          return;
+        }
         await Auth.restoreSession().catch((err) => console.warn('[Dashboard] session restore:', err.message));
       };
       boot()
         .catch((err) => console.warn('[Dashboard] boot:', err.message))
-        .finally(finishBoot);
+        .finally(() => {
+          // Logged-out / OAuth paths still need a single paint.
+          if (!document.documentElement.classList.contains('app-ready')) finishBoot();
+        });
     } catch (err) {
       console.error('[Dashboard] init failed:', err);
       this.endHydration();
@@ -331,6 +342,7 @@ const Dashboard = {
     try {
       if (page === 'deposits') {
         this.loadDepositHistory({ force });
+        this.loadDepositPaymentMethods().catch(() => {});
         this.populateReloadCardSelect();
         if (opts.depositTab === 'usdt') this.openUsdtTopUpModal();
       }
@@ -339,6 +351,7 @@ const Dashboard = {
         this.renderRatesPage();
         // Honor TTL — force only when explicitly requested.
         this.loadWithdrawalFees({ force }).catch(() => {});
+        this.loadCardPricing().catch(() => {});
       }
       if (page === 'p2p') {
         if (opts.p2pTab) this.switchP2pTab(opts.p2pTab);
@@ -361,6 +374,7 @@ const Dashboard = {
           forceRefresh: force || hasPending || !this._isFresh('cards'),
         });
         this.loadReloadHistory({ force });
+        this.loadCardPricing().catch(() => {});
       }
       if (page === 'home') {
         this.updateHomeRateSummary();
@@ -2194,15 +2208,33 @@ const Dashboard = {
     btn.textContent = busy ? 'Compressing photos…' : 'Submit for Review';
   },
 
+  async ensureImageCompression() {
+    if (typeof window.imageCompression === 'function') return window.imageCompression;
+    if (this._imageCompressionPromise) return this._imageCompressionPromise;
+    this._imageCompressionPromise = new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[data-eisy-image-compression]');
+      if (existing) {
+        existing.addEventListener('load', () => resolve(window.imageCompression));
+        existing.addEventListener('error', () => reject(new Error('image compression script failed')));
+        return;
+      }
+      const s = document.createElement('script');
+      s.src = '/vendor/browser-image-compression.js?v=20260812a';
+      s.async = true;
+      s.dataset.eisyImageCompression = '1';
+      s.onload = () => resolve(window.imageCompression);
+      s.onerror = () => reject(new Error('image compression script failed'));
+      document.head.appendChild(s);
+    }).catch((err) => {
+      this._imageCompressionPromise = null;
+      throw err;
+    });
+    return this._imageCompressionPromise;
+  },
+
   canCompressKycImages() {
-    const compressFn = typeof imageCompression === 'function'
-      ? imageCompression
-      : (typeof window !== 'undefined' && typeof window.imageCompression === 'function'
-        ? window.imageCompression
-        : null);
-    // browser-image-compression sets CustomFileReader=false when FileReader is missing
-    // (Capacitor / React Native WebViews), which throws on `new CustomFileReader()`.
-    return Boolean(compressFn && typeof FileReader === 'function');
+    // Compression lib is lazy-loaded; FileReader is the hard prerequisite.
+    return typeof FileReader === 'function';
   },
 
   shouldUseKycCompressionWorker() {
@@ -2229,9 +2261,17 @@ const Dashboard = {
       console.warn('[kyc] FileReader/imageCompression unavailable — uploading original');
       return file;
     }
-    const compressFn = typeof imageCompression === 'function'
-      ? imageCompression
-      : window.imageCompression;
+    let compressFn;
+    try {
+      compressFn = await this.ensureImageCompression();
+    } catch (err) {
+      console.warn('[kyc] imageCompression load failed — uploading original', err);
+      return file;
+    }
+    if (typeof compressFn !== 'function') {
+      console.warn('[kyc] imageCompression unavailable — uploading original');
+      return file;
+    }
 
     const options = {
       maxSizeMB: 1,
@@ -5551,16 +5591,12 @@ const Dashboard = {
         $('sumName').textContent = Auth.user.name;
       }
 
+      // Home-critical path only — pricing/fees/KYC/methods load on demand per page.
       await Promise.allSettled([
         this.loadWallet({ force: true }),
-        // #txHistory is not mounted — loadTransactions no-ops quickly, keep call for future UI.
-        this.loadTransactions(),
         this.loadDepositHistory(),
-        this.loadCardPricing(),
-        this.loadWithdrawalFees(),
-        this.loadDepositPaymentMethods(),
-        this.loadKycStatus(),
       ]);
+      this.loadCardPricing().catch(() => {});
     };
 
     bootstrap()

@@ -43,6 +43,10 @@ assert.ok(html.includes('/brand/logo-icon.png'), 'transparent icon used in UI');
 assert.ok(html.includes('auth-brand-logo'), 'auth brand class');
 assert.ok(html.includes('header-logo-mobile'), 'mobile header logo');
 assert.ok(html.includes('brand-link-sidebar'), 'sidebar brand link');
+assert.ok(html.includes('sidebar-close'), 'sidebar close control in brand row');
+assert.ok(!html.includes('browser-image-compression.js'), 'KYC compressor not eager-loaded');
+assert.ok(/script defer src="\/dashboard\.js/.test(html), 'dashboard script deferred');
+assert.ok(/script defer src="\/auth\.js/.test(html), 'auth script deferred');
 // Favicon / apple-touch must use the same file as the dashboard header icon
 assert.ok(
   /rel=["']icon["'][^>]+href=["']\/brand\/logo-icon\.png/.test(html)
