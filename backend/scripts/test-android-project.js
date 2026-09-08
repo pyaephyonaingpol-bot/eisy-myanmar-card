@@ -42,6 +42,18 @@ assert.ok(gradle.includes('WEB_APP_URL'), 'configurable web URL');
 const main = read('android/app/src/main/java/com/eisymyanmar/app/MainActivity.java');
 assert.ok(main.includes('getSupportActionBar()'), 'hides action bar at runtime');
 assert.ok(main.includes('WebView'), 'WebView shell');
+assert.ok(main.includes('setVerticalScrollBarEnabled(true)'), 'vertical scrollbars enabled');
+assert.ok(main.includes('setNestedScrollingEnabled(true)'), 'nested scrolling enabled');
+assert.ok(main.includes('setUseWideViewPort(true)'), 'wide viewport for proper scaling');
+assert.ok(main.includes('setDecorFitsSystemWindows(getWindow(), true)')
+  || main.includes('setDecorFitsSystemWindows(getWindow(),true)'),
+  'decor fits system windows for correct viewport height');
+assert.ok(main.includes('eisy-webview-scroll-fix'), 'injects WebView scroll CSS');
+assert.ok(main.includes('.app-shell'), 'unlocks app-shell overflow in WebView');
+const layout = read('android/app/src/main/res/layout/activity_main.xml');
+assert.ok(layout.includes('android:scrollbars="vertical"'), 'layout vertical scrollbars');
+assert.ok(layout.includes('android:fitsSystemWindows="true"'), 'root fits system windows');
+assert.ok(layout.includes('android:isScrollContainer="true"'), 'WebView is scroll container');
 console.log('ok');
 
 console.log('\n== Build wiring ==');
