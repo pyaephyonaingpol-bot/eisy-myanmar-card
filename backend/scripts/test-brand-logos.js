@@ -101,7 +101,12 @@ assert.ok(/\.brand-logo-icon\s*\{[^}]*max-height:\s*2rem/s.test(css), 'icon max-
 assert.ok(/object-fit:\s*contain/.test(css), 'object-fit contain');
 assert.ok(/\.brand-link\.header-logo-mobile\s*\{[^}]*display:\s*none/s.test(css), 'desktop hides mobile header logo');
 assert.ok(/\.brand-link-sidebar\s*\{[^}]*gap:/s.test(css), 'sidebar brand has icon/text gap');
+assert.ok(
+  css.includes('.app-shell.sidebar-open .header-logo-mobile'),
+  'open drawer hides mobile header logo to avoid duplicate'
+);
 assert.ok(!/footer-brand-logo/.test(css), 'footer logo styles removed');
+assert.ok(!html.includes('<<<<<<<') && !html.includes('>>>>>>>'), 'index.html has no git conflict markers');
 console.log('ok');
 
 console.log('\nBrand logo checks passed.');

@@ -36,10 +36,22 @@ assert.ok(
 );
 assert.ok(css.includes('padding-top: var(--sidebar-safe-top)'), 'drawer uses safe-area top padding');
 assert.ok(css.includes('top: var(--sidebar-safe-top)'), 'fab sits below status bar');
+assert.ok(
+  css.includes('.app-shell.sidebar-open .header-logo-mobile'),
+  'header logo hidden while drawer open (avoids duplicate mark)'
+);
+assert.ok(
+  /sidebar-open \.app-sidebar \.sidebar-brand[\s\S]{0,80}padding-left:\s*3\.15rem/.test(css),
+  'open drawer brand clears floating close control'
+);
+const indexHtml = read('backend/public/index.html');
+assert.ok(!indexHtml.includes('<<<<<<<') && !indexHtml.includes('>>>>>>>'), 'no git conflict markers in index.html');
+const adminHtml = read('backend/public/admin.html');
+assert.ok(!adminHtml.includes('<<<<<<<') && !adminHtml.includes('>>>>>>>'), 'no git conflict markers in admin.html');
 console.log('ok');
 
 console.log('\n== Email PIN / password reset ==');
-const html = read('backend/public/index.html');
+const html = indexHtml;
 assert.ok(html.includes('pinForgotBtn') || html.includes('Forgot PIN — email reset'), 'forgot PIN CTA');
 assert.ok(html.includes('pinResetEmailSection'), 'PIN email reset section');
 assert.ok(html.includes('passwordResetSection') || html.includes('Forgot password — email reset'), 'password email reset');
