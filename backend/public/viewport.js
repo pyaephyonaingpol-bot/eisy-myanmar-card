@@ -1,20 +1,34 @@
 /**
  * Mobile viewport helpers
  *
- * Mobile (≤900px) uses a document-scroll layout: html/body are min-height
- * (100svh) rather than a fixed h-screen shell. Do NOT pixel-lock --app-vh
- * while idle — that reintroduces collapse/clipping when browser chrome
- * changes. Keyboard open only toggles a class for CSS; scrolling stays on
- * the document so focused inputs remain reachable.
+ * Document-scroll layout on mobile / coarse-pointer / Android WebView:
+ * html/body use height:100% + min-height:100vh + overflow-y:auto rather than
+ * a fixed h-screen shell. Do NOT pixel-lock --app-vh while idle — that
+ * reintroduces collapse/clipping when browser chrome changes.
  *
- * Desktop keeps the fixed SPA shell and CSS --app-vh (100svh).
+ * Desktop (≥901px) keeps the fixed SPA shell via CSS media query.
  */
 (function lockAppViewport() {
   const root = document.documentElement;
   const mqMobile = window.matchMedia('(max-width: 900px)');
+  const mqTouch = window.matchMedia('(hover: none) and (pointer: coarse)');
 
   let focusDepth = 0;
   let unlockTimer = 0;
+
+  function isAndroidWebView() {
+    const ua = navigator.userAgent || '';
+    // Android WebView markers: "; wv)" or Version/x.x Chrome without "Chrome/" Safari patterns.
+    if (/\bwv\b/i.test(ua) || /; wv\)/i.test(ua)) return true;
+    if (/Android/i.test(ua) && /Version\/[\d.]+/i.test(ua) && /Chrome/i.test(ua)) return true;
+    return false;
+  }
+
+  function syncDocScrollClass() {
+    const on = mqMobile.matches || mqTouch.matches || isAndroidWebView();
+    root.classList.toggle('doc-scroll', on);
+    if (on) clearPixelLock();
+  }
 
   function isTextEntry(el) {
     if (!el || el.disabled) return false;
@@ -45,18 +59,18 @@
     focusDepth += 1;
     if (focusDepth === 1) {
       // Never freeze a pixel height on mobile — let the page scroll.
-      if (mqMobile.matches) clearPixelLock();
+      if (mqMobile.matches || root.classList.contains('doc-scroll')) clearPixelLock();
       setKeyboardClass(true);
-      // Bring the focused field into view after the keyboard settles.
-      const target = event.target;
-      window.setTimeout(() => {
-        try {
-          target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-        } catch (_) {
-          try { target.scrollIntoView(true); } catch (__) { /* ignore */ }
-        }
-      }, 280);
     }
+    // Bring the focused field into view after the keyboard settles.
+    const target = event.target;
+    window.setTimeout(() => {
+      try {
+        target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+      } catch (_) {
+        try { target.scrollIntoView(true); } catch (__) { /* ignore */ }
+      }
+    }, 280);
   }
 
   function onFocusOut(event) {
@@ -78,6 +92,7 @@
     setKeyboardClass(false);
     focusDepth = 0;
     clearPixelLock();
+    syncDocScrollClass();
   }
 
   document.addEventListener('focusin', onFocusIn, true);
@@ -90,9 +105,17 @@
   }
 
   window.addEventListener('resize', () => {
-    if (mqMobile.matches) clearPixelLock();
+    syncDocScrollClass();
+    if (mqMobile.matches || root.classList.contains('doc-scroll')) clearPixelLock();
   }, { passive: true });
+
+  if (typeof mqMobile.addEventListener === 'function') {
+    mqMobile.addEventListener('change', syncDocScrollClass);
+  } else if (typeof mqMobile.addListener === 'function') {
+    mqMobile.addListener(syncDocScrollClass);
+  }
 
   // Ensure any leftover pixel lock from a previous build is cleared on boot.
   clearPixelLock();
+  syncDocScrollClass();
 })();
