@@ -109,7 +109,8 @@ async function sendRegistrationOtp(email, ipAddress) {
 
 async function completeRegistration({ email, otp, name, phone, pin, ipAddress, deviceName, devicePlatform }) {
   const normalized = normalizeEmail(email);
-  if (!validatePinFormat(pin)) {
+  const pinValue = pin != null && String(pin).trim() !== '' ? String(pin).trim() : null;
+  if (pinValue && !validatePinFormat(pinValue)) {
     throw new Error('PIN must be exactly 6 digits');
   }
 
@@ -139,7 +140,7 @@ async function completeRegistration({ email, otp, name, phone, pin, ipAddress, d
       name: name || normalized.split('@')[0],
       phone: userPhone,
       email: normalized,
-      pinHash: hashPin(pin),
+      pinHash: pinValue ? hashPin(pinValue) : null,
     });
   } catch (err) {
     throw mapUserPersistenceError(err);
@@ -169,14 +170,20 @@ async function completeRegistration({ email, otp, name, phone, pin, ipAddress, d
     createdBy: 'user',
   });
 
-  return {
+  const hasPin = Boolean(pinValue);
+  const result = {
     user: mapPublicUser(user),
     sessionToken,
     session,
     session_expires_at: session?.expires_at || sessionExpiresAt(),
-    pin_token: createPinToken(user.id),
+    has_pin: hasPin,
+    needs_pin_setup: !hasPin,
     ...pinTokenMeta(),
   };
+  if (hasPin) {
+    result.pin_token = createPinToken(user.id);
+  }
+  return result;
 }
 
 async function sendLoginOtp(email, ipAddress) {
@@ -358,7 +365,15 @@ async function setPin(userId, pin, confirmPin) {
     createdBy: 'user',
   });
 
-  return { pin_token: createPinToken(userId), message: 'PIN set successfully', ...pinTokenMeta() };
+  // Keep the mirrored Supabase profile/wallet row fresh after PIN setup.
+  ensureSupabaseUserWalletInBackground(userId, { syncIfExists: true });
+
+  return {
+    pin_token: createPinToken(userId),
+    message: 'PIN set successfully',
+    has_pin: true,
+    ...pinTokenMeta(),
+  };
 }
 
 async function verifyPinCode(userId, pin) {
@@ -400,6 +415,13 @@ async function verifyPinCode(userId, pin) {
 }
 
 async function resetPinToDefault(userId) {
+  const { isProductionRuntime } = require('./securityFlags');
+  if (isProductionRuntime()) {
+    const err = new Error('Default PIN reset is disabled. Use email OTP to reset your PIN.');
+    err.code = 'PIN_RESET_EMAIL_REQUIRED';
+    throw err;
+  }
+
   await User.updatePin(userId, hashPin(DEFAULT_TEST_PIN));
   await TransactionLog.create({
     userId,
@@ -414,6 +436,170 @@ async function resetPinToDefault(userId) {
     message: 'PIN reset to 123456 — sensitive access unlocked',
     has_pin: true,
     ...pinTokenMeta(),
+  };
+}
+
+async function sendPinResetOtp(email, ipAddress) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) throw new Error('Email is required');
+  const user = await User.findByEmail(normalized);
+  if (!user) {
+    // Do not reveal whether the account exists.
+    return {
+      email: normalized,
+      expires_in_minutes: OTP_EXPIRY_MINUTES,
+      message: 'If an account exists for that email, a PIN reset code was sent.',
+    };
+  }
+
+  assertUserNotBlocked(user, { action: 'reset PIN' });
+
+  const otp = generateOtp();
+  await OtpCode.create({
+    userId: user.id,
+    email: normalized,
+    otpCode: otp,
+    purpose: 'reset_pin',
+    expiresAt: otpExpiresAt(),
+    ipAddress,
+  });
+  await sendOtpEmail({ email: normalized, otp, purpose: 'reset_pin' });
+
+  return {
+    email: normalized,
+    expires_in_minutes: OTP_EXPIRY_MINUTES,
+    message: 'PIN reset code sent to your email',
+    ...devOtpPayload(otp),
+  };
+}
+
+async function completePinReset({ email, otp, pin, confirmPin, ipAddress, deviceName, devicePlatform }) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) throw new Error('Email is required');
+  if (!validatePinFormat(pin)) throw new Error('PIN must be exactly 6 digits');
+  if (pin !== confirmPin) throw new Error('PIN confirmation does not match');
+
+  const user = await User.findByEmail(normalized);
+  if (!user) throw new Error('Invalid or expired reset code');
+
+  assertUserNotBlocked(user, { action: 'reset PIN' });
+
+  const record = await OtpCode.findLatestValid(normalized, 'reset_pin');
+  if (!isMasterTestOtp(otp)) {
+    if (!record) throw new Error('OTP expired or not found');
+    if (record.otp_code !== otp) {
+      await OtpCode.incrementAttempts(record.id);
+      throw new Error('Invalid OTP');
+    }
+  }
+  if (record) await OtpCode.markVerified(record.id);
+
+  await User.updatePin(user.id, hashPin(pin));
+  ensureSupabaseUserWalletInBackground(user.id, { syncIfExists: true });
+
+  await TransactionLog.create({
+    userId: user.id,
+    type: 'pin_set',
+    description: 'Security PIN reset via email OTP',
+    ipAddress,
+    createdBy: 'user',
+    metadata: { reset_via: 'email_otp' },
+  });
+
+  const { sessionToken, session } = await createSession({
+    userId: user.id,
+    ipAddress,
+    deviceName,
+    devicePlatform,
+  });
+
+  const freshUser = await User.findById(user.id);
+  return {
+    user: mapPublicUser(freshUser),
+    sessionToken,
+    session,
+    session_expires_at: session?.expires_at || sessionExpiresAt(),
+    pin_token: createPinToken(user.id),
+    has_pin: true,
+    message: 'PIN updated successfully',
+    ...pinTokenMeta(),
+  };
+}
+
+async function sendPasswordResetOtp(email, ipAddress) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) throw new Error('Email is required');
+  const user = await User.findByEmail(normalized);
+  if (!user) {
+    return {
+      email: normalized,
+      expires_in_minutes: OTP_EXPIRY_MINUTES,
+      message: 'If an account exists for that email, a password reset code was sent.',
+    };
+  }
+
+  assertUserNotBlocked(user, { action: 'reset password' });
+
+  const otp = generateOtp();
+  await OtpCode.create({
+    userId: user.id,
+    email: normalized,
+    otpCode: otp,
+    purpose: 'reset_password',
+    expiresAt: otpExpiresAt(),
+    ipAddress,
+  });
+  await sendOtpEmail({ email: normalized, otp, purpose: 'reset_password' });
+
+  return {
+    email: normalized,
+    expires_in_minutes: OTP_EXPIRY_MINUTES,
+    message: 'Password reset code sent to your email',
+    ...devOtpPayload(otp),
+  };
+}
+
+async function completePasswordReset({ email, otp, newPassword, confirmPassword }) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) throw new Error('Email is required');
+
+  const next = String(newPassword || '');
+  const confirm = String(confirmPassword || '');
+  if (!next) throw new Error('New password is required');
+  if (next !== confirm) throw new Error('New password and confirmation do not match');
+  const format = validatePasswordFormat(next);
+  if (!format.ok) throw new Error(format.error);
+
+  const user = await User.findByEmail(normalized);
+  if (!user) throw new Error('Invalid or expired reset code');
+
+  assertUserNotBlocked(user, { action: 'reset password' });
+
+  const record = await OtpCode.findLatestValid(normalized, 'reset_password');
+  if (!isMasterTestOtp(otp)) {
+    if (!record) throw new Error('OTP expired or not found');
+    if (record.otp_code !== otp) {
+      await OtpCode.incrementAttempts(record.id);
+      throw new Error('Invalid OTP');
+    }
+  }
+  if (record) await OtpCode.markVerified(record.id);
+
+  await User.updatePassword(user.id, hashPassword(next));
+  ensureSupabaseUserWalletInBackground(user.id, { syncIfExists: true });
+
+  await TransactionLog.create({
+    userId: user.id,
+    type: 'password_changed',
+    description: 'Account password reset via email OTP',
+    createdBy: 'user',
+    metadata: { reset_via: 'email_otp' },
+  });
+
+  return {
+    message: 'Password updated successfully',
+    has_password: true,
+    email: normalized,
   };
 }
 
@@ -653,6 +839,7 @@ async function loginWithGoogleOAuth({
     session,
     session_expires_at: session?.expires_at || sessionExpiresAt(),
     has_pin: hasPin,
+    needs_pin_setup: !hasPin,
     created,
     ...pinTokenMeta(),
   };
@@ -672,6 +859,10 @@ module.exports = {
   setPin,
   verifyPinCode,
   resetPinToDefault,
+  sendPinResetOtp,
+  completePinReset,
+  sendPasswordResetOtp,
+  completePasswordReset,
   changePassword,
   registerBiometrics,
   verifyBiometrics,

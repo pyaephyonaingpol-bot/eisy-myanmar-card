@@ -48,6 +48,11 @@ function purposeCopy(purpose) {
       heading: 'Reset your security PIN',
       action: 'reset your PIN',
     },
+    reset_password: {
+      subject: 'Your Eisy Myanmar password reset code',
+      heading: 'Reset your account password',
+      action: 'reset your password',
+    },
     verify_email: {
       subject: 'Verify your Eisy Myanmar email',
       heading: 'Verify your email address',

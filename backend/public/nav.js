@@ -37,12 +37,28 @@ const AppNav = {
     const sidebarBackdrop = root.querySelector('[data-sidebar-backdrop]');
     this.sidebarToggle = sidebarToggle;
 
-    if (sidebarToggle) {
-      sidebarToggle.addEventListener('click', () => this.toggleMobileSidebar());
+    // Event delegation only (capture): avoids double-toggle when both a direct
+    // listener and a delegated listener would fire on the same click.
+    if (!this._sidebarDelegateBound) {
+      this._sidebarDelegateBound = true;
+      document.addEventListener('click', (e) => {
+        const toggle = e.target?.closest?.('[data-sidebar-toggle]');
+        if (toggle && this.root?.contains?.(toggle)) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.toggleMobileSidebar({ force: true });
+          return;
+        }
+        const backdrop = e.target?.closest?.('[data-sidebar-backdrop]');
+        if (backdrop && this.root?.contains?.(backdrop)) {
+          e.preventDefault();
+          this.closeMobileSidebar();
+        }
+      }, true);
     }
-    if (sidebarBackdrop) {
-      sidebarBackdrop.addEventListener('click', () => this.closeMobileSidebar());
-    }
+
+    this.sidebarToggle = sidebarToggle;
+    this.sidebarBackdrop = sidebarBackdrop;
 
     window.addEventListener('resize', () => {
       // Keyboard open/close often fires resize without a width change.
@@ -166,8 +182,11 @@ const AppNav = {
     }
   },
 
-  toggleMobileSidebar() {
-    if (!this.isMobileSidebarMode()) return;
+  toggleMobileSidebar(opts = {}) {
+    const { force = false } = opts;
+    // If the visible hamburger was tapped, always toggle — do not no-op when
+    // viewport width is near the breakpoint or a soft keyboard resize glitched.
+    if (!force && !this.isMobileSidebarMode()) return;
     const shell = this.getShell();
     if (!shell) return;
     shell.classList.toggle('sidebar-open');
@@ -178,6 +197,13 @@ const AppNav = {
     const shell = this.getShell();
     if (!shell) return;
     shell.classList.remove('sidebar-open');
+    this.syncSidebarUi();
+  },
+
+  openMobileSidebar() {
+    const shell = this.getShell();
+    if (!shell) return;
+    shell.classList.add('sidebar-open');
     this.syncSidebarUi();
   },
 };

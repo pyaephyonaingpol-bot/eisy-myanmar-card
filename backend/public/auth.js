@@ -229,21 +229,27 @@ const Auth = {
   },
 
   async completeRegister({ email, otp, name, phone, pin }) {
-    const data = await this.api('POST', '/api/auth/register/complete', {
-      email, otp, name, phone, pin, confirm_pin: pin,
-    });
+    const payload = {
+      email, otp, name, phone,
+    };
+    if (pin) {
+      payload.pin = pin;
+      payload.confirm_pin = pin;
+    }
+    const data = await this.api('POST', '/api/auth/register/complete', payload);
+    const hasPin = data.has_pin ?? Boolean(data.pin_token || pin);
     const user = {
       ...data.user,
-      has_pin: Boolean(data.pin_token || pin),
+      has_pin: hasPin,
     };
     this.setSession({
       sessionToken: data.sessionToken,
       user,
-      pinToken: data.pin_token,
+      pinToken: data.pin_token || null,
       ...this.authPayload(data),
     });
     this.rememberAuthSuccess(data, email);
-    return { ...data, user };
+    return { ...data, user, has_pin: hasPin, needs_pin_setup: data.needs_pin_setup ?? !hasPin };
   },
 
   async sendLoginOtp(email) {
@@ -334,6 +340,48 @@ const Auth = {
       });
     }
     return data;
+  },
+
+  async sendPinResetOtp(email) {
+    const target = (email || this.user?.email || '').trim();
+    if (!target) throw new Error('Email is required to reset your PIN');
+    return this.api('POST', '/api/auth/pin/reset/send-otp', { email: target });
+  },
+
+  async completePinReset({ email, otp, pin, confirmPin }) {
+    const data = await this.api('POST', '/api/auth/pin/reset/confirm', {
+      email: (email || this.user?.email || '').trim(),
+      otp,
+      pin,
+      confirm_pin: confirmPin || pin,
+    });
+    const user = {
+      ...data.user,
+      has_pin: true,
+    };
+    this.setSession({
+      sessionToken: data.sessionToken,
+      user,
+      pinToken: data.pin_token,
+      ...this.authPayload(data),
+    });
+    this.rememberAuthSuccess(data, user.email);
+    return { ...data, user };
+  },
+
+  async sendPasswordResetOtp(email) {
+    const target = (email || this.user?.email || '').trim();
+    if (!target) throw new Error('Email is required to reset your password');
+    return this.api('POST', '/api/auth/password/reset/send-otp', { email: target });
+  },
+
+  async completePasswordReset({ email, otp, newPassword, confirmPassword }) {
+    return this.api('POST', '/api/auth/password/reset/confirm', {
+      email: (email || this.user?.email || '').trim(),
+      otp,
+      new_password: newPassword,
+      confirm_password: confirmPassword || newPassword,
+    });
   },
 
   async setPin(pin) {

@@ -351,7 +351,7 @@
       register: 'Register',
       send_otp: 'Send OTP',
       verify_pin: 'Verify PIN',
-      forgot_pin: 'Forgot PIN / Reset to 123456',
+      forgot_pin: 'Forgot PIN — email reset',
     },
     my: {
       lang_switcher_label: 'ဘာသာစကား ရွေးချယ်ရန်',
@@ -679,7 +679,7 @@
       register: 'Register',
       send_otp: 'Send OTP',
       verify_pin: 'Verify PIN',
-      forgot_pin: 'Forgot PIN / Reset to 123456',
+      forgot_pin: 'Forgot PIN — email reset',
     },
   };
 

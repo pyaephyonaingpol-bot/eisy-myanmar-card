@@ -358,6 +358,9 @@ small.hint {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+#pinSetupModal {
+  z-index: 110; /* stay above unlock if both ever race open */
+}
 .modal-box {
   background: var(--bg-glass-strong);
   backdrop-filter: blur(16px);
@@ -2801,7 +2804,8 @@ pre.output.hidden { display: none !important; }
   z-index: 80;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.22s ease;
+  visibility: hidden;
+  transition: opacity 0.22s ease, visibility 0.22s ease;
 }
 
 body.sidebar-scroll-lock {
@@ -2881,14 +2885,14 @@ body.sidebar-scroll-lock {
   .app-sidebar {
     position: fixed;
     left: 0;
-    top: 0;
+    top: var(--header-min-height, 3.75rem);
     right: auto;
     bottom: 0;
     /* inset anchoring — never bind to visualViewport/dvh */
     height: auto;
     max-height: none;
     min-height: 0;
-    padding-top: var(--safe-top);
+    padding-top: 0;
     padding-bottom: var(--safe-bottom);
     width: min(280px, 88vw);
     max-width: min(280px, 88vw);
@@ -2896,7 +2900,7 @@ body.sidebar-scroll-lock {
     min-width: 0;
     flex: 0 0 0;
     margin: 0;
-    z-index: 90;
+    z-index: 120;
     transform: translateX(-105%);
     transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: var(--shadow-lg);
@@ -2907,16 +2911,30 @@ body.sidebar-scroll-lock {
   }
 
   .sidebar-backdrop {
-    display: block;
+    /* Keep closed backdrop out of the hit-test tree (iOS / overlay bugs). */
+    display: none;
   }
 
   .app-shell.sidebar-open .sidebar-backdrop {
+    display: block;
     opacity: 1;
     pointer-events: auto;
+    visibility: visible;
+    z-index: 110;
+    /* Leave the sticky header (hamburger) uncovered so toggle can close the menu. */
+    top: var(--header-min-height, 3.75rem);
   }
 
   .sidebar-toggle {
     display: inline-flex;
+    position: relative;
+    z-index: 2;
+  }
+
+  .app-main .header {
+    position: sticky;
+    top: 0;
+    z-index: 130;
   }
 
   /* Compact chrome: icon mark in the top header; full lockup stays in the drawer/footer */
@@ -3024,10 +3042,8 @@ body.sidebar-scroll-lock {
   .app-main .header {
     position: sticky;
     top: 0;
-    z-index: 5;
+    z-index: 130;
   }
-
-  .panel,
   .form,
   .field,
   .card-visual,

@@ -35,17 +35,20 @@ router.post('/register-otp', handleRegisterSendOtp); // alias for frontend compa
 router.post('/register/complete', async (req, res) => {
   try {
     const { email, otp, name, phone, pin } = req.body;
-    if (!email || !otp || !pin) {
-      return res.status(400).json({ error: 'email, otp, and pin are required' });
+    if (!email || !otp) {
+      return res.status(400).json({ error: 'email and otp are required' });
     }
+    const { deviceName, devicePlatform } = deviceInfo(req);
     const result = await authService.completeRegistration({
       email, otp, name, phone, pin,
       ipAddress: clientIp(req),
-      ...deviceInfo(req),
+      deviceName,
+      devicePlatform,
     });
     res.json({ success: true, ...result });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    const status = err.code === 'EMAIL_ALREADY_REGISTERED' || err.code === 'PHONE_ALREADY_REGISTERED' ? 409 : 400;
+    res.status(status).json({ error: err.message, code: err.code });
   }
 });
 
@@ -141,7 +144,40 @@ router.post('/pin/reset-default', requireAuth, async (req, res) => {
     const result = await authService.resetPinToDefault(req.user.id);
     res.json({ success: true, ...result });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    const status = err.code === 'PIN_RESET_EMAIL_REQUIRED' ? 403 : 400;
+    res.status(status).json({ error: err.message, code: err.code });
+  }
+});
+
+router.post('/pin/reset/send-otp', async (req, res) => {
+  try {
+    const email = req.body?.email || req.user?.email;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+    const result = await authService.sendPinResetOtp(email, clientIp(req));
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message, code: err.code });
+  }
+});
+
+router.post('/pin/reset/confirm', async (req, res) => {
+  try {
+    const { email, otp, pin, confirm_pin, new_pin } = req.body || {};
+    const nextPin = pin || new_pin;
+    if (!email || !otp || !nextPin) {
+      return res.status(400).json({ error: 'email, otp, and pin are required' });
+    }
+    const result = await authService.completePinReset({
+      email,
+      otp,
+      pin: nextPin,
+      confirmPin: confirm_pin || nextPin,
+      ipAddress: clientIp(req),
+      ...deviceInfo(req),
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message, code: err.code });
   }
 });
 
@@ -156,6 +192,35 @@ router.post('/password/change', requireAuth, async (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/password/reset/send-otp', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+    const result = await authService.sendPasswordResetOtp(email, clientIp(req));
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message, code: err.code });
+  }
+});
+
+router.post('/password/reset/confirm', async (req, res) => {
+  try {
+    const { email, otp, new_password, confirm_password } = req.body || {};
+    if (!email || !otp || !new_password) {
+      return res.status(400).json({ error: 'email, otp, and new_password are required' });
+    }
+    const result = await authService.completePasswordReset({
+      email,
+      otp,
+      newPassword: new_password,
+      confirmPassword: confirm_password || new_password,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message, code: err.code });
   }
 });
 
