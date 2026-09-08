@@ -5,15 +5,16 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
-import android.view.MotionEvent;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.ScrollView;
+import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
@@ -24,17 +25,24 @@ import androidx.core.view.WindowInsetsControllerCompat;
 /**
  * Full-screen WebView shell for the Eisy Myanmar web app.
  * No action / title bar — the web UI owns chrome.
- * WebView is wrapped in a ScrollView so long pages scroll smoothly.
  */
 public class MainActivity extends AppCompatActivity {
+    private static final String TAG = "EisyMainActivity";
     private WebView webView;
-    private ScrollView scrollView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+
+        try {
+            setContentView(R.layout.activity_main);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to inflate activity_main", e);
+            Toast.makeText(this, "Unable to start Eisy Myanmar", Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
 
         // Ensure no action bar even if a parent theme reintroduces one.
         if (getSupportActionBar() != null) {
@@ -53,12 +61,27 @@ public class MainActivity extends AppCompatActivity {
             insetsController.setAppearanceLightNavigationBars(false);
         }
 
-        scrollView = findViewById(R.id.scroll);
-        setupScrollView();
-
         webView = findViewById(R.id.webview);
-        setupWebView();
-        webView.loadUrl(BuildConfig.WEB_APP_URL);
+        if (webView == null) {
+            Log.e(TAG, "WebView missing from layout");
+            Toast.makeText(this, "WebView unavailable on this device", Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
+
+        try {
+            setupWebView();
+            String url = BuildConfig.WEB_APP_URL;
+            if (url == null || url.trim().isEmpty()) {
+                url = "https://eisymyanmar.com";
+            }
+            webView.loadUrl(url);
+        } catch (Exception e) {
+            Log.e(TAG, "WebView initialization failed", e);
+            Toast.makeText(this, "Unable to open the app browser", Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -73,26 +96,12 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void setupScrollView() {
-        if (scrollView == null) return;
-        scrollView.setFillViewport(true);
-        scrollView.setVerticalScrollBarEnabled(true);
-        scrollView.setHorizontalScrollBarEnabled(false);
-        scrollView.setSmoothScrollingEnabled(true);
-        scrollView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
-        scrollView.setLayoutParams(new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
-    }
-
-    @SuppressLint({"SetJavaScriptEnabled", "ClickableViewAccessibility"})
+    @SuppressLint("SetJavaScriptEnabled")
     private void setupWebView() {
-        // Ensure match_parent width; height is wrap_content so ScrollView can scroll.
         ViewGroup.LayoutParams lp = webView.getLayoutParams();
         if (lp != null) {
             lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
             webView.setLayoutParams(lp);
         }
 
@@ -100,10 +109,9 @@ public class MainActivity extends AppCompatActivity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
-        // Fit modern mobile viewport meta without overview-mode squashing.
         settings.setUseWideViewPort(true);
-        settings.setLoadWithOverviewMode(false);
-        settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.NORMAL);
+        settings.setLoadWithOverviewMode(true);
+        settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
         settings.setSupportZoom(false);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
@@ -111,55 +119,47 @@ public class MainActivity extends AppCompatActivity {
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        // Keep modern sites rendering correctly inside the system WebView.
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        settings.setSupportMultipleWindows(false);
 
-        // Vertical scrolling enabled in code (ScrollView + WebView).
+        try {
+            CookieManager cookieManager = CookieManager.getInstance();
+            cookieManager.setAcceptCookie(true);
+            cookieManager.setAcceptThirdPartyCookies(webView, true);
+        } catch (Exception e) {
+            Log.w(TAG, "CookieManager setup skipped", e);
+        }
+
         webView.setVerticalScrollBarEnabled(true);
         webView.setHorizontalScrollBarEnabled(false);
         webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
         webView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
-        // Parent ScrollView owns the gesture; avoid nested-scroll fighting.
-        webView.setNestedScrollingEnabled(false);
+        webView.setNestedScrollingEnabled(true);
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
         webView.setScrollbarFadingEnabled(true);
         webView.setBackgroundColor(Color.parseColor("#0F172A"));
 
-        // Prefer ScrollView for vertical drag; still allow WebView link taps.
-        webView.setOnTouchListener((v, event) -> {
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    // Let ScrollView intercept after this down if needed.
-                    if (v.getParent() != null) {
-                        v.getParent().requestDisallowInterceptTouchEvent(false);
-                    }
-                    break;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (v.getParent() != null) {
-                        v.getParent().requestDisallowInterceptTouchEvent(false);
-                    }
-                    break;
-                default:
-                    break;
-            }
-            return false;
-        });
-
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request == null) return false;
                 Uri uri = request.getUrl();
                 if (uri == null) return false;
                 String scheme = uri.getScheme() != null ? uri.getScheme().toLowerCase() : "";
-                // Keep http(s) in-app; hand off payment / store schemes to the OS.
+                // Keep http(s) in-app; hand off payment / store / mailto schemes to the OS.
                 if ("http".equals(scheme) || "https".equals(scheme)) {
                     return false;
                 }
                 try {
-                    startActivity(new Intent(Intent.ACTION_VIEW, uri));
-                } catch (Exception ignored) {
-                    // No handler installed for custom scheme.
+                    Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Log.w(TAG, "No handler for scheme=" + scheme, e);
                 }
                 return true;
             }
@@ -167,8 +167,8 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                // Prefer document scrolling when the site locks overflow on
-                // html/body/.app-shell (common cause of "stuck" WebView pages).
+                if (view == null) return;
+                // Prefer document scrolling when the site locks overflow.
                 view.evaluateJavascript(
                         "(function(){"
                                 + "try{"
@@ -196,16 +196,14 @@ public class MainActivity extends AppCompatActivity {
                                 + "if(document.body) document.body.style.overflowY='auto';"
                                 + "}catch(e){}"
                                 + "})();",
-                        value -> {
-                            // Re-measure after CSS unlock so ScrollView sees full height.
-                            view.post(() -> {
-                                view.requestLayout();
-                                if (scrollView != null) {
-                                    scrollView.requestLayout();
-                                }
-                            });
-                        }
+                        null
                 );
+            }
+
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                Log.w(TAG, "WebView error " + errorCode + ": " + description + " @ " + failingUrl);
+                super.onReceivedError(view, errorCode, description, failingUrl);
             }
         });
 
@@ -215,22 +213,45 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (webView != null) webView.onResume();
+        if (webView != null) {
+            try {
+                webView.onResume();
+            } catch (Exception e) {
+                Log.w(TAG, "webView.onResume failed", e);
+            }
+        }
     }
 
     @Override
     protected void onPause() {
-        if (webView != null) webView.onPause();
+        if (webView != null) {
+            try {
+                webView.onPause();
+            } catch (Exception e) {
+                Log.w(TAG, "webView.onPause failed", e);
+            }
+        }
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
         if (webView != null) {
-            webView.destroy();
+            try {
+                webView.stopLoading();
+                webView.loadUrl("about:blank");
+                webView.setWebChromeClient(null);
+                webView.setWebViewClient(null);
+                ViewGroup parent = (ViewGroup) webView.getParent();
+                if (parent != null) {
+                    parent.removeView(webView);
+                }
+                webView.destroy();
+            } catch (Exception e) {
+                Log.w(TAG, "webView.destroy failed", e);
+            }
             webView = null;
         }
-        scrollView = null;
         super.onDestroy();
     }
 }

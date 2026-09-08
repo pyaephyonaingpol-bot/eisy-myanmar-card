@@ -27,39 +27,48 @@ for (const rel of [
 ]) {
   assert.ok(exists(rel), `missing ${rel}`);
 }
+assert.ok(!exists('android/app/src/main/java/com/eisymyanmar/app/ContentHeightWebView.java'),
+  'ContentHeightWebView removed (launch-crash prone)');
 console.log('ok');
 
-console.log('\n== Branding + no action bar ==');
+console.log('\n== Branding + stable WebView shell ==');
 const themes = read('android/app/src/main/res/values/themes.xml');
 assert.ok(themes.includes('NoActionBar'), 'NoActionBar theme');
 assert.ok(themes.includes('windowActionBar">false'), 'action bar disabled');
+assert.ok(themes.includes('postSplashScreenTheme'), 'splash post theme');
 const manifest = read('android/app/src/main/AndroidManifest.xml');
 assert.ok(manifest.includes('@mipmap/ic_launcher'), 'launcher icon');
 assert.ok(manifest.includes('Theme.EisyMyanmar'), 'app theme');
+assert.ok(manifest.includes('android.intent.action.MAIN'), 'MAIN launcher intent');
+assert.ok(manifest.includes('android.intent.category.LAUNCHER'), 'LAUNCHER category');
+assert.ok(manifest.includes('hardwareAccelerated="true"'), 'hardware acceleration');
+assert.ok(manifest.includes('.MainActivity'), 'MainActivity registered');
 const gradle = read('android/app/build.gradle');
 assert.ok(gradle.includes("applicationId 'com.eisymyanmar.app'"), 'applicationId');
 assert.ok(gradle.includes('WEB_APP_URL'), 'configurable web URL');
 const main = read('android/app/src/main/java/com/eisymyanmar/app/MainActivity.java');
 assert.ok(main.includes('getSupportActionBar()'), 'hides action bar at runtime');
 assert.ok(main.includes('WebView'), 'WebView shell');
+assert.ok(main.includes('setJavaScriptEnabled(true)'), 'JavaScript enabled');
+assert.ok(main.includes('setWebViewClient'), 'WebViewClient configured');
+assert.ok(main.includes('shouldOverrideUrlLoading'), 'URL loading handled');
 assert.ok(main.includes('setVerticalScrollBarEnabled(true)'), 'vertical scrollbars enabled');
-assert.ok(main.includes('setFillViewport(true)'), 'ScrollView fillViewport enabled in code');
 assert.ok(main.includes('setUseWideViewPort(true)'), 'wide viewport for proper scaling');
 assert.ok(main.includes('setDecorFitsSystemWindows(getWindow(), true)')
   || main.includes('setDecorFitsSystemWindows(getWindow(),true)'),
   'decor fits system windows for correct viewport height');
 assert.ok(main.includes('eisy-webview-scroll-fix'), 'injects WebView scroll CSS');
 assert.ok(main.includes('.app-shell'), 'unlocks app-shell overflow in WebView');
-assert.ok(main.includes('ScrollView'), 'uses ScrollView wrapper');
-assert.ok(exists('android/app/src/main/java/com/eisymyanmar/app/ContentHeightWebView.java'),
-  'ContentHeightWebView for ScrollView measure');
+assert.ok(main.includes('MATCH_PARENT'), 'match_parent layout params');
+assert.ok(!main.includes('ScrollView'), 'no nested ScrollView (stable launch)');
+assert.ok(main.includes('try {') || main.includes('try{'), 'startup guarded with try/catch');
 const layout = read('android/app/src/main/res/layout/activity_main.xml');
-assert.ok(layout.includes('<ScrollView'), 'layout wraps WebView in ScrollView');
-assert.ok(layout.includes('android:fillViewport="true"'), 'ScrollView fillViewport');
+assert.ok(layout.includes('<WebView'), 'layout uses standard WebView');
+assert.ok(!layout.includes('<ScrollView'), 'layout has no ScrollView wrapper');
 assert.ok(layout.includes('android:scrollbars="vertical"'), 'layout vertical scrollbars');
 assert.ok(layout.includes('android:fitsSystemWindows="true"'), 'root fits system windows');
 assert.ok(layout.includes('android:layout_width="match_parent"'), 'match_parent width');
-assert.ok(layout.includes('ContentHeightWebView'), 'custom WebView in layout');
+assert.ok(layout.includes('android:layout_height="match_parent"'), 'match_parent height');
 console.log('ok');
 
 console.log('\n== Build wiring ==');
