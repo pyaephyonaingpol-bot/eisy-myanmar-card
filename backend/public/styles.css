@@ -2929,9 +2929,25 @@ body.sidebar-scroll-lock {
     transform: translateX(0);
   }
 
+  /* Keep main chrome under the drawer so the header logo cannot paint on top of it. */
+  .app-shell.sidebar-open .app-main {
+    z-index: 1;
+  }
+
+  .app-shell.sidebar-open .header-logo-mobile,
+  .app-shell.sidebar-open .brand-link.header-logo-mobile {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   .app-sidebar .sidebar-brand {
     /* Brand row already sits inside padded drawer; keep compact but not flush. */
     padding-top: 0.85rem;
+  }
+
+  /* Leave room for the floating close control so it does not cover the only logo. */
+  .app-shell.sidebar-open .app-sidebar .sidebar-brand {
+    padding-left: 3.15rem;
   }
 
   .sidebar-backdrop {
