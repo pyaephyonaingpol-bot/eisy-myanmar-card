@@ -18,6 +18,9 @@ backend/uploads/*
 !**/.env.example
 !.env*.example
 # Keep local overrides out of git even if named oddly
+android/local.properties
+**/local.properties
+!**/local.properties.example
 .env.local
 .env.development
 .env.staging

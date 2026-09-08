@@ -18,7 +18,9 @@
     "test:deposits-usdt-only": "node backend/scripts/test-deposits-usdt-only.js",
     "test:admin-usdt-mmk-wd": "node backend/scripts/test-admin-usdt-mmk-withdrawals.js",
     "test:legal-pages": "node backend/scripts/test-legal-pages.js",
-    "vercel-build": "node backend/scripts/test-tron-wallet-init.js || echo \"[vercel-build] TRON wallet init check failed (non-blocking — see /health/tron after deploy)\"; mkdir -p public && cp -R backend/public/. public/"
+    "vercel-build": "node backend/scripts/test-tron-wallet-init.js || echo \"[vercel-build] TRON wallet init check failed (non-blocking — see /health/tron after deploy)\"; mkdir -p public && cp -R backend/public/. public/",
+    "android:apk": "bash scripts/build-android-apk.sh debug",
+    "android:apk:release": "bash scripts/build-android-apk.sh release"
   },
   "engines": {
     "node": ">=18"

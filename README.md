@@ -32,7 +32,7 @@ Operators use the **Admin portal** (`/admin`) for deposits, card issuance, withd
 | **Payments** | Binance Pay, TRON (TronWeb / TronGrid), BEP20 RPC / explorers |
 | **Web UI** | Vanilla HTML / JS / CSS SPA served from `backend/public` |
 | **Styling** | Custom CSS design system (`styles.css`) — CSS variables, responsive layout (**not Tailwind**) |
-| **Native shells** | Capacitor (`mobile/`), Flutter app (`user_app/`) |
+| **Native shells** | Unified Android WebView app (`android/`); legacy Capacitor (`mobile/`), Flutter (`user_app/`) |
 | **MMK listener** | Android Kotlin app (`deposit_listener/`) |
 | **Deploy** | Vercel serverless (`api/index.js` → Express) |
 | **Alerts** | Telegram bot (optional) |
@@ -214,12 +214,25 @@ flutter run
 3. Install on a **physical** device and grant notification access
 4. Listener posts to `POST /api/deposit/verify` when KBZPay / WavePay notifications contain a deposit ref
 
-### 5. Capacitor mobile shell (optional)
+### 5. Unified Android app (`android/`)
+
+Full-screen WebView shell (no action bar) with branded launcher icons.
+
+```bash
+cp android/local.properties.example android/local.properties
+# set sdk.dir=...
+npm run android:apk
+# → backend/public/downloads/eisy-myanmar.apk
+```
+
+See [`android/README.md`](android/README.md).
+
+### 6. Legacy Capacitor shell (optional)
 
 ```bash
 cd mobile
 npm install
-npm run prepare-web   # if script present — syncs web assets
+npm run build
 npx cap open android
 ```
 
