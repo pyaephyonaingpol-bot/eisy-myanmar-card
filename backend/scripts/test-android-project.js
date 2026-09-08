@@ -43,17 +43,23 @@ const main = read('android/app/src/main/java/com/eisymyanmar/app/MainActivity.ja
 assert.ok(main.includes('getSupportActionBar()'), 'hides action bar at runtime');
 assert.ok(main.includes('WebView'), 'WebView shell');
 assert.ok(main.includes('setVerticalScrollBarEnabled(true)'), 'vertical scrollbars enabled');
-assert.ok(main.includes('setNestedScrollingEnabled(true)'), 'nested scrolling enabled');
+assert.ok(main.includes('setFillViewport(true)'), 'ScrollView fillViewport enabled in code');
 assert.ok(main.includes('setUseWideViewPort(true)'), 'wide viewport for proper scaling');
 assert.ok(main.includes('setDecorFitsSystemWindows(getWindow(), true)')
   || main.includes('setDecorFitsSystemWindows(getWindow(),true)'),
   'decor fits system windows for correct viewport height');
 assert.ok(main.includes('eisy-webview-scroll-fix'), 'injects WebView scroll CSS');
 assert.ok(main.includes('.app-shell'), 'unlocks app-shell overflow in WebView');
+assert.ok(main.includes('ScrollView'), 'uses ScrollView wrapper');
+assert.ok(exists('android/app/src/main/java/com/eisymyanmar/app/ContentHeightWebView.java'),
+  'ContentHeightWebView for ScrollView measure');
 const layout = read('android/app/src/main/res/layout/activity_main.xml');
+assert.ok(layout.includes('<ScrollView'), 'layout wraps WebView in ScrollView');
+assert.ok(layout.includes('android:fillViewport="true"'), 'ScrollView fillViewport');
 assert.ok(layout.includes('android:scrollbars="vertical"'), 'layout vertical scrollbars');
 assert.ok(layout.includes('android:fitsSystemWindows="true"'), 'root fits system windows');
-assert.ok(layout.includes('android:isScrollContainer="true"'), 'WebView is scroll container');
+assert.ok(layout.includes('android:layout_width="match_parent"'), 'match_parent width');
+assert.ok(layout.includes('ContentHeightWebView'), 'custom WebView in layout');
 console.log('ok');
 
 console.log('\n== Build wiring ==');
