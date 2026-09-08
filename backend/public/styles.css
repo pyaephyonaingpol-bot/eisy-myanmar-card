@@ -59,7 +59,8 @@
   --safe-left: constant(safe-area-inset-left);
   --safe-left: env(safe-area-inset-left, 0px);
   /* Extra breathing room below the status bar / Dynamic Island */
-  --sidebar-safe-top: calc(var(--safe-top) + 0.85rem);
+  /* Prefer device safe-area; keep a ~pt-12 floor so status bars still clear when env() is 0. */
+  --sidebar-safe-top: max(3rem, calc(var(--safe-top) + 0.75rem));
   --sidebar-safe-bottom: calc(var(--safe-bottom) + 0.5rem);
 }
 
