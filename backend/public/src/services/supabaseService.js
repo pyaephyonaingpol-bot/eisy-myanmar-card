@@ -462,6 +462,6 @@ const SupabaseBridge = {
 };
 
 window.SupabaseBridge = SupabaseBridge;
-await SupabaseBridge.init();
+// Lazy-init only — do not top-level-await the CDN SDK (blocks DOMContentLoaded).
 
 export default SupabaseBridge;

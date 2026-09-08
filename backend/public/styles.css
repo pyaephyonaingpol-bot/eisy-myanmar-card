@@ -2525,12 +2525,34 @@ pre.output.hidden { display: none !important; }
 }
 
 .sidebar-brand {
-  padding: 1rem 0.95rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  gap: 0.75rem;
   min-height: 3.75rem;
+  box-sizing: border-box;
+}
+.sidebar-close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s;
+}
+.sidebar-close:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
 }
 .sidebar-brand-copy {
   display: flex;
@@ -2556,7 +2578,9 @@ pre.output.hidden { display: none !important; }
   line-height: 1.35;
 }
 .brand-link-sidebar {
-  width: 100%;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
   gap: 0.7rem;
   line-height: normal;
   align-items: center;
@@ -2941,13 +2965,26 @@ body.sidebar-scroll-lock {
   }
 
   .app-sidebar .sidebar-brand {
-    /* Brand row already sits inside padded drawer; keep compact but not flush. */
-    padding-top: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    min-height: 3.5rem;
   }
 
-  /* Leave room for the floating close control so it does not cover the only logo. */
-  .app-shell.sidebar-open .app-sidebar .sidebar-brand {
-    padding-left: 3.15rem;
+  .app-sidebar .sidebar-close {
+    display: inline-flex;
+  }
+
+  .app-sidebar .brand-link-sidebar {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* In-drawer close replaces the overlapping floating FAB. */
+  .sidebar-toggle-fab,
+  .sidebar-toggle-fab.is-visible {
+    display: none !important;
   }
 
   .sidebar-backdrop {
