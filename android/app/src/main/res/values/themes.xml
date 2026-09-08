@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- No action / title bar — web UI owns chrome. -->
+    <style name="Theme.EisyMyanmar" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/eisy_bg</item>
+        <item name="android:windowBackground">@color/eisy_bg</item>
+        <item name="colorPrimary">@color/eisy_accent</item>
+        <item name="colorPrimaryDark">@color/eisy_bg</item>
+        <item name="colorAccent">@color/eisy_accent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.EisyMyanmar.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/eisy_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.EisyMyanmar</item>
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+</resources>
