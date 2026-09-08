@@ -22,9 +22,9 @@
       height: auto !important;
       max-height: none !important;
       min-height: 100% !important;
-      min-height: 100vh !important;
       overflow-x: hidden !important;
       overflow-y: auto !important;
+      position: static !important;
       -webkit-overflow-scrolling: touch !important;
     }
     body {
@@ -32,13 +32,13 @@
       height: auto !important;
       max-height: none !important;
       min-height: 100% !important;
-      min-height: 100vh !important;
       overflow-x: hidden !important;
       overflow-y: auto !important;
       -webkit-overflow-scrolling: touch !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20260908androidParity" />
+  <link rel="stylesheet" href="/styles.css?v=20260908strictScroll" />
+  <link rel="stylesheet" href="/android-scroll-fix.css?v=20260908strictScroll" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
     (function () {
@@ -47,7 +47,12 @@
         var ua = navigator.userAgent || '';
         var narrow = window.matchMedia && window.matchMedia('(max-width: 900px)').matches;
         var touch = window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-        if (narrow || touch || /Android/i.test(ua)) root.classList.add('doc-scroll');
+        if (narrow || touch || /Android/i.test(ua)) {
+          root.classList.add('doc-scroll');
+          root.style.setProperty('height', 'auto', 'important');
+          root.style.setProperty('min-height', '100%', 'important');
+          root.style.setProperty('overflow-y', 'auto', 'important');
+        }
       } catch (_) { /* ignore */ }
     })();
   </script>
@@ -1342,7 +1347,7 @@
   <script type="module" src="/supabaseBridge.js?v=20260817m2"></script>
   <script src="/src/components/toast.js?v=20260817m2"></script>
   <script src="/src/components/index.js?v=20260817m2"></script>
-  <script src="/viewport.js?v=20260908androidParity"></script>
+  <script src="/viewport.js?v=20260908strictScroll"></script>
   <script src="/i18n.js?v=20260817m2"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
   <script src="/admin.js?v=20260821csv" defer></script>

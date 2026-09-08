@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * Guards for unlocked mobile / Android document-scroll layout.
+ * Guards for strict Android / mobile document-scroll unlock.
  * Run: node backend/scripts/test-mobile-scroll-layout.js
  */
 const assert = require('assert');
@@ -10,65 +10,38 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '../..');
+const exists = (rel) => fs.existsSync(path.join(ROOT, rel));
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
-console.log('== Global root scroll defaults ==');
+console.log('== Strict root unlock ==');
 const css = read('backend/public/styles.css');
-// Default html/body must use natural height + overflow-y auto (not locked).
-assert.ok(/html\s*\{[^}]*height:\s*auto/s.test(css), 'html height auto');
-assert.ok(/html\s*\{[^}]*min-height:\s*100vh/s.test(css), 'html min-height 100vh');
-assert.ok(/html\s*\{[^}]*overflow-y:\s*auto/s.test(css), 'html overflow-y auto');
-assert.ok(/body\s*\{[^}]*height:\s*auto/s.test(css), 'body height auto');
-assert.ok(/body\s*\{[^}]*min-height:\s*100vh/s.test(css), 'body min-height 100vh');
-assert.ok(/body\s*\{[^}]*overflow-y:\s*auto/s.test(css), 'body overflow-y auto');
-assert.ok(/body\s*\{[^}]*position:\s*relative/s.test(css), 'body not fixed by default');
-assert.ok(css.includes('@media (min-width: 901px)'), 'desktop fixed shell media query');
-assert.ok(css.includes('html.doc-scroll'), 'doc-scroll unlock class');
-assert.ok(
-  /#dashboardScreen\s*\{[^}]*overflow:\s*visible/s.test(css),
-  'dashboardScreen overflow visible by default'
-);
-assert.ok(
-  /\.app-shell\s*\{[^}]*overflow:\s*visible/s.test(css),
-  'app-shell overflow visible by default'
-);
-assert.ok(
-  /html\.doc-scroll body\.sidebar-scroll-lock\s*\{[^}]*overflow-y:\s*auto\s*!important/s.test(css),
-  'doc-scroll keeps overflow-y auto under sidebar lock'
-);
+assert.ok(css.includes('html:not(.doc-scroll)'), 'desktop shell gated behind :not(.doc-scroll)');
+assert.ok(/html\.doc-scroll\s*\{[^}]*height:\s*auto\s*!important/s.test(css), 'doc-scroll html height auto');
+assert.ok(/html\.doc-scroll\s*\{[^}]*min-height:\s*100%\s*!important/s.test(css), 'doc-scroll html min-height 100%');
+assert.ok(/html\.doc-scroll\s*\{[^}]*overflow-y:\s*auto\s*!important/s.test(css), 'doc-scroll html overflow-y auto');
+assert.ok(/html\.doc-scroll body\s*\{[^}]*height:\s*auto\s*!important/s.test(css), 'doc-scroll body height auto');
+assert.ok(/html\.doc-scroll body\s*\{[^}]*overflow-y:\s*auto\s*!important/s.test(css), 'doc-scroll body overflow-y auto');
+assert.ok(/STRICT Android \/ mobile document-scroll unlock/i.test(css), 'last-wins strict block present');
+assert.ok(exists('backend/public/android-scroll-fix.css'), 'android-scroll-fix.css exists');
+const fix = read('backend/public/android-scroll-fix.css');
+assert.ok(/overflow-y:\s*auto\s*!important/.test(fix), 'fix sheet overflow-y auto');
+assert.ok(/height:\s*auto\s*!important/.test(fix), 'fix sheet height auto');
+assert.ok(/min-height:\s*100%\s*!important/.test(fix), 'fix sheet min-height 100%');
 console.log('ok');
 
-console.log('\n== Viewport + critical CSS ==');
+console.log('\n== HTML wiring ==');
 const html = read('backend/public/index.html');
-assert.ok(/name="viewport"[^>]*width=device-width/i.test(html), 'viewport meta');
-assert.ok(html.includes('eisy-mobile-scroll-critical'), 'critical mobile scroll CSS');
-assert.ok(html.includes('styles.css?v=20260908androidParity'), 'cache-busted styles');
-assert.ok(html.includes('viewport.js?v=20260908androidParity'), 'cache-busted viewport.js');
-assert.ok(html.includes("classList.add('doc-scroll')") || html.includes('classList.add("doc-scroll")'),
-  'early Android/doc-scroll bootstrap');
-const vp = read('backend/public/viewport.js');
-assert.ok(vp.includes('doc-scroll'), 'viewport.js toggles doc-scroll');
-assert.ok(vp.includes('isAndroid') || vp.includes('Android'), 'Android detection');
-console.log('ok');
-
-console.log('\n== Android/iOS layout parity ==');
-assert.ok(/\.auth-screen\s*\{[^}]*position:\s*relative/s.test(css), 'auth-screen relative');
-assert.ok(/\.auth-screen\s*\{[^}]*height:\s*auto/s.test(css), 'auth-screen height auto (not h-screen)');
-assert.ok(/\.auth-screen\s*\{[^}]*overflow:\s*visible/s.test(css), 'auth-screen overflow visible');
-assert.ok(/\.header\s*\{[^}]*position:\s*relative/s.test(css), 'header relative by default');
-assert.ok(
-  /html\.doc-scroll \.header[\s\S]*?position:\s*relative\s*!important/m.test(css),
-  'doc-scroll header stays relative (no sticky overlap)'
-);
-assert.ok(!/--sidebar-safe-top:\s*max\(3rem/.test(css), 'no aggressive 3rem safe-top floor');
+assert.ok(html.includes('android-scroll-fix.css'), 'loads android-scroll-fix.css');
+assert.ok(html.includes('styles.css?v=20260908strictScroll'), 'cache-busted styles');
+assert.ok(html.includes("classList.add('doc-scroll')"), 'early doc-scroll bootstrap');
+assert.ok(html.includes("setProperty('overflow-y', 'auto', 'important')"), 'inline overflow-y unlock');
 console.log('ok');
 
 console.log('\n== Android WebView injection ==');
 const main = read('android/app/src/main/java/com/eisymyanmar/app/MainActivity.java');
-assert.ok(main.includes('doc-scroll'), 'adds doc-scroll in WebView');
-assert.ok(main.includes('overflow-y:auto') || main.includes("overflow-y:auto!important"),
-  'WebView injects overflow-y auto');
-assert.ok(main.includes('min-height:100vh'), 'WebView injects min-height 100vh');
+assert.ok(main.includes('height:auto!important'), 'WebView height auto');
+assert.ok(main.includes('min-height:100%!important'), 'WebView min-height 100%');
+assert.ok(main.includes('overflow-y:auto!important'), 'WebView overflow-y auto');
 console.log('ok');
 
-console.log('\nMobile scroll layout checks passed.');
+console.log('\nStrict mobile scroll checks passed.');
