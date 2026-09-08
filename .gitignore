@@ -51,6 +51,7 @@ deposit_listener/app/build/
 deposit_listener/local.properties
 deposit_listener/.idea/
 *.apk
+!**/downloads/eisy-myanmar.apk
 
 # IDE
 .idea/
