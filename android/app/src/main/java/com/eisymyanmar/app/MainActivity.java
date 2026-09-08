@@ -5,12 +5,15 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.ScrollView;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
@@ -21,10 +24,11 @@ import androidx.core.view.WindowInsetsControllerCompat;
 /**
  * Full-screen WebView shell for the Eisy Myanmar web app.
  * No action / title bar — the web UI owns chrome.
- * Vertical scrolling is enabled so long pages scroll smoothly.
+ * WebView is wrapped in a ScrollView so long pages scroll smoothly.
  */
 public class MainActivity extends AppCompatActivity {
     private WebView webView;
+    private ScrollView scrollView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,6 +53,9 @@ public class MainActivity extends AppCompatActivity {
             insetsController.setAppearanceLightNavigationBars(false);
         }
 
+        scrollView = findViewById(R.id.scroll);
+        setupScrollView();
+
         webView = findViewById(R.id.webview);
         setupWebView();
         webView.loadUrl(BuildConfig.WEB_APP_URL);
@@ -66,8 +73,29 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    private void setupScrollView() {
+        if (scrollView == null) return;
+        scrollView.setFillViewport(true);
+        scrollView.setVerticalScrollBarEnabled(true);
+        scrollView.setHorizontalScrollBarEnabled(false);
+        scrollView.setSmoothScrollingEnabled(true);
+        scrollView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        scrollView.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+    }
+
+    @SuppressLint({"SetJavaScriptEnabled", "ClickableViewAccessibility"})
     private void setupWebView() {
+        // Ensure match_parent width; height is wrap_content so ScrollView can scroll.
+        ViewGroup.LayoutParams lp = webView.getLayoutParams();
+        if (lp != null) {
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            webView.setLayoutParams(lp);
+        }
+
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -84,16 +112,38 @@ public class MainActivity extends AppCompatActivity {
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
 
-        // Explicit vertical scrolling for long pages / inner overflow areas.
+        // Vertical scrolling enabled in code (ScrollView + WebView).
         webView.setVerticalScrollBarEnabled(true);
         webView.setHorizontalScrollBarEnabled(false);
         webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
         webView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
-        webView.setNestedScrollingEnabled(true);
+        // Parent ScrollView owns the gesture; avoid nested-scroll fighting.
+        webView.setNestedScrollingEnabled(false);
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
         webView.setScrollbarFadingEnabled(true);
         webView.setBackgroundColor(Color.parseColor("#0F172A"));
+
+        // Prefer ScrollView for vertical drag; still allow WebView link taps.
+        webView.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    // Let ScrollView intercept after this down if needed.
+                    if (v.getParent() != null) {
+                        v.getParent().requestDisallowInterceptTouchEvent(false);
+                    }
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    if (v.getParent() != null) {
+                        v.getParent().requestDisallowInterceptTouchEvent(false);
+                    }
+                    break;
+                default:
+                    break;
+            }
+            return false;
+        });
 
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
@@ -128,7 +178,7 @@ public class MainActivity extends AppCompatActivity {
                                 + "s.id='eisy-webview-scroll-fix';"
                                 + "s.textContent=["
                                 + "'html,body{height:auto!important;min-height:100%!important;"
-                                + "overflow-x:hidden!important;overflow-y:auto!important;"
+                                + "overflow-x:hidden!important;overflow-y:visible!important;"
                                 + "-webkit-overflow-scrolling:touch!important;}',"
                                 + "'.app-shell{height:auto!important;min-height:100dvh!important;"
                                 + "overflow:visible!important;}',"
@@ -137,11 +187,19 @@ public class MainActivity extends AppCompatActivity {
                                 + "'#app{min-height:100%!important;}'"
                                 + "].join('');"
                                 + "document.head.appendChild(s);"
-                                + "document.documentElement.style.overflowY='auto';"
-                                + "if(document.body) document.body.style.overflowY='auto';"
+                                + "document.documentElement.style.overflowY='visible';"
+                                + "if(document.body) document.body.style.overflowY='visible';"
                                 + "}catch(e){}"
                                 + "})();",
-                        null
+                        value -> {
+                            // Re-measure after CSS unlock so ScrollView sees full height.
+                            view.post(() -> {
+                                view.requestLayout();
+                                if (scrollView != null) {
+                                    scrollView.requestLayout();
+                                }
+                            });
+                        }
                 );
             }
         });
@@ -167,6 +225,7 @@ public class MainActivity extends AppCompatActivity {
             webView.destroy();
             webView = null;
         }
+        scrollView = null;
         super.onDestroy();
     }
 }

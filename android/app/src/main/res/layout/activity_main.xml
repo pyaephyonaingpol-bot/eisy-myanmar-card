@@ -6,13 +6,30 @@
     android:background="@color/eisy_bg"
     android:fitsSystemWindows="true">
 
-    <WebView
-        android:id="@+id/webview"
+    <!-- ScrollView wrapper so long WebView pages can scroll smoothly. -->
+    <ScrollView
+        android:id="@+id/scroll"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@color/eisy_bg"
+        android:fillViewport="true"
         android:scrollbars="vertical"
         android:fadeScrollbars="true"
         android:overScrollMode="ifContentScrolls"
-        android:isScrollContainer="true" />
+        android:isScrollContainer="true"
+        android:clipToPadding="false">
+
+        <!--
+          ContentHeightWebView measures to full document height so the parent
+          ScrollView becomes the vertical scroller (avoids clipped / stuck pages).
+        -->
+        <com.eisymyanmar.app.ContentHeightWebView
+            android:id="@+id/webview"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/eisy_bg"
+            android:scrollbars="vertical"
+            android:fadeScrollbars="true"
+            android:overScrollMode="ifContentScrolls"
+            android:isScrollContainer="true" />
+    </ScrollView>
 </FrameLayout>
