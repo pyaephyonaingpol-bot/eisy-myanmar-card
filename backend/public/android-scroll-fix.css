@@ -1,44 +1,72 @@
 /**
- * Strict Android / mobile scroll unlock — load AFTER styles.css.
- * Forces natural document flow: height:auto, min-height:100%, overflow-y:auto.
+ * Android / mobile scroll + header unstick — load AFTER styles.css.
+ *
+ * Only html/body are scrollports. Main wrappers use height:auto + overflow:visible
+ * so the header scrolls away naturally (no sticky/fixed nested traps).
  */
-html.doc-scroll,
-html.doc-scroll body,
+html.doc-scroll {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  position: static !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+html.doc-scroll body {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  position: relative !important;
+  inset: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y manipulation !important;
+}
+
+/* Wrappers: grow with content; do NOT become nested scroll containers. */
 html.doc-scroll #dashboardScreen,
 html.doc-scroll #adminApp,
 html.doc-scroll .app-shell,
 html.doc-scroll .app-main,
 html.doc-scroll .app-content,
 html.doc-scroll .auth-screen {
+  position: relative !important;
+  inset: auto !important;
   height: auto !important;
   max-height: none !important;
   min-height: 100% !important;
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
+  overflow: visible !important;
+  -webkit-overflow-scrolling: auto !important;
 }
 
-html.doc-scroll,
-html.doc-scroll body {
-  position: relative !important;
-  inset: auto !important;
-}
-
-html.doc-scroll {
-  position: static !important;
-}
-
-html.doc-scroll #dashboardScreen,
-html.doc-scroll #adminApp,
-html.doc-scroll .app-shell,
-html.doc-scroll .app-main,
-html.doc-scroll .app-content,
-html.doc-scroll .auth-screen,
+/* Header/nav: normal flow only — never sticky/fixed/absolute on Android. */
 html.doc-scroll .header,
-html.doc-scroll .app-main .header {
+html.doc-scroll .app-main .header,
+html.doc-scroll .header-inner {
   position: relative !important;
   top: auto !important;
   bottom: auto !important;
   left: auto !important;
   right: auto !important;
+  inset: auto !important;
+  z-index: 1 !important;
+  transform: none !important;
+  /* backdrop-filter can create a stuck compositor layer on Android WebView */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Floating menu FAB overlaps and traps gestures — keep it out of the way. */
+html.doc-scroll .sidebar-toggle-fab,
+html.doc-scroll .sidebar-toggle-fab.is-visible {
+  display: none !important;
+  position: static !important;
+}
+
+/* Content starts below the in-flow header (no underlap). */
+html.doc-scroll .app-content {
+  padding-top: 1rem !important;
 }

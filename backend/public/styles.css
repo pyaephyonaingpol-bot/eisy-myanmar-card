@@ -217,7 +217,7 @@ body {
 }
 
 /* Force document-scroll whenever JS tags the page (touch / WebView / Android).
-   Strict mobile contract: height:auto, min-height:100%, overflow-y:auto. */
+   Only html/body scroll; wrappers stay overflow:visible so the header is not trapped. */
 html.doc-scroll {
   height: auto !important;
   max-height: none !important;
@@ -259,17 +259,29 @@ html.doc-scroll .app-content {
   height: auto !important;
   max-height: none !important;
   min-height: 100% !important;
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
+  /* visible — nested overflow-y:auto traps the header on Android */
+  overflow: visible !important;
 }
 
-/* Android/iOS parity: never sticky-lock the top banner in document-scroll mode */
+/* Android/iOS parity: header stays in normal document flow */
 html.doc-scroll .header,
 html.doc-scroll .app-main .header {
   position: relative !important;
   top: auto !important;
+  z-index: 1 !important;
+  transform: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   padding-top: max(0.85rem, var(--safe-top)) !important;
+}
+
+html.doc-scroll .app-content {
+  padding-top: 1rem !important;
+}
+
+html.doc-scroll .sidebar-toggle-fab,
+html.doc-scroll .sidebar-toggle-fab.is-visible {
+  display: none !important;
 }
 
 /* Sidebar open: keep document scroll on Android. */
@@ -4116,7 +4128,8 @@ html.app-hydrating .wallet-hero-actions-row {
 
 /* ═══════════════════════════════════════════════════════════════
    STRICT Android / mobile document-scroll unlock (last-wins)
-   height:auto + min-height:100% + overflow-y:auto on root wrappers.
+   One scrollport only (html/body). Nested overflow-y:auto traps the
+   header as a stuck overlay on Android WebView — wrappers stay visible.
    Desktop fixed shell never applies when html.doc-scroll is present.
    ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 900px), (hover: none) and (pointer: coarse) {
@@ -4129,6 +4142,8 @@ html.app-hydrating .wallet-hero-actions-row {
     overflow-y: auto !important;
     position: static !important;
     -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-y: auto !important;
+    touch-action: pan-y !important;
   }
 
   body,
@@ -4141,6 +4156,7 @@ html.app-hydrating .wallet-hero-actions-row {
     overflow-x: hidden !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-y: auto !important;
     touch-action: pan-y manipulation !important;
   }
 
@@ -4161,9 +4177,10 @@ html.app-hydrating .wallet-hero-actions-row {
     height: auto !important;
     max-height: none !important;
     min-height: 100% !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
+    overflow: visible !important;
+    -webkit-overflow-scrolling: auto !important;
+    overscroll-behavior-y: auto !important;
+    touch-action: pan-y !important;
   }
 
   .header,
@@ -4172,5 +4189,89 @@ html.app-hydrating .wallet-hero-actions-row {
   html.doc-scroll .app-main .header {
     position: relative !important;
     top: auto !important;
+    inset: auto !important;
+    z-index: 1 !important;
+    transform: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
+
+  .app-content,
+  html.doc-scroll .app-content {
+    padding-top: 1rem !important;
+  }
+
+  html.doc-scroll .sidebar-toggle-fab,
+  html.doc-scroll .sidebar-toggle-fab.is-visible {
+    display: none !important;
+  }
+
+  .auth-screen,
+  html.doc-scroll .auth-screen {
+    min-height: 100dvh !important;
+    justify-content: flex-start !important;
+  }
+
+  .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    touch-action: pan-y !important;
+  }
+}
+
+html.doc-scroll,
+html.doc-scroll body {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+}
+
+html.doc-scroll #dashboardScreen,
+html.doc-scroll #adminApp,
+html.doc-scroll .app-shell,
+html.doc-scroll .app-main,
+html.doc-scroll .app-content,
+html.doc-scroll .auth-screen {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 100% !important;
+  overflow: visible !important;
+  overscroll-behavior-y: auto !important;
+  -webkit-overflow-scrolling: auto !important;
+  touch-action: pan-y !important;
+}
+
+html.doc-scroll .app-main .header,
+html.doc-scroll .header {
+  position: relative !important;
+  top: auto !important;
+  inset: auto !important;
+  z-index: 1 !important;
+  transform: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html.doc-scroll .app-content {
+  padding-top: 1rem !important;
+}
+
+html.doc-scroll .sidebar-toggle-fab {
+  display: none !important;
+}
+
+html.doc-scroll .auth-screen {
+  min-height: 100dvh !important;
+  justify-content: flex-start !important;
 }
