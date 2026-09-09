@@ -1,15 +1,25 @@
 /**
- * Email service — sends OTP via Resend.
- * From is always a verified sender; the user's email is only the recipient.
+ * Email service — OTP + withdrawal proofs via Resend.
+ * OTP sends are designed for the auth hot path: short timeouts, optional
+ * fire-and-forget dispatch so HTTP handlers never wait on Resend RTT.
  */
-const { Resend } = require('resend');
 const { isDevOtpExposed } = require('./devOtp');
 const { MASTER_TEST_OTP } = require('./cryptoService');
 
 const OTP_EXPIRY = process.env.OTP_EXPIRY_MINUTES || '10';
 const DEFAULT_FROM = 'Eisy Myanmar <no-reply@eisymyanmar.com>';
+const RESEND_API_URL = 'https://api.resend.com/emails';
+const RESEND_TIMEOUT_MS = Math.max(
+  1500,
+  parseInt(process.env.RESEND_TIMEOUT_MS || '8000', 10) || 8000
+);
+const RESEND_OTP_RETRIES = Math.max(
+  0,
+  parseInt(process.env.RESEND_OTP_RETRIES || '1', 10) || 1
+);
 
-let resendClient = null;
+/** In-flight OTP dispatches (for tests / graceful drain). */
+const _pendingOtpSends = new Set();
 
 function normalizeRecipientEmail(value) {
   const raw = String(value || '').trim();
@@ -22,13 +32,9 @@ function getFromAddress() {
   return process.env.RESEND_FROM_EMAIL || DEFAULT_FROM;
 }
 
-function getResend() {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return null;
-  if (!resendClient) {
-    resendClient = new Resend(apiKey);
-  }
-  return resendClient;
+function getResendApiKey() {
+  const key = String(process.env.RESEND_API_KEY || '').trim();
+  return key || null;
 }
 
 function purposeCopy(purpose) {
@@ -67,20 +73,13 @@ function purposeCopy(purpose) {
 
 function logOtpToConsole({ fromAddress, toAddress, otp, purpose }) {
   const label = purposeCopy(purpose).heading;
-
-  console.log('');
-  console.log('╔══════════════════════════════════════════════════════════╗');
-  console.log('║              EISY MYANMAR — OTP GENERATED                 ║');
-  console.log('╠══════════════════════════════════════════════════════════╣');
-  console.log(`║  Purpose:  ${label.slice(0, 47).padEnd(47)}║`);
-  console.log(`║  From:     ${fromAddress.slice(0, 47).padEnd(47)}║`);
-  console.log(`║  To:       ${toAddress.padEnd(47)}║`);
-  console.log(`║  OTP Code: ${String(otp).padEnd(47)}║`);
-  console.log(`║  Expires:  ${String(OTP_EXPIRY).padEnd(47)} minutes ║`);
-  console.log(`║  Master:   ${MASTER_TEST_OTP.padEnd(47)} (always accepted) ║`);
-  console.log('╚══════════════════════════════════════════════════════════╝');
-  console.log('');
-
+  // Single-line log on the hot path — avoid multi-line banners that slow busy workers.
+  console.log(
+    `[Eisy Myanmar] OTP ready purpose=${purpose} from=${fromAddress} to=${toAddress}`
+    + ` code=${otp} expires_min=${OTP_EXPIRY}`
+    + (MASTER_TEST_OTP ? ` master=${MASTER_TEST_OTP}` : '')
+    + ` (${label})`
+  );
   if (isDevOtpExposed()) {
     console.log('[Eisy Myanmar] dev_otp also returned in API response for UI testing');
   }
@@ -111,6 +110,60 @@ function buildOtpText({ otp, purpose }) {
   ].join('\n');
 }
 
+/**
+ * Direct Resend HTTP call with AbortController timeout.
+ * Avoids waiting indefinitely on hung SDK / DNS / TLS.
+ */
+async function postResendEmail(payload, { timeoutMs = RESEND_TIMEOUT_MS } = {}) {
+  const apiKey = getResendApiKey();
+  if (!apiKey) {
+    const err = new Error('RESEND_API_KEY not set');
+    err.code = 'RESEND_NOT_CONFIGURED';
+    throw err;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(500, timeoutMs));
+  const started = Date.now();
+  try {
+    const res = await fetch(RESEND_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    const body = await res.json().catch(() => ({}));
+    const elapsed = Date.now() - started;
+    if (!res.ok) {
+      const message = body?.message
+        || body?.error?.message
+        || (typeof body?.error === 'string' ? body.error : null)
+        || `Resend HTTP ${res.status}`;
+      const err = new Error(message);
+      err.code = 'RESEND_HTTP_ERROR';
+      err.status = res.status;
+      err.elapsed_ms = elapsed;
+      throw err;
+    }
+    return { id: body?.id || null, elapsed_ms: elapsed, raw: body };
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      const timeoutErr = new Error(`Resend request timed out after ${timeoutMs}ms`);
+      timeoutErr.code = 'RESEND_TIMEOUT';
+      timeoutErr.elapsed_ms = Date.now() - started;
+      throw timeoutErr;
+    }
+    err.elapsed_ms = err.elapsed_ms || (Date.now() - started);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function sendOtpEmail({ email, otp, purpose }) {
   const toAddress = normalizeRecipientEmail(email);
   const fromAddress = getFromAddress();
@@ -121,44 +174,89 @@ async function sendOtpEmail({ email, otp, purpose }) {
 
   logOtpToConsole({ fromAddress, toAddress, otp, purpose });
 
-  const resend = getResend();
-  if (!resend) {
+  if (!getResendApiKey()) {
     console.warn('[Eisy Myanmar] RESEND_API_KEY not set — OTP logged only, email not sent');
-    return { sent: false, provider: 'console' };
+    return { sent: false, provider: 'console', reason: 'resend_not_configured' };
   }
 
   const copy = purposeCopy(purpose);
-
-  console.log('[Eisy Myanmar] Resend send params:', JSON.stringify({
+  const payload = {
     from: fromAddress,
-    to: toAddress,
-  }));
+    to: [toAddress],
+    subject: copy.subject,
+    html: buildOtpHtml({ otp, purpose }),
+    text: buildOtpText({ otp, purpose }),
+  };
 
-  try {
-    const { data, error } = await resend.emails.send({
-      from: fromAddress,
-      to: toAddress,
-      subject: copy.subject,
-      html: buildOtpHtml({ otp, purpose }),
-      text: buildOtpText({ otp, purpose }),
+  let lastErr = null;
+  const attempts = 1 + RESEND_OTP_RETRIES;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const result = await postResendEmail(payload);
+      console.log(
+        `[Eisy Myanmar] OTP email sent via Resend from=${fromAddress} to=${toAddress}`
+        + ` id=${result.id || 'n/a'} elapsed_ms=${result.elapsed_ms} attempt=${attempt}`
+      );
+      return {
+        sent: true,
+        provider: 'resend',
+        id: result.id,
+        elapsed_ms: result.elapsed_ms,
+        attempt,
+      };
+    } catch (err) {
+      lastErr = err;
+      console.error(
+        `[Eisy Myanmar] Resend OTP attempt ${attempt}/${attempts} failed`
+        + ` to=${toAddress} code=${err.code || 'ERR'} elapsed_ms=${err.elapsed_ms || '?'}:`,
+        err.message || err
+      );
+      // Retry only on timeout / transient network — not on 4xx validation errors.
+      const retryable = err.code === 'RESEND_TIMEOUT'
+        || (err.code === 'RESEND_HTTP_ERROR' && Number(err.status) >= 500)
+        || /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|network/i.test(String(err.message || ''));
+      if (!retryable || attempt >= attempts) break;
+    }
+  }
+
+  throw new Error(lastErr?.message || 'Failed to send OTP email');
+}
+
+/**
+ * Fire-and-forget OTP delivery for auth routes.
+ * Starts the Resend call immediately and never blocks the caller.
+ */
+function dispatchOtpEmail(opts) {
+  const startedAt = Date.now();
+  const promise = Promise.resolve()
+    .then(() => sendOtpEmail(opts))
+    .then((result) => {
+      console.log(
+        `[email] OTP dispatch ok purpose=${opts?.purpose || '?'} `
+        + `total_ms=${Date.now() - startedAt} provider=${result.provider}`
+      );
+      return result;
+    })
+    .catch((err) => {
+      console.error(
+        `[email] OTP dispatch failed purpose=${opts?.purpose || '?'} `
+        + `total_ms=${Date.now() - startedAt}:`,
+        err.message || err
+      );
+      return { sent: false, provider: 'resend', error: err.message || String(err) };
+    })
+    .finally(() => {
+      _pendingOtpSends.delete(promise);
     });
 
-    if (error) {
-      console.error(`[Eisy Myanmar] Resend error from=${fromAddress} to=${toAddress}:`, error);
-      throw new Error(error.message || 'Failed to send OTP email');
-    }
+  _pendingOtpSends.add(promise);
+  return { queued: true, promise };
+}
 
-    console.log(
-      `[Eisy Myanmar] OTP email sent via Resend from=${fromAddress} to=${toAddress} id=${data?.id || 'n/a'}`
-    );
-    return { sent: true, provider: 'resend', id: data?.id };
-  } catch (err) {
-    console.error(
-      `[Eisy Myanmar] Resend send failed from=${fromAddress} to=${toAddress}:`,
-      err.message || err
-    );
-    throw new Error(err.message || 'Failed to send OTP email');
-  }
+async function awaitPendingOtpEmails() {
+  const pending = [..._pendingOtpSends];
+  if (!pending.length) return [];
+  return Promise.all(pending);
 }
 
 function escapeHtml(value) {
@@ -266,8 +364,7 @@ async function sendWithdrawalProofEmail({
     userName, refCode, amountLabel, bankName, accountName, accountNumber, proofUrl, kind,
   });
 
-  const resend = getResend();
-  if (!resend) {
+  if (!getResendApiKey()) {
     console.warn('[Eisy Myanmar] RESEND_API_KEY not set — withdrawal proof email logged only');
     console.log(`[Eisy Myanmar] Withdrawal proof (console) to=${toAddress} ref=${refCode} proof=${proofUrl || 'none'}`);
     return { sent: false, provider: 'console', reason: 'resend_not_configured' };
@@ -275,7 +372,7 @@ async function sendWithdrawalProofEmail({
 
   const payload = {
     from: fromAddress,
-    to: toAddress,
+    to: [toAddress],
     subject,
     html,
     text,
@@ -293,19 +390,27 @@ async function sendWithdrawalProofEmail({
   }
 
   try {
-    const { data, error } = await resend.emails.send(payload);
-    if (error) {
-      console.error(`[Eisy Myanmar] Resend withdrawal-proof error to=${toAddress}:`, error);
-      throw new Error(error.message || 'Failed to send withdrawal proof email');
-    }
+    const result = await postResendEmail(payload, {
+      // Proofs can include attachments — allow a slightly longer budget.
+      timeoutMs: Math.max(RESEND_TIMEOUT_MS, 12000),
+    });
     console.log(
-      `[Eisy Myanmar] Withdrawal proof email sent via Resend to=${toAddress} ref=${refCode} id=${data?.id || 'n/a'}`
+      `[Eisy Myanmar] Withdrawal proof email sent via Resend to=${toAddress}`
+      + ` ref=${refCode} id=${result.id || 'n/a'} elapsed_ms=${result.elapsed_ms}`
     );
-    return { sent: true, provider: 'resend', id: data?.id };
+    return { sent: true, provider: 'resend', id: result.id, elapsed_ms: result.elapsed_ms };
   } catch (err) {
     console.error(`[Eisy Myanmar] Withdrawal proof email failed to=${toAddress}:`, err.message || err);
     throw new Error(err.message || 'Failed to send withdrawal proof email');
   }
 }
 
-module.exports = { sendOtpEmail, sendWithdrawalProofEmail, getFromAddress };
+module.exports = {
+  sendOtpEmail,
+  dispatchOtpEmail,
+  awaitPendingOtpEmails,
+  sendWithdrawalProofEmail,
+  getFromAddress,
+  postResendEmail,
+  RESEND_TIMEOUT_MS,
+};
