@@ -284,11 +284,19 @@ async function fetchLinkedOnChainBalance(network, address) {
   }
 }
 
-async function resolveUsdtBalancesForDisplay(userId, user = null) {
+async function resolveUsdtBalancesForDisplay(userId, user = null, {
+  skipOverlay = false,
+  preferTurso = process.env.USDT_BALANCE_PREFER_TURSO === '1',
+} = {}) {
   const { getUsdtBalances } = require('./usdtLedgerService');
-  const { overlayWalletPayloadFromSupabase } = require('./supabaseWalletReadService');
   let balances = await getUsdtBalances(userId);
+
+  if (skipOverlay || preferTurso) {
+    return { ...balances, source: balances.source || 'turso' };
+  }
+
   try {
+    const { overlayWalletPayloadFromSupabase } = require('./supabaseWalletReadService');
     const fromSb = await overlayWalletPayloadFromSupabase(userId, {
       balance_usdt: balances.available_usdt,
       balance_usdt_locked: balances.locked_usdt,
@@ -322,16 +330,25 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
   const user = await User.findById(userId);
   if (!user) throw new Error('User not found');
 
+  // Never block the overview on Supabase upsert RTTs — mirror in the background.
   try {
-    const { ensureSupabaseUserWallet } = require('./supabaseSyncService');
-    await ensureSupabaseUserWallet(userId);
+    const { ensureSupabaseUserWalletInBackground } = require('./supabaseSyncService');
+    ensureSupabaseUserWalletInBackground(userId);
   } catch (err) {
     console.warn('[usdt-wallet/overview] Supabase wallet ensure skipped:', err.message);
   }
 
-  // Always resolve balances first so Available / Locked / Total can render
-  // even when deposit-address provisioning or escrow queries fail.
-  const balances = await resolveUsdtBalancesForDisplay(userId, user);
+  // Balance first — Turso PK is authoritative and instant. Warm Supabase overlay in background.
+  const balances = await resolveUsdtBalancesForDisplay(userId, user, { skipOverlay: true });
+  try {
+    const { fetchFreshUserWalletRow } = require('./supabaseWalletReadService');
+    fetchFreshUserWalletRow(userId, { email: user?.email }).catch(() => {});
+  } catch (_) { /* ignore */ }
+
+  // One-shot ledger backfill — do not await on the request path after first check.
+  syncLedgerFromTransactionLogs(userId).catch((err) => {
+    console.warn('[usdt-wallet/overview] ledger sync skipped:', err.message);
+  });
 
   let settings = {
     minimum_usdt_deposit: 10,
@@ -377,17 +394,44 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
     }
   }
 
-  // One-shot ledger backfill — skipped after first successful check per process.
-  try {
-    await syncLedgerFromTransactionLogs(userId);
-  } catch (err) {
-    console.warn('[usdt-wallet/overview] ledger sync skipped:', err.message);
+  // Parallelize independent reads after addresses are ready.
+  const UsdtEscrowHold = require('../models/UsdtEscrowHold');
+  const [settingsResult, txResult, escrowResult] = await Promise.allSettled([
+    getUsdtDepositSettings(),
+    UsdtWalletTransaction.findByUserId(userId, { limit: 10 }),
+    UsdtEscrowHold.findByUserId(userId, { status: 'active' }),
+  ]);
+
+  if (settingsResult.status === 'fulfilled' && settingsResult.value) {
+    settings = settingsResult.value;
+  } else if (settingsResult.status === 'rejected') {
+    console.warn('[usdt-wallet/overview] settings skipped:', settingsResult.reason?.message);
   }
 
-  try {
-    settings = await getUsdtDepositSettings();
-  } catch (err) {
-    console.warn('[usdt-wallet/overview] settings skipped:', err.message);
+  if (txResult.status === 'fulfilled') {
+    recent_transactions = (txResult.value || []).map(mapTransactionRow);
+  } else {
+    console.warn('[usdt-wallet/overview] transactions skipped:', txResult.reason?.message);
+  }
+
+  if (escrowResult.status === 'fulfilled') {
+    escrow_holds = (escrowResult.value || []).map((row) => ({
+      id: row.id,
+      hold_type: row.hold_type,
+      amount_usdt: Number(row.amount_usdt ?? 0),
+      remaining_usdt: Number(row.remaining_usdt ?? 0),
+      reference_type: row.reference_type,
+      reference_id: row.reference_id,
+      status: row.status,
+      created_at: row.created_at,
+      label: row.hold_type === 'p2p_ad'
+        ? 'P2P sell ad escrow'
+        : row.hold_type === 'p2p_sell_order'
+          ? 'P2P sell order escrow'
+          : row.hold_type,
+    }));
+  } else {
+    console.warn('[usdt-wallet/overview] escrow skipped:', escrowResult.reason?.message);
   }
 
   try {
@@ -404,35 +448,6 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
     }
   } catch (err) {
     console.warn('[usdt-wallet/overview] addresses map skipped:', err.message);
-  }
-
-  try {
-    const txRows = await UsdtWalletTransaction.findByUserId(userId, { limit: 10 });
-    recent_transactions = txRows.map(mapTransactionRow);
-  } catch (err) {
-    console.warn('[usdt-wallet/overview] transactions skipped:', err.message);
-  }
-
-  try {
-    const UsdtEscrowHold = require('../models/UsdtEscrowHold');
-    const escrowRows = await UsdtEscrowHold.findByUserId(userId, { status: 'active' });
-    escrow_holds = escrowRows.map((row) => ({
-      id: row.id,
-      hold_type: row.hold_type,
-      amount_usdt: Number(row.amount_usdt ?? 0),
-      remaining_usdt: Number(row.remaining_usdt ?? 0),
-      reference_type: row.reference_type,
-      reference_id: row.reference_id,
-      status: row.status,
-      created_at: row.created_at,
-      label: row.hold_type === 'p2p_ad'
-        ? 'P2P sell ad escrow'
-        : row.hold_type === 'p2p_sell_order'
-          ? 'P2P sell order escrow'
-          : row.hold_type,
-    }));
-  } catch (err) {
-    console.warn('[usdt-wallet/overview] escrow skipped:', err.message);
   }
 
   return {
@@ -461,9 +476,21 @@ async function getWalletTransactions(userId, { limit = 100, offset = 0, network 
   return rows.map(mapTransactionRow);
 }
 
-async function getWalletBalance(userId) {
+async function getWalletBalance(userId, { fresh = false } = {}) {
   const user = await User.findById(userId);
-  const balances = await resolveUsdtBalancesForDisplay(userId, user);
+  // Fast path: Turso PK lookup. Overlay only when ?fresh=1 (Table Editor sync).
+  const balances = await resolveUsdtBalancesForDisplay(userId, user, {
+    skipOverlay: !fresh,
+  });
+
+  // Warm Supabase cache in background for subsequent overlays.
+  if (!fresh) {
+    try {
+      const { fetchFreshUserWalletRow } = require('./supabaseWalletReadService');
+      fetchFreshUserWalletRow(userId, { email: user?.email }).catch(() => {});
+    } catch (_) { /* ignore */ }
+  }
+
   return {
     ...balances,
     source: balances.source || 'turso',

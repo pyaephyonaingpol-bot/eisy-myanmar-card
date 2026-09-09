@@ -31,7 +31,8 @@ router.get('/balance', requireAuth, requireSensitive, async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.set('Pragma', 'no-cache');
-    const balance = await getWalletBalance(req.user.id);
+    const fresh = req.query.fresh === '1' || req.query.fresh === 'true';
+    const balance = await getWalletBalance(req.user.id, { fresh });
     res.json(balance);
   } catch (err) {
     console.error('[usdt-wallet/balance]', err);
@@ -127,7 +128,9 @@ router.post('/transfer', requireAuth, requireSensitive, async (req, res) => {
       createdBy: 'user',
     });
 
-    const balances = await getUsdtBalances(req.user.id);
+    // Prefer balances already computed when available; otherwise one PK lookup.
+    const balances = result.wallet
+      || await getUsdtBalances(req.user.id);
 
     res.status(result.duplicate ? 200 : 201).json({
       ok: true,

@@ -18,9 +18,9 @@ const Dashboard = {
   _fetchMeta: {},
   _inflight: {},
   FETCH_TTL_MS: {
-    wallet: 20000,
+    wallet: 15000,
     deposits: 25000,
-    usdtWallet: 20000,
+    usdtWallet: 15000,
     pricing: 300000,
     withdrawalFees: 300000,
     paymentMethods: 300000,
@@ -1201,9 +1201,10 @@ const Dashboard = {
     if (!Auth.isLoggedIn()) return;
     const depositEl = $('usdtWalletDepositAddresses');
 
-    if (!forceRefresh && this._usdtWalletCache && this._isFresh('usdtWallet')) {
+    // Instant paint from cache — avoid continuous Loading… while network runs.
+    if (this._usdtWalletCache) {
       this.renderUsdtWalletPage(this._usdtWalletCache);
-      return;
+      if (!forceRefresh && this._isFresh('usdtWallet')) return;
     }
 
     // PIN gate: sensitive overview will 403 — show unlock UI instead of spinning forever.
@@ -1227,15 +1228,36 @@ const Dashboard = {
     }
 
     return this._withInflight('usdtWallet', async () => {
-      this.setUsdtWalletBalancePlaceholders('Loading…');
-      if (depositEl && !this._usdtWalletCache) {
-        depositEl.innerHTML = '<p class="hint">Loading…</p>';
+      if (!this._usdtWalletCache) {
+        this.setUsdtWalletBalancePlaceholders('Loading…');
+        if (depositEl) depositEl.innerHTML = '<p class="hint">Loading…</p>';
+      }
+
+      // Fast path: Turso balance endpoint paints Available/Locked/Total immediately.
+      try {
+        const bal = await (window.EisyServices?.usdtWallet?.getBalance
+          ? window.EisyServices.usdtWallet.getBalance()
+          : Auth.api('GET', '/api/user/usdt-wallet/balance', null, { sensitive: true, timeoutMs: 6000 }));
+        this.walletUsdt = bal.available_usdt ?? bal.balance_usdt;
+        this.walletUsdtLocked = bal.locked_usdt ?? bal.balance_usdt_locked ?? 0;
+        this.syncUsdtWalletBalancesFromPayload({
+          balance_usdt: this.walletUsdt,
+          balance_usdt_locked: this.walletUsdtLocked,
+          balance_usdt_total: bal.total_usdt ?? bal.balance_usdt_total,
+          balance_formatted: bal.available_formatted || bal.balance_formatted,
+          locked_formatted: bal.locked_formatted,
+          total_formatted: bal.total_formatted,
+          source: bal.source,
+        });
+        this._markFetched('wallet');
+      } catch (balErr) {
+        console.warn('[usdt-wallet] fast balance:', balErr.message);
       }
 
       try {
         const data = await (window.EisyServices?.usdtWallet?.getOverview
           ? window.EisyServices.usdtWallet.getOverview()
-          : Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true, timeoutMs: 20000 }));
+          : Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true, timeoutMs: 15000 }));
         this._usdtWalletCache = data;
         this.walletUsdt = data.balance_usdt ?? data.available_usdt;
         this.walletUsdtLocked = data.balance_usdt_locked ?? data.locked_usdt ?? 0;
@@ -1272,10 +1294,12 @@ const Dashboard = {
 
         // Overview failed — still try the wallet balance endpoint so Available/Locked/Total populate.
         try {
-          const wallet = await Auth.api('GET', '/api/user/wallet', null, {
-            sensitive: true,
-            timeoutMs: 12000,
-          });
+          const wallet = await (window.EisyServices?.usdtWallet?.getPlatformWallet
+            ? window.EisyServices.usdtWallet.getPlatformWallet()
+            : Auth.api('GET', '/api/user/wallet', null, {
+              sensitive: true,
+              timeoutMs: 8000,
+            }));
           this.walletUsdt = wallet.balance_usdt;
           this.walletUsdtLocked = wallet.balance_usdt_locked || 0;
           this._markFetched('wallet');
@@ -1341,9 +1365,21 @@ const Dashboard = {
       this.toast(msg, 'ok');
       if (statusEl) statusEl.textContent = msg;
       $('usdtTransferForm')?.reset();
+      if (data.wallet) {
+        this.syncUsdtWalletBalancesFromPayload({
+          balance_usdt: data.wallet.available_usdt ?? data.wallet.balance_usdt,
+          balance_usdt_locked: data.wallet.locked_usdt ?? data.wallet.balance_usdt_locked ?? 0,
+          balance_usdt_total: data.wallet.total_usdt ?? data.wallet.balance_usdt_total,
+          balance_formatted: data.wallet.available_formatted,
+          locked_formatted: data.wallet.locked_formatted,
+          total_formatted: data.wallet.total_formatted,
+        });
+      }
       this._usdtWalletCache = null;
-      await this.loadUsdtWalletPage(true);
-      this.loadWallet();
+      this._markFetched('wallet');
+      // Refresh overview in background — balances already updated from transfer response.
+      this.loadUsdtWalletPage(true).catch(() => {});
+      this.loadWallet({ force: true });
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
       this.toast(err.message || 'Transfer failed', 'error');
@@ -7038,7 +7074,7 @@ const Dashboard = {
       try {
         const data = await Auth.api('GET', '/api/user/wallet', null, {
           sensitive: true,
-          timeoutMs: 15000,
+          timeoutMs: 8000,
         });
         this.renderWalletBalances(data);
         this.walletUsdt = data.balance_usdt;

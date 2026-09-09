@@ -933,7 +933,18 @@ async function transferUsdtInternal(fromUserId, toUserId, amountUsdt, {
     }
 
     const transfer = await db.get('SELECT * FROM usdt_internal_transfers WHERE id = ?', transferId);
-    return { transfer, journalId };
+    return {
+      transfer,
+      journalId,
+      wallet: {
+        available_usdt: senderAvailableAfter,
+        locked_usdt: senderBal.locked,
+        total_usdt: roundUsdt(senderAvailableAfter + senderBal.locked),
+        available_formatted: formatUsdt(senderAvailableAfter),
+        locked_formatted: formatUsdt(senderBal.locked),
+        total_formatted: formatUsdt(roundUsdt(senderAvailableAfter + senderBal.locked)),
+      },
+    };
   });
 
   syncWallets([fromUserId, toUserId]);

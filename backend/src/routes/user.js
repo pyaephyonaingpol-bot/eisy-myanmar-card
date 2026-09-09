@@ -17,7 +17,7 @@ const {
 const CardReloadRequest = require('../models/CardReloadRequest');
 const { walletPayload, formatUsdt, migrateLegacyUsdToMmk } = require('../services/walletService');
 const { overlayWalletPayloadFromSupabase } = require('../services/supabaseWalletReadService');
-const { ensureSupabaseUserWallet } = require('../services/supabaseSyncService');
+const { ensureSupabaseUserWalletInBackground } = require('../services/supabaseSyncService');
 const {
   purchaseCardFromUsdtWallet,
   reloadCardFromUsdtWallet,
@@ -449,20 +449,26 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
       user = await User.findById(req.user.id);
     }
 
-    try {
-      await ensureSupabaseUserWallet(req.user.id);
-    } catch (err) {
-      console.warn('[user/wallet] Supabase wallet ensure skipped:', err.message);
-    }
+    // Mirror ensure is non-blocking — balances come from Turso (+ cached overlay).
+    ensureSupabaseUserWalletInBackground(req.user.id);
 
     const localPayload = {
       ...walletPayload(user),
       email: user.email || req.user.email,
       updated_at: user.updated_at || null,
     };
-    // Prefer a fresh Supabase read so Table Editor edits show immediately.
-    // If Turso is newer (admin Adjust USDT), overlay keeps the Turso balance.
-    const balances = await overlayWalletPayloadFromSupabase(req.user.id, localPayload);
+    // Prefer Turso for instant home balances. Use ?fresh=1 to force a Supabase
+    // Table Editor re-read (still honors the short read timeout + row cache).
+    const fresh = req.query.fresh === '1' || req.query.fresh === 'true';
+    let balances = localPayload;
+    if (fresh) {
+      balances = await overlayWalletPayloadFromSupabase(req.user.id, {
+        ...localPayload,
+        fresh: true,
+      });
+    } else {
+      balances = await overlayWalletPayloadFromSupabase(req.user.id, localPayload);
+    }
     res.json({
       user_id: user.id,
       ...balances,

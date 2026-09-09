@@ -26,6 +26,12 @@ async function applyUserAuthColumns(db, columnExists) {
     WHERE email IS NOT NULL;
   `);
 
+  // Speeds internal USDT transfer recipient resolution (LOWER(TRIM(email))).
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_users_email_lower
+    ON users (LOWER(TRIM(email)));
+  `);
+
   // Admin users list filters by auth_status; create after the column exists.
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_users_auth_status
