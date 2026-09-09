@@ -5,7 +5,7 @@ const UserSession = require('../models/UserSession');
 const TransactionLog = require('../models/TransactionLog');
 const { assertUserNotBlocked } = require('../lib/userAuthStatus');
 const crypto = require('crypto');
-const { sendOtpEmail } = require('./emailService');
+const { dispatchOtpEmail } = require('./emailService');
 const { devOtpPayload } = require('./devOtp');
 const { addMinutes, addDays } = require('../lib/sqliteDatetime');
 const { syncUserWalletById, ensureSupabaseUserWalletInBackground } = require('./supabaseSyncService');
@@ -162,11 +162,13 @@ async function sendRegistrationOtp(email, ipAddress) {
     ipAddress,
   });
 
-  await sendOtpEmail({ email: normalized, otp, purpose: 'register' });
+  // Do not block the HTTP response on Resend RTT — dispatch immediately after persist.
+  dispatchOtpEmail({ email: normalized, otp, purpose: 'register' });
 
   return {
     email: normalized,
     expires_in_minutes: OTP_EXPIRY_MINUTES,
+    email_queued: true,
     ...devOtpPayload(otp),
   };
 }
@@ -271,10 +273,11 @@ async function sendLoginOtp(email, ipAddress) {
     ipAddress,
   });
 
-  await sendOtpEmail({ email: normalized, otp, purpose: 'login' });
+  dispatchOtpEmail({ email: normalized, otp, purpose: 'login' });
   return {
     email: normalized,
     expires_in_minutes: OTP_EXPIRY_MINUTES,
+    email_queued: true,
     ...devOtpPayload(otp),
   };
 }
@@ -478,12 +481,13 @@ async function sendPinResetOtp(email, ipAddress) {
     expiresAt: otpExpiresAt(),
     ipAddress,
   });
-  await sendOtpEmail({ email: normalized, otp, purpose: 'reset_pin' });
+  dispatchOtpEmail({ email: normalized, otp, purpose: 'reset_pin' });
 
   return {
     email: normalized,
     expires_in_minutes: OTP_EXPIRY_MINUTES,
     message: 'PIN reset code sent to your email',
+    email_queued: true,
     ...devOtpPayload(otp),
   };
 }
@@ -564,12 +568,13 @@ async function sendPasswordResetOtp(email, ipAddress) {
     expiresAt: otpExpiresAt(),
     ipAddress,
   });
-  await sendOtpEmail({ email: normalized, otp, purpose: 'reset_password' });
+  dispatchOtpEmail({ email: normalized, otp, purpose: 'reset_password' });
 
   return {
     email: normalized,
     expires_in_minutes: OTP_EXPIRY_MINUTES,
     message: 'Password reset code sent to your email',
+    email_queued: true,
     ...devOtpPayload(otp),
   };
 }
