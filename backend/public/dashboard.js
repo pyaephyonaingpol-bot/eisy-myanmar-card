@@ -442,6 +442,7 @@ const Dashboard = {
       if (this.cardsPollTimer) clearInterval(this.cardsPollTimer);
       this._cardsPollIntervalMs = intervalMs;
       this.cardsPollTimer = setInterval(() => {
+        if (window.EisyScroll?.isScrolling?.()) return;
         if (
           document.visibilityState === 'visible'
           && Auth.isLoggedIn()
@@ -904,6 +905,7 @@ const Dashboard = {
     }
 
     const tick = async () => {
+      if (window.EisyScroll?.isScrolling?.()) return;
       try {
         const { order } = await getOrder(orderId);
         const status = String(order?.status || '').toUpperCase();
@@ -3313,6 +3315,7 @@ const Dashboard = {
 
     this.loadP2pChatMessages(orderType, order.id);
     this._p2pChatInterval = setInterval(() => {
+      if (window.EisyScroll?.isScrolling?.()) return;
       this.loadP2pChatMessages(orderType, order.id, { silent: true });
     }, 8000);
 
@@ -3322,6 +3325,7 @@ const Dashboard = {
       && !order.maker_can_release;
     if (shouldPollRelease) {
       this._p2pStatusPollInterval = setInterval(async () => {
+        if (window.EisyScroll?.isScrolling?.()) return;
         try {
           const data = await (this.p2pApi()?.getActiveOrder
             ? this.p2pApi().getActiveOrder(orderType, order.id)
@@ -6684,6 +6688,7 @@ const Dashboard = {
   startReloadPolling(ref) {
     if (this.reloadPollTimer) clearInterval(this.reloadPollTimer);
     this.reloadPollTimer = setInterval(async () => {
+      if (window.EisyScroll?.isScrolling?.()) return;
       try {
         const { deposit } = await Auth.api('GET', `/api/deposit/status/${ref}`);
         if (deposit.status === 'VERIFIED') {
@@ -7478,6 +7483,7 @@ const Dashboard = {
       return;
     }
     this.pollTimer = setInterval(async () => {
+      if (window.EisyScroll?.isScrolling?.()) return;
       try {
         const { deposit } = await Auth.api('GET', `/api/deposit/status/${ref}`);
         if (deposit.status === 'VERIFIED') {

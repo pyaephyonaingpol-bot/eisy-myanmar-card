@@ -21,6 +21,7 @@
 
     let timer = null;
     const tick = async () => {
+      if (root.EisyScroll?.isScrolling?.()) return;
       try {
         const result = await getStatus(refCode);
         const deposit = result?.deposit || result;
@@ -59,6 +60,7 @@
 
     let timer = null;
     const tick = async () => {
+      if (root.EisyScroll?.isScrolling?.()) return;
       try {
         const result = await getOrder(orderId);
         const order = result?.order || result;

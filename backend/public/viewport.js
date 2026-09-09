@@ -6,6 +6,10 @@
  * Do NOT pixel-lock --app-vh while idle — that reintroduces collapse/clipping.
  *
  * Desktop (≥901px, non-Android) keeps the fixed SPA shell via CSS media query.
+ *
+ * Scroll smoothness:
+ * - Passive scroll/touch listeners only (never block the compositor)
+ * - html.is-scrolling flag lets CSS/JS defer expensive work while finger is moving
  */
 (function unlockMobileDocumentScroll() {
   const root = document.documentElement;
@@ -14,6 +18,8 @@
 
   let focusDepth = 0;
   let unlockTimer = 0;
+  let scrollIdleTimer = 0;
+  let scrolling = false;
 
   function isAndroid() {
     return /Android/i.test(navigator.userAgent || '');
@@ -73,6 +79,18 @@
     root.style.removeProperty('--app-shell-px');
   }
 
+  function markScrolling() {
+    if (!scrolling) {
+      scrolling = true;
+      root.classList.add('is-scrolling');
+    }
+    window.clearTimeout(scrollIdleTimer);
+    scrollIdleTimer = window.setTimeout(() => {
+      scrolling = false;
+      root.classList.remove('is-scrolling');
+    }, 140);
+  }
+
   function onFocusIn(event) {
     if (!isTextEntry(event.target)) return;
     focusDepth += 1;
@@ -83,7 +101,8 @@
     const target = event.target;
     window.setTimeout(() => {
       try {
-        target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+        // Instant snap — smooth scrollIntoView competes with finger scrolling.
+        target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
       } catch (_) {
         try { target.scrollIntoView(true); } catch (__) { /* ignore */ }
       }
@@ -121,15 +140,28 @@
   }
 
   window.addEventListener('resize', () => {
+    // Skip layout work while the finger is mid-scroll.
+    if (root.classList.contains('is-scrolling')) return;
     syncDocScrollClass();
     if (mqMobile.matches || root.classList.contains('doc-scroll')) clearPixelLock();
   }, { passive: true });
+
+  // Passive-only: never call preventDefault on scroll/touchmove (keeps iOS/Android momentum).
+  window.addEventListener('scroll', markScrolling, { passive: true, capture: true });
+  document.addEventListener('touchstart', markScrolling, { passive: true, capture: true });
+  document.addEventListener('touchmove', markScrolling, { passive: true, capture: true });
 
   if (typeof mqMobile.addEventListener === 'function') {
     mqMobile.addEventListener('change', syncDocScrollClass);
   } else if (typeof mqMobile.addListener === 'function') {
     mqMobile.addListener(syncDocScrollClass);
   }
+
+  window.EisyScroll = {
+    isScrolling() {
+      return scrolling || root.classList.contains('is-scrolling');
+    },
+  };
 
   clearPixelLock();
   syncDocScrollClass();
