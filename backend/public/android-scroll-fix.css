@@ -1,8 +1,11 @@
 /**
- * Android / mobile scroll + header unstick — load AFTER styles.css.
+ * Mobile / iOS / Android scroll smoothness — load AFTER styles.css.
  *
- * Only html/body are scrollports. Main wrappers use height:auto + overflow:visible
- * so the header scrolls away naturally (no sticky/fixed nested traps).
+ * Goals:
+ * - Single document scrollport (html/body) with momentum scrolling
+ * - touch-action: pan-y so vertical gestures are not stolen
+ * - Kill expensive backdrop-filter / blur paint during scroll
+ * - Wrappers stay overflow:visible (no nested scroll traps)
  */
 html.doc-scroll {
   height: auto !important;
@@ -12,6 +15,8 @@ html.doc-scroll {
   overflow-y: auto !important;
   position: static !important;
   -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y !important;
 }
 
 html.doc-scroll body {
@@ -23,26 +28,37 @@ html.doc-scroll body {
   position: relative !important;
   inset: auto !important;
   -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y manipulation !important;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y !important;
 }
 
-/* Wrappers: grow with content; do NOT become nested scroll containers. */
+/* Main wrappers: pass gestures through; never become nested scrollports. */
 html.doc-scroll #dashboardScreen,
 html.doc-scroll #adminApp,
 html.doc-scroll .app-shell,
 html.doc-scroll .app-main,
 html.doc-scroll .app-content,
-html.doc-scroll .auth-screen {
+html.doc-scroll .auth-screen,
+html.doc-scroll .app-page,
+html.doc-scroll .app-page.is-active {
   position: relative !important;
   inset: auto !important;
   height: auto !important;
   max-height: none !important;
-  min-height: 100% !important;
+  min-height: 0 !important;
   overflow: visible !important;
-  -webkit-overflow-scrolling: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y !important;
 }
 
-/* Header/nav: normal flow only — never sticky/fixed/absolute on Android. */
+html.doc-scroll .app-shell,
+html.doc-scroll .app-main,
+html.doc-scroll .auth-screen {
+  min-height: 100% !important;
+}
+
+/* Header/nav: normal flow — no sticky compositor traps. */
 html.doc-scroll .header,
 html.doc-scroll .app-main .header,
 html.doc-scroll .header-inner {
@@ -54,19 +70,55 @@ html.doc-scroll .header-inner {
   inset: auto !important;
   z-index: 1 !important;
   transform: none !important;
-  /* backdrop-filter can create a stuck compositor layer on Android WebView */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  touch-action: pan-y !important;
+}
+
+/* Glass panels: solid fill on mobile — blur is a major scroll jank source. */
+html.doc-scroll .panel,
+html.doc-scroll .summary-panel,
+html.doc-scroll .modal-box,
+html.doc-scroll .account-menu-dropdown,
+html.doc-scroll .auth-card {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
 
-/* Floating menu FAB overlaps and traps gestures — keep it out of the way. */
+html.doc-scroll .panel,
+html.doc-scroll .summary-panel {
+  background: rgba(30, 41, 59, 0.96) !important;
+}
+
+/* While the user is scrolling, drop transitions/animations that fight the compositor. */
+html.is-scrolling,
+html.is-scrolling body {
+  scroll-behavior: auto !important;
+}
+
+html.is-scrolling .panel,
+html.is-scrolling .btn,
+html.is-scrolling .card-thumb,
+html.is-scrolling .nav-item,
+html.is-scrolling .app-page,
+html.is-scrolling .modal-box {
+  transition: none !important;
+  animation: none !important;
+}
+
 html.doc-scroll .sidebar-toggle-fab,
 html.doc-scroll .sidebar-toggle-fab.is-visible {
   display: none !important;
   position: static !important;
 }
 
-/* Content starts below the in-flow header (no underlap). */
 html.doc-scroll .app-content {
   padding-top: 1rem !important;
+}
+
+/* Horizontal tables still pan-x; do not block page vertical scroll. */
+html.doc-scroll .data-table-wrap,
+html.doc-scroll .card-thumbnails {
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pan-y !important;
 }

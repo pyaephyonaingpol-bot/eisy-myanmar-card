@@ -140,6 +140,8 @@ public class MainActivity extends AppCompatActivity {
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
         webView.setScrollbarFadingEnabled(true);
+        // Prefer GPU compositing for smoother document scrolling in the system WebView.
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         webView.setBackgroundColor(Color.parseColor("#0F172A"));
 
         webView.setWebChromeClient(new WebChromeClient());
@@ -180,14 +182,18 @@ public class MainActivity extends AppCompatActivity {
                                 + "s.textContent=["
                                 + "'html{height:auto!important;min-height:100%!important;"
                                 + "overflow-x:hidden!important;overflow-y:auto!important;"
-                                + "position:static!important;-webkit-overflow-scrolling:touch!important;}',"
+                                + "position:static!important;-webkit-overflow-scrolling:touch!important;"
+                                + "touch-action:pan-y!important;}',"
                                 + "'body{position:relative!important;inset:auto!important;"
                                 + "height:auto!important;min-height:100%!important;"
                                 + "overflow-x:hidden!important;overflow-y:auto!important;"
-                                + "-webkit-overflow-scrolling:touch!important;}',"
+                                + "-webkit-overflow-scrolling:touch!important;touch-action:pan-y!important;}',"
                                 + "'#dashboardScreen,#adminApp,.app-shell,.app-main,.app-content,.auth-screen{"
                                 + "position:relative!important;height:auto!important;min-height:100%!important;"
-                                + "max-height:none!important;overflow:visible!important;}',"
+                                + "max-height:none!important;overflow:visible!important;"
+                                + "-webkit-overflow-scrolling:touch!important;touch-action:pan-y!important;}',"
+                                + "'.panel,.summary-panel{backdrop-filter:none!important;"
+                                + "-webkit-backdrop-filter:none!important;background:rgba(30,41,59,.96)!important;}',"
                                 + "'html.doc-scroll .header,html.doc-scroll .app-main .header,.header,.app-main .header{"
                                 + "position:relative!important;top:auto!important;inset:auto!important;"
                                 + "z-index:1!important;transform:none!important;"

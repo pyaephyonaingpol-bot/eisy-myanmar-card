@@ -22,7 +22,7 @@
   <link rel="apple-touch-icon" sizes="192x192" href="/brand/logo-icon.png?v=20260907favicon" />
   <link rel="apple-touch-icon" sizes="512x512" href="/brand/logo-icon.png?v=20260907favicon" />
   <style id="eisy-mobile-scroll-critical">
-    /* Strict critical unlock — Android Chrome / WebView first paint */
+    /* Strict critical unlock — Android Chrome / WebView / iOS first paint */
     html {
       height: auto !important;
       max-height: none !important;
@@ -31,6 +31,7 @@
       overflow-y: auto !important;
       position: static !important;
       -webkit-overflow-scrolling: touch !important;
+      touch-action: pan-y !important;
     }
     body {
       position: relative !important;
@@ -41,11 +42,15 @@
       overflow-x: hidden !important;
       overflow-y: auto !important;
       -webkit-overflow-scrolling: touch !important;
-      touch-action: pan-y manipulation !important;
+      touch-action: pan-y !important;
+    }
+    #dashboardScreen, #adminApp, .app-shell, .app-main, .app-content, .auth-screen {
+      -webkit-overflow-scrolling: touch !important;
+      touch-action: pan-y !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20260908headerUnstick" />
-  <link rel="stylesheet" href="/android-scroll-fix.css?v=20260908headerUnstick" />
+  <link rel="stylesheet" href="/styles.css?v=20260909scrollSmooth" />
+  <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
     /* Always unlock document scroll on Android / touch / narrow viewports. */
@@ -1704,7 +1709,7 @@
   <script defer src="/src/services/index.js?v=20260817m2"></script>
   <script defer src="/src/hooks/submitBusy.js?v=20260817m2"></script>
   <script defer src="/src/hooks/depositFees.js?v=20260821fee"></script>
-  <script defer src="/src/hooks/depositPolling.js?v=20260828tron"></script>
+  <script defer src="/src/hooks/depositPolling.js?v=20260909scrollSmooth"></script>
   <script defer src="/src/hooks/index.js?v=20260817m2"></script>
   <script defer src="/src/components/toast.js?v=20260817m2"></script>
   <script defer src="/src/components/depositFeePreview.js?v=20260817m2"></script>
@@ -1712,8 +1717,8 @@
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
   <script defer src="/src/components/index.js?v=20260817m2"></script>
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
-  <script defer src="/viewport.js?v=20260908headerUnstick"></script>
-  <script defer src="/dashboard.js?v=20260909walletPerf"></script>
+  <script defer src="/viewport.js?v=20260909scrollSmooth"></script>
+  <script defer src="/dashboard.js?v=20260909scrollSmooth"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
 </html>

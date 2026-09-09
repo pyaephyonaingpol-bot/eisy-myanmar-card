@@ -117,7 +117,7 @@ body {
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
   /* Allow vertical panning / scroll on touch devices */
-  touch-action: pan-x pan-y manipulation;
+  touch-action: pan-y manipulation;
   display: flex;
   flex-direction: column;
 }
@@ -225,8 +225,9 @@ html.doc-scroll {
   overflow-x: hidden !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
-  overscroll-behavior-y: contain !important;
+  overscroll-behavior-y: auto !important;
   position: static !important;
+  touch-action: pan-y !important;
 }
 
 html.doc-scroll body {
@@ -240,7 +241,8 @@ html.doc-scroll body {
   overflow-x: hidden !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y manipulation !important;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y !important;
   display: block !important;
 }
 
@@ -261,6 +263,8 @@ html.doc-scroll .app-content {
   min-height: 100% !important;
   /* visible — nested overflow-y:auto traps the header on Android */
   overflow: visible !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
 }
 
 /* Android/iOS parity: header stays in normal document flow */
@@ -3092,7 +3096,7 @@ body.sidebar-scroll-lock {
     overflow-x: hidden !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
-    touch-action: pan-x pan-y manipulation !important;
+    touch-action: pan-y !important;
     display: flex;
     flex-direction: column;
   }
@@ -3296,8 +3300,9 @@ body.sidebar-scroll-lock {
   .app-content {
     flex: 1 1 auto;
     overflow: visible !important;
-    -webkit-overflow-scrolling: auto;
+    -webkit-overflow-scrolling: touch;
     overscroll-behavior: auto;
+    touch-action: pan-y;
     min-height: 0;
     min-width: 0;
     width: 100%;
@@ -4178,7 +4183,7 @@ html.app-hydrating .wallet-hero-actions-row {
     max-height: none !important;
     min-height: 100% !important;
     overflow: visible !important;
-    -webkit-overflow-scrolling: auto !important;
+    -webkit-overflow-scrolling: touch !important;
     overscroll-behavior-y: auto !important;
     touch-action: pan-y !important;
   }
@@ -4194,6 +4199,17 @@ html.app-hydrating .wallet-hero-actions-row {
     transform: none !important;
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
+  }
+
+  /* Drop glass blur on mobile — major compositor cost while scrolling. */
+  .panel,
+  .summary-panel,
+  .modal-box,
+  html.doc-scroll .panel,
+  html.doc-scroll .summary-panel {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(30, 41, 59, 0.96) !important;
   }
 
   .app-content,
@@ -4248,7 +4264,7 @@ html.doc-scroll .auth-screen {
   min-height: 100% !important;
   overflow: visible !important;
   overscroll-behavior-y: auto !important;
-  -webkit-overflow-scrolling: auto !important;
+  -webkit-overflow-scrolling: touch !important;
   touch-action: pan-y !important;
 }
 
