@@ -14,6 +14,7 @@
     pages: [],
     roleLabels: {},
     activeThreadId: null,
+    supportFilters: { category: 'all', priority: 'all', status: 'all' },
     depositsById: {},
     pendingCardsById: {},
     issuedCardsById: {},
@@ -819,12 +820,26 @@
             this.activeThreadId = null;
             const replyForm = $('supportReplyForm');
             if (replyForm) replyForm.classList.add('hidden');
+            $('supportTaskMeta')?.classList.add('hidden');
             this.loadSupportThreads();
           } catch (err) {
             alert(err.message);
           }
         });
       }
+
+      ['supportCategoryFilter', 'supportPriorityFilter', 'supportStatusFilter'].forEach((id) => {
+        $(id)?.addEventListener('change', () => {
+          this.supportFilters = {
+            category: $('supportCategoryFilter')?.value || 'all',
+            priority: $('supportPriorityFilter')?.value || 'all',
+            status: $('supportStatusFilter')?.value || 'all',
+          };
+          this.loadSupportThreads();
+        });
+      });
+      $('btnRefreshSupportTasks')?.addEventListener('click', () => this.loadSupportThreads());
+      $('supportSaveTaskMetaBtn')?.addEventListener('click', () => this.saveSupportTaskMeta());
 
       const kycViewerClose = $('kycDocumentViewerClose');
       if (kycViewerClose) kycViewerClose.addEventListener('click', () => this.closeKycDocumentViewer());
@@ -989,7 +1004,77 @@
         onCards: () => this.loadPendingCards(),
         onReloads: () => this.loadPendingReloads(),
         onWallets: () => {},
+        onSupport: (payload) => this.onSupportRealtime(payload),
       });
+    },
+
+    onSupportRealtime(payload) {
+      const row = payload?.new || payload?.old || null;
+      const eventType = payload?.eventType || payload?.event || '';
+      if (row && String(row.priority || '').toLowerCase() === 'high') {
+        this.showSupportUrgentToast(row, eventType);
+      }
+      // Refresh queue when Support tab is open (or always keep list fresh).
+      if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'support') {
+        this.loadSupportThreads();
+      } else {
+        clearTimeout(this._supportRealtimeTimer);
+        this._supportRealtimeTimer = setTimeout(() => this.loadSupportThreads(), 400);
+      }
+    },
+
+    showSupportUrgentToast(row, eventType) {
+      const el = $('supportUrgentToast');
+      if (!el) return;
+      const cat = this.supportCategoryLabel(row.category);
+      const subject = row.subject || 'Support task';
+      const who = row.user_name || row.user_email || ('User #' + (row.user_id || '?'));
+      const verb = String(eventType).toUpperCase() === 'INSERT' ? 'New' : 'Updated';
+      el.classList.remove('hidden');
+      el.innerHTML =
+        '<strong>' + this.esc(verb) + ' HIGH priority</strong> · ' +
+        this.esc(cat) + ' — ' + this.esc(subject) +
+        '<br/><small>' + this.esc(who) + '</small>' +
+        ' <button type="button" class="btn btn-secondary btn-sm" id="supportUrgentGoto">Open Support</button>';
+      $('supportUrgentGoto')?.addEventListener('click', () => {
+        el.classList.add('hidden');
+        if (typeof AppNav !== 'undefined') AppNav.navigate('support', { pushHash: true });
+        this.loadSupportThreads().then(() => {
+          if (row.id) this.openThread(Number(row.id));
+        });
+      });
+      clearTimeout(this._supportToastTimer);
+      this._supportToastTimer = setTimeout(() => el.classList.add('hidden'), 12000);
+    },
+
+    supportCategoryLabel(value) {
+      const map = {
+        mmk_payouts: 'MMK Payouts',
+        card_issuing: 'Card Issuing Issues',
+        general: 'General',
+        deposit: 'Deposit',
+        card: 'Card',
+        account: 'Account',
+        technical: 'Technical',
+      };
+      return map[value] || value || 'General';
+    },
+
+    supportStatusLabel(value) {
+      const map = {
+        pending: 'Pending',
+        in_progress: 'In Progress',
+        completed: 'Completed',
+        failed: 'Failed',
+        open: 'Pending',
+        closed: 'Completed',
+      };
+      return map[value] || value || 'Pending';
+    },
+
+    supportPriorityLabel(value) {
+      const map = { high: 'High', medium: 'Medium', low: 'Low', urgent: 'High', normal: 'Medium' };
+      return map[value] || value || 'Medium';
     },
 
     scheduleDepositsRefresh() {
@@ -4145,20 +4230,39 @@
       if (!list) return;
 
       try {
-        const data = await this.api('GET', '/api/admin/support/threads');
+        const q = new URLSearchParams();
+        const filters = this.supportFilters || {};
+        if (filters.category && filters.category !== 'all') q.set('category', filters.category);
+        if (filters.priority && filters.priority !== 'all') q.set('priority', filters.priority);
+        if (filters.status && filters.status !== 'all') q.set('status', filters.status);
+        const qs = q.toString();
+        const data = await this.api('GET', '/api/admin/support/threads' + (qs ? ('?' + qs) : ''));
         const threads = Array.isArray(data.threads) ? data.threads : [];
 
         if (!threads.length) {
-          list.innerHTML = '<p class="hint">No support threads.</p>';
+          list.innerHTML = '<p class="hint">No support tasks match these filters.</p>';
           return;
         }
 
-        list.innerHTML = threads.map((t) =>
-          '<div class="thread-item' + (t.id === this.activeThreadId ? ' active' : '') + '" data-id="' + t.id + '" role="button" tabindex="0">' +
-            '<strong>' + this.esc(t.subject) + '</strong>' +
-            '<small>' + this.esc(t.name || t.email) + ' · ' + this.esc(t.status) + '</small>' +
-          '</div>'
-        ).join('');
+        list.innerHTML = threads.map((t) => {
+          const pri = String(t.priority || 'medium').toLowerCase();
+          const st = String(t.status || 'pending').toLowerCase();
+          return (
+            '<div class="thread-item' + (t.id === this.activeThreadId ? ' active' : '') +
+            (pri === 'high' ? ' is-urgent' : '') +
+            '" data-id="' + t.id + '" role="button" tabindex="0">' +
+              '<div class="thread-item-top">' +
+                '<strong>' + this.esc(t.subject) + '</strong>' +
+                '<span class="support-badge priority-' + this.esc(pri) + '">' + this.esc(this.supportPriorityLabel(pri)) + '</span>' +
+              '</div>' +
+              '<small>' +
+                this.esc(t.name || t.email) +
+                ' · <span class="support-badge category">' + this.esc(this.supportCategoryLabel(t.category)) + '</span>' +
+                ' · <span class="support-badge status-' + this.esc(st) + '">' + this.esc(this.supportStatusLabel(st)) + '</span>' +
+              '</small>' +
+            '</div>'
+          );
+        }).join('');
 
         list.querySelectorAll('.thread-item').forEach((el) => {
           el.addEventListener('click', () => this.openThread(parseInt(el.dataset.id, 10)));
@@ -4176,7 +4280,18 @@
         const messages = Array.isArray(data.messages) ? data.messages : [];
 
         const title = $('supportThreadTitle');
-        if (title) title.textContent = thread.subject || 'Thread';
+        if (title) title.textContent = thread.subject || 'Task';
+
+        const meta = $('supportTaskMeta');
+        if (meta) {
+          meta.classList.remove('hidden');
+          if ($('supportTaskCategory')) $('supportTaskCategory').value = thread.category || 'general';
+          if ($('supportTaskPriority')) $('supportTaskPriority').value = (thread.priority === 'urgent' ? 'high' : thread.priority === 'normal' ? 'medium' : (thread.priority || 'medium'));
+          if ($('supportTaskStatus')) {
+            const st = thread.status === 'open' ? 'pending' : thread.status === 'closed' ? 'completed' : (thread.status || 'pending');
+            $('supportTaskStatus').value = st;
+          }
+        }
 
         const replyForm = $('supportReplyForm');
         if (replyForm) replyForm.classList.remove('hidden');
@@ -4191,6 +4306,23 @@
             '</div>'
           ).join('');
         }
+
+        this.loadSupportThreads();
+      } catch (err) {
+        alert(err.message);
+      }
+    },
+
+    async saveSupportTaskMeta() {
+      if (!this.activeThreadId) return;
+      try {
+        await this.api('PATCH', '/api/admin/support/threads/' + this.activeThreadId, {
+          category: $('supportTaskCategory')?.value,
+          priority: $('supportTaskPriority')?.value,
+          status: $('supportTaskStatus')?.value,
+        });
+        await this.loadSupportThreads();
+        await this.openThread(this.activeThreadId);
       } catch (err) {
         alert(err.message);
       }

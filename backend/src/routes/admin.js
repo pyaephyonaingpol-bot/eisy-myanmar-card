@@ -1617,7 +1617,9 @@ router.get('/transactions/csv', requirePermission('transactions'), async (req, r
 router.get('/support/threads', requirePermission('support'), async (req, res) => {
   try {
     const status = req.query.status || null;
-    const threads = await SupportThread.listAll({ status });
+    const category = req.query.category || null;
+    const priority = req.query.priority || null;
+    const threads = await SupportThread.listAll({ status, category, priority });
     res.json({ threads });
   } catch (err) {
     console.error('[admin/support/threads]', err);
@@ -1641,6 +1643,24 @@ router.get('/support/threads/:id/messages', requirePermission('support'), async 
   }
 });
 
+router.patch('/support/threads/:id', requirePermission('support'), async (req, res) => {
+  try {
+    const threadId = parseInt(req.params.id, 10);
+    const { status, priority, category, assigned_admin_id } = req.body || {};
+    const thread = await SupportThread.updateMeta(threadId, {
+      status,
+      priority,
+      category,
+      assignedAdminId: assigned_admin_id,
+    });
+    if (!thread) return res.status(404).json({ error: 'Thread not found' });
+    res.json({ success: true, thread });
+  } catch (err) {
+    console.error('[admin/support/patch]', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
 router.post('/support/threads/:id/reply', requirePermission('support'), async (req, res) => {
   try {
     const threadId = parseInt(req.params.id, 10);
@@ -1656,9 +1676,14 @@ router.post('/support/threads/:id/reply', requirePermission('support'), async (r
     const msg = await SupportMessage.create({
       threadId,
       senderType: 'admin',
-      senderId: null,
+      senderId: req.user?.id || null,
       message: message.trim(),
     });
+
+    // Auto-move pending → in_progress when admin replies.
+    if (thread.status === 'pending' || thread.status === 'open') {
+      await SupportThread.updateMeta(threadId, { status: 'in_progress' });
+    }
 
     res.json({ success: true, message: msg });
   } catch (err) {

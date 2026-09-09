@@ -49,7 +49,7 @@
       touch-action: pan-y !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20260909legalBrand" />
+  <link rel="stylesheet" href="/styles.css?v=20260909supportTasks" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -1677,8 +1677,23 @@
             <section class="panel">
               <h2>Support</h2>
               <form id="supportForm" class="form">
-                <div class="field"><label>Subject</label><input id="supportSubject" placeholder="Card or deposit issue" /></div>
-                <div class="field"><label>Message</label><textarea id="supportMessage" rows="3" placeholder="Describe your issue…"></textarea></div>
+                <div class="field">
+                  <label for="supportCategory">Category</label>
+                  <select id="supportCategory" required>
+                    <option value="mmk_payouts">MMK Payouts</option>
+                    <option value="card_issuing">Card Issuing Issues</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="supportPriority">Priority</label>
+                  <select id="supportPriority">
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+                <div class="field"><label for="supportSubject">Subject</label><input id="supportSubject" placeholder="Card or payout issue" /></div>
+                <div class="field"><label for="supportMessage">Message</label><textarea id="supportMessage" rows="3" placeholder="Describe your issue…"></textarea></div>
                 <button type="submit" class="btn btn-primary">Open Support Ticket</button>
               </form>
               <div id="supportThreadsUser" class="thread-list" style="margin-top:1rem"></div>
@@ -1720,7 +1735,7 @@
   <script defer src="/src/components/index.js?v=20260817m2"></script>
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909scrollSmooth"></script>
-  <script defer src="/dashboard.js?v=20260909scrollSmooth"></script>
+  <script defer src="/dashboard.js?v=20260909supportTasks"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
 </html>

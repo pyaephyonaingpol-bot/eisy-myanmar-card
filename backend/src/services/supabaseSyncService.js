@@ -535,6 +535,36 @@ async function syncUsdtWithdrawalRequest(withdrawal) {
   });
 }
 
+/** Mirror Turso support_threads into Supabase for Admin Realtime (High priority popups). */
+async function syncSupportThread(thread, user = null) {
+  if (!isSupabaseEnabled() || !thread?.id) return null;
+  let email = user?.email || thread.email || null;
+  let name = user?.name || thread.name || null;
+  if ((!email || !name) && thread.user_id != null) {
+    try {
+      const u = await User.findById(thread.user_id);
+      email = email || u?.email || null;
+      name = name || u?.name || null;
+    } catch (_) { /* ignore */ }
+  }
+
+  return upsertRow('support_threads', {
+    id: Number(thread.id),
+    user_id: thread.user_id != null ? String(thread.user_id) : null,
+    user_email: email,
+    user_name: name,
+    subject: thread.subject || null,
+    category: thread.category || 'general',
+    status: thread.status || 'pending',
+    priority: thread.priority || 'medium',
+    last_message_preview: thread.last_message_preview || null,
+    unread_by_admin: Number(thread.unread_by_admin ?? 0),
+    created_at: thread.created_at || nowIso(),
+    updated_at: thread.updated_at || nowIso(),
+    closed_at: thread.closed_at || null,
+  });
+}
+
 module.exports = {
   syncUserWalletById,
   ensureSupabaseUserWallet,
@@ -549,5 +579,6 @@ module.exports = {
   syncUsdtBankWithdrawal,
   syncTransactionLog,
   syncUsdtWithdrawalRequest,
+  syncSupportThread,
   isSupabaseEnabled,
 };

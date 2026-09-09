@@ -5565,6 +5565,8 @@ const Dashboard = {
       try {
         await Auth.api('POST', '/api/support/threads', {
           subject: $('supportSubject').value.trim() || 'Support request',
+          category: $('supportCategory')?.value || 'mmk_payouts',
+          priority: $('supportPriority')?.value || 'medium',
           message: $('supportMessage').value.trim(),
         });
         $('supportMessage').value = '';
