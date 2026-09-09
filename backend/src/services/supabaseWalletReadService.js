@@ -11,8 +11,9 @@
  */
 const { getSupabase, isSupabaseEnabled } = require('../lib/supabase');
 
-const ROW_CACHE_TTL_MS = parseInt(process.env.SUPABASE_WALLET_CACHE_TTL_MS || '4000', 10);
-const SUPABASE_READ_TIMEOUT_MS = parseInt(process.env.SUPABASE_WALLET_READ_TIMEOUT_MS || '4000', 10);
+// Align with SPA wallet TTL (~20s) so overview/balance polls hit memory, not PostgREST.
+const ROW_CACHE_TTL_MS = parseInt(process.env.SUPABASE_WALLET_CACHE_TTL_MS || '15000', 10);
+const SUPABASE_READ_TIMEOUT_MS = parseInt(process.env.SUPABASE_WALLET_READ_TIMEOUT_MS || '1500', 10);
 const _rowCache = new Map(); // key → { expiresAt, row }
 
 function withTimeout(promise, ms, label = 'operation') {
@@ -131,11 +132,22 @@ async function fetchFreshUserWalletRow(userId, { email, bypassCache = false } = 
         const emailMismatch = Boolean(wantedEmail && rowEmail && rowEmail !== wantedEmail);
 
         if ((idMiss || emailMismatch) && wantedEmail) {
-          const byEmail = await sb
+          // Prefer exact eq (uses idx_user_wallets_email_lower when emails are lowercased).
+          // Fall back to ilike only if the exact match misses.
+          let byEmail = await sb
             .from('user_wallets')
             .select(selectCols)
-            .ilike('email', wantedEmail)
+            .eq('email', wantedEmail)
             .maybeSingle();
+
+          if (byEmail.error || !byEmail.data) {
+            byEmail = await sb
+              .from('user_wallets')
+              .select(selectCols)
+              .ilike('email', wantedEmail)
+              .limit(1)
+              .maybeSingle();
+          }
 
           if (byEmail.error) {
             console.warn('[supabase/wallet-read] email lookup:', byEmail.error.message);

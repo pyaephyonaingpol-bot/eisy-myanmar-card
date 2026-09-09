@@ -18,6 +18,7 @@ async function main() {
   assert.ok(dash.includes('REQUEST_TIMEOUT'), 'timeout error handling required');
   assert.ok(dash.includes('needsPinUnlock'), 'PIN gate before overview fetch required');
   assert.ok(dash.includes("force: forceRefresh"), 'force refresh must supersede stuck inflight');
+  assert.ok(dash.includes('getBalance'), 'fast balance path required');
   console.log('ok');
 
   console.log('\n== Auth.api AbortController timeout ==');
@@ -67,6 +68,7 @@ async function main() {
         maybeSingle() {
           return new Promise(() => { /* never resolves */ });
         },
+        limit() { return this; },
       };
     },
   });

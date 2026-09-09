@@ -11,21 +11,23 @@
 
   root.EisyServices.usdtWallet = {
     getOverview() {
-      return api().request('GET', '/api/user/usdt-wallet', null, { sensitive: true, timeoutMs: 20000 });
+      return api().request('GET', '/api/user/usdt-wallet', null, { sensitive: true, timeoutMs: 15000 });
     },
-    getPlatformWallet() {
-      return api().request('GET', '/api/user/wallet', null, { sensitive: true, timeoutMs: 12000 });
+    getPlatformWallet(opts = {}) {
+      const q = opts.fresh ? '?fresh=1' : '';
+      return api().request('GET', `/api/user/wallet${q}`, null, { sensitive: true, timeoutMs: 8000 });
     },
     getTransactions() {
       return api().request('GET', '/api/user/usdt-wallet/transactions', null, {
         sensitive: true,
-        timeoutMs: 15000,
+        timeoutMs: 12000,
       });
     },
-    getBalance() {
-      return api().request('GET', '/api/user/usdt-wallet/balance', null, {
+    getBalance(opts = {}) {
+      const q = opts.fresh ? '?fresh=1' : '';
+      return api().request('GET', `/api/user/usdt-wallet/balance${q}`, null, {
         sensitive: true,
-        timeoutMs: 12000,
+        timeoutMs: 6000,
       });
     },
     linkAddress(body) {
@@ -40,7 +42,7 @@
     transfer(body) {
       return api().request('POST', '/api/user/usdt-wallet/transfer', body, {
         sensitive: true,
-        timeoutMs: 20000,
+        timeoutMs: 15000,
       });
     },
   };
