@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * Integration: optional registration PIN + email PIN/password reset + setPin.
+ * Integration: optional registration PIN + email PIN reset + setPin.
  * Run: node backend/scripts/test-pin-email-reset-flow.js
  */
 const assert = require('assert');
@@ -74,20 +74,9 @@ async function run() {
   assert.ok(resetPin.pin_token);
   console.log('ok');
 
-  console.log('== email password reset ==');
-  const sendPw = await authService.sendPasswordResetOtp(email);
-  assert.ok(sendPw.message);
-  const pwOtp = await latestOtp(email, 'reset_password');
-  assert.ok(pwOtp?.otp_code, 'reset_password OTP stored');
-  const resetPw = await authService.completePasswordReset({
-    email,
-    otp: pwOtp.otp_code,
-    newPassword: 'secret99',
-    confirmPassword: 'secret99',
-  });
-  assert.strictEqual(resetPw.has_password, true);
-  const afterPw = await User.findById(created.id);
-  assert.ok(afterPw.password_hash, 'password_hash persisted');
+  console.log('== password reset APIs removed ==');
+  assert.strictEqual(typeof authService.sendPasswordResetOtp, 'undefined');
+  assert.strictEqual(typeof authService.completePasswordReset, 'undefined');
   console.log('ok');
 
   console.log('\nPIN email reset flow tests passed.');

@@ -545,84 +545,6 @@ async function completePinReset({ email, otp, pin, confirmPin, ipAddress, device
   };
 }
 
-async function sendPasswordResetOtp(email, ipAddress) {
-  const normalized = normalizeEmail(email);
-  if (!normalized) throw new Error('Email is required');
-  const user = await User.findByEmail(normalized);
-  if (!user) {
-    return {
-      email: normalized,
-      expires_in_minutes: OTP_EXPIRY_MINUTES,
-      message: 'If an account exists for that email, a password reset code was sent.',
-    };
-  }
-
-  assertUserNotBlocked(user, { action: 'reset password' });
-
-  const otp = generateOtp();
-  await OtpCode.create({
-    userId: user.id,
-    email: normalized,
-    otpCode: otp,
-    purpose: 'reset_password',
-    expiresAt: otpExpiresAt(),
-    ipAddress,
-  });
-  dispatchOtpEmail({ email: normalized, otp, purpose: 'reset_password' });
-
-  return {
-    email: normalized,
-    expires_in_minutes: OTP_EXPIRY_MINUTES,
-    message: 'Password reset code sent to your email',
-    email_queued: true,
-    ...devOtpPayload(otp),
-  };
-}
-
-async function completePasswordReset({ email, otp, newPassword, confirmPassword }) {
-  const normalized = normalizeEmail(email);
-  if (!normalized) throw new Error('Email is required');
-
-  const next = String(newPassword || '');
-  const confirm = String(confirmPassword || '');
-  if (!next) throw new Error('New password is required');
-  if (next !== confirm) throw new Error('New password and confirmation do not match');
-  const format = validatePasswordFormat(next);
-  if (!format.ok) throw new Error(format.error);
-
-  const user = await User.findByEmail(normalized);
-  if (!user) throw new Error('Invalid or expired reset code');
-
-  assertUserNotBlocked(user, { action: 'reset password' });
-
-  const record = await OtpCode.findLatestValid(normalized, 'reset_password');
-  if (!isMasterTestOtp(otp)) {
-    if (!record) throw new Error('OTP expired or not found');
-    if (record.otp_code !== otp) {
-      await OtpCode.incrementAttempts(record.id);
-      throw new Error('Invalid OTP');
-    }
-  }
-  if (record) await OtpCode.markVerified(record.id);
-
-  await User.updatePassword(user.id, hashPassword(next));
-  ensureSupabaseUserWalletInBackground(user.id, { syncIfExists: true });
-
-  await TransactionLog.create({
-    userId: user.id,
-    type: 'password_changed',
-    description: 'Account password reset via email OTP',
-    createdBy: 'user',
-    metadata: { reset_via: 'email_otp' },
-  });
-
-  return {
-    message: 'Password updated successfully',
-    has_password: true,
-    email: normalized,
-  };
-}
-
 async function registerBiometrics(userId, deviceToken, deviceName) {
   if (!deviceToken || deviceToken.length < 16) {
     throw new Error('Invalid biometric device token');
@@ -901,8 +823,6 @@ module.exports = {
   resetPinToDefault,
   sendPinResetOtp,
   completePinReset,
-  sendPasswordResetOtp,
-  completePasswordReset,
   changePassword,
   registerBiometrics,
   verifyBiometrics,

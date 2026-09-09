@@ -5048,96 +5048,101 @@ const Dashboard = {
       });
     }
 
-    const showPasswordResetBtn = $('showPasswordResetBtn');
-    if (showPasswordResetBtn) {
-      showPasswordResetBtn.onclick = () => {
-        const section = $('passwordResetSection');
+    const showPinResetBtn = $('showPinResetBtn');
+    if (showPinResetBtn) {
+      showPinResetBtn.onclick = () => {
+        const section = $('authPinResetSection');
         section?.classList.toggle('hidden');
-        const email = $('passwordResetEmail');
+        const email = $('authPinResetEmail');
         if (email && !email.value) email.value = $('loginEmail')?.value || '';
         email?.focus();
       };
     }
 
-    const passwordResetSendForm = $('passwordResetSendForm');
-    if (passwordResetSendForm) {
-      passwordResetSendForm.addEventListener('submit', async (e) => {
+    const authPinResetSendForm = $('authPinResetSendForm');
+    if (authPinResetSendForm) {
+      authPinResetSendForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        const errEl = $('authPinResetError');
         try {
-          const email = $('passwordResetEmail')?.value.trim();
-          const data = await Auth.sendPasswordResetOtp(email);
-          $('passwordResetConfirmForm')?.classList.remove('hidden');
-          this.showDevOtp?.(data, 'passwordResetOtp');
-          this.toast(data.message || 'Password reset code sent', 'ok', data.dev_otp);
+          if (errEl) errEl.textContent = '';
+          const email = $('authPinResetEmail')?.value.trim();
+          const data = await Auth.sendPinResetOtp(email);
+          $('authPinResetConfirmForm')?.classList.remove('hidden');
+          this.showDevOtp?.(data, 'authPinResetOtp');
+          this.toast(data.message || 'PIN reset code sent', 'ok', data.dev_otp);
         } catch (err) {
-          $('passwordResetError').textContent = err.message || 'Failed to send reset code';
+          if (errEl) errEl.textContent = err.message || 'Failed to send reset code';
           this.toast(err.message || 'Failed to send reset code', 'error');
         }
       });
     }
 
-    const passwordResetConfirmForm = $('passwordResetConfirmForm');
-    if (passwordResetConfirmForm) {
-      passwordResetConfirmForm.addEventListener('submit', async (e) => {
+    const authPinResetConfirmForm = $('authPinResetConfirmForm');
+    if (authPinResetConfirmForm) {
+      authPinResetConfirmForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const errEl = $('passwordResetError');
+        const errEl = $('authPinResetError');
         try {
           if (errEl) errEl.textContent = '';
-          await Auth.completePasswordReset({
-            email: $('passwordResetEmail')?.value.trim(),
-            otp: $('passwordResetOtp')?.value.trim(),
-            newPassword: $('passwordResetNew')?.value,
-            confirmPassword: $('passwordResetConfirm')?.value,
+          await Auth.completePinReset({
+            email: $('authPinResetEmail')?.value.trim(),
+            otp: $('authPinResetOtp')?.value.trim(),
+            pin: $('authPinResetNew')?.value.trim(),
+            confirmPin: $('authPinResetConfirm')?.value.trim(),
           });
-          passwordResetConfirmForm.classList.add('hidden');
-          $('passwordResetSection')?.classList.add('hidden');
-          this.toast('Password reset via email — you can sign in with your new password or PIN', 'ok');
+          authPinResetConfirmForm.classList.add('hidden');
+          $('authPinResetSection')?.classList.add('hidden');
+          this.toast('PIN reset via email — signed in', 'ok');
+          this.invalidateFetch('wallet', 'deposits', 'usdtWallet', 'cards');
+          this.refreshAuthUI();
         } catch (err) {
-          if (errEl) errEl.textContent = err.message || 'Password reset failed';
-          this.toast(err.message || 'Password reset failed', 'error');
+          if (errEl) errEl.textContent = err.message || 'PIN reset failed';
+          this.toast(err.message || 'PIN reset failed', 'error');
         }
       });
     }
 
-    const settingsPasswordResetBtn = $('settingsPasswordResetBtn');
-    if (settingsPasswordResetBtn) {
-      settingsPasswordResetBtn.onclick = async () => {
+    const settingsPinResetBtn = $('settingsPinResetBtn');
+    if (settingsPinResetBtn) {
+      settingsPinResetBtn.onclick = async () => {
         try {
-          settingsPasswordResetBtn.disabled = true;
-          const data = await Auth.sendPasswordResetOtp(Auth.user?.email);
-          $('settingsPasswordResetForm')?.classList.remove('hidden');
-          this.showDevOtp?.(data, 'settingsPasswordResetOtp');
-          this.toast(data.message || 'Password reset code sent', 'ok', data.dev_otp);
+          settingsPinResetBtn.disabled = true;
+          const data = await Auth.sendPinResetOtp(Auth.user?.email);
+          $('settingsPinResetForm')?.classList.remove('hidden');
+          this.showDevOtp?.(data, 'settingsPinResetOtp');
+          this.toast(data.message || 'PIN reset code sent', 'ok', data.dev_otp);
         } catch (err) {
           this.toast(err.message || 'Failed to send reset code', 'error');
         } finally {
-          settingsPasswordResetBtn.disabled = false;
+          settingsPinResetBtn.disabled = false;
         }
       };
     }
 
-    const settingsPasswordResetForm = $('settingsPasswordResetForm');
-    if (settingsPasswordResetForm) {
-      settingsPasswordResetForm.addEventListener('submit', async (e) => {
+    const settingsPinResetForm = $('settingsPinResetForm');
+    if (settingsPinResetForm) {
+      settingsPinResetForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const errEl = $('settingsPasswordResetError');
+        const errEl = $('settingsPinResetError');
         try {
           errEl?.classList.add('hidden');
-          await Auth.completePasswordReset({
+          await Auth.completePinReset({
             email: Auth.user?.email,
-            otp: $('settingsPasswordResetOtp')?.value.trim(),
-            newPassword: $('settingsPasswordResetNew')?.value,
-            confirmPassword: $('settingsPasswordResetConfirm')?.value,
+            otp: $('settingsPinResetOtp')?.value.trim(),
+            pin: $('settingsPinResetNew')?.value.trim(),
+            confirmPin: $('settingsPinResetConfirm')?.value.trim(),
           });
-          settingsPasswordResetForm.classList.add('hidden');
-          this.updateChangePasswordUI();
-          this.toast('Password reset via email', 'ok');
+          settingsPinResetForm.classList.add('hidden');
+          this.toast('PIN reset via email — unlocked', 'ok');
+          this.invalidateFetch('wallet', 'deposits', 'usdtWallet', 'cards');
+          this.refreshAuthUI();
         } catch (err) {
           if (errEl) {
-            errEl.textContent = err.message || 'Password reset failed';
+            errEl.textContent = err.message || 'PIN reset failed';
             errEl.classList.remove('hidden');
           }
-          this.toast(err.message || 'Password reset failed', 'error');
+          this.toast(err.message || 'PIN reset failed', 'error');
         }
       });
     }

@@ -901,7 +901,7 @@
         </form>
         <button type="button" id="bioLoginBtn" class="btn btn-secondary" style="margin-top:0.75rem">Login with Biometrics</button>
         <button type="button" id="showOtpLoginBtn" class="btn btn-secondary btn-sm" style="margin-top:0.75rem">Use email OTP instead</button>
-        <button type="button" id="showPasswordResetBtn" class="btn btn-secondary btn-sm" style="margin-top:0.5rem">Forgot password — email reset</button>
+        <button type="button" id="showPinResetBtn" class="btn btn-secondary btn-sm" style="margin-top:0.5rem">Forgot PIN — email reset</button>
         <div id="loginOtpSection" class="hidden" style="margin-top:1rem">
           <form id="loginSendOtpForm">
             <button type="submit" id="loginSendOtp" class="btn btn-secondary">Send Login OTP</button>
@@ -911,18 +911,18 @@
             <button type="submit" id="loginVerify" class="btn btn-primary">Verify &amp; Login with OTP</button>
           </form>
         </div>
-        <div id="passwordResetSection" class="hidden" style="margin-top:1rem">
-          <p class="hint">Reset your account password with a one-time code emailed to you.</p>
-          <form id="passwordResetSendForm">
-            <div class="field"><label for="passwordResetEmail">Email</label><input id="passwordResetEmail" type="email" autocomplete="email" required /></div>
-            <button type="submit" class="btn btn-secondary" style="width:100%">Send password reset code</button>
+        <div id="authPinResetSection" class="hidden" style="margin-top:1rem">
+          <p class="hint">Reset your 6-digit security PIN with a one-time code emailed to you.</p>
+          <form id="authPinResetSendForm">
+            <div class="field"><label for="authPinResetEmail">Email</label><input id="authPinResetEmail" type="email" autocomplete="email" required /></div>
+            <button type="submit" class="btn btn-secondary" style="width:100%">Send PIN reset code</button>
           </form>
-          <form id="passwordResetConfirmForm" class="hidden" style="margin-top:0.75rem">
-            <div class="field"><label for="passwordResetOtp">Email code</label><input id="passwordResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
-            <div class="field"><label for="passwordResetNew">New password</label><input id="passwordResetNew" type="password" minlength="6" autocomplete="new-password" required /></div>
-            <div class="field"><label for="passwordResetConfirm">Confirm password</label><input id="passwordResetConfirm" type="password" minlength="6" autocomplete="new-password" required /></div>
-            <p id="passwordResetError" class="error-text"></p>
-            <button type="submit" class="btn btn-primary" style="width:100%">Reset password via email</button>
+          <form id="authPinResetConfirmForm" class="hidden" style="margin-top:0.75rem">
+            <div class="field"><label for="authPinResetOtp">Email code</label><input id="authPinResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
+            <div class="field"><label for="authPinResetNew">New 6-digit PIN</label><input id="authPinResetNew" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
+            <div class="field"><label for="authPinResetConfirm">Confirm PIN</label><input id="authPinResetConfirm" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
+            <p id="authPinResetError" class="error-text"></p>
+            <button type="submit" class="btn btn-primary" style="width:100%">Reset PIN via email</button>
           </form>
         </div>
         <p class="hint">Returning users: enter your PIN. First time on this device? Use email OTP once, then PIN or biometrics next time.</p>
@@ -1005,7 +1005,7 @@
         <div class="field"><input id="unlockPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="one-time-code" required /></div>
         <p id="pinUnlockError" class="error-text"></p>
         <button type="submit" id="pinUnlockBtn" class="btn btn-primary" style="width:100%;margin-bottom:0.5rem">Verify PIN</button>
-        <button type="button" id="pinForgotBtn" class="btn btn-secondary btn-sm" style="width:100%">Forgot PIN — email reset</button>
+        <button type="button" id="pinForgotBtn" class="btn btn-secondary btn-sm" style="width:100%">Reset PIN via email</button>
       </form>
       <div id="pinResetEmailSection" class="hidden" style="margin-top:1rem">
         <p class="hint">We will email a one-time code to reset your PIN. No default PIN is issued.</p>
@@ -1630,10 +1630,20 @@
                 <p class="hint" data-i18n="settings_profile_link_hint">Name, email, phone, and card status are on your Profile page.</p>
                 <button type="button" class="btn btn-secondary btn-sm" data-goto="profile" data-i18n="btn_open_profile">Open Profile</button>
               </div>
-              <div class="settings-card">
+              <div class="settings-card settings-card-wide">
                 <h3>Security PIN</h3>
                 <p>Your 6-digit PIN protects wallet balance, card details, and deposit actions.</p>
                 <button type="button" id="unlockBtnSettings" class="btn btn-secondary btn-sm">Unlock / Change PIN</button>
+                <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border-subtle)" />
+                <p class="hint" style="margin-bottom:0.5rem">Forgot your PIN? Reset it with an email code.</p>
+                <button type="button" id="settingsPinResetBtn" class="btn btn-secondary btn-sm">Email me a PIN reset code</button>
+                <form id="settingsPinResetForm" class="form form-compact hidden" style="margin-top:0.75rem">
+                  <div class="field"><label for="settingsPinResetOtp">Email code</label><input id="settingsPinResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
+                  <div class="field"><label for="settingsPinResetNew">New 6-digit PIN</label><input id="settingsPinResetNew" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
+                  <div class="field"><label for="settingsPinResetConfirm">Confirm PIN</label><input id="settingsPinResetConfirm" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
+                  <p id="settingsPinResetError" class="error-text hidden"></p>
+                  <button type="submit" class="btn btn-primary btn-sm">Reset PIN</button>
+                </form>
               </div>
               <div class="settings-card settings-card-wide">
                 <h3>Change Password</h3>
@@ -1644,16 +1654,6 @@
                   <div class="field"><label for="confirmPassword">Confirm Password</label><input id="confirmPassword" name="confirm_password" type="password" autocomplete="new-password" minlength="6" placeholder="Re-enter new password" required /></div>
                   <p id="changePasswordError" class="error-text hidden"></p>
                   <button type="submit" id="changePasswordSubmit" class="btn btn-primary btn-sm">Update Password</button>
-                </form>
-                <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border-subtle)" />
-                <p class="hint" style="margin-bottom:0.5rem">Forgot your current password? Reset it with an email code.</p>
-                <button type="button" id="settingsPasswordResetBtn" class="btn btn-secondary btn-sm">Email me a password reset code</button>
-                <form id="settingsPasswordResetForm" class="form form-compact hidden" style="margin-top:0.75rem">
-                  <div class="field"><label for="settingsPasswordResetOtp">Email code</label><input id="settingsPasswordResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
-                  <div class="field"><label for="settingsPasswordResetNew">New password</label><input id="settingsPasswordResetNew" type="password" minlength="6" autocomplete="new-password" required /></div>
-                  <div class="field"><label for="settingsPasswordResetConfirm">Confirm password</label><input id="settingsPasswordResetConfirm" type="password" minlength="6" autocomplete="new-password" required /></div>
-                  <p id="settingsPasswordResetError" class="error-text hidden"></p>
-                  <button type="submit" class="btn btn-primary btn-sm">Confirm password reset</button>
                 </form>
               </div>
               <div class="settings-card">
@@ -1715,7 +1715,7 @@
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20260908bootFast"></script>
   <script defer src="/i18n.js?v=20260831sellmmk"></script>
-  <script defer src="/auth.js?v=20260908bootFast"></script>
+  <script defer src="/auth.js?v=20260909pinResetOnly"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
   <script defer src="/src/services/usdtWalletApi.js?v=20260909walletPerf"></script>
@@ -1735,7 +1735,7 @@
   <script defer src="/src/components/index.js?v=20260817m2"></script>
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
-  <script defer src="/dashboard.js?v=20260909pinKb"></script>
+  <script defer src="/dashboard.js?v=20260909pinResetOnly"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
 </html>
