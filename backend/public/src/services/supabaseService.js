@@ -447,6 +447,9 @@ const SupabaseBridge = {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_wallets' }, (payload) => {
         handlers.onWallets?.(payload.new || null);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_threads' }, (payload) => {
+        handlers.onSupport?.(payload);
+      })
       .subscribe();
     this._channels.push(channel);
     return channel;

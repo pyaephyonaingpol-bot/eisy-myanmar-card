@@ -1523,7 +1523,49 @@ a.btn { text-decoration: none; }
 .thread-item { padding: 0.85rem; background: rgba(15,23,42,0.45); border-radius: var(--radius-sm); cursor: pointer; border: 1px solid var(--border-subtle); transition: border-color 0.15s, background 0.15s; }
 .thread-item:hover { border-color: var(--border); background: rgba(148,163,184,0.06); }
 .thread-item.active { border-color: var(--accent); background: rgba(59,130,246,0.08); }
+.thread-item.is-urgent { border-color: rgba(239, 68, 68, 0.55); box-shadow: inset 3px 0 0 #ef4444; }
+.thread-item-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
 .thread-item small { display: block; color: var(--text-muted); margin-top: 0.25rem; font-size: 0.75rem; }
+.support-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.support-badge.priority-high { background: rgba(239,68,68,0.16); color: #fecaca; border-color: rgba(239,68,68,0.4); }
+.support-badge.priority-medium { background: rgba(245,158,11,0.14); color: #fde68a; border-color: rgba(245,158,11,0.35); }
+.support-badge.priority-low { background: rgba(148,163,184,0.14); color: #cbd5e1; border-color: rgba(148,163,184,0.3); }
+.support-badge.status-pending { background: rgba(59,130,246,0.14); color: #93c5fd; border-color: rgba(59,130,246,0.35); }
+.support-badge.status-in_progress { background: rgba(168,85,247,0.14); color: #d8b4fe; border-color: rgba(168,85,247,0.35); }
+.support-badge.status-completed { background: rgba(34,197,94,0.14); color: #86efac; border-color: rgba(34,197,94,0.35); }
+.support-badge.status-failed { background: rgba(239,68,68,0.14); color: #fecaca; border-color: rgba(239,68,68,0.35); }
+.support-badge.category { background: rgba(15,23,42,0.55); color: #e2e8f0; border-color: rgba(148,163,184,0.28); text-transform: none; }
+.support-task-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.65rem;
+  align-items: end;
+  margin-bottom: 0.85rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgba(15,23,42,0.35);
+}
+.support-urgent-toast {
+  margin-bottom: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  background: rgba(127, 29, 29, 0.45);
+  color: #fee2e2;
+}
+.support-urgent-toast.hidden { display: none; }
+.support-urgent-toast .btn { margin-top: 0.45rem; }
 .support-chat {
   display: flex;
   flex-direction: column;
