@@ -5,12 +5,15 @@ const {
 } = require('./authService');
 const {
   verifyPassword,
+  verifyPasswordAsync,
   verifyPin,
+  verifyPinAsync,
   hashPassword,
   validatePasswordFormat,
   normalizeEmail,
   isDefaultTestPin,
   hashPin,
+  hashPinAsync,
   DEFAULT_TEST_PIN,
 } = require('./cryptoService');
 const {
@@ -62,7 +65,7 @@ async function assertAdminCredentials(user, password) {
 
   const pwd = String(password || '');
   if (user.password_hash) {
-    if (!verifyPassword(pwd, user.password_hash)) {
+    if (!(await verifyPasswordAsync(pwd, user.password_hash))) {
       throw new Error('Invalid email or password');
     }
     return;
@@ -70,14 +73,14 @@ async function assertAdminCredentials(user, password) {
 
   // Fallback: allow PIN login for admins who have not set a password yet
   if (user.pin_hash) {
-    if (!verifyPin(pwd, user.pin_hash)) {
+    if (!(await verifyPinAsync(pwd, user.pin_hash))) {
       throw new Error('Invalid email or password');
     }
     return;
   }
 
   if (isDefaultTestPin(pwd)) {
-    await User.updatePin(user.id, hashPin(DEFAULT_TEST_PIN));
+    await User.updatePin(user.id, await hashPinAsync(DEFAULT_TEST_PIN));
     return;
   }
 
@@ -96,16 +99,22 @@ async function loginAdmin({ email, password, ipAddress, deviceName, devicePlatfo
   }
 
   await assertAdminCredentials(user, password);
-  await User.recordLogin(user.id);
 
-  const { sessionToken, session } = await createSession({
-    userId: user.id,
-    ipAddress,
-    deviceName: deviceName || 'Admin Dashboard',
-    devicePlatform: devicePlatform || 'web-admin',
-  });
+  const [{ sessionToken, session }] = await Promise.all([
+    createSession({
+      userId: user.id,
+      ipAddress,
+      deviceName: deviceName || 'Admin Dashboard',
+      devicePlatform: devicePlatform || 'web-admin',
+    }),
+    User.recordLogin(user.id),
+  ]);
 
-  await TransactionLog.create({
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  user.last_login_at = now;
+  user.updated_at = now;
+
+  TransactionLog.create({
     userId: user.id,
     type: 'admin_login',
     description: `Admin login (${user.admin_role})`,
@@ -113,8 +122,7 @@ async function loginAdmin({ email, password, ipAddress, deviceName, devicePlatfo
     createdBy: 'admin',
   }).catch(() => {});
 
-  const fresh = await User.findById(user.id);
-  return sessionPayload(fresh, sessionToken, session);
+  return sessionPayload(user, sessionToken, session);
 }
 
 /**

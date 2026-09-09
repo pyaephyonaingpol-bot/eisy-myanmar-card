@@ -44,10 +44,21 @@ function isMasterTestOtp(otp) {
   return String(otp || '').trim() === MASTER_TEST_OTP;
 }
 
+const PBKDF2_ITERATIONS = 100000;
+const PBKDF2_KEYLEN = 32;
+const PBKDF2_DIGEST = 'sha256';
+const pbkdf2Async = require('util').promisify(crypto.pbkdf2);
+
 function hashPin(pin) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(String(pin), salt, 100000, 32, 'sha256').toString('hex');
+  const hash = crypto.pbkdf2Sync(String(pin), salt, PBKDF2_ITERATIONS, PBKDF2_KEYLEN, PBKDF2_DIGEST).toString('hex');
   return `${salt}:${hash}`;
+}
+
+async function hashPinAsync(pin) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = await pbkdf2Async(String(pin), salt, PBKDF2_ITERATIONS, PBKDF2_KEYLEN, PBKDF2_DIGEST);
+  return `${salt}:${derived.toString('hex')}`;
 }
 
 function verifyPin(pin, stored) {
@@ -55,11 +66,26 @@ function verifyPin(pin, stored) {
   try {
     const [salt, hash] = stored.split(':');
     if (!salt || !hash) return false;
-    const attempt = crypto.pbkdf2Sync(String(pin), salt, 100000, 32, 'sha256').toString('hex');
+    const attempt = crypto.pbkdf2Sync(String(pin), salt, PBKDF2_ITERATIONS, PBKDF2_KEYLEN, PBKDF2_DIGEST).toString('hex');
     const hashBuf = Buffer.from(hash, 'hex');
     const attemptBuf = Buffer.from(attempt, 'hex');
     if (hashBuf.length !== attemptBuf.length) return false;
     return crypto.timingSafeEqual(hashBuf, attemptBuf);
+  } catch {
+    return false;
+  }
+}
+
+/** Non-blocking PIN verify — keeps the event loop free during login. */
+async function verifyPinAsync(pin, stored) {
+  if (!stored || !pin) return false;
+  try {
+    const [salt, hash] = String(stored).split(':');
+    if (!salt || !hash) return false;
+    const attempt = await pbkdf2Async(String(pin), salt, PBKDF2_ITERATIONS, PBKDF2_KEYLEN, PBKDF2_DIGEST);
+    const hashBuf = Buffer.from(hash, 'hex');
+    if (hashBuf.length !== attempt.length) return false;
+    return crypto.timingSafeEqual(hashBuf, attempt);
   } catch {
     return false;
   }
@@ -128,8 +154,16 @@ function hashPassword(password) {
   return hashPin(password);
 }
 
+async function hashPasswordAsync(password) {
+  return hashPinAsync(password);
+}
+
 function verifyPassword(password, stored) {
   return verifyPin(password, stored);
+}
+
+async function verifyPasswordAsync(password, stored) {
+  return verifyPinAsync(password, stored);
 }
 
 function normalizeEmail(email) {
@@ -138,7 +172,9 @@ function normalizeEmail(email) {
 
 module.exports = {
   hashPin,
+  hashPinAsync,
   verifyPin,
+  verifyPinAsync,
   hashToken,
   generateOtp,
   generateSessionToken,
@@ -148,12 +184,15 @@ module.exports = {
   validatePinFormat,
   validatePasswordFormat,
   hashPassword,
+  hashPasswordAsync,
   verifyPassword,
+  verifyPasswordAsync,
   PASSWORD_MIN_LENGTH,
   PASSWORD_MAX_LENGTH,
   normalizeEmail,
   PIN_TOKEN_TTL_MS,
   PIN_TOKEN_TTL_HOURS,
+  PBKDF2_ITERATIONS,
   DEFAULT_TEST_PINS,
   DEFAULT_TEST_PIN,
   MASTER_TEST_OTP,

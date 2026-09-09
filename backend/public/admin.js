@@ -245,7 +245,10 @@
         const data = await this.api('GET', '/api/admin/auth/me');
         this.applySession(data);
         this.showApp();
-        await Promise.resolve(this.loadAll());
+        // Do not block splash/ready on every admin table — load the active tab only,
+        // then warm the rest in the background.
+        this.loadActiveTabData();
+        this.loadAll();
       } catch (err) {
         console.warn('[Admin] session restore failed:', err.message);
         this.clearSession();
@@ -310,6 +313,7 @@
           if (!res.ok) throw new Error(data.error || 'Login failed');
           this.applySession(data);
           this.showApp();
+          this.loadActiveTabData();
           this.loadAll();
           this.showAdminToast('Signed in as ' + (data.user?.role_label || data.user?.admin_role), 'ok');
         } catch (err) {
@@ -432,6 +436,17 @@
     loadOverview() {
       if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
       if (this.hasPermission('withdrawal_rates_read')) this.loadWithdrawalRates();
+    },
+
+    /** Load only the visible admin tab so login/session restore feels instant. */
+    loadActiveTabData() {
+      if (this.hasPermission('settings_read') || this.hasPermission('rates')) {
+        this.loadPricingSettings();
+      }
+      const page = (typeof AppNav !== 'undefined' && AppNav.currentPage)
+        || (location.hash || '').replace(/^#admin-/, '')
+        || 'overview';
+      this._showTabPanel(page);
     },
 
     bindNavigation() {

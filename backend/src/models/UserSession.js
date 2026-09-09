@@ -15,7 +15,20 @@ const UserSession = {
       ) VALUES (?, ?, ?, ?, ?, ?)
     `, userId, hash, deviceName || null, devicePlatform || null, ipAddress || null, expiresAt);
 
-    return db.get('SELECT * FROM user_sessions WHERE id = ?', result.lastID);
+    // Avoid a round-trip SELECT on the login hot path — callers only need id + expires_at.
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    return {
+      id: result.lastID,
+      user_id: userId,
+      session_token_hash: hash,
+      device_name: deviceName || null,
+      device_platform: devicePlatform || null,
+      ip_address: ipAddress || null,
+      expires_at: expiresAt,
+      revoked_at: null,
+      last_seen_at: now,
+      created_at: now,
+    };
   },
 
   async findByToken(sessionToken) {
