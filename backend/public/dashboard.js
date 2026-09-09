@@ -4983,6 +4983,13 @@ const Dashboard = {
           emailInput.value = Auth.user?.email || $('loginEmail')?.value || '';
         }
         emailInput?.focus();
+        window.EisyScroll?.ensureVisible?.(emailInput);
+        // Scroll the expanded reset block into the modal viewport above the keyboard.
+        window.setTimeout(() => {
+          try {
+            section?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+          } catch (_) { /* ignore */ }
+        }, 300);
       };
     }
 
@@ -4993,10 +5000,19 @@ const Dashboard = {
           pinResetSendOtpBtn.disabled = true;
           const email = ($('pinResetEmail')?.value || Auth.user?.email || '').trim();
           const data = await Auth.sendPinResetOtp(email);
-          $('pinResetConfirmForm')?.classList.remove('hidden');
+          const confirmForm = $('pinResetConfirmForm');
+          confirmForm?.classList.remove('hidden');
           this.showDevOtp?.(data, 'pinResetOtp');
           this.toast(data.message || 'PIN reset code sent to your email', 'ok', data.dev_otp);
-          $('pinResetOtp')?.focus();
+          const otpInput = $('pinResetOtp');
+          otpInput?.focus();
+          window.EisyScroll?.ensureVisible?.(otpInput);
+          window.setTimeout(() => {
+            try {
+              confirmForm?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+              otpInput?.scrollIntoView({ block: 'center', behavior: 'auto' });
+            } catch (_) { /* ignore */ }
+          }, 300);
         } catch (err) {
           $('pinResetError').textContent = err.message || 'Failed to send reset code';
           this.toast(err.message || 'Failed to send reset code', 'error');
