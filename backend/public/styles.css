@@ -48,6 +48,7 @@
    */
   --app-vh: 100vh;
   --app-dvh: 100vh;
+  --kb-inset: 0px;
   --sidebar-width: 248px;
   --header-min-height: 4.5rem;
   --safe-top: constant(safe-area-inset-top);
@@ -586,9 +587,19 @@ small.hint {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  /* Keep modal contents scrollable above the soft keyboard. */
+  padding-bottom: max(1rem, var(--safe-bottom), calc(var(--kb-inset, 0px) + 1rem));
+  max-height: 100%;
+  max-height: 100dvh;
+  box-sizing: border-box;
 }
 #pinSetupModal {
   z-index: 110; /* stay above unlock if both ever race open */
+}
+#pinUnlockModal,
+#pinSetupModal {
+  /* PIN reset expands with OTP + new PIN fields — always allow scroll. */
+  align-items: flex-start;
 }
 .modal-box {
   background: var(--bg-glass-strong);
@@ -605,6 +616,42 @@ small.hint {
   max-height: none;
   overflow-wrap: break-word;
   word-break: break-word;
+}
+html.kb-open .modal,
+body.kb-open .modal {
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding-top: max(0.75rem, var(--safe-top));
+  padding-bottom: max(1.25rem, calc(var(--kb-inset, 0px) + 1.25rem));
+}
+html.kb-open .modal-box,
+body.kb-open .modal-box {
+  margin-top: 0.5rem;
+  margin-bottom: 1.5rem;
+  /* Prefer scrolling the modal overlay; keep box fully readable. */
+  max-height: none;
+}
+#pinUnlockModal .modal-box,
+#pinSetupModal .modal-box {
+  /* Extra bottom room so the last PIN field clears the keyboard. */
+  padding-bottom: calc(1.5rem + 0.25rem);
+}
+html.kb-open #pinUnlockModal .modal-box,
+html.kb-open #pinSetupModal .modal-box,
+body.kb-open #pinUnlockModal .modal-box,
+body.kb-open #pinSetupModal .modal-box {
+  padding-bottom: calc(1.75rem + env(safe-area-inset-bottom, 0px));
+}
+#pinResetEmailSection,
+#pinResetConfirmForm {
+  scroll-margin-bottom: calc(var(--kb-inset, 0px) + 5rem);
+}
+#pinUnlockModal input,
+#pinSetupModal input,
+#pinResetEmailSection input,
+#pinResetConfirmForm input {
+  scroll-margin-top: 1.25rem;
+  scroll-margin-bottom: calc(var(--kb-inset, 0px) + 6rem);
 }
 .modal-box h3 {
   margin-bottom: 0.65rem;

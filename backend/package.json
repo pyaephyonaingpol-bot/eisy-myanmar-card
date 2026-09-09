@@ -47,6 +47,7 @@
     "test:ensure-supabase-usdt-wallet": "node scripts/test-ensure-supabase-usdt-wallet.js",
     "test:pin-login": "node scripts/test-pin-login.js",
     "test:otp-email-async": "node scripts/test-otp-email-async.js",
+    "test:pin-reset-keyboard": "node scripts/test-pin-reset-keyboard.js",
     "test:login-auth-perf": "node scripts/test-login-auth-perf.js",
     "test:acctinfo-guard": "node scripts/test-acctinfo-guard.js",
     "test:dashboard-profile-page": "node scripts/test-dashboard-profile-page.js",
