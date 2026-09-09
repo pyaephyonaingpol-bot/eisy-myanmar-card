@@ -195,35 +195,6 @@ router.post('/password/change', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/password/reset/send-otp', async (req, res) => {
-  try {
-    const { email } = req.body || {};
-    if (!email) return res.status(400).json({ error: 'Email is required' });
-    const result = await authService.sendPasswordResetOtp(email, clientIp(req));
-    res.json({ success: true, ...result });
-  } catch (err) {
-    res.status(400).json({ error: err.message, code: err.code });
-  }
-});
-
-router.post('/password/reset/confirm', async (req, res) => {
-  try {
-    const { email, otp, new_password, confirm_password } = req.body || {};
-    if (!email || !otp || !new_password) {
-      return res.status(400).json({ error: 'email, otp, and new_password are required' });
-    }
-    const result = await authService.completePasswordReset({
-      email,
-      otp,
-      newPassword: new_password,
-      confirmPassword: confirm_password || new_password,
-    });
-    res.json({ success: true, ...result });
-  } catch (err) {
-    res.status(400).json({ error: err.message, code: err.code });
-  }
-});
-
 // ─── Biometrics ─────────────────────────────────────────────────
 
 router.post('/biometrics/register', requireAuth, async (req, res) => {

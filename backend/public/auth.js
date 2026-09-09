@@ -376,21 +376,6 @@ const Auth = {
     return { ...data, user };
   },
 
-  async sendPasswordResetOtp(email) {
-    const target = (email || this.user?.email || '').trim();
-    if (!target) throw new Error('Email is required to reset your password');
-    return this.api('POST', '/api/auth/password/reset/send-otp', { email: target });
-  },
-
-  async completePasswordReset({ email, otp, newPassword, confirmPassword }) {
-    return this.api('POST', '/api/auth/password/reset/confirm', {
-      email: (email || this.user?.email || '').trim(),
-      otp,
-      new_password: newPassword,
-      confirm_password: confirmPassword || newPassword,
-    });
-  },
-
   async setPin(pin) {
     const data = await this.api('POST', '/api/auth/pin/set', { pin, confirm_pin: pin });
     this.setPinToken(data.pin_token, data.expires_in_seconds);

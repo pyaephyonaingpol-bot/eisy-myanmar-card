@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * Guards for mobile menu toggle, email PIN/password reset, and post-registration PIN setup.
+ * Guards for mobile menu toggle, email PIN reset, and post-registration PIN setup.
  * Run: node backend/scripts/test-mobile-menu-pin-reset.js
  */
 const assert = require('assert');
@@ -32,8 +32,8 @@ assert.ok(nav.includes('sidebar-toggle-fab') || nav.includes('ensureSidebarFab')
 assert.ok(nav.includes('sidebar-close'), 'syncs in-drawer close control');
 assert.ok(css.includes('--sidebar-safe-top'), 'sidebar safe-area token');
 assert.ok(
-  css.includes('max(3rem, calc(var(--safe-top) + 0.75rem))'),
-  'sidebar safe-top uses pt-12 floor plus device inset'
+  css.includes('max(0.85rem, calc(var(--safe-top) + 0.5rem))'),
+  'sidebar safe-top uses inset floor plus device inset'
 );
 assert.ok(css.includes('padding-top: var(--sidebar-safe-top)'), 'drawer uses safe-area top padding');
 assert.ok(css.includes('.sidebar-close'), 'in-drawer close control');
@@ -56,39 +56,54 @@ const adminHtml = read('backend/public/admin.html');
 assert.ok(!adminHtml.includes('<<<<<<<') && !adminHtml.includes('>>>>>>>'), 'no git conflict markers in admin.html');
 console.log('ok');
 
-console.log('\n== Email PIN / password reset ==');
+console.log('\n== Email PIN reset (password reset removed) ==');
 const html = indexHtml;
-assert.ok(html.includes('pinForgotBtn') || html.includes('Forgot PIN — email reset'), 'forgot PIN CTA');
+assert.ok(html.includes('pinForgotBtn') || html.includes('Reset PIN via email'), 'forgot PIN CTA');
 assert.ok(html.includes('pinResetEmailSection'), 'PIN email reset section');
-assert.ok(html.includes('passwordResetSection') || html.includes('Forgot password — email reset'), 'password email reset');
+assert.ok(html.includes('showPinResetBtn') || html.includes('Forgot PIN — email reset'), 'auth PIN reset CTA');
+assert.ok(html.includes('authPinResetSection'), 'auth PIN email reset section');
+assert.ok(html.includes('settingsPinResetBtn') || html.includes('Email me a PIN reset code'), 'settings PIN reset CTA');
+assert.ok(html.includes('settingsPinResetForm'), 'settings PIN reset form');
+assert.ok(!html.includes('passwordResetSection'), 'no password reset section');
+assert.ok(!html.includes('showPasswordResetBtn'), 'no password reset button');
+assert.ok(!html.includes('Forgot password — email reset'), 'no forgot-password CTA');
+assert.ok(!html.includes('settingsPasswordResetBtn'), 'no settings password reset');
+assert.ok(!html.includes('Reset password via email'), 'no reset-password submit label');
 assert.ok(!html.includes('Reset to 123456'), 'no default PIN reset button in UI');
 
 const authJs = read('backend/public/auth.js');
 assert.ok(authJs.includes('sendPinResetOtp'), 'Auth.sendPinResetOtp');
 assert.ok(authJs.includes('completePinReset'), 'Auth.completePinReset');
-assert.ok(authJs.includes('sendPasswordResetOtp'), 'Auth.sendPasswordResetOtp');
-assert.ok(authJs.includes('completePasswordReset'), 'Auth.completePasswordReset');
+assert.ok(!authJs.includes('sendPasswordResetOtp'), 'Auth.sendPasswordResetOtp removed');
+assert.ok(!authJs.includes('completePasswordReset'), 'Auth.completePasswordReset removed');
 assert.ok(authJs.includes('/api/auth/pin/reset/send-otp'), 'PIN reset send route');
-assert.ok(authJs.includes('/api/auth/password/reset/send-otp'), 'password reset send route');
+assert.ok(!authJs.includes('/api/auth/password/reset/'), 'password reset client routes removed');
 
 const routes = read('backend/src/routes/auth.js');
 assert.ok(routes.includes("/pin/reset/send-otp"), 'pin reset send route');
 assert.ok(routes.includes("/pin/reset/confirm"), 'pin reset confirm route');
-assert.ok(routes.includes("/password/reset/send-otp"), 'password reset send route');
-assert.ok(routes.includes("/password/reset/confirm"), 'password reset confirm route');
+assert.ok(!routes.includes("/password/reset/send-otp"), 'password reset send route removed');
+assert.ok(!routes.includes("/password/reset/confirm"), 'password reset confirm route removed');
 
 const service = read('backend/src/services/authService.js');
 assert.ok(service.includes('sendPinResetOtp'), 'service sendPinResetOtp');
 assert.ok(service.includes("purpose: 'reset_pin'"), 'reset_pin purpose');
-assert.ok(service.includes("purpose: 'reset_password'"), 'reset_password purpose');
+assert.ok(!service.includes('sendPasswordResetOtp'), 'sendPasswordResetOtp removed');
+assert.ok(!service.includes('completePasswordReset'), 'completePasswordReset removed');
+assert.ok(!service.includes("purpose: 'reset_password'"), 'no new reset_password OTPs');
 assert.ok(service.includes('PIN_RESET_EMAIL_REQUIRED') || service.includes('email OTP to reset'), 'default reset gated');
+
+const dash = read('backend/public/dashboard.js');
+assert.ok(dash.includes('showPinResetBtn') || dash.includes('authPinResetSendForm'), 'auth PIN reset wiring');
+assert.ok(dash.includes('settingsPinResetBtn') || dash.includes('settingsPinResetForm'), 'settings PIN reset wiring');
+assert.ok(!dash.includes('sendPasswordResetOtp'), 'dashboard no longer calls password reset');
+assert.ok(!dash.includes('completePasswordReset'), 'dashboard no longer completes password reset');
 console.log('ok');
 
 console.log('\n== Post-registration PIN setup ==');
 assert.ok(service.includes('needs_pin_setup'), 'needs_pin_setup flag');
 assert.ok(service.includes('pinHash: pinValue ? hashPin(pinValue) : null'), 'optional registration PIN');
 assert.ok(html.includes('setupPinConfirm'), 'confirm PIN on setup modal');
-const dash = read('backend/public/dashboard.js');
 assert.ok(dash.includes('openPinSetupModal'), 'openPinSetupModal helper');
 assert.ok(dash.includes('!Auth.user?.has_pin'), 'robust has_pin check');
 assert.ok(dash.includes('Auth.setPin(pin)'), 'saves PIN via Auth.setPin');
