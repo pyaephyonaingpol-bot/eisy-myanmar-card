@@ -225,36 +225,40 @@ async function requireAdminAuth(req, res, next) {
         return res.status(401).json({ error: 'Invalid or expired admin session', code: 'SESSION_INVALID' });
       }
 
-      const user = await User.findById(session.user_id);
+      // findByToken already JOINs users — avoid a second User.findById on every admin request.
       const { isUserBlocked } = require('../lib/userAuthStatus');
-      if (!user || isUserBlocked(user.auth_status)) {
+      if (isUserBlocked(session.auth_status)) {
         return res.status(403).json({ error: 'Account blocked', code: 'ACCOUNT_BLOCKED' });
       }
 
-      if (!user.admin_role || !isValidRole(user.admin_role)) {
+      if (!session.admin_role || !isValidRole(session.admin_role)) {
         return res.status(403).json({
           error: 'Admin role required',
           code: 'ADMIN_ROLE_REQUIRED',
         });
       }
 
-      await UserSession.touch(token, addDays(SESSION_EXPIRY_DAYS));
+      if (shouldTouchSession(token)) {
+        UserSession.touch(token, addDays(SESSION_EXPIRY_DAYS)).catch((err) => {
+          console.warn('[admin auth] session touch skipped:', err.message);
+        });
+      }
 
       req.sessionToken = token;
       req.session = session;
       req.isAdmin = true;
       req.adminAuthMethod = 'session';
-      req.adminRole = user.admin_role;
+      req.adminRole = session.admin_role;
       req.user = {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        phone: user.phone,
-        email_verified: user.email_verified,
-        has_pin: Boolean(user.pin_hash),
-        biometrics_enabled: Boolean(user.biometrics_enabled),
-        auth_status: user.auth_status,
-        admin_role: user.admin_role,
+        id: session.uid || session.user_id,
+        email: session.email,
+        name: session.name,
+        phone: session.phone,
+        email_verified: session.email_verified,
+        has_pin: Boolean(session.pin_hash),
+        biometrics_enabled: Boolean(session.biometrics_enabled),
+        auth_status: session.auth_status,
+        admin_role: session.admin_role,
       };
       return next();
     }

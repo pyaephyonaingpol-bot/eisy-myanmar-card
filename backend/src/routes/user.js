@@ -456,9 +456,10 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
       ...walletPayload(user),
       email: user.email || req.user.email,
       updated_at: user.updated_at || null,
+      source: 'turso',
     };
-    // Prefer Turso for instant home balances. Use ?fresh=1 to force a Supabase
-    // Table Editor re-read (still honors the short read timeout + row cache).
+    // Prefer Turso for instant home balances after login. Use ?fresh=1 to force a
+    // Supabase Table Editor re-read (still honors the short read timeout + row cache).
     const fresh = req.query.fresh === '1' || req.query.fresh === 'true';
     let balances = localPayload;
     if (fresh) {
@@ -467,7 +468,11 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
         fresh: true,
       });
     } else {
-      balances = await overlayWalletPayloadFromSupabase(req.user.id, localPayload);
+      // Warm Supabase cache in the background — do not block login hydration.
+      try {
+        const { fetchFreshUserWalletRow } = require('../services/supabaseWalletReadService');
+        fetchFreshUserWalletRow(req.user.id, { email: localPayload.email }).catch(() => {});
+      } catch (_) { /* ignore */ }
     }
     res.json({
       user_id: user.id,

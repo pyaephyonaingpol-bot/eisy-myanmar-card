@@ -10,10 +10,10 @@ const { devOtpPayload } = require('./devOtp');
 const { addMinutes, addDays } = require('../lib/sqliteDatetime');
 const { syncUserWalletById, ensureSupabaseUserWalletInBackground } = require('./supabaseSyncService');
 const {
-  hashPin, verifyPin, generateOtp, generateSessionToken,
+  hashPin, hashPinAsync, verifyPin, verifyPinAsync, generateOtp, generateSessionToken,
   createPinToken, validatePinFormat, normalizeEmail, hashToken,
   isDefaultTestPin, DEFAULT_TEST_PIN,
-  hashPassword, verifyPassword, validatePasswordFormat,
+  hashPassword, verifyPassword, verifyPasswordAsync, validatePasswordFormat,
   isMasterTestOtp, PIN_TOKEN_TTL_MS,
 } = require('./cryptoService');
 
@@ -33,6 +33,70 @@ function pinTokenMeta() {
     pin_token_ttl_hours: PIN_TOKEN_TTL_MS / (60 * 60 * 1000),
     expires_in_seconds: Math.floor(PIN_TOKEN_TTL_MS / 1000),
   };
+}
+
+/** Stamp last_login_at in-memory so mapPublicUser stays fresh without a re-SELECT. */
+function stampLoginLocally(user) {
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  user.last_login_at = now;
+  user.updated_at = now;
+  return user;
+}
+
+function logLoginEvent(payload) {
+  TransactionLog.create(payload).catch((err) => {
+    console.warn('[auth] login transaction log skipped:', err.message);
+  });
+}
+
+/**
+ * Parallelize session create + last_login update; keep ledger + Supabase off the critical path.
+ */
+async function finalizeLoginSession({
+  user,
+  ipAddress,
+  deviceName,
+  devicePlatform,
+  logDescription,
+  logMetadata = null,
+  includePinToken = true,
+}) {
+  const [{ sessionToken, session }] = await Promise.all([
+    createSession({
+      userId: user.id,
+      ipAddress,
+      deviceName,
+      devicePlatform,
+    }),
+    User.recordLogin(user.id),
+  ]);
+
+  stampLoginLocally(user);
+
+  logLoginEvent({
+    userId: user.id,
+    type: 'login',
+    description: logDescription,
+    ipAddress,
+    createdBy: 'user',
+    metadata: logMetadata,
+  });
+
+  ensureSupabaseUserWalletInBackground(user.id);
+
+  const hasPin = Boolean(user.pin_hash);
+  const result = {
+    user: mapPublicUser(user),
+    sessionToken,
+    session,
+    session_expires_at: session?.expires_at || sessionExpiresAt(),
+    has_pin: hasPin,
+    ...pinTokenMeta(),
+  };
+  if (includePinToken && hasPin) {
+    result.pin_token = createPinToken(user.id);
+  }
+  return result;
 }
 
 const {
@@ -245,50 +309,22 @@ async function loginWithPin({ email, pin, ipAddress, deviceName, devicePlatform 
       err.code = 'PIN_NOT_SET';
       throw err;
     }
-    await User.updatePin(user.id, hashPin(DEFAULT_TEST_PIN));
-  } else if (!verifyPin(pin, user.pin_hash)) {
+    const pinHash = await hashPinAsync(DEFAULT_TEST_PIN);
+    await User.updatePin(user.id, pinHash);
+    user.pin_hash = pinHash;
+  } else if (!(await verifyPinAsync(pin, user.pin_hash))) {
     const err = new Error('Invalid PIN');
     err.code = 'INVALID_PIN';
     throw err;
   }
 
-  await User.recordLogin(user.id);
-
-  const { sessionToken, session } = await createSession({
-    userId: user.id,
+  return finalizeLoginSession({
+    user,
     ipAddress,
     deviceName,
     devicePlatform,
+    logDescription: 'User logged in via PIN',
   });
-
-  await TransactionLog.create({
-    userId: user.id,
-    type: 'login',
-    description: 'User logged in via PIN',
-    ipAddress,
-    createdBy: 'user',
-  }).catch((err) => {
-    console.warn('[auth] PIN login transaction log skipped:', err.message);
-  });
-
-  ensureSupabaseUserWalletInBackground(user.id);
-
-  const freshUser = await User.findById(user.id);
-  if (!freshUser) {
-    const err = new Error('Account could not be loaded after PIN verification. Please try again.');
-    err.code = 'USER_LOOKUP_FAILED';
-    throw err;
-  }
-
-  return {
-    user: mapPublicUser(freshUser),
-    sessionToken,
-    session,
-    session_expires_at: session?.expires_at || sessionExpiresAt(),
-    has_pin: Boolean(freshUser.pin_hash),
-    pin_token: createPinToken(user.id),
-    ...pinTokenMeta(),
-  };
 }
 
 async function verifyLoginOtp({ email, otp, ipAddress, deviceName, devicePlatform }) {
@@ -309,35 +345,14 @@ async function verifyLoginOtp({ email, otp, ipAddress, deviceName, devicePlatfor
   if (record) {
     await OtpCode.markVerified(record.id);
   }
-  await User.recordLogin(user.id);
 
-  const { sessionToken, session } = await createSession({
-    userId: user.id,
+  return finalizeLoginSession({
+    user,
     ipAddress,
     deviceName,
     devicePlatform,
+    logDescription: 'User logged in via email OTP',
   });
-
-  await TransactionLog.create({
-    userId: user.id,
-    type: 'login',
-    description: 'User logged in via email OTP',
-    ipAddress,
-    createdBy: 'user',
-  });
-
-  ensureSupabaseUserWalletInBackground(user.id);
-
-  const freshUser = await User.findById(user.id);
-  return {
-    user: mapPublicUser(freshUser),
-    sessionToken,
-    session,
-    session_expires_at: session?.expires_at || sessionExpiresAt(),
-    has_pin: Boolean(freshUser.pin_hash),
-    pin_token: createPinToken(user.id),
-    ...pinTokenMeta(),
-  };
 }
 
 async function createSession({ userId, ipAddress, deviceName, devicePlatform }) {
@@ -635,32 +650,13 @@ async function verifyBiometrics(email, deviceToken, ipAddress, deviceName, devic
     throw new Error('Biometric verification failed');
   }
 
-  await User.recordLogin(user.id);
-  const { sessionToken, session } = await createSession({
-    userId: user.id,
+  return finalizeLoginSession({
+    user,
     ipAddress,
     deviceName,
     devicePlatform,
+    logDescription: 'User logged in via biometrics',
   });
-
-  await TransactionLog.create({
-    userId: user.id,
-    type: 'login',
-    description: 'User logged in via biometrics',
-    ipAddress,
-    createdBy: 'user',
-  });
-
-  ensureSupabaseUserWalletInBackground(user.id);
-
-  return {
-    user: mapPublicUser(user),
-    sessionToken,
-    session,
-    session_expires_at: session?.expires_at || sessionExpiresAt(),
-    pin_token: createPinToken(user.id),
-    ...pinTokenMeta(),
-  };
 }
 
 async function changePassword(userId, { currentPassword, newPassword, confirmPassword }) {
@@ -712,6 +708,89 @@ async function getMe(userId) {
   };
 }
 
+const GOOGLE_TOKEN_VERIFY_TIMEOUT_MS = parseInt(
+  process.env.GOOGLE_TOKEN_VERIFY_TIMEOUT_MS || '2500',
+  10
+);
+
+function decodeJwtPayloadUnsafe(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length < 2) return null;
+  try {
+    const json = Buffer.from(parts[1], 'base64url').toString('utf8');
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefer local HS256 verify with SUPABASE_JWT_SECRET (no network).
+ * Fall back to a single timed auth.getUser — never dual remote round-trips.
+ */
+async function verifySupabaseAccessToken(accessToken) {
+  const token = String(accessToken || '').trim();
+  const { firstEnv } = require('../lib/envAliases');
+  const jwtSecret = String(
+    firstEnv('SUPABASE_JWT_SECRET', 'JWT_SECRET_SUPABASE') || ''
+  ).trim();
+
+  if (jwtSecret) {
+    const parts = token.split('.');
+    if (parts.length !== 3) throw new Error('Malformed Supabase access token');
+    const [headerB64, payloadB64, sigB64] = parts;
+    const data = `${headerB64}.${payloadB64}`;
+    const expected = crypto
+      .createHmac('sha256', jwtSecret)
+      .update(data)
+      .digest();
+    let sigBuf;
+    try {
+      sigBuf = Buffer.from(sigB64, 'base64url');
+    } catch {
+      throw new Error('Invalid Supabase access token encoding');
+    }
+    if (sigBuf.length !== expected.length || !crypto.timingSafeEqual(sigBuf, expected)) {
+      throw new Error('Invalid Supabase access token signature');
+    }
+    const payload = decodeJwtPayloadUnsafe(token);
+    if (!payload?.sub) throw new Error('Supabase token missing subject');
+    if (payload.exp && Date.now() / 1000 > Number(payload.exp)) {
+      throw new Error('Supabase access token expired');
+    }
+    return {
+      id: payload.sub,
+      email: payload.email || payload.user_metadata?.email || null,
+      user_metadata: payload.user_metadata || {},
+      app_metadata: payload.app_metadata || {},
+    };
+  }
+
+  const { getSupabase } = require('../lib/supabase');
+  const admin = getSupabase();
+  if (!admin?.auth?.getUser) {
+    throw new Error('Supabase Auth client unavailable');
+  }
+
+  const timeoutMs = Math.max(800, GOOGLE_TOKEN_VERIFY_TIMEOUT_MS);
+  let timer = null;
+  const { data, error } = await Promise.race([
+    admin.auth.getUser(token),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const err = new Error(`Supabase auth.getUser timed out after ${timeoutMs}ms`);
+        err.code = 'GOOGLE_TOKEN_TIMEOUT';
+        reject(err);
+      }, timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+  if (error) throw error;
+  if (!data?.user) throw new Error('Supabase Auth returned no user');
+  return data.user;
+}
+
 async function loginWithGoogleOAuth({
   accessToken,
   ipAddress,
@@ -725,44 +804,22 @@ async function loginWithGoogleOAuth({
     throw err;
   }
 
-  const { getSupabase, getSupabaseConfig, isPublicSupabaseEnabled } = require('../lib/supabase');
+  const { isPublicSupabaseEnabled } = require('../lib/supabase');
   if (!isPublicSupabaseEnabled()) {
     const err = new Error('Google Sign-In is not configured on this server');
     err.code = 'GOOGLE_NOT_CONFIGURED';
     throw err;
   }
 
-  // Verify the Supabase Auth JWT and load the Google-linked user.
+  // Verify Supabase Auth JWT locally when possible; otherwise a single remote getUser.
   let supabaseUser = null;
   try {
-    const admin = getSupabase();
-    if (admin?.auth?.getUser) {
-      const { data, error } = await admin.auth.getUser(token);
-      if (error) throw error;
-      supabaseUser = data?.user || null;
-    }
+    supabaseUser = await verifySupabaseAccessToken(token);
   } catch (err) {
-    console.warn('[auth] Google token verify via service client failed:', err.message);
-  }
-
-  if (!supabaseUser) {
-    // Fallback: user-scoped client with the access token.
-    try {
-      const { createClient } = require('@supabase/supabase-js');
-      const { url, anonKey } = getSupabaseConfig();
-      const userClient = createClient(url, anonKey, {
-        global: { headers: { Authorization: `Bearer ${token}` } },
-        auth: { persistSession: false, autoRefreshToken: false },
-      });
-      const { data, error } = await userClient.auth.getUser();
-      if (error) throw error;
-      supabaseUser = data?.user || null;
-    } catch (err) {
-      console.warn('[auth] Google token verify via anon client failed:', err.message);
-      const mapped = new Error('Google Sign-In could not be verified. Please try again.');
-      mapped.code = 'GOOGLE_TOKEN_INVALID';
-      throw mapped;
-    }
+    console.warn('[auth] Google token verify failed:', err.message);
+    const mapped = new Error('Google Sign-In could not be verified. Please try again.');
+    mapped.code = err.code || 'GOOGLE_TOKEN_INVALID';
+    throw mapped;
   }
 
   const email = normalizeEmail(supabaseUser?.email);
@@ -789,6 +846,7 @@ async function loginWithGoogleOAuth({
         pinHash: null,
       });
       await User.verifyEmail(user.id);
+      user.email_verified = 1;
       created = true;
       ensureSupabaseUserWalletInBackground(user.id, { syncIfExists: false });
       try {
@@ -804,48 +862,25 @@ async function loginWithGoogleOAuth({
     assertUserNotBlocked(user, { action: 'log in' });
     if (!user.email_verified) {
       await User.verifyEmail(user.id);
+      user.email_verified = 1;
     }
-    await User.recordLogin(user.id);
-    ensureSupabaseUserWalletInBackground(user.id);
   }
 
-  const { sessionToken, session } = await createSession({
-    userId: user.id,
+  const result = await finalizeLoginSession({
+    user,
     ipAddress,
     deviceName,
     devicePlatform,
-  });
-
-  await TransactionLog.create({
-    userId: user.id,
-    type: 'login',
-    description: created ? 'User registered via Google OAuth' : 'User logged in via Google OAuth',
-    ipAddress,
-    createdBy: 'user',
-    metadata: {
+    logDescription: created ? 'User registered via Google OAuth' : 'User logged in via Google OAuth',
+    logMetadata: {
       provider: 'google',
       supabase_user_id: supabaseUser.id || null,
       created,
     },
-  }).catch((err) => {
-    console.warn('[auth] Google login transaction log skipped:', err.message);
+    includePinToken: Boolean(user.pin_hash),
   });
-
-  const freshUser = await User.findById(user.id);
-  const hasPin = Boolean(freshUser?.pin_hash);
-  const result = {
-    user: mapPublicUser(freshUser),
-    sessionToken,
-    session,
-    session_expires_at: session?.expires_at || sessionExpiresAt(),
-    has_pin: hasPin,
-    needs_pin_setup: !hasPin,
-    created,
-    ...pinTokenMeta(),
-  };
-  if (hasPin) {
-    result.pin_token = createPinToken(freshUser.id);
-  }
+  result.created = created;
+  result.needs_pin_setup = !result.has_pin;
   return result;
 }
 

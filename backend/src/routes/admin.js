@@ -346,12 +346,20 @@ router.get('/auth/me', async (req, res) => {
         role_labels: ROLE_LABELS,
       });
     }
-    const user = await User.findById(req.user.id);
+    const user = req.user;
     if (!user?.admin_role) {
       return res.status(403).json({ error: 'Admin role required' });
     }
     res.json({
-      user: { ...adminPublic(user), auth_method: 'session' },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        phone: user.phone || null,
+        admin_role: user.admin_role,
+        role_label: ROLE_LABELS[user.admin_role] || user.admin_role,
+        auth_method: 'session',
+      },
       permissions: permissionsForRole(user.admin_role),
       pages: pagesForRole(user.admin_role),
       roles: ALL_ADMIN_ROLES,
