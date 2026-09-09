@@ -15,6 +15,7 @@
     "test:kripicard-bins-parser": "node backend/scripts/test-kripicard-bins-parser.js",
     "test:usdt-card-issue": "node backend/scripts/test-usdt-only-card-issue.js",
     "test:dashboard-usdt-wallet": "node backend/scripts/test-dashboard-usdt-wallet-only.js",
+    "test:usdt-wallet-perf": "node backend/scripts/test-usdt-wallet-perf.js",
     "test:deposits-usdt-only": "node backend/scripts/test-deposits-usdt-only.js",
     "test:admin-usdt-mmk-wd": "node backend/scripts/test-admin-usdt-mmk-withdrawals.js",
     "test:legal-pages": "node backend/scripts/test-legal-pages.js",
