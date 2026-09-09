@@ -107,6 +107,14 @@ html.legal-doc body {
   color: var(--text, #e2e8f0);
 }
 
+.legal-company .legal-copyright {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.25));
+  font-size: 0.85rem;
+  color: var(--muted, #94a3b8);
+}
+
 /* ── About page ─────────────────────────────────────────────── */
 .about-page {
   max-width: 720px;

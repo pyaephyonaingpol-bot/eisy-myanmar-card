@@ -48,20 +48,33 @@ assert.ok(legalCss.includes('.about-hero'), 'about hero styles');
 assert.ok(terms.includes('Terms of Service') || terms.includes('Terms and Conditions'), 'terms title');
 assert.ok(terms.includes('Stripe Issuing'), 'terms mentions Stripe Issuing');
 assert.ok(terms.includes('P2P'), 'terms mentions P2P');
-assert.ok(terms.includes('[Company Name]'), 'terms company placeholder');
-assert.ok(terms.includes('[Registered Address]'), 'terms address placeholder');
+assert.ok(terms.includes('Company Name:</strong> Eisy Myanmar') || terms.includes('Company Name:</strong> Eisy Myanmar'), 'terms company name is Eisy Myanmar');
+assert.ok(terms.includes('Eisy Myanmar'), 'terms uses Eisy Myanmar');
+assert.ok(!terms.includes('[Company Name]'), 'terms has no company placeholder');
+assert.ok(!terms.includes('[Registered Address]'), 'terms has no address placeholder');
+assert.ok(!terms.includes('Registered Address'), 'terms omits registered address');
+assert.ok(terms.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'terms copyright');
 assert.ok(terms.includes('support@eisymyanmar.com'), 'terms support email');
 assert.ok(terms.includes('href="/about"'), 'terms nav links to about');
 
 assert.ok(privacy.includes('Privacy Policy'), 'privacy title');
 assert.ok(privacy.includes('Myanmar passport'), 'privacy covers passport KYC');
 assert.ok(privacy.includes('data security') || privacy.includes('Data security'), 'privacy security section');
+assert.ok(privacy.includes('Company Name:</strong> Eisy Myanmar') || privacy.includes('Eisy Myanmar'), 'privacy company name');
+assert.ok(!privacy.includes('[Company Name]'), 'privacy has no company placeholder');
+assert.ok(!privacy.includes('[Registered Address]'), 'privacy has no address placeholder');
+assert.ok(!privacy.includes('Registered Address'), 'privacy omits registered address');
+assert.ok(privacy.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'privacy copyright');
 assert.ok(privacy.includes('support@eisymyanmar.com'), 'privacy support email');
 assert.ok(privacy.includes('href="/about"'), 'privacy nav links to about');
 
 assert.ok(refund.includes('Refund'), 'refund title');
 assert.ok(refund.includes('top-up') || refund.includes('reload'), 'refund covers card top-ups');
 assert.ok(refund.includes('P2P'), 'refund covers P2P');
+assert.ok(!refund.includes('[Company Name]'), 'refund has no company placeholder');
+assert.ok(!refund.includes('[Registered Address]'), 'refund has no address placeholder');
+assert.ok(!refund.includes('Registered Address'), 'refund omits registered address');
+assert.ok(refund.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'refund copyright');
 assert.ok(refund.includes('support@eisymyanmar.com'), 'refund support email');
 assert.ok(refund.includes('href="/about"'), 'refund nav links to about');
 
@@ -74,6 +87,9 @@ assert.ok(about.includes('Founder') || about.includes('founder'), 'about founder
 assert.ok(/trust|security|accessible|accessibility/i.test(about), 'about emphasizes trust/security/access');
 assert.ok(about.includes('support@eisymyanmar.com'), 'about support email');
 assert.ok(about.includes('about-founder'), 'about founder markup class');
+assert.ok(about.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'about copyright');
+assert.ok(!about.includes('[Registered Address]'), 'about has no address placeholder');
+assert.ok(!about.includes('Registered Address'), 'about omits registered address');
 
 section('Express routes for /terms /privacy /refund /about');
 assert.ok(server.includes("app.get('/privacy'"), 'privacy route');
@@ -89,8 +105,13 @@ assert.ok(indexHtml.includes('href="/terms"'), 'footer terms link');
 assert.ok(indexHtml.includes('href="/privacy"'), 'footer privacy link');
 assert.ok(indexHtml.includes('href="/refund"'), 'footer refund link');
 assert.ok(indexHtml.includes('legal-footer-links') || indexHtml.includes('auth-legal-links'), 'legal link containers');
+assert.ok(indexHtml.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'app footer copyright');
+assert.ok(!indexHtml.includes('[Registered Address]'), 'app footer has no address placeholder');
+assert.ok(!indexHtml.includes('[Company Name]'), 'app footer has no company placeholder');
 assert.ok(styles.includes('.legal-footer-links'), 'footer link styles');
+assert.ok(styles.includes('.legal-footer-copyright'), 'footer copyright styles');
 assert.ok(styles.includes('.auth-legal-links'), 'auth link styles');
+assert.ok(legalCss.includes('.legal-copyright'), 'legal copyright styles');
 assert.ok(/\.auth-screen\s*\{[^}]*flex-direction:\s*column/s.test(styles), 'auth-screen stacks column');
 // Policy links must sit inside the login card (below forms), not as a flex sibling beside it
 const authScreenIdx = indexHtml.indexOf('id="authScreen"');
