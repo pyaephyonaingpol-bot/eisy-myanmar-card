@@ -1686,12 +1686,25 @@ router.post('/support/threads/:id/reply', requirePermission('support'), async (r
       senderType: 'admin',
       senderId: req.user?.id || null,
       message: message.trim(),
+      source: 'admin',
     });
 
     // Auto-move pending → in_progress when admin replies.
     if (thread.status === 'pending' || thread.status === 'open') {
       await SupportThread.updateMeta(threadId, { status: 'in_progress' });
     }
+
+    try {
+      const { syncSupportMessage } = require('../services/supabaseSyncService');
+      const { notifySupportEvent } = require('../services/supportTelegramService');
+      const fresh = await SupportThread.findById(threadId);
+      syncSupportMessage(msg, fresh).catch(() => {});
+      notifySupportEvent({
+        thread: fresh,
+        message: msg,
+        isNewTicket: false,
+      }).catch(() => {});
+    } catch (_) { /* optional bridge */ }
 
     res.json({ success: true, message: msg });
   } catch (err) {

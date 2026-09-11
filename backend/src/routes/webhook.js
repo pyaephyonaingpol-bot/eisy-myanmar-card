@@ -60,4 +60,24 @@ router.post('/stripe', async (req, res) => {
   }
 });
 
+router.post('/telegram', async (req, res) => {
+  try {
+    const secret = process.env.TELEGRAM_WEBHOOK_SECRET || '';
+    if (secret) {
+      const header = req.get('x-telegram-bot-api-secret-token') || '';
+      if (header !== secret) {
+        return res.status(401).json({ error: 'Invalid webhook secret' });
+      }
+    }
+
+    const { handleTelegramUpdate } = require('../services/supportTelegramService');
+    const result = await handleTelegramUpdate(req.body || {});
+    return res.json({ ok: true, result });
+  } catch (err) {
+    console.error('[webhook/telegram]', err.message);
+    // Always ACK so Telegram does not retry endlessly on app bugs.
+    return res.json({ ok: false, error: err.message });
+  }
+});
+
 module.exports = router;

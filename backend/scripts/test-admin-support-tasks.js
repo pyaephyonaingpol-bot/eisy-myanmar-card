@@ -54,14 +54,14 @@ async function main() {
   assertIncludes(adminHtml, 'value="medium">Medium', 'Medium priority option');
   assertIncludes(adminHtml, 'value="low">Low', 'Low priority option');
   assertIncludes(adminHtml, 'id="supportStatusFilter"', 'status filter');
-  assertIncludes(adminHtml, 'value="pending">Pending', 'Pending status');
+  assertIncludes(adminHtml, 'value="pending">Open', 'Open status');
   assertIncludes(adminHtml, 'value="in_progress">In Progress', 'In Progress status');
-  assertIncludes(adminHtml, 'value="completed">Completed', 'Completed status');
+  assertIncludes(adminHtml, 'value="completed">Resolved', 'Resolved status');
   assertIncludes(adminHtml, 'value="failed">Failed', 'Failed status');
   assertIncludes(adminHtml, 'id="supportUrgentToast"', 'urgent realtime toast');
   assertIncludes(adminHtml, 'id="supportTaskMeta"', 'task meta editor');
   assertIncludes(adminHtml, 'id="supportSaveTaskMetaBtn"', 'save task meta button');
-  assertIncludes(adminHtml, 'admin.js?v=20260909supportTasks', 'admin.js cache bust');
+  assertIncludes(adminHtml, 'admin.js?v=20260911supportChat', 'admin.js cache bust');
 
   assertIncludes(adminJs, 'supportFilters', 'filter state');
   assertIncludes(adminJs, 'onSupportRealtime', 'realtime handler');

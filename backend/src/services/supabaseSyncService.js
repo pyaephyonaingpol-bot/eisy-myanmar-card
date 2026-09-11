@@ -559,9 +559,34 @@ async function syncSupportThread(thread, user = null) {
     priority: thread.priority || 'medium',
     last_message_preview: thread.last_message_preview || null,
     unread_by_admin: Number(thread.unread_by_admin ?? 0),
+    telegram_chat_id: thread.telegram_chat_id != null ? String(thread.telegram_chat_id) : null,
+    telegram_root_message_id: thread.telegram_root_message_id != null
+      ? Number(thread.telegram_root_message_id)
+      : null,
+    telegram_last_outbound_id: thread.telegram_last_outbound_id != null
+      ? Number(thread.telegram_last_outbound_id)
+      : null,
     created_at: thread.created_at || nowIso(),
     updated_at: thread.updated_at || nowIso(),
     closed_at: thread.closed_at || null,
+  });
+}
+
+/** Mirror Turso support_messages into Supabase for live chat Realtime. */
+async function syncSupportMessage(message, thread = null) {
+  if (!isSupabaseEnabled() || !message?.id) return null;
+  return upsertRow('support_messages', {
+    id: Number(message.id),
+    thread_id: Number(message.thread_id || thread?.id),
+    user_id: thread?.user_id != null ? String(thread.user_id) : null,
+    sender_type: message.sender_type || 'user',
+    sender_id: message.sender_id != null ? String(message.sender_id) : null,
+    message: message.message || '',
+    source: message.source || 'web',
+    telegram_message_id: message.telegram_message_id != null
+      ? Number(message.telegram_message_id)
+      : null,
+    created_at: message.created_at || nowIso(),
   });
 }
 
@@ -580,5 +605,6 @@ module.exports = {
   syncTransactionLog,
   syncUsdtWithdrawalRequest,
   syncSupportThread,
+  syncSupportMessage,
   isSupabaseEnabled,
 };

@@ -7,8 +7,22 @@ const {
   normalizeSupportCategory,
   normalizeSupportPriority,
 } = require('../constants/supportTasks');
+const { notifySupportEvent } = require('../services/supportTelegramService');
+const { syncSupportMessage } = require('../services/supabaseSyncService');
 
 const router = express.Router();
+
+function fireTelegramNotify(payload) {
+  notifySupportEvent(payload).catch((err) => {
+    console.warn('[support] telegram notify failed:', err.message);
+  });
+}
+
+function fireMessageSync(message, thread) {
+  syncSupportMessage(message, thread).catch((err) => {
+    console.warn('[support] supabase message sync failed:', err.message);
+  });
+}
 
 router.get('/threads', requireAuth, async (req, res) => {
   try {
@@ -52,6 +66,15 @@ router.post('/threads', requireAuth, async (req, res) => {
       senderType: 'user',
       senderId: req.user.id,
       message: message.trim(),
+      source: 'web',
+    });
+
+    fireMessageSync(msg, thread);
+    fireTelegramNotify({
+      thread,
+      message: msg,
+      user: req.user,
+      isNewTicket: true,
     });
 
     res.json({ success: true, thread, message: msg });
@@ -64,6 +87,7 @@ router.post('/threads', requireAuth, async (req, res) => {
 router.get('/threads/:id/messages', requireAuth, async (req, res) => {
   try {
     const threadId = parseInt(req.params.id, 10);
+    const afterId = req.query.after_id != null ? parseInt(req.query.after_id, 10) : null;
     const thread = await SupportThread.findById(threadId);
 
     if (!thread) return res.status(404).json({ error: 'Thread not found' });
@@ -71,7 +95,10 @@ router.get('/threads/:id/messages', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const messages = await SupportMessage.findByThreadId(threadId);
+    let messages = await SupportMessage.findByThreadId(threadId);
+    if (Number.isFinite(afterId) && afterId > 0) {
+      messages = messages.filter((m) => Number(m.id) > afterId);
+    }
     await SupportMessage.markReadByUser(threadId);
 
     res.json({ thread, messages });
@@ -84,7 +111,11 @@ router.get('/threads/:id/messages', requireAuth, async (req, res) => {
 router.post('/threads/:id/messages', requireAuth, async (req, res) => {
   try {
     const threadId = parseInt(req.params.id, 10);
-    const { message } = req.body;
+    const { message } = req.body || {};
+
+    if (!message?.trim()) {
+      return res.status(400).json({ error: 'message is required' });
+    }
 
     const thread = await SupportThread.findById(threadId);
     if (!thread) return res.status(404).json({ error: 'Thread not found' });
@@ -100,6 +131,15 @@ router.post('/threads/:id/messages', requireAuth, async (req, res) => {
       senderType: 'user',
       senderId: req.user.id,
       message: message.trim(),
+      source: 'web',
+    });
+
+    fireMessageSync(msg, thread);
+    fireTelegramNotify({
+      thread,
+      message: msg,
+      user: req.user,
+      isNewTicket: false,
     });
 
     res.json({ success: true, message: msg });

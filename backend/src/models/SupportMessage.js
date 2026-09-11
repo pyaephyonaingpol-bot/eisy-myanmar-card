@@ -2,7 +2,7 @@ const { getDb } = require('../db');
 const SupportThread = require('./SupportThread');
 
 const SupportMessage = {
-  async findByThreadId(threadId, { limit = 100, beforeId } = {}) {
+  async findByThreadId(threadId, { limit = 200, beforeId } = {}) {
     const db = getDb();
     if (beforeId) {
       return db.all(`
@@ -21,15 +21,31 @@ const SupportMessage = {
   async create({
     threadId, senderType, senderId, message,
     attachmentPath, attachmentOriginalName, attachmentMimeType,
+    source = 'web', telegramMessageId = null, telegramChatId = null,
   }) {
     const db = getDb();
-    const result = await db.run(`
-      INSERT INTO support_messages (
-        thread_id, sender_type, sender_id, message,
-        attachment_path, attachment_original_name, attachment_mime_type
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, threadId, senderType, senderId || null, message,
-      attachmentPath || null, attachmentOriginalName || null, attachmentMimeType || null);
+    let result;
+    try {
+      result = await db.run(`
+        INSERT INTO support_messages (
+          thread_id, sender_type, sender_id, message,
+          attachment_path, attachment_original_name, attachment_mime_type,
+          source, telegram_message_id, telegram_chat_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, threadId, senderType, senderId || null, message,
+        attachmentPath || null, attachmentOriginalName || null, attachmentMimeType || null,
+        source || 'web', telegramMessageId || null, telegramChatId || null);
+    } catch (err) {
+      // Pre-migration fallback (source / telegram columns not yet present).
+      if (!/no such column/i.test(err.message || '')) throw err;
+      result = await db.run(`
+        INSERT INTO support_messages (
+          thread_id, sender_type, sender_id, message,
+          attachment_path, attachment_original_name, attachment_mime_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, threadId, senderType, senderId || null, message,
+        attachmentPath || null, attachmentOriginalName || null, attachmentMimeType || null);
+    }
 
     await SupportThread.updateAfterMessage(threadId, message, senderType);
     return db.get('SELECT * FROM support_messages WHERE id = ?', result.lastID);

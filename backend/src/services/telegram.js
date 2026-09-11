@@ -13,25 +13,65 @@ function getBot() {
   return bot;
 }
 
-async function sendAdminMessage(message) {
-  const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+function getAdminChatId() {
+  return String(
+    process.env.TELEGRAM_ADMIN_CHAT_ID
+    || process.env.TELEGRAM_CHAT_ID
+    || process.env.TELEGRAM_SUPPORT_CHAT_ID
+    || ''
+  ).trim();
+}
+
+function isTelegramConfigured() {
+  const chatId = getAdminChatId();
+  return Boolean(getBot() && chatId && chatId !== 'your_admin_chat_id_here');
+}
+
+/**
+ * Send a message to the admin Telegram chat/group.
+ * @returns {Promise<{ ok: boolean, message?: object, chatId?: string, skipped?: boolean, error?: string }>}
+ */
+async function sendAdminMessage(message, options = {}) {
+  const chatId = getAdminChatId();
   if (!chatId || chatId === 'your_admin_chat_id_here') {
     console.log('[Telegram] Admin chat not configured — skipping notification');
-    console.log('[Telegram]', message.replace(/\*/g, ''));
-    return;
+    console.log('[Telegram]', String(message || '').replace(/\*/g, ''));
+    return { ok: false, skipped: true };
   }
 
   const telegramBot = getBot();
   if (!telegramBot) {
     console.log('[Telegram] Bot token not configured — skipping notification');
-    console.log('[Telegram]', message.replace(/\*/g, ''));
-    return;
+    console.log('[Telegram]', String(message || '').replace(/\*/g, ''));
+    return { ok: false, skipped: true };
+  }
+
+  const opts = {
+    parse_mode: options.parseMode || 'Markdown',
+    disable_web_page_preview: true,
+  };
+  if (options.replyToMessageId) {
+    opts.reply_to_message_id = Number(options.replyToMessageId);
+  }
+  if (options.messageThreadId) {
+    opts.message_thread_id = Number(options.messageThreadId);
   }
 
   try {
-    await telegramBot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+    const sent = await telegramBot.sendMessage(chatId, message, opts);
+    return { ok: true, message: sent, chatId: String(chatId) };
   } catch (err) {
-    console.error('[Telegram] Failed to send notification:', err.message);
+    try {
+      const plain = await telegramBot.sendMessage(
+        chatId,
+        String(message || '').replace(/[*_`\[\]]/g, ''),
+        { ...opts, parse_mode: undefined }
+      );
+      return { ok: true, message: plain, chatId: String(chatId), plain: true };
+    } catch (err2) {
+      console.error('[Telegram] Failed to send notification:', err2.message);
+      return { ok: false, error: err2.message };
+    }
   }
 }
 
@@ -143,6 +183,10 @@ async function notifyAdminP2pSellOrderReleased({ user, order, seller }) {
 }
 
 module.exports = {
+  getBot,
+  getAdminChatId,
+  isTelegramConfigured,
+  sendAdminMessage,
   notifyAdminDepositVerified,
   notifyAdminP2pDepositPending,
   notifyAdminP2pBuyOrderPending,
