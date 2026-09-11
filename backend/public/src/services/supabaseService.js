@@ -450,6 +450,9 @@ const SupabaseBridge = {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'support_threads' }, (payload) => {
         handlers.onSupport?.(payload);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages' }, (payload) => {
+        handlers.onSupportMessage?.(payload);
+      })
       .subscribe();
     this._channels.push(channel);
     return channel;

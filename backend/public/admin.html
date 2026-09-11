@@ -755,9 +755,9 @@
         <div class="admin-toolbar">
           <select id="usdtWithdrawalFilter">
             <option value="all" selected>All statuses</option>
-            <option value="pending">Pending</option>
+            <option value="pending">Open</option>
             <option value="processing">Processing</option>
-            <option value="completed">Completed</option>
+            <option value="completed">Resolved</option>
             <option value="rejected">Rejected</option>
             <option value="cancelled">Cancelled</option>
             <option value="open">Pending + Processing</option>
@@ -808,7 +808,7 @@
             <option value="open" selected>Pending + Processing (open)</option>
             <option value="pending">Pending only</option>
             <option value="processing">Processing only</option>
-            <option value="completed">Completed</option>
+            <option value="completed">Resolved</option>
             <option value="rejected">Rejected</option>
             <option value="cancelled">Cancelled</option>
             <option value="all">All statuses</option>
@@ -982,9 +982,9 @@
           <label for="supportStatusFilter">Status</label>
           <select id="supportStatusFilter" class="p2p-network-select">
             <option value="all">All</option>
-            <option value="pending">Pending</option>
+            <option value="pending">Open</option>
             <option value="in_progress">In Progress</option>
-            <option value="completed">Completed</option>
+            <option value="completed">Resolved</option>
             <option value="failed">Failed</option>
           </select>
           <button type="button" id="btnRefreshSupportTasks" class="btn btn-secondary btn-sm">Refresh</button>
@@ -1020,9 +1020,9 @@
               <div class="field">
                 <label for="supportTaskStatus">Status</label>
                 <select id="supportTaskStatus">
-                  <option value="pending">Pending</option>
+                  <option value="pending">Open</option>
                   <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
+                  <option value="completed">Resolved</option>
                   <option value="failed">Failed</option>
                 </select>
               </div>
@@ -1032,7 +1032,7 @@
             <form id="supportReplyForm" class="form hidden">
               <div class="field"><label for="supportReplyText">Reply</label><textarea id="supportReplyText" rows="3"></textarea></div>
               <button type="submit" class="btn btn-primary">Send Reply</button>
-              <button type="button" id="supportCloseBtn" class="btn btn-secondary">Mark Completed</button>
+              <button type="button" id="supportCloseBtn" class="btn btn-secondary">Mark Resolved</button>
             </form>
           </div>
         </div>
@@ -1415,6 +1415,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20260817m2"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20260909loginPerf" defer></script>
+  <script src="/admin.js?v=20260911supportChat" defer></script>
 </body>
 </html>

@@ -24,12 +24,13 @@ const SUPPORT_STATUSES = Object.freeze([
 ]);
 
 const SUPPORT_STATUS_LABELS = Object.freeze({
-  pending: 'Pending',
+  pending: 'Open',
   in_progress: 'In Progress',
-  completed: 'Completed',
+  completed: 'Resolved',
   failed: 'Failed',
-  open: 'Pending',
-  closed: 'Completed',
+  open: 'Open',
+  closed: 'Resolved',
+  resolved: 'Resolved',
 });
 
 const SUPPORT_PRIORITY_LABELS = Object.freeze({
@@ -59,7 +60,7 @@ function normalizeSupportPriority(value, { fallback = 'medium' } = {}) {
 function normalizeSupportStatus(value, { fallback = 'pending' } = {}) {
   const key = String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
   if (key === 'open') return 'pending';
-  if (key === 'closed' || key === 'done' || key === 'complete') return 'completed';
+  if (key === 'closed' || key === 'done' || key === 'complete' || key === 'resolved') return 'completed';
   if (key === 'in-progress' || key === 'progress') return 'in_progress';
   if (SUPPORT_STATUSES.includes(key)) return key;
   return fallback;

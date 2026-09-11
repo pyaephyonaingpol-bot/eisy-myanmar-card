@@ -1020,6 +1020,7 @@
         onReloads: () => this.loadPendingReloads(),
         onWallets: () => {},
         onSupport: (payload) => this.onSupportRealtime(payload),
+        onSupportMessage: (payload) => this.onSupportMessageRealtime(payload),
       });
     },
 
@@ -1035,6 +1036,18 @@
       } else {
         clearTimeout(this._supportRealtimeTimer);
         this._supportRealtimeTimer = setTimeout(() => this.loadSupportThreads(), 400);
+      }
+    },
+
+    onSupportMessageRealtime(payload) {
+      const row = payload?.new || null;
+      if (!row) return;
+      const threadId = Number(row.thread_id);
+      if (this.activeThreadId && threadId === Number(this.activeThreadId)) {
+        // Refresh open conversation immediately when Telegram/admin/customer posts.
+        this.openThread(this.activeThreadId);
+      } else {
+        this.loadSupportThreads();
       }
     },
 
@@ -1077,14 +1090,15 @@
 
     supportStatusLabel(value) {
       const map = {
-        pending: 'Pending',
+        pending: 'Open',
         in_progress: 'In Progress',
-        completed: 'Completed',
+        completed: 'Resolved',
         failed: 'Failed',
-        open: 'Pending',
-        closed: 'Completed',
+        open: 'Open',
+        closed: 'Resolved',
+        resolved: 'Resolved',
       };
-      return map[value] || value || 'Pending';
+      return map[value] || value || 'Open';
     },
 
     supportPriorityLabel(value) {
@@ -4289,10 +4303,13 @@
 
     async openThread(id) {
       this.activeThreadId = id;
+      this._supportLastMessageId = 0;
+      this.stopSupportMessagePolling();
       try {
         const data = await this.api('GET', '/api/admin/support/threads/' + id + '/messages');
         const thread = data.thread || {};
         const messages = Array.isArray(data.messages) ? data.messages : [];
+        this._supportLastMessageId = messages.reduce((max, m) => Math.max(max, Number(m.id) || 0), 0);
 
         const title = $('supportThreadTitle');
         if (title) title.textContent = thread.subject || 'Task';
@@ -4311,21 +4328,51 @@
         const replyForm = $('supportReplyForm');
         if (replyForm) replyForm.classList.remove('hidden');
 
-        const messagesEl = $('supportMessages');
-        if (messagesEl) {
-          messagesEl.innerHTML = messages.map((m) =>
-            '<div class="msg msg-' + this.esc(m.sender_type) + '">' +
-              '<strong>' + this.esc(m.sender_type) + '</strong>' +
-              '<p>' + this.esc(m.message) + '</p>' +
-              '<small>' + this.esc(m.created_at) + '</small>' +
-            '</div>'
-          ).join('');
-        }
-
+        this.renderSupportMessages(messages);
         this.loadSupportThreads();
+        this.startSupportMessagePolling(id);
       } catch (err) {
         alert(err.message);
       }
+    },
+
+    renderSupportMessages(messages) {
+      const messagesEl = $('supportMessages');
+      if (!messagesEl) return;
+      messagesEl.innerHTML = (messages || []).map((m) =>
+        '<div class="msg msg-' + this.esc(m.sender_type) + '">' +
+          '<strong>' + this.esc(m.sender_type) + (m.source === 'telegram' ? ' · telegram' : '') + '</strong>' +
+          '<p>' + this.esc(m.message) + '</p>' +
+          '<small>' + this.esc(m.created_at) + '</small>' +
+        '</div>'
+      ).join('');
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    },
+
+    startSupportMessagePolling(threadId) {
+      this.stopSupportMessagePolling();
+      this._supportPollTimer = setInterval(async () => {
+        if (this.activeThreadId !== threadId) return;
+        try {
+          const qs = this._supportLastMessageId
+            ? ('?after_id=' + this._supportLastMessageId)
+            : '';
+          // Prefer after_id when backend supports it; fall back to full fetch.
+          const data = await this.api('GET', '/api/admin/support/threads/' + threadId + '/messages');
+          const messages = Array.isArray(data.messages) ? data.messages : [];
+          const maxId = messages.reduce((max, m) => Math.max(max, Number(m.id) || 0), 0);
+          if (maxId > (this._supportLastMessageId || 0)) {
+            this._supportLastMessageId = maxId;
+            this.renderSupportMessages(messages);
+            this.loadSupportThreads();
+          }
+        } catch (_) { /* ignore poll errors */ }
+      }, 4000);
+    },
+
+    stopSupportMessagePolling() {
+      if (this._supportPollTimer) clearInterval(this._supportPollTimer);
+      this._supportPollTimer = null;
     },
 
     async saveSupportTaskMeta() {
