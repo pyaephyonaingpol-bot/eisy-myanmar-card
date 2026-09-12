@@ -56,6 +56,7 @@
     "test:card-remove": "node scripts/test-card-remove.js",
     "test:card-bin-dropdown": "node scripts/test-card-bin-dropdown.js",
     "test:card-issuance-profit-markup": "node scripts/test-card-issuance-profit-markup.js",
+    "test:card-processing-fee": "node scripts/test-card-processing-fee.js",
     "test:supabase-atomic-card-purchase": "node scripts/test-supabase-atomic-card-purchase.js",
     "test:card-issue-rpc-fallback": "node scripts/test-card-issue-rpc-fallback.js",
     "test:sell-usdt-mmk-modal": "node scripts/test-sell-usdt-mmk-modal.js",

@@ -466,6 +466,8 @@ router.get('/settings', requirePermission('settings_read'), async (_req, res) =>
       settings,
       pricing: {
         card_issuance_fee_usd: pricing.card_issuance_fee_usd,
+        card_funding_fee_percent: pricing.card_funding_fee_percent,
+        card_processing_fee_usd: pricing.card_processing_fee_usd,
         minimum_initial_deposit_usd: pricing.minimum_initial_deposit_usd,
         card_reload_fee_usd: pricing.card_reload_fee_usd,
         card_reload_fee_percent: pricing.card_reload_fee_percent,

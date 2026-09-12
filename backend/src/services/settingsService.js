@@ -4,9 +4,15 @@ const {
   getCardReloadFeeBreakdown,
   CARD_RELOAD_USER_FEE_USD,
 } = require('../constants/cardReloadFees');
+const {
+  CARD_PROCESSING_FEE_USD,
+  resolveCardFundingFeeUsd,
+  roundUsd,
+} = require('../constants/cardIssuanceFees');
 
 const DEFAULTS = {
   card_issuance_fee_usd: '5.00',
+  card_funding_fee_percent: '0',
   minimum_initial_deposit_usd: '10.00',
   card_reload_fee_usd: '3.50',
   card_reload_fee_percent: '0',
@@ -43,6 +49,7 @@ const DEFAULTS = {
 
 const NUMERIC_KEYS = new Set([
   'card_issuance_fee_usd',
+  'card_funding_fee_percent',
   'minimum_initial_deposit_usd',
   'card_reload_fee_usd',
   'card_reload_fee_percent',
@@ -173,6 +180,8 @@ async function getCardPricingSettings() {
   const raw = await getAllSettings();
   return {
     card_issuance_fee_usd: parseFloat(raw.card_issuance_fee_usd) || 5,
+    card_funding_fee_percent: parseFloat(raw.card_funding_fee_percent) || 0,
+    card_processing_fee_usd: CARD_PROCESSING_FEE_USD,
     minimum_initial_deposit_usd: parseFloat(raw.minimum_initial_deposit_usd) || 10,
     card_reload_fee_usd: parseFloat(raw.card_reload_fee_usd) || CARD_RELOAD_USER_FEE_USD,
     card_reload_fee_percent: parseFloat(raw.card_reload_fee_percent) || 0,
@@ -775,32 +784,41 @@ function resolveCardReloadFeeUsd(topUpUsd, settings = {}) {
 
 function calculateCardRequestPricingUsdt(initialLoadUsd, settings) {
   const initial = parseFloat(initialLoadUsd);
-  const fee = settings.card_issuance_fee_usd;
-  const min = settings.minimum_initial_deposit_usd;
+  const issuanceFee = parseFloat(settings.card_issuance_fee_usd);
+  const min = parseFloat(settings.minimum_initial_deposit_usd);
+  const fundingFeePercent = parseFloat(settings.card_funding_fee_percent) || 0;
 
   if (!Number.isFinite(initial) || initial <= 0) {
     throw new Error('Initial card load amount must be a positive number');
   }
-  if (initial < min) {
-    throw new Error(`Minimum initial deposit is $${min.toFixed(2)} USD`);
+  if (!Number.isFinite(min) || initial < min) {
+    throw new Error(`Minimum initial deposit is $${Number(min || 0).toFixed(2)} USD`);
   }
 
-  const kripicardCostUsd = Math.round(initial * 100) / 100;
-  const platformMarkupUsd = Math.round(fee * 100) / 100;
-  const totalUsd = kripicardCostUsd + platformMarkupUsd;
-  const totalUsdt = Math.round(totalUsd * 100) / 100;
+  const kripicardCostUsd = roundUsd(initial);
+  const issuanceFeeUsd = roundUsd(Number.isFinite(issuanceFee) && issuanceFee >= 0 ? issuanceFee : 0);
+  const fundingFeeUsd = resolveCardFundingFeeUsd(kripicardCostUsd, {
+    card_funding_fee_percent: fundingFeePercent,
+  });
+  const processingFeeUsd = roundUsd(CARD_PROCESSING_FEE_USD);
+  const platformMarkupUsd = roundUsd(issuanceFeeUsd + fundingFeeUsd + processingFeeUsd);
+  const totalUsd = roundUsd(kripicardCostUsd + platformMarkupUsd);
+  const totalUsdt = totalUsd;
 
   return {
     initial_load_usd: kripicardCostUsd,
     kripicard_cost_usd: kripicardCostUsd,
-    issuance_fee_usd: platformMarkupUsd,
+    issuance_fee_usd: issuanceFeeUsd,
+    funding_fee_percent: fundingFeePercent,
+    funding_fee_usd: fundingFeeUsd,
+    processing_fee_usd: processingFeeUsd,
     platform_markup_usd: platformMarkupUsd,
-    total_usd_required: Math.round(totalUsd * 100) / 100,
+    total_usd_required: totalUsd,
     total_usdt: totalUsdt,
     total_charge_usdt: totalUsdt,
     payment_currency: 'USDT',
     exchange_rate_applied: false,
-    note: '1 USDT ≈ 1 USD — platform markup retained internally; only card load sent to Kripicard',
+    note: '1 USDT ≈ 1 USD — issuance + funding + processing fees retained; only card load sent to Kripicard',
   };
 }
 
@@ -856,6 +874,7 @@ function parseRecordMetadata(raw) {
 
 module.exports = {
   DEFAULTS,
+  CARD_PROCESSING_FEE_USD,
   getSetting,
   setSetting,
   getAllSettings,

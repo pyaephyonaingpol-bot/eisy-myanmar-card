@@ -1119,9 +1119,15 @@
                   <input id="settingCardFee" type="number" step="0.01" min="0" required />
                 </div>
                 <div class="field">
+                  <label for="settingFundingFeePercent">Funding fee (%)</label>
+                  <input id="settingFundingFeePercent" type="number" step="0.01" min="0" max="50" required />
+                  <small class="hint">Percent of initial card load (dynamic)</small>
+                </div>
+                <div class="field">
                   <label for="settingMinDeposit">Min initial card load (USD)</label>
                   <input id="settingMinDeposit" type="number" step="0.01" min="0" required />
                 </div>
+                <p class="hint" style="margin:0.25rem 0 0">Checkout also adds a fixed Processing Fee of <strong>$1.50</strong>.</p>
               </div>
             </section>
 

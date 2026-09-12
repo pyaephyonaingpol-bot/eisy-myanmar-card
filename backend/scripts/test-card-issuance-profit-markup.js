@@ -20,16 +20,19 @@ function testPricingBreakdown() {
   const pricing = calculateCardRequestPricingUsdt(25, {
     card_issuance_fee_usd: 5,
     minimum_initial_deposit_usd: 10,
+    card_funding_fee_percent: 0,
   });
 
   assert.strictEqual(pricing.kripicard_cost_usd, 25);
-  assert.strictEqual(pricing.platform_markup_usd, 5);
-  assert.strictEqual(pricing.initial_load_usd, 25);
   assert.strictEqual(pricing.issuance_fee_usd, 5);
-  assert.strictEqual(pricing.total_charge_usdt, 30);
-  assert.strictEqual(pricing.total_usdt, 30);
-  assert.strictEqual(pricing.total_usd_required, 30);
-  assert.ok(pricing.note.includes('Kripicard'));
+  assert.strictEqual(pricing.funding_fee_usd, 0);
+  assert.strictEqual(pricing.processing_fee_usd, 1.5);
+  assert.strictEqual(pricing.platform_markup_usd, 6.5); // issuance + processing
+  assert.strictEqual(pricing.initial_load_usd, 25);
+  assert.strictEqual(pricing.total_charge_usdt, 31.5);
+  assert.strictEqual(pricing.total_usdt, 31.5);
+  assert.strictEqual(pricing.total_usd_required, 31.5);
+  assert.ok(pricing.note.includes('Kripicard') || pricing.note.includes('processing'));
   console.log('ok');
 }
 
