@@ -294,7 +294,7 @@ async function purchaseCardFromUsdtWallet(userId, {
 
   await ensureSupabaseUserWallet(userId, { syncIfExists: true });
 
-  const debitDescription = `New card purchase — ${formatUsdt(requiredUsdt)} ($${kripicardCostUsd.toFixed(2)} card + $${platformMarkupUsd.toFixed(2)} fee)`;
+  const debitDescription = `New card purchase — ${formatUsdt(requiredUsdt)} ($${kripicardCostUsd.toFixed(2)} load + $${Number(pricing.issuance_fee_usd || 0).toFixed(2)} issuance + $${Number(pricing.funding_fee_usd || 0).toFixed(2)} funding + $${Number(pricing.processing_fee_usd || 0).toFixed(2)} processing)`;
   const debitMetadata = {
     purpose: 'card_issuance',
     pricing,

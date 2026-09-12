@@ -902,6 +902,7 @@
               mmk_to_usd_rate: parseFloat($('settingExchangeRate').value),
               effective_date: $('settingEffectiveDate').value,
               card_issuance_fee_usd: parseFloat($('settingCardFee').value),
+              card_funding_fee_percent: parseFloat($('settingFundingFeePercent')?.value || '0'),
               minimum_initial_deposit_usd: parseFloat($('settingMinDeposit').value),
               card_reload_fee_percent: parseFloat($('settingReloadFeePercent')?.value || '0'),
               minimum_usdt_deposit: parseFloat($('settingMinUsdtDeposit')?.value || '5'),
@@ -3253,6 +3254,9 @@
         const data = await this.api('GET', '/api/admin/settings');
         const p = data.pricing || {};
         if ($('settingCardFee')) $('settingCardFee').value = p.card_issuance_fee_usd ?? 5;
+        if ($('settingFundingFeePercent')) {
+          $('settingFundingFeePercent').value = p.card_funding_fee_percent ?? 0;
+        }
         if ($('settingMinDeposit')) $('settingMinDeposit').value = p.minimum_initial_deposit_usd ?? 10;
         if ($('settingReloadFeePercent')) {
           $('settingReloadFeePercent').value = p.card_reload_fee_percent ?? 0;

@@ -518,6 +518,8 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
       : (Array.isArray(bins.details) ? bins.details : []);
     res.json({
       card_issuance_fee_usd: settings.card_issuance_fee_usd,
+      card_funding_fee_percent: settings.card_funding_fee_percent,
+      card_processing_fee_usd: settings.card_processing_fee_usd,
       platform_markup_usd: settings.card_issuance_fee_usd,
       minimum_initial_deposit_usd: settings.minimum_initial_deposit_usd,
       card_reload_fee_usd: settings.card_reload_fee_usd,

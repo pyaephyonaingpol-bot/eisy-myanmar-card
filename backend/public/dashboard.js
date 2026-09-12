@@ -5740,12 +5740,23 @@ const Dashboard = {
     if (!p) return;
 
     const initial = parseFloat($('cardInitialLoad')?.value) || 0;
-    const fee = p.card_issuance_fee_usd || 0;
-    const totalUsd = initial + fee;
-    const totalUsdt = Math.round(totalUsd * 100) / 100;
+    const issuanceFee = Number(p.card_issuance_fee_usd) || 0;
+    const fundingPercent = Number(p.card_funding_fee_percent) || 0;
+    const fundingFee = Math.round((initial * fundingPercent / 100) * 100) / 100;
+    const processingFee = Number(p.card_processing_fee_usd);
+    const processingFeeUsd = Number.isFinite(processingFee) && processingFee >= 0 ? processingFee : 1.5;
+    const totalUsd = Math.round((initial + issuanceFee + fundingFee + processingFeeUsd) * 100) / 100;
+    const totalUsdt = totalUsd;
 
     if ($('pbInitialLoad')) $('pbInitialLoad').textContent = `$${initial.toFixed(2)}`;
-    if ($('pbIssuanceFee')) $('pbIssuanceFee').textContent = `$${fee.toFixed(2)}`;
+    if ($('pbIssuanceFee')) $('pbIssuanceFee').textContent = `$${issuanceFee.toFixed(2)}`;
+    if ($('pbFundingFee')) {
+      const fundingLabel = fundingPercent > 0
+        ? `$${fundingFee.toFixed(2)}`
+        : `$${fundingFee.toFixed(2)}`;
+      $('pbFundingFee').textContent = fundingLabel;
+    }
+    if ($('pbProcessingFee')) $('pbProcessingFee').textContent = `$${processingFeeUsd.toFixed(2)}`;
     if ($('pbTotalUsd')) $('pbTotalUsd').textContent = `$${totalUsd.toFixed(2)}`;
     if ($('pbTotalUsdt')) $('pbTotalUsdt').textContent = `${totalUsdt.toFixed(2)} USDT`;
     if ($('pbUsdtRow')) $('pbUsdtRow').classList.remove('hidden');
@@ -5758,7 +5769,10 @@ const Dashboard = {
     this.cardPricing = {
       ...(this.cardPricing || {}),
       initial_load_usd: initial,
-      issuance_fee_usd: fee,
+      issuance_fee_usd: issuanceFee,
+      funding_fee_percent: fundingPercent,
+      funding_fee_usd: fundingFee,
+      processing_fee_usd: processingFeeUsd,
       total_usd_required: totalUsd,
       total_usdt: totalUsdt,
       payment_currency: 'USDT',
@@ -5773,7 +5787,9 @@ const Dashboard = {
     return `
       <h4>${extra?.title || 'Payment Summary'}</h4>
       <div class="pricing-row"><span>Initial Card Load</span><strong>$${Number(breakdown.initial_load_usd).toFixed(2)}</strong></div>
-      <div class="pricing-row"><span>+ Card Issuance Fee</span><strong>$${Number(breakdown.issuance_fee_usd).toFixed(2)}</strong></div>
+      <div class="pricing-row"><span>+ Card Issuance Fee</span><strong>$${Number(breakdown.issuance_fee_usd || 0).toFixed(2)}</strong></div>
+      <div class="pricing-row"><span>+ Funding Fee</span><strong>$${Number(breakdown.funding_fee_usd || 0).toFixed(2)}</strong></div>
+      <div class="pricing-row"><span>+ Processing Fee</span><strong>$${Number(breakdown.processing_fee_usd ?? 1.5).toFixed(2)}</strong></div>
       <div class="pricing-row pricing-total"><span>= Total USD Required</span><strong>$${Number(breakdown.total_usd_required).toFixed(2)}</strong></div>
       <div class="pricing-row pricing-usdt"><span>Total Payable (USDT)</span><strong>${Number(usdtTotal).toFixed(2)} USDT</strong></div>
       ${refCode ? `<p class="receipt-ref">Ref: ${refCode}</p>` : ''}
@@ -6781,13 +6797,19 @@ const Dashboard = {
       $('ratesMinWithdrawal').textContent = `$${Number(wf.minimum_usdt_withdrawal || 10).toFixed(2)}`;
     }
 
-    const totalUsd = min + fee;
+    const fundingPercent = Number(p.card_funding_fee_percent) || 0;
+    const fundingFee = Math.round((min * fundingPercent / 100) * 100) / 100;
+    const processingFee = Number(p.card_processing_fee_usd);
+    const processingFeeUsd = Number.isFinite(processingFee) && processingFee >= 0 ? processingFee : 1.5;
+    const totalUsd = Math.round((min + fee + fundingFee + processingFeeUsd) * 100) / 100;
     const totalMmk = Math.ceil(totalUsd * rate);
     const sample = $('ratesSampleBreakdown');
     if (sample) {
       sample.innerHTML = `
         <div class="pricing-row"><span>Initial Card Load (min)</span><strong>$${min.toFixed(2)}</strong></div>
         <div class="pricing-row"><span>+ Card Issuance Fee</span><strong>$${fee.toFixed(2)}</strong></div>
+        <div class="pricing-row"><span>+ Funding Fee</span><strong>$${fundingFee.toFixed(2)}</strong></div>
+        <div class="pricing-row"><span>+ Processing Fee</span><strong>$${processingFeeUsd.toFixed(2)}</strong></div>
         <div class="pricing-row pricing-total"><span>= Total USD Required</span><strong>$${totalUsd.toFixed(2)}</strong></div>
         <div class="pricing-row pricing-mmk"><span>Total Payable (MMK)</span><strong>${totalMmk.toLocaleString()} MMK</strong></div>
         <p class="hint pricing-rate">At today's rate: 1 USD = ${rate.toLocaleString()} MMK</p>
