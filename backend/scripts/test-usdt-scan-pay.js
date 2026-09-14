@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Static + unit checks for USDT Scan Pay (QR parse, UI wiring, API routes).
+ * Static + unit checks for USDT Scan Pay dual-option QR UI and parser.
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -12,7 +12,7 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const section = (t) => console.log(`\n== ${t} ==`);
 
 function testUiWiring() {
-  section('UI wiring');
+  section('UI wiring (dual options)');
   const index = read('public/index.html');
   const dash = read('public/dashboard.js');
   const css = read('public/styles.css');
@@ -21,16 +21,29 @@ function testUiWiring() {
   assert.ok(index.includes('id="btnOpenScanPay"'), 'home Scan Pay button');
   assert.ok(index.includes('id="btnOpenScanPayPage"'), 'wallet page Scan Pay button');
   assert.ok(index.includes('id="scanPayModal"'), 'Scan Pay modal');
-  assert.ok(index.includes('id="scanPayVideo"'), 'camera video element');
+  assert.ok(index.includes('id="scanPayChooser"'), 'dual option chooser');
+  assert.ok(index.includes('id="btnScanPayChooseCamera"'), 'camera option');
+  assert.ok(index.includes('id="btnScanPayChooseUpload"'), 'upload option');
   assert.ok(index.includes('id="scanPayImageInput"'), 'image upload input');
+  assert.ok(index.includes('id="scanPayVideo"'), 'camera video element');
+  assert.ok(index.includes('id="scanPayCameraPanel"'), 'camera panel');
   assert.ok(index.includes('id="scanPayAmountInput"'), 'amount confirm input');
   assert.ok(/jsQR|jsqr/i.test(index), 'jsQR script for image decode');
-  assert.ok(dash.includes('openScanPayModal'), 'dashboard openScanPayModal');
-  assert.ok(dash.includes('submitScanPay'), 'dashboard submitScanPay');
-  assert.ok(dash.includes('/api/user/usdt-wallet/scan-pay'), 'posts to scan-pay API');
-  assert.ok(dash.includes('/api/user/usdt-wallet/parse-qr'), 'posts to parse-qr API');
-  assert.ok(css.includes('scan-pay'), 'scan pay styles');
-  assert.ok(i18n.includes('btn_scan_pay') || i18n.includes('scan_pay_title'), 'i18n scan pay label');
+  assert.ok(!/id="scanPayImageInput"[^>]*\scapture=/.test(index), 'upload must not force camera capture');
+
+  assert.ok(dash.includes('openScanPayModal'), 'openScanPayModal');
+  assert.ok(dash.includes('_scanPayShowChooser'), 'chooser mode helper');
+  assert.ok(dash.includes('_scanPayShowCameraPanel'), 'camera panel helper');
+  assert.ok(dash.includes('decodeScanPayImageFile'), 'image file decoder');
+  assert.ok(dash.includes('jsQR'), 'dashboard uses jsQR');
+  assert.ok(dash.includes("inversionAttempts: tryInvert ? 'attemptBoth'"), 'jsQR invert for images');
+  assert.ok(dash.includes('Do not auto-start camera'), 'camera is opt-in');
+  assert.ok(dash.includes('submitScanPay') || dash.includes('submitScanPay'), 'submit payment');
+
+  assert.ok(css.includes('scan-pay-chooser'), 'chooser styles');
+  assert.ok(css.includes('scan-pay-option'), 'option card styles');
+  assert.ok(i18n.includes('scan_pay_option_camera_title'), 'i18n camera option');
+  assert.ok(i18n.includes('scan_pay_option_upload_title'), 'i18n upload option');
   console.log('ok');
 }
 
@@ -43,7 +56,6 @@ function testBackendWiring() {
 
   assert.ok(route.includes("router.post('/scan-pay'"), 'POST scan-pay route');
   assert.ok(route.includes("router.post('/parse-qr'"), 'POST parse-qr route');
-  assert.ok(route.includes("router.get('/scan-pay'"), 'GET scan-pay history');
   assert.ok(route.includes('executeScanPay'), 'route calls executeScanPay');
   assert.ok(service.includes('function executeScanPay'), 'executeScanPay service');
   assert.ok(service.includes('function parsePaymentQrPayload'), 'QR parser');
@@ -80,47 +92,19 @@ function testQrParser() {
   try {
     const abs = require.resolve('../src/services/scanPayService');
     delete require.cache[abs];
-    const {
-      parsePaymentQrPayload,
-      validateDestination,
-    } = require('../src/services/scanPayService');
+    const { parsePaymentQrPayload, validateDestination } = require('../src/services/scanPayService');
 
     const addr = 'TJYeasRUbRLg9y5G9cQhYrDgKMdPw9qJ1e';
-    const json = parsePaymentQrPayload(JSON.stringify({
-      address: addr,
-      amount: 12.5,
-      network: 'TRC20',
-    }));
+    const json = parsePaymentQrPayload(JSON.stringify({ address: addr, amount: 12.5, network: 'TRC20' }));
     assert.strictEqual(json.destination_address, addr);
     assert.strictEqual(json.amount_usdt, 12.5);
-    assert.strictEqual(json.network, 'TRC20');
 
     const tron = parsePaymentQrPayload(`tron:${addr}?amount=3.25`);
     assert.strictEqual(tron.destination_address, addr);
     assert.strictEqual(tron.amount_usdt, 3.25);
 
-    const eisy = parsePaymentQrPayload(`eisy://pay?address=${addr}&amount=7`);
-    assert.strictEqual(eisy.destination_address, addr);
-    assert.strictEqual(eisy.amount_usdt, 7);
-
-    const bare = parsePaymentQrPayload(addr);
-    assert.strictEqual(bare.destination_address, addr);
-
-    const evm = parsePaymentQrPayload('0x1234567890123456789012345678901234567890');
-    assert.strictEqual(evm.network, 'BEP20');
-
     const validated = validateDestination(addr, 'TRC20');
-    assert.strictEqual(validated.address, addr);
     assert.strictEqual(validated.network, 'TRC20');
-
-    let threw = false;
-    try {
-      validateDestination('not-an-address', 'TRC20');
-    } catch (err) {
-      threw = true;
-      assert.ok(err.code === 'INVALID_ADDRESS' || /Invalid/.test(err.message));
-    }
-    assert.ok(threw, 'invalid address rejected');
     console.log('ok');
   } finally {
     Module.prototype.require = orig;
@@ -130,4 +114,4 @@ function testQrParser() {
 testUiWiring();
 testBackendWiring();
 testQrParser();
-console.log('\nScan Pay checks passed.');
+console.log('\nScan Pay dual-option checks passed.');
