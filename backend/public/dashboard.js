@@ -1028,6 +1028,7 @@ const Dashboard = {
     $('btnRefreshUsdtWallet')?.addEventListener('click', () => this.loadUsdtWalletPage(true));
     $('btnLoadUsdtWalletTx')?.addEventListener('click', () => this.loadUsdtWalletTransactions());
     $('usdtTransferForm')?.addEventListener('submit', (e) => this.submitUsdtTransfer(e));
+    $('btnOpenScanPayPage')?.addEventListener('click', () => this.openScanPayModal());
     $('btnOpenWithdrawUsdtPage')?.addEventListener('click', () => {
       if (!Auth.isLoggedIn()) {
         this.toast('Sign in to withdraw USDT', 'error');
@@ -6269,6 +6270,312 @@ const Dashboard = {
     if ($('withdrawPreviewSummary')) $('withdrawPreviewSummary').textContent = summary;
   },
 
+
+  /* ─── Scan Pay (QR → confirm → atomic USDT debit) ─── */
+  openScanPayModal() {
+    const modal = $('scanPayModal');
+    if (!modal) return;
+    this._scanPayState = {
+      payload: null,
+      address: null,
+      network: 'TRC20',
+      amount: null,
+      stream: null,
+      raf: null,
+      paying: false,
+    };
+    this._scanPayShowStep('scan');
+    this._scanPaySetError('');
+    modal.classList.remove('hidden');
+    this._bindScanPayUiOnce();
+    this.startScanPayCamera().catch(() => {});
+  },
+
+  closeScanPayModal() {
+    this.stopScanPayCamera();
+    $('scanPayModal')?.classList.add('hidden');
+    this._scanPayState = null;
+  },
+
+  _bindScanPayUiOnce() {
+    if (this._scanPayBound) return;
+    this._scanPayBound = true;
+    $('scanPayModalClose')?.addEventListener('click', () => this.closeScanPayModal());
+    $('btnScanPayDone')?.addEventListener('click', () => this.closeScanPayModal());
+    $('btnScanPayStartCamera')?.addEventListener('click', () => this.startScanPayCamera());
+    $('btnScanPayRescan')?.addEventListener('click', () => {
+      this._scanPayShowStep('scan');
+      this.startScanPayCamera().catch(() => {});
+    });
+    $('btnScanPayConfirm')?.addEventListener('click', () => this.submitScanPay());
+    $('scanPayImageInput')?.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) this.decodeScanPayImageFile(file);
+      e.target.value = '';
+    });
+    $('scanPayModal')?.addEventListener('click', (e) => {
+      if (e.target === $('scanPayModal')) this.closeScanPayModal();
+    });
+  },
+
+  _scanPayShowStep(step) {
+    const scan = $('scanPayStepScan');
+    const confirm = $('scanPayStepConfirm');
+    const result = $('scanPayStepResult');
+    scan?.classList.toggle('hidden', step !== 'scan');
+    confirm?.classList.toggle('hidden', step !== 'confirm');
+    result?.classList.toggle('hidden', step !== 'result');
+    if (step !== 'scan') this.stopScanPayCamera();
+  },
+
+  _scanPaySetError(msg) {
+    const el = $('scanPayError');
+    if (!el) return;
+    if (!msg) {
+      el.textContent = '';
+      el.classList.add('hidden');
+      return;
+    }
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  },
+
+  async startScanPayCamera() {
+    const status = $('scanPayCameraStatus');
+    const video = $('scanPayVideo');
+    if (!video) return;
+    this.stopScanPayCamera();
+    if (status) status.textContent = 'Requesting camera permission…';
+    if (!navigator.mediaDevices?.getUserMedia) {
+      if (status) status.textContent = 'Camera not available — upload a QR image instead.';
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' } },
+      });
+      this._scanPayState = this._scanPayState || {};
+      this._scanPayState.stream = stream;
+      video.srcObject = stream;
+      await video.play();
+      if (status) status.textContent = 'Point your camera at a USDT payment QR code.';
+      this._scanPayLoop();
+    } catch (err) {
+      if (status) {
+        status.textContent = 'Camera blocked or unavailable — upload a QR image instead.';
+      }
+      console.warn('[scan-pay] camera', err.message);
+    }
+  },
+
+  stopScanPayCamera() {
+    const st = this._scanPayState;
+    if (st?.raf) {
+      cancelAnimationFrame(st.raf);
+      st.raf = null;
+    }
+    if (st?.stream) {
+      try { st.stream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+      st.stream = null;
+    }
+    const video = $('scanPayVideo');
+    if (video) video.srcObject = null;
+  },
+
+  _scanPayLoop() {
+    const st = this._scanPayState;
+    const video = $('scanPayVideo');
+    const canvas = $('scanPayCanvas');
+    if (!st || !video || !canvas || video.readyState < 2) {
+      if (st) st.raf = requestAnimationFrame(() => this._scanPayLoop());
+      return;
+    }
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (w && h) {
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, w, h);
+      const imageData = ctx.getImageData(0, 0, w, h);
+      this._decodeScanPayImageData(imageData).then((payload) => {
+        if (payload) this.onScanPayPayload(payload);
+        else if (this._scanPayState === st) {
+          st.raf = requestAnimationFrame(() => this._scanPayLoop());
+        }
+      }).catch(() => {
+        if (this._scanPayState === st) {
+          st.raf = requestAnimationFrame(() => this._scanPayLoop());
+        }
+      });
+      return;
+    }
+    st.raf = requestAnimationFrame(() => this._scanPayLoop());
+  },
+
+  async _decodeScanPayImageData(imageData) {
+    // Prefer BarcodeDetector when available (Chrome/Android).
+    try {
+      if (window.BarcodeDetector) {
+        if (!this._barcodeDetector) {
+          this._barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        }
+        const codes = await this._barcodeDetector.detect(imageData);
+        if (codes && codes[0]?.rawValue) return String(codes[0].rawValue);
+      }
+    } catch (_) { /* fall through to jsQR */ }
+
+    if (typeof window.jsQR === 'function') {
+      const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'dontInvert',
+      });
+      if (code?.data) return String(code.data);
+    }
+    return null;
+  },
+
+  async decodeScanPayImageFile(file) {
+    this._scanPaySetError('');
+    try {
+      const bmp = await createImageBitmap(file);
+      const canvas = $('scanPayCanvas') || document.createElement('canvas');
+      canvas.width = bmp.width;
+      canvas.height = bmp.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(bmp, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const payload = await this._decodeScanPayImageData(imageData);
+      if (!payload) {
+        this._scanPaySetError('No QR code found in that image.');
+        return;
+      }
+      await this.onScanPayPayload(payload);
+    } catch (err) {
+      this._scanPaySetError(err.message || 'Could not read that image.');
+    }
+  },
+
+  async onScanPayPayload(rawPayload) {
+    if (!rawPayload || this._scanPayState?.paying) return;
+    // Avoid re-processing the same frame payload repeatedly.
+    if (this._scanPayState?.payload === rawPayload && !$('scanPayStepConfirm')?.classList.contains('hidden')) {
+      return;
+    }
+    this.stopScanPayCamera();
+    this._scanPaySetError('');
+    try {
+      const data = await Auth.api('POST', '/api/user/usdt-wallet/parse-qr', {
+        payload: rawPayload,
+      });
+      const parsed = data.parsed || {};
+      const address = parsed.destination_address;
+      if (!address) throw new Error('QR did not contain a payment address');
+      this._scanPayState = {
+        ...(this._scanPayState || {}),
+        payload: rawPayload,
+        address,
+        network: parsed.network || 'TRC20',
+        amount: parsed.amount_usdt != null ? Number(parsed.amount_usdt) : null,
+      };
+      if ($('scanPayDestDisplay')) $('scanPayDestDisplay').textContent = address;
+      if ($('scanPayNetworkDisplay')) $('scanPayNetworkDisplay').textContent = this._scanPayState.network;
+      if ($('scanPayAmountInput')) {
+        $('scanPayAmountInput').value = this._scanPayState.amount != null
+          ? String(this._scanPayState.amount)
+          : '';
+        // Always allow confirm/edit — QR amount is a prefill, not a lock.
+        $('scanPayAmountInput').readOnly = false;
+      }
+      const avail = this.walletUsdt != null ? Number(this.walletUsdt) : null;
+      if ($('scanPayBalanceHint')) {
+        $('scanPayBalanceHint').textContent = avail != null
+          ? `Available balance: ${this.formatUsdt(avail)} USDT`
+          : 'Confirm the amount to debit from your USDT wallet.';
+      }
+      this._scanPayShowStep('confirm');
+    } catch (err) {
+      this._scanPaySetError(err.message || 'Invalid payment QR');
+      this._scanPayShowStep('scan');
+      this.startScanPayCamera().catch(() => {});
+    }
+  },
+
+  async submitScanPay() {
+    const st = this._scanPayState;
+    if (!st?.address || st.paying) return;
+    const amount = parseFloat($('scanPayAmountInput')?.value);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      this._scanPaySetError('Enter a valid USDT amount.');
+      return;
+    }
+    const note = $('scanPayNoteInput')?.value?.trim() || '';
+    const btn = $('btnScanPayConfirm');
+    const prev = btn?.textContent;
+    st.paying = true;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Paying…';
+    }
+    this._scanPaySetError('');
+    try {
+      const idempotencyKey = `scanpay-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const data = await Auth.api('POST', '/api/user/usdt-wallet/scan-pay', {
+        destination_address: st.address,
+        network: st.network || 'TRC20',
+        amount_usdt: amount,
+        qr_payload: st.payload,
+        note: note || undefined,
+        idempotency_key: idempotencyKey,
+      }, { sensitive: true });
+
+      const payment = data.payment || {};
+      if ($('scanPayResultTitle')) $('scanPayResultTitle').textContent = data.duplicate
+        ? 'Payment already recorded'
+        : 'Payment successful';
+      if ($('scanPayResultMessage')) {
+        $('scanPayResultMessage').textContent = data.message
+          || `Paid ${this.formatUsdt(amount)} USDT to ${st.address}`;
+      }
+      if ($('scanPayResultRef')) $('scanPayResultRef').textContent = payment.ref_code || '—';
+      if ($('scanPayResultAmount')) {
+        $('scanPayResultAmount').textContent = `${this.formatUsdt(payment.amount_usdt ?? amount)} USDT`;
+      }
+      if ($('scanPayResultStatus')) {
+        $('scanPayResultStatus').textContent = `${payment.status || 'completed'} / payout ${payment.payout_status || 'pending'}`;
+      }
+      const box = $('scanPayResultBox');
+      box?.classList.remove('err');
+      box?.classList.add('ok');
+
+      if (data.wallet) {
+        this.syncUsdtWalletBalancesFromPayload({
+          balance_usdt: data.wallet.available_usdt ?? data.wallet.balance_usdt,
+          balance_usdt_locked: data.wallet.locked_usdt ?? data.wallet.balance_usdt_locked ?? 0,
+          balance_usdt_total: data.wallet.total_usdt ?? data.wallet.balance_usdt_total,
+          balance_formatted: data.wallet.available_formatted,
+          locked_formatted: data.wallet.locked_formatted,
+          total_formatted: data.wallet.total_formatted,
+        });
+      }
+      this._usdtWalletCache = null;
+      this.loadUsdtWalletPage?.(true)?.catch?.(() => {});
+      this.loadWallet?.({ force: true });
+      this._scanPayShowStep('result');
+      this.toast?.(data.duplicate ? 'Already paid' : 'Scan Pay completed', 'ok');
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal?.();
+      this._scanPaySetError(err.message || 'Payment failed');
+      this.toast?.(err.message || 'Scan Pay failed', 'error');
+    } finally {
+      st.paying = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = prev || 'Confirm & Pay';
+      }
+    }
+  },
+
   openWithdrawModal() {
     $('withdrawUsdtForm')?.classList.remove('hidden');
     $('withdrawSuccessBox')?.classList.add('hidden');
@@ -6386,6 +6693,7 @@ const Dashboard = {
     $('withdrawUsdtModal')?.addEventListener('click', (e) => {
       if (e.target.id === 'withdrawUsdtModal') this.closeWithdrawModal();
     });
+    $('btnOpenScanPay')?.addEventListener('click', () => this.openScanPayModal());
     $('btnOpenWithdrawUsdt')?.addEventListener('click', () => {
       if (!Auth.isLoggedIn()) {
         this.toast('Sign in to withdraw USDT', 'error');

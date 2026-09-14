@@ -170,4 +170,74 @@ router.get('/linked/:id/balance', requireAuth, async (req, res) => {
   }
 });
 
+router.post('/parse-qr', requireAuth, async (req, res) => {
+  try {
+    const { parsePaymentQrPayload } = require('../services/scanPayService');
+    const payload = String(req.body?.payload || req.body?.qr || '').trim();
+    if (!payload) {
+      return res.status(400).json({ error: 'QR payload is required' });
+    }
+    const parsed = parsePaymentQrPayload(payload);
+    return res.json({ ok: true, parsed });
+  } catch (err) {
+    return res.status(400).json({ error: err.message, code: err.code || 'PARSE_FAILED' });
+  }
+});
+
+router.post('/scan-pay', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    const { executeScanPay } = require('../services/scanPayService');
+    const body = req.body || {};
+    const result = await executeScanPay(req.user.id, {
+      destinationAddress: body.destination_address || body.address,
+      network: body.network || 'TRC20',
+      amountUsdt: body.amount_usdt ?? body.amount,
+      qrPayload: body.qr_payload || body.qr || null,
+      note: body.note || null,
+      idempotencyKey: body.idempotency_key || body.idempotencyKey || null,
+    });
+
+    const balances = result.wallet || await getUsdtBalances(req.user.id);
+    return res.status(result.duplicate ? 200 : 201).json({
+      ok: true,
+      duplicate: Boolean(result.duplicate),
+      message: result.message,
+      payment: result.payment,
+      wallet: balances,
+    });
+  } catch (err) {
+    const status = [
+      'INSUFFICIENT_USDT_BALANCE',
+      'INSUFFICIENT_BALANCE',
+      'INVALID_AMOUNT',
+      'AMOUNT_TOO_LARGE',
+      'INVALID_ADDRESS',
+      'MISSING_ADDRESS',
+      'UNPARSEABLE_QR',
+      'EMPTY_QR',
+      'SELF_PAYMENT',
+      'SCAN_PAY_DENIED',
+    ].includes(err.code) ? 400 : 500;
+    console.error('[usdt-wallet/scan-pay]', err);
+    return res.status(status).json({
+      error: err.message || 'Scan Pay failed',
+      code: err.code || 'SCAN_PAY_FAILED',
+      required_usdt: err.required_usdt,
+      available_usdt: err.available_usdt,
+    });
+  }
+});
+
+router.get('/scan-pay', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    const { listScanPaymentsForUser } = require('../services/scanPayService');
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+    const payments = await listScanPaymentsForUser(req.user.id, { limit });
+    return res.json({ payments });
+  } catch (err) {
+    console.error('[usdt-wallet/scan-pay list]', err);
+    return res.status(500).json({ error: 'Failed to load Scan Pay history' });
+  }
+});
+
 module.exports = router;
