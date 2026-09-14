@@ -6283,12 +6283,15 @@ const Dashboard = {
       stream: null,
       raf: null,
       paying: false,
+      mode: 'chooser',
     };
     this._scanPayShowStep('scan');
+    this._scanPayShowChooser();
     this._scanPaySetError('');
+    this._scanPaySetUploadStatus('');
     modal.classList.remove('hidden');
     this._bindScanPayUiOnce();
-    this.startScanPayCamera().catch(() => {});
+    // Do not auto-start camera — user picks Camera Scan or Upload QR Image.
   },
 
   closeScanPayModal() {
@@ -6302,10 +6305,12 @@ const Dashboard = {
     this._scanPayBound = true;
     $('scanPayModalClose')?.addEventListener('click', () => this.closeScanPayModal());
     $('btnScanPayDone')?.addEventListener('click', () => this.closeScanPayModal());
+    $('btnScanPayChooseCamera')?.addEventListener('click', () => this._scanPayShowCameraPanel());
     $('btnScanPayStartCamera')?.addEventListener('click', () => this.startScanPayCamera());
+    $('btnScanPayBackToChooser')?.addEventListener('click', () => this._scanPayShowChooser());
     $('btnScanPayRescan')?.addEventListener('click', () => {
       this._scanPayShowStep('scan');
-      this.startScanPayCamera().catch(() => {});
+      this._scanPayShowChooser();
     });
     $('btnScanPayConfirm')?.addEventListener('click', () => this.submitScanPay());
     $('scanPayImageInput')?.addEventListener('change', (e) => {
@@ -6316,6 +6321,23 @@ const Dashboard = {
     $('scanPayModal')?.addEventListener('click', (e) => {
       if (e.target === $('scanPayModal')) this.closeScanPayModal();
     });
+  },
+
+  _scanPayShowChooser() {
+    this.stopScanPayCamera();
+    if (this._scanPayState) this._scanPayState.mode = 'chooser';
+    $('scanPayChooser')?.classList.remove('hidden');
+    $('scanPayCameraPanel')?.classList.add('hidden');
+    this._scanPaySetUploadStatus('');
+    const status = $('scanPayCameraStatus');
+    if (status) status.textContent = 'Camera ready';
+  },
+
+  _scanPayShowCameraPanel() {
+    if (this._scanPayState) this._scanPayState.mode = 'camera';
+    $('scanPayChooser')?.classList.add('hidden');
+    $('scanPayCameraPanel')?.classList.remove('hidden');
+    this.startScanPayCamera().catch(() => {});
   },
 
   _scanPayShowStep(step) {
@@ -6340,14 +6362,28 @@ const Dashboard = {
     el.classList.remove('hidden');
   },
 
+  _scanPaySetUploadStatus(msg) {
+    const el = $('scanPayUploadStatus');
+    if (!el) return;
+    if (!msg) {
+      el.textContent = '';
+      el.classList.add('hidden');
+      return;
+    }
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  },
+
   async startScanPayCamera() {
     const status = $('scanPayCameraStatus');
     const video = $('scanPayVideo');
     if (!video) return;
+    $('scanPayChooser')?.classList.add('hidden');
+    $('scanPayCameraPanel')?.classList.remove('hidden');
     this.stopScanPayCamera();
     if (status) status.textContent = 'Requesting camera permission…';
     if (!navigator.mediaDevices?.getUserMedia) {
-      if (status) status.textContent = 'Camera not available — upload a QR image instead.';
+      if (status) status.textContent = 'Camera not available — use Upload QR Image instead.';
       return;
     }
     try {
@@ -6357,13 +6393,14 @@ const Dashboard = {
       });
       this._scanPayState = this._scanPayState || {};
       this._scanPayState.stream = stream;
+      this._scanPayState.mode = 'camera';
       video.srcObject = stream;
       await video.play();
       if (status) status.textContent = 'Point your camera at a USDT payment QR code.';
       this._scanPayLoop();
     } catch (err) {
       if (status) {
-        status.textContent = 'Camera blocked or unavailable — upload a QR image instead.';
+        status.textContent = 'Camera blocked or unavailable — use Upload QR Image instead.';
       }
       console.warn('[scan-pay] camera', err.message);
     }
@@ -6414,7 +6451,7 @@ const Dashboard = {
     st.raf = requestAnimationFrame(() => this._scanPayLoop());
   },
 
-  async _decodeScanPayImageData(imageData) {
+  async _decodeScanPayImageData(imageData, { tryInvert = false } = {}) {
     // Prefer BarcodeDetector when available (Chrome/Android).
     try {
       if (window.BarcodeDetector) {
@@ -6428,30 +6465,66 @@ const Dashboard = {
 
     if (typeof window.jsQR === 'function') {
       const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'dontInvert',
+        inversionAttempts: tryInvert ? 'attemptBoth' : 'dontInvert',
       });
       if (code?.data) return String(code.data);
     }
     return null;
   },
 
+  _scanPayDrawScaled(bmp, maxSide) {
+    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+    const w = Math.max(1, Math.round(bmp.width * scale));
+    const h = Math.max(1, Math.round(bmp.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(bmp, 0, 0, w, h);
+    return ctx.getImageData(0, 0, w, h);
+  },
+
   async decodeScanPayImageFile(file) {
     this._scanPaySetError('');
+    this._scanPaySetUploadStatus('Reading QR image…');
+    this.stopScanPayCamera();
     try {
+      if (!file || !String(file.type || '').startsWith('image/')) {
+        throw new Error('Please choose an image file containing a QR code.');
+      }
+      if (typeof window.jsQR !== 'function' && !window.BarcodeDetector) {
+        throw new Error('QR decoder is not loaded. Please refresh the page and try again.');
+      }
+
       const bmp = await createImageBitmap(file);
-      const canvas = $('scanPayCanvas') || document.createElement('canvas');
-      canvas.width = bmp.width;
-      canvas.height = bmp.height;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(bmp, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const payload = await this._decodeScanPayImageData(imageData);
+      // Try a few sizes — gallery photos are often huge; downscaling helps jsQR.
+      const candidates = [
+        this._scanPayDrawScaled(bmp, 1200),
+        this._scanPayDrawScaled(bmp, 800),
+        this._scanPayDrawScaled(bmp, 1600),
+      ];
+      // Also keep native size if already reasonable.
+      if (bmp.width <= 2000 && bmp.height <= 2000) {
+        candidates.unshift(this._scanPayDrawScaled(bmp, Math.max(bmp.width, bmp.height)));
+      }
+
+      let payload = null;
+      for (const imageData of candidates) {
+        payload = await this._decodeScanPayImageData(imageData, { tryInvert: true });
+        if (payload) break;
+      }
+      try { bmp.close?.(); } catch (_) { /* optional */ }
+
       if (!payload) {
-        this._scanPaySetError('No QR code found in that image.');
+        this._scanPaySetUploadStatus('');
+        this._scanPaySetError('No QR code found in that image. Try a clearer, well-lit QR photo.');
         return;
       }
+      this._scanPaySetUploadStatus('QR image decoded.');
       await this.onScanPayPayload(payload);
     } catch (err) {
+      this._scanPaySetUploadStatus('');
       this._scanPaySetError(err.message || 'Could not read that image.');
     }
   },
