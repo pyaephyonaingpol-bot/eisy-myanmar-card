@@ -220,11 +220,7 @@ async function listCardIssuanceAdminTransactions({ userId, limit = 200 } = {}) {
       card_id: row.reference_id,
       card_last_four: row.card_last_four,
       provider_load_usd: round2(
-        pricing.provider_load_usd
-          ?? pricing.initial_load_usd
-          ?? pricing.kripicard_cost_usd
-          ?? metadata.provider_load_usd
-          ?? metadata.kripicard_cost_usd
+        pricing.provider_load_usd ?? pricing.initial_load_usd ?? metadata.provider_load_usd
       ),
       platform_markup_usd: round2(
         pricing.platform_markup_usd ?? pricing.issuance_fee_usd ?? metadata.platform_markup_usd
