@@ -298,6 +298,61 @@ const Card = {
     syncCardApplication(row).catch((err) => console.warn('[supabase] card sync:', err.message));
     return row;
   },
+
+  /**
+   * Find a local cards_v2 row by Bitnob (or other) provider card id stored in metadata.
+   */
+  async findByProviderCardId(providerCardId) {
+    const id = String(providerCardId || '').trim();
+    if (!id) return null;
+    const db = getDb();
+    return db.get(`
+      SELECT * FROM ${this.TABLE}
+      WHERE json_extract(metadata, '$.provider_card_id') = ?
+         OR json_extract(metadata, '$.bitnob_card_id') = ?
+      ORDER BY updated_at DESC, id DESC
+      LIMIT 1
+    `, id, id);
+  },
+
+  /**
+   * Shallow-merge keys into cards_v2.metadata JSON (and optional status).
+   */
+  async mergeMetadata(id, patch = {}, { status } = {}) {
+    const db = getDb();
+    const existing = await this.findById(id);
+    if (!existing) return null;
+
+    let metadata = {};
+    try {
+      metadata = existing.metadata ? JSON.parse(existing.metadata) : {};
+    } catch (_) {
+      metadata = {};
+    }
+    const next = { ...metadata, ...(patch && typeof patch === 'object' ? patch : {}) };
+
+    if (status) {
+      await db.run(`
+        UPDATE ${this.TABLE}
+        SET metadata = ?,
+            status = ?,
+            updated_at = datetime('now'),
+            activated_at = CASE WHEN ? = 'active' AND activated_at IS NULL THEN datetime('now') ELSE activated_at END
+        WHERE id = ?
+      `, JSON.stringify(next), status, status, id);
+    } else {
+      await db.run(`
+        UPDATE ${this.TABLE}
+        SET metadata = ?,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `, JSON.stringify(next), id);
+    }
+
+    const row = await this.findById(id);
+    syncCardApplication(row).catch((err) => console.warn('[supabase] card sync:', err.message));
+    return row;
+  },
 };
 
 module.exports = Card;

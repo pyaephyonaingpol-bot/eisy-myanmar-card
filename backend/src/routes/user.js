@@ -23,6 +23,7 @@ const {
   reloadCardFromUsdtWallet,
 } = require('../services/cardWalletService');
 const { resolveBitnobCustomerId } = require('../services/cardIssueService');
+const { syncBitnobCardFromProvider } = require('../services/bitnobCardWebhookService');
 const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
   isPendingCardRecord,
@@ -253,6 +254,43 @@ router.post('/cards/:id/remove', requireAuth, requireSensitive, async (req, res)
   } catch (err) {
     console.error('[user/cards/remove]', err);
     res.status(500).json({ error: err.message || 'Failed to remove card' });
+  }
+});
+
+/**
+ * Poll Bitnob for the latest card status/balance and merge into local cards_v2.
+ * Safety net when create/fund webhooks are delayed or missed.
+ */
+router.post('/cards/:id/sync', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+
+    const result = await syncBitnobCardFromProvider(cardId, { userId: req.user.id });
+    res.json({
+      success: true,
+      message: 'Card synced from Bitnob',
+      card: mapCardForClient(result.card),
+      provider_card: {
+        card_id: result.provider_card?.card_id,
+        status: result.provider_card?.status,
+        created_status: result.provider_card?.created_status,
+        masked_pan: result.provider_card?.masked_pan,
+        balance_usd: result.provider_card?.balance_usd,
+      },
+    });
+  } catch (err) {
+    const code = err.code || 'BITNOB_SYNC_FAILED';
+    const status =
+      code === 'CARD_NOT_FOUND' ? 404
+        : code === 'NOT_BITNOB_CARD' || code === 'BITNOB_CARD_ID_REQUIRED' ? 400
+          : code === 'BITNOB_NOT_CONFIGURED' ? 503
+            : code === 'BITNOB_HTTP_ERROR' || code === 'BITNOB_TIMEOUT' ? 502
+              : 500;
+    console.error('[user/cards/sync]', err.message, code);
+    res.status(status).json({ error: err.message || 'Sync failed', code });
   }
 });
 
