@@ -9,7 +9,7 @@
     "start": "npm start --prefix backend",
     "dev": "npm run dev --prefix backend",
     "migrate": "npm run migrate --prefix backend",
-"test:bitnob-virtual-cards": "node backend/scripts/test-bitnob-virtual-cards.js",
+    "test:bitnob-virtual-cards": "node backend/scripts/test-bitnob-virtual-cards.js",
     "test:usdt-card-issue": "node backend/scripts/test-usdt-only-card-issue.js",
     "test:dashboard-usdt-wallet": "node backend/scripts/test-dashboard-usdt-wallet-only.js",
     "test:usdt-wallet-perf": "node backend/scripts/test-usdt-wallet-perf.js",
