@@ -5700,9 +5700,23 @@ const Dashboard = {
     if (!p) return;
 
     const initial = parseFloat($('cardInitialLoad')?.value) || 0;
-    const issuanceFee = Number(p.card_issuance_fee_usd) || 0;
-    const fundingPercent = Number(p.card_funding_fee_percent) || 0;
-    const fundingFee = Math.round((initial * fundingPercent / 100) * 100) / 100;
+    const bitnobCreate = Number(p.bitnob_create_fee_usd);
+    const createFee = Number.isFinite(bitnobCreate) && bitnobCreate >= 0 ? bitnobCreate : 2;
+    const platformIssuance = Number(p.card_issuance_fee_usd) || 0;
+    const issuanceFee = Math.round((createFee + platformIssuance) * 100) / 100;
+    const schedule = p.bitnob_fee_schedule || {};
+    const threshold = Number(schedule.fund_fee_threshold_usd) || 100;
+    const flatFund = Number(schedule.fund_fee_flat_usd);
+    const pctFund = Number(schedule.fund_fee_percent);
+    let fundingFee = 0;
+    if (initial > 0) {
+      if (initial < threshold) {
+        fundingFee = Number.isFinite(flatFund) ? flatFund : 1;
+      } else {
+        const pct = Number.isFinite(pctFund) ? pctFund : 1;
+        fundingFee = Math.round((initial * pct / 100) * 100) / 100;
+      }
+    }
     const processingFee = Number(p.card_processing_fee_usd);
     const processingFeeUsd = Number.isFinite(processingFee) && processingFee >= 0 ? processingFee : 1.5;
     const totalUsd = Math.round((initial + issuanceFee + fundingFee + processingFeeUsd) * 100) / 100;
@@ -5710,12 +5724,7 @@ const Dashboard = {
 
     if ($('pbInitialLoad')) $('pbInitialLoad').textContent = `$${initial.toFixed(2)}`;
     if ($('pbIssuanceFee')) $('pbIssuanceFee').textContent = `$${issuanceFee.toFixed(2)}`;
-    if ($('pbFundingFee')) {
-      const fundingLabel = fundingPercent > 0
-        ? `$${fundingFee.toFixed(2)}`
-        : `$${fundingFee.toFixed(2)}`;
-      $('pbFundingFee').textContent = fundingLabel;
-    }
+    if ($('pbFundingFee')) $('pbFundingFee').textContent = `$${fundingFee.toFixed(2)}`;
     if ($('pbProcessingFee')) $('pbProcessingFee').textContent = `$${processingFeeUsd.toFixed(2)}`;
     if ($('pbTotalUsd')) $('pbTotalUsd').textContent = `$${totalUsd.toFixed(2)}`;
     if ($('pbTotalUsdt')) $('pbTotalUsdt').textContent = `${totalUsdt.toFixed(2)} USDT`;
@@ -5729,13 +5738,17 @@ const Dashboard = {
     this.cardPricing = {
       ...(this.cardPricing || {}),
       initial_load_usd: initial,
+      bitnob_create_fee_usd: createFee,
+      bitnob_funding_fee_usd: fundingFee,
+      platform_issuance_fee_usd: platformIssuance,
       issuance_fee_usd: issuanceFee,
-      funding_fee_percent: fundingPercent,
       funding_fee_usd: fundingFee,
       processing_fee_usd: processingFeeUsd,
       total_usd_required: totalUsd,
       total_usdt: totalUsdt,
       payment_currency: 'USDT',
+      payment_wallet: 'usdt',
+      mmk_wallet_allowed: false,
       exchange_rate_applied: false,
     };
     this.updateCardWalletHint();

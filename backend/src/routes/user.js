@@ -24,6 +24,10 @@ const {
 } = require('../services/cardWalletService');
 const { resolveBitnobCustomerId } = require('../services/cardIssueService');
 const { syncBitnobCardFromProvider } = require('../services/bitnobCardWebhookService');
+const {
+  BITNOB_CARD_CREATE_FEE_USD,
+  getBitnobFeeSchedule,
+} = require('../constants/bitnobFees');
 const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
   isPendingCardRecord,
@@ -523,6 +527,8 @@ router.get('/card/pricing', requireAuth, async (req, res) => {
       card_funding_fee_percent: settings.card_funding_fee_percent,
       card_processing_fee_usd: settings.card_processing_fee_usd,
       platform_markup_usd: settings.card_issuance_fee_usd,
+      bitnob_create_fee_usd: BITNOB_CARD_CREATE_FEE_USD,
+      bitnob_fee_schedule: getBitnobFeeSchedule(),
       minimum_initial_deposit_usd: settings.minimum_initial_deposit_usd,
       card_reload_fee_usd: settings.card_reload_fee_usd,
       card_reload_provider_cost_usd: settings.card_reload_provider_cost_usd,
@@ -535,6 +541,12 @@ router.get('/card/pricing', requireAuth, async (req, res) => {
       rate_label: "Today's Daily Exchange Rate",
       currency: 'USD',
       payment_currency: 'USDT',
+      payment_wallet: 'usdt',
+      mmk_wallet_allowed_for_cards: false,
+      wallet_rules: {
+        usdt: ['deposit', 'withdraw', 'card_issuance', 'card_reload'],
+        mmk: ['bank_withdrawal_only'],
+      },
       card_issuance_payment: 'usdt_wallet',
       card_issuance_rate: '1 USDT ≈ 1 USD',
       exchange_rate_applied: false,
