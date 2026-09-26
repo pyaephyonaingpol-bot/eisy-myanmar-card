@@ -219,8 +219,8 @@ async function listCardIssuanceAdminTransactions({ userId, limit = 200 } = {}) {
       user_email: row.user_email,
       card_id: row.reference_id,
       card_last_four: row.card_last_four,
-      kripicard_cost_usd: round2(
-        pricing.kripicard_cost_usd ?? pricing.initial_load_usd ?? metadata.kripicard_cost_usd
+      provider_load_usd: round2(
+        pricing.provider_load_usd ?? pricing.initial_load_usd ?? metadata.provider_load_usd
       ),
       platform_markup_usd: round2(
         pricing.platform_markup_usd ?? pricing.issuance_fee_usd ?? metadata.platform_markup_usd
@@ -229,7 +229,7 @@ async function listCardIssuanceAdminTransactions({ userId, limit = 200 } = {}) {
         pricing.total_charge_usdt ?? pricing.total_usdt ?? row.amount_usd
       ),
       wallet_type: metadata.wallet || metadata.wallet_type || 'usdt',
-      provider: metadata.provider || 'kripicard',
+      provider: metadata.provider || 'bitnob',
       provider_card_id: metadata.provider_card_id || null,
       status: metadata.pending || row.card_status === 'pending' ? 'pending' : 'issued',
       created_at: row.created_at,

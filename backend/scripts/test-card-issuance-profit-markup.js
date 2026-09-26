@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Card issuance profit markup: user pays load + admin fee;
- * Kripicard receives load only; markup lands in platform_fee_events.
+ * Bitnob receives load only; markup lands in platform_fee_events.
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -23,7 +23,7 @@ function testPricingBreakdown() {
     card_funding_fee_percent: 0,
   });
 
-  assert.strictEqual(pricing.kripicard_cost_usd, 25);
+  assert.strictEqual(pricing.provider_load_usd, 25);
   assert.strictEqual(pricing.issuance_fee_usd, 5);
   assert.strictEqual(pricing.funding_fee_usd, 0);
   assert.strictEqual(pricing.processing_fee_usd, 1.5);
@@ -32,7 +32,7 @@ function testPricingBreakdown() {
   assert.strictEqual(pricing.total_charge_usdt, 31.5);
   assert.strictEqual(pricing.total_usdt, 31.5);
   assert.strictEqual(pricing.total_usd_required, 31.5);
-  assert.ok(pricing.note.includes('Kripicard') || pricing.note.includes('processing'));
+  assert.ok(pricing.note.includes('Bitnob') || pricing.note.includes('processing'));
   console.log('ok');
 }
 
@@ -41,9 +41,9 @@ function testWalletServiceMarkupFlow() {
   const src = fs.readFileSync(path.join(ROOT, 'backend/src/services/cardWalletService.js'), 'utf8');
 
   assert.ok(src.includes('ensureSupabaseUserWallet'), 'ensures Supabase wallet before debit');
-  assert.ok(src.includes('kripicard_cost_usd'), 'tracks Kripicard cost');
+  assert.ok(src.includes('provider_load_usd'), 'tracks provider load');
   assert.ok(src.includes('platform_markup_usd'), 'tracks platform markup');
-  assert.ok(src.includes('amount: kripicardCostUsd'), 'provider receives load only');
+  assert.ok(src.includes('amount: providerLoadUsd'), 'provider receives load only');
   assert.ok(src.includes('recordPlatformUsdFee(platformMarkupUsd'), 'markup recorded in ledger');
   assert.ok(src.includes('total_charge_usdt: requiredUsdt'), 'metadata includes total charge');
   console.log('ok');
@@ -71,7 +71,10 @@ function testNextCardsIssueRoute() {
   const src = fs.readFileSync(path.join(ROOT, 'app/api/cards/issue/route.js'), 'utf8');
 
   assert.ok(src.includes('purchaseCardFromUsdtWallet'), 'user session uses wallet purchase');
+  assert.ok(src.includes('createAndPersistBitnobCard'), 'admin path uses Bitnob');
   assert.ok(src.includes('isAdmin'), 'admin bypass preserved');
+  assert.ok(src.includes('BITNOB_'), 'Bitnob env / error codes');
+  assert.ok(!src.includes('KRIPICARD') && !src.includes('Kripicard'), 'no Kripicard in issue route');
   assert.ok(src.includes('platform_markup_usd') || src.includes('pricing_breakdown'), 'returns pricing breakdown');
   console.log('ok');
 }

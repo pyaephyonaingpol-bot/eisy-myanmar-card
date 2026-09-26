@@ -10,6 +10,7 @@ const { creditMmk, creditUsdt, formatMmk, formatUsdt } = require('./walletServic
 const { recordPlatformUsdFee, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const { resolveReloadNetProfit } = require('../constants/cardReloadFees');
 const { parseRecordMetadata } = require('./settingsService');
+const bitnobService = require('./bitnobService');
 
 const RELOAD_PENDING_MESSAGE = 'Reload request submitted! Pending admin approval.';
 
@@ -113,9 +114,42 @@ async function approvePendingReload(reloadId, {
     });
   }
 
+  // After local topup: fund Bitnob card when this card was issued via Bitnob.
+  // Wallet was already debited on reload request — call fundCard (not FromUsdt).
+  let providerFund = null;
+  const cardMeta = parseRecordMetadata(card.metadata);
+  const providerCardId = String(
+    cardMeta.provider_card_id || card.provider_card_id || ''
+  ).trim();
+  if (
+    String(cardMeta.provider || '').toLowerCase() === 'bitnob'
+    && providerCardId
+    && Number(request.net_usd_to_card) > 0
+  ) {
+    try {
+      providerFund = await bitnobService.fundCard({
+        cardId: providerCardId,
+        amountUsd: Number(request.net_usd_to_card),
+        reference: `reload-${reloadId}-${Date.now()}`,
+        type: 'fund',
+      });
+    } catch (fundErr) {
+      console.warn(
+        `[cardReloadApproval] Bitnob fund failed after local topup for reload ${reloadId}:`,
+        fundErr.message || fundErr
+      );
+      providerFund = {
+        failed: true,
+        error: fundErr.message || String(fundErr),
+        code: fundErr.code || null,
+      };
+    }
+  }
+
   return {
     reload: CardReloadRequest.mapForClient(updated),
     card: cardResult.card,
+    provider_fund: providerFund,
     message: `Card reload approved — $${Number(request.net_usd_to_card).toFixed(2)} USD credited to card`,
   };
 }

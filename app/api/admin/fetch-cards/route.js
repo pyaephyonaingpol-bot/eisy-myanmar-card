@@ -1,18 +1,18 @@
 /**
  * POST /api/admin/fetch-cards
- * Securely fetch pre-issued Kripicard virtual cards and upsert into card_pools.
+ * Look up a Bitnob virtual card by provider card_id.
+ * Pool sync has been retired — cards are issued on-demand via Bitnob.
  *
  * Auth: X-Admin-Key: <ADMIN_API_KEY>
- * Env:  KRIPICARD_API_KEY, SUPABASE_SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_URL
+ * Env:  BITNOB_CLIENT_ID, BITNOB_CLIENT_SECRET, SUPABASE_SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_URL
+ *
+ * Body: { card_id: string }  — without card_id returns 410 BITNOB_ON_DEMAND_ONLY
  */
 import { createRequire } from 'node:module';
 import { NextResponse } from 'next/server';
 
 const require = createRequire(import.meta.url);
-const {
-  fetchAndStorePoolCards,
-  getPoolStats,
-} = require('../../../../lib/cardPool');
+const { getCardDetails } = require('../../../../lib/bitnob');
 const { isSupabaseAdminEnabled } = require('../../../../lib/supabaseAdmin');
 
 export const runtime = 'nodejs';
@@ -36,20 +36,36 @@ function isAuthorizedAdmin(request) {
   return Boolean(provided) && provided === adminKey;
 }
 
+function isBitnobConfigured() {
+  const clientId = String(process.env.BITNOB_CLIENT_ID || '').trim();
+  const clientSecret = String(
+    process.env.BITNOB_CLIENT_SECRET || process.env.BITNOB_SECRET_KEY || ''
+  ).trim();
+  return Boolean(clientId && clientSecret && !clientSecret.includes('...'));
+}
+
 function mapError(err) {
   const code = err && err.code;
   const message = (err && err.message) || 'Unexpected error';
 
-  if (code === 'KRIPICARD_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED') {
+  if (code === 'BITNOB_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED') {
     return { status: 503, body: { error: message, code } };
   }
-  if (code === 'KRIPICARD_HTTP_ERROR') {
+  if (code === 'BITNOB_CARD_ID_REQUIRED') {
+    return { status: 400, body: { error: message, code } };
+  }
+  if (code === 'BITNOB_HTTP_ERROR') {
     return {
       status: 502,
       body: { error: message, code, provider_status: err.status },
     };
   }
-  if (code === 'KRIPICARD_TIMEOUT' || code === 'KRIPICARD_BAD_RESPONSE') {
+  if (
+    code === 'BITNOB_TIMEOUT'
+    || code === 'BITNOB_BAD_RESPONSE'
+    || code === 'BITNOB_API_ERROR'
+    || code === 'BITNOB_NETWORK'
+  ) {
     return { status: 502, body: { error: message, code } };
   }
   return { status: 500, body: { error: message, code: code || 'INTERNAL_ERROR' } };
@@ -75,38 +91,41 @@ export async function POST(request) {
       );
     }
 
-    if (!String(process.env.KRIPICARD_API_KEY || '').trim()) {
+    if (!isBitnobConfigured()) {
       return json(
-        { error: 'KRIPICARD_API_KEY is not configured', code: 'KRIPICARD_NOT_CONFIGURED' },
+        {
+          error: 'Bitnob API credentials are not configured (BITNOB_CLIENT_ID / BITNOB_CLIENT_SECRET)',
+          code: 'BITNOB_NOT_CONFIGURED',
+        },
         503
       );
     }
 
-    let query = {};
+    let body = {};
     try {
-      const body = await request.json();
-      if (body && typeof body === 'object') {
-        query = body.query && typeof body.query === 'object' ? body.query : {};
-        if (body.status) query.status = body.status;
-        if (body.limit) query.limit = body.limit;
-      }
+      body = await request.json();
     } catch {
-      // empty body is fine
+      body = {};
     }
 
-    const result = await fetchAndStorePoolCards({ query });
-    let pool = null;
-    try {
-      pool = await getPoolStats();
-    } catch {
-      pool = null;
+    const cardId = String(body?.card_id || body?.cardId || '').trim();
+    if (!cardId) {
+      return json(
+        {
+          error:
+            'Pool sync has been removed. Provide card_id to look up a Bitnob card, or issue on-demand via /api/cards/issue.',
+          code: 'BITNOB_ON_DEMAND_ONLY',
+        },
+        410
+      );
     }
 
+    const result = await getCardDetails(cardId);
     return json({
       success: true,
-      message: `Synced ${result.upserted} card(s) into pool (${result.inserted} new, ${result.updated} updated)`,
-      ...result,
-      pool,
+      message: 'Bitnob card details retrieved',
+      provider: 'bitnob',
+      card: result.card,
     });
   } catch (err) {
     console.error('[api/admin/fetch-cards]', err);
@@ -124,18 +143,15 @@ export async function GET(request) {
       );
     }
 
-    if (!isSupabaseAdminEnabled()) {
-      return json(
-        {
-          error: 'Supabase is not configured',
-          code: 'SUPABASE_NOT_CONFIGURED',
-        },
-        503
-      );
-    }
-
-    const pool = await getPoolStats();
-    return json({ success: true, pool });
+    return json(
+      {
+        error:
+          'Card pool inventory is retired. Cards are issued on-demand via Bitnob. Use POST with card_id to look up a card.',
+        code: 'BITNOB_ON_DEMAND_ONLY',
+        provider: 'bitnob',
+      },
+      410
+    );
   } catch (err) {
     console.error('[api/admin/fetch-cards GET]', err);
     const mapped = mapError(err);

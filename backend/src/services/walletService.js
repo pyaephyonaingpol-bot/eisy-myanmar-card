@@ -43,7 +43,7 @@ function assertMmkDebitAllowed({ createdBy, metadata } = {}) {
   }
   if (purpose === 'card_issuance') {
     const err = new Error(
-      'MMK wallet cannot be used for card issuance. Pay with your USDT wallet for instant Kripicard issue.'
+      'MMK wallet cannot be used for card issuance. Pay with your USDT wallet for instant Bitnob card issue.'
     );
     err.code = 'USDT_ONLY_CARD_ISSUANCE';
     throw err;

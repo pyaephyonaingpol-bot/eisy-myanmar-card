@@ -1671,59 +1671,6 @@ const Dashboard = {
     }
   },
 
-  populateCardBinOptions() {
-    const select = $('cardBinSelect');
-    if (!select) return;
-
-    // Kripicard BINs from GET /api/user/card/pricing (live API, or known-active
-    // builtin_fallback such as US 441357 when live catalog is empty).
-    // Never keep/seed a hardcoded legacy multi-BIN catalog in this select.
-    const source = String(this.cardPricing?.kripicard_bins_source || '');
-    const fromApi = Array.isArray(this.cardPricing?.kripicard_bins)
-      ? this.cardPricing.kripicard_bins.map((b) => String(b || '').trim()).filter(Boolean)
-      : [];
-    // Reject stale env-only sources. Accept live API + builtin_fallback so the
-    // known-active US BIN still populates when Kripicard returns nothing.
-    const nonLive = source === 'env_fallback' || source === 'env' || source === 'unavailable';
-    const bins = !this.cardPricing ? [] : (nonLive ? [] : fromApi);
-    const defaultBin = String(
-      this.cardPricing?.kripicard_default_bin || bins[0] || ''
-    ).trim();
-    const prev = select.value;
-
-    if (!bins.length) {
-      const loading = !this.cardPricing;
-      select.required = !loading;
-      select.innerHTML = loading
-        ? '<option value="" disabled selected>Loading available BINs…</option>'
-        : '<option value="" disabled selected>No active BINs available</option>';
-      select.value = '';
-      select.dataset.binSource = source || (loading ? 'loading' : 'unavailable');
-      return;
-    }
-
-    select.required = true;
-    // Replace every option — never append onto leftover HTML seeds.
-    select.innerHTML = bins.map((bin) =>
-      `<option value="${this.esc(bin)}">${this.esc(bin)}</option>`
-    ).join('');
-
-    if (prev && bins.includes(prev)) {
-      select.value = prev;
-    } else if (defaultBin && bins.includes(defaultBin)) {
-      select.value = defaultBin;
-    } else {
-      select.value = bins[0];
-    }
-
-    select.dataset.binSource = source || 'kripicard_api';
-  },
-
-  getSelectedCardBin() {
-    const select = $('cardBinSelect');
-    return String(select?.value || '').trim();
-  },
-
   populateReloadPaymentMethodOptions() {
     const hidden = $('reloadPaymentMethod');
     if (hidden) hidden.value = 'wallet_usdt';
@@ -5441,15 +5388,19 @@ const Dashboard = {
         try {
           const initialLoad = parseFloat($('cardInitialLoad').value);
           const nameOnCard = ($('cardHolderNameInput')?.value || $('holderName')?.value || '').trim();
-          const bin = this.getSelectedCardBin();
           const required = this.cardPricing?.total_usdt ?? this.cardPricing?.total_usd_required ?? 0;
 
           if (!nameOnCard || nameOnCard.length < 2) {
             this.toast(typeof t === 'function' ? t('name_on_card_required') : 'Enter the name on card (min 2 characters)', 'error');
             return;
           }
-          if (!bin) {
-            this.toast(typeof t === 'function' ? t('card_bin_required') : 'Select a card BIN', 'error');
+          if (this.cardPricing && this.cardPricing.bitnob_customer_ready === false) {
+            this.toast(
+              typeof t === 'function'
+                ? t('bitnob_customer_required')
+                : 'Complete Card KYC first so a Bitnob customer profile is ready, then try again.',
+              'error'
+            );
             return;
           }
           if (Number(this.walletUsdt ?? 0) < required) {
@@ -5462,7 +5413,6 @@ const Dashboard = {
             name_on_card: nameOnCard,
             card_holder_name: nameOnCard,
             initial_load_usd: initialLoad,
-            bin,
             pay_from_wallet: true,
             wallet_type: 'usdt',
           };
@@ -5492,7 +5442,6 @@ const Dashboard = {
           $('cardRequestForm')?.reset();
           this.populateCardPaymentMethodOptions();
           if ($('cardHolderNameInput') && holder) $('cardHolderNameInput').value = holder;
-          this.populateCardBinOptions();
           this.updateCardPricingBreakdown();
           this.loadWallet();
           this.loadUsdtWalletPage(true);
@@ -5501,7 +5450,11 @@ const Dashboard = {
           if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
         } catch (err) {
           if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
-          if (err.code === 'INSUFFICIENT_USDT_BALANCE' || err.code === 'USDT_ONLY_CARD_ISSUANCE') {
+          if (
+            err.code === 'INSUFFICIENT_USDT_BALANCE'
+            || err.code === 'USDT_ONLY_CARD_ISSUANCE'
+            || err.code === 'BITNOB_CUSTOMER_REQUIRED'
+          ) {
             this.toast(err.message, 'error');
             if (err.code === 'INSUFFICIENT_USDT_BALANCE' && typeof AppNav !== 'undefined') {
               this.openUsdtTopUpModal();
@@ -5684,7 +5637,6 @@ const Dashboard = {
   async loadCardPricing() {
     if (!Auth.isLoggedIn()) return;
     if (this.cardPricing && this._isFresh('pricing')) {
-      this.populateCardBinOptions();
       this.updateCardPricingBreakdown();
       this.updateHomeRateSummary();
       return;
@@ -5705,10 +5657,17 @@ const Dashboard = {
       const hint = $('cardMinDepositHint');
       if (hint) hint.textContent = `Minimum initial deposit: $${min.toFixed(2)}`;
       this.populateCardPaymentMethodOptions();
-      this.populateCardBinOptions();
       const nameInput = $('cardHolderNameInput');
       if (nameInput && !nameInput.value && this.user?.name) {
         nameInput.value = this.user.name;
+      }
+      if (data.bitnob_customer_ready === false) {
+        this.toast(
+          typeof t === 'function'
+            ? t('bitnob_customer_required')
+            : 'Complete Card KYC first so a Bitnob customer profile is ready, then try again.',
+          'error'
+        );
       }
       this.updateCardPricingBreakdown();
       this.updateHomeRateSummary();

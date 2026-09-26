@@ -29,7 +29,8 @@ function testSourceFallback() {
   assert.ok(block.includes('SUPABASE_CARD_PURCHASE_RPC_MISSING'));
   assert.ok(block.includes('Turso debit fallback') || block.includes('using Turso debit'));
   assert.ok(block.includes('supabaseAtomicDebit'));
-  assert.ok(block.includes("if (supabaseAtomicDebit)"));
+  assert.ok(block.includes('if (supabaseAtomicDebit)'));
+  assert.ok(block.includes('bitnob_issue') || block.includes('Bitnob'), 'Bitnob issue path');
   console.log('ok');
 }
 
@@ -38,7 +39,7 @@ function testErrorMapping() {
   const src = fs.readFileSync(path.join(ROOT, 'backend/src/routes/user.js'), 'utf8');
   assert.ok(src.includes('SUPABASE_CARD_PURCHASE_RPC_MISSING'));
   assert.ok(src.includes('PGRST202'));
-  assert.ok(src.includes("String(err?.message"));
+  assert.ok(src.includes('String(err?.message'));
   console.log('ok');
 }
 
@@ -54,7 +55,7 @@ async function testLiveRpcDetection() {
   try {
     await debitUsdtForCardPurchase('__rpc_probe__', {
       totalAmountUsdt: 1,
-      kripicardCostUsd: 1,
+      providerLoadUsd: 1,
       platformMarkupUsd: 0,
       idempotencyKey: `probe-${Date.now()}`,
     });
@@ -80,7 +81,7 @@ async function testLiveRpcDetection() {
 }
 
 async function testFallbackPurchasePath() {
-  section('Missing RPC → Turso debit path (mocked provider)');
+  section('Missing RPC → Turso debit path (mocked Bitnob provider)');
   require(path.join(ROOT, 'backend/src/lib/loadEnv'));
 
   const ledgerPath = require.resolve('../src/services/supabaseWalletLedgerService');
@@ -88,8 +89,6 @@ async function testFallbackPurchasePath() {
   const issuePath = require.resolve('../src/services/cardIssueService');
   const cardWalletPath = require.resolve('../src/services/cardWalletService');
   const syncPath = require.resolve('../src/services/supabaseSyncService');
-  const cardModelPath = require.resolve('../src/models/Card');
-  const userModelPath = require.resolve('../src/models/User');
 
   // Load modules first so require.cache entries exist, then overwrite exports.
   const realLedger = require('../src/services/supabaseWalletLedgerService');
@@ -129,26 +128,29 @@ async function testFallbackPurchasePath() {
 
   require.cache[issuePath].exports = {
     isSupabaseAdminEnabled: () => true,
+    resolveBitnobCustomerId: () => 'bitnob_cust_test',
+    assertBitnobConfigured: () => {},
     async issueCardForUser() {
       issueCalls += 1;
       return {
         provider_card: {
-          card_id: 'kc_test_1',
-          card_number: '4111111111111111',
-          exp_date: '12/30',
-          cvv: '123',
+          card_id: 'bn_test_1',
+          card_number: '411111******1111',
+          masked_pan: '411111******1111',
+          exp_date: null,
+          cvv: null,
           balance: 10,
         },
-        user_card: { id: 'uc_1', card_id: 'kc_test_1' },
+        user_card: { id: 'uc_1', card_id: 'bn_test_1' },
         reused: false,
       };
     },
   };
 
-  process.env.KRIPICARD_API_KEY = process.env.KRIPICARD_API_KEY || 'test-key';
+  process.env.BITNOB_CLIENT_ID = process.env.BITNOB_CLIENT_ID || 'test-client';
+  process.env.BITNOB_CLIENT_SECRET = process.env.BITNOB_CLIENT_SECRET || 'test-secret';
+  process.env.BITNOB_DEFAULT_CUSTOMER_ID = process.env.BITNOB_DEFAULT_CUSTOMER_ID || 'bitnob_cust_test';
   process.env.NODE_ENV = process.env.NODE_ENV || 'test';
-  process.env.KRIPICARD_DEFAULT_BIN = '441357';
-  process.env.KRIPICARD_ALLOWED_BINS = '441357';
 
   const { initDb, getDb, closeDb } = require('../src/db');
   await initDb();
@@ -176,38 +178,21 @@ async function testFallbackPurchasePath() {
   };
 
   delete require.cache[cardWalletPath];
-  // Also clear dependents that may have cached the unmocked graph
   delete require.cache[require.resolve('../src/services/settingsService')];
 
-  const {
-    purchaseCardFromUsdtWallet,
-    resetKripicardBinCacheForTests,
-  } = require('../src/services/cardWalletService');
-  resetKripicardBinCacheForTests();
-
-  const originalFetch = global.fetch;
-  global.fetch = async () => ({
-    ok: true,
-    status: 200,
-    async text() {
-      return JSON.stringify({
-        success: true,
-        data: [{ bin: '441357', status: 'active' }],
-      });
-    },
-  });
+  const { purchaseCardFromUsdtWallet } = require('../src/services/cardWalletService');
 
   try {
     const result = await purchaseCardFromUsdtWallet(user.id, {
       initialLoadUsd: 10,
       cardHolderName: 'Fallback Tester',
-      bin: '441357',
+      customerId: 'bitnob_cust_test',
       paymentRef: `test-fallback-${Date.now()}`,
     });
 
     assert.strictEqual(debitUsdtCalls, 1, 'Turso debit should run once');
     assert.strictEqual(finalizeCalls, 0, 'finalize RPC must be skipped on fallback');
-    assert.strictEqual(issueCalls, 1, 'Kripicard issue path should run');
+    assert.strictEqual(issueCalls, 1, 'Bitnob issue path should run');
     assert.ok(result.card, 'should return card result');
     console.log('ok — fallback issued/pending', {
       issued: result.issued,
@@ -215,7 +200,6 @@ async function testFallbackPurchasePath() {
       cardId: result.card?.id,
     });
   } finally {
-    global.fetch = originalFetch;
     for (const p of [
       ledgerPath, walletPath, issuePath, cardWalletPath, syncPath,
     ]) {
@@ -239,4 +223,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-
