@@ -83,14 +83,22 @@ async function purchaseCardFromUsdtWallet(userId, {
 
   await ensureSupabaseUserWallet(userId, { syncIfExists: true });
 
-  const debitDescription = `New card purchase — ${formatUsdt(requiredUsdt)} ($${providerLoadUsd.toFixed(2)} load + $${Number(pricing.issuance_fee_usd || 0).toFixed(2)} issuance + $${Number(pricing.funding_fee_usd || 0).toFixed(2)} funding + $${Number(pricing.processing_fee_usd || 0).toFixed(2)} processing)`;
+  const debitDescription = `New card purchase — ${formatUsdt(requiredUsdt)} `
+    + `($${providerLoadUsd.toFixed(2)} load + $${Number(pricing.bitnob_create_fee_usd || 0).toFixed(2)} Bitnob create `
+    + `+ $${Number(pricing.bitnob_funding_fee_usd || 0).toFixed(2)} Bitnob fund `
+    + `+ $${Number(pricing.platform_issuance_fee_usd || 0).toFixed(2)} platform `
+    + `+ $${Number(pricing.processing_fee_usd || 0).toFixed(2)} processing)`;
   const debitMetadata = {
     purpose: 'card_issuance',
     pricing,
     wallet: 'usdt',
+    payment_wallet: 'usdt',
+    mmk_wallet_allowed: false,
     auto_issue: true,
     provider: 'bitnob',
     provider_load_usd: providerLoadUsd,
+    bitnob_create_fee_usd: pricing.bitnob_create_fee_usd,
+    bitnob_funding_fee_usd: pricing.bitnob_funding_fee_usd,
     platform_markup_usd: platformMarkupUsd,
   };
 

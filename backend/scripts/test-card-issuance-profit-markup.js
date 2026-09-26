@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Card issuance profit markup: user pays load + admin fee;
+ * Card issuance profit markup: user pays load + Bitnob fees + platform markup;
  * Bitnob receives load only; markup lands in platform_fee_events.
  */
 const assert = require('assert');
@@ -14,25 +14,26 @@ function section(title) {
 }
 
 function testPricingBreakdown() {
-  section('calculateCardRequestPricingUsdt exposes markup split');
+  section('calculateCardRequestPricingUsdt includes Bitnob $2 create + funding schedule');
   const { calculateCardRequestPricingUsdt } = require('../src/services/settingsService');
 
   const pricing = calculateCardRequestPricingUsdt(25, {
     card_issuance_fee_usd: 5,
     minimum_initial_deposit_usd: 10,
-    card_funding_fee_percent: 0,
   });
 
   assert.strictEqual(pricing.provider_load_usd, 25);
-  assert.strictEqual(pricing.issuance_fee_usd, 5);
-  assert.strictEqual(pricing.funding_fee_usd, 0);
+  assert.strictEqual(pricing.bitnob_create_fee_usd, 2);
+  assert.strictEqual(pricing.bitnob_funding_fee_usd, 1); // <$100 → $1
+  assert.strictEqual(pricing.platform_issuance_fee_usd, 5);
+  assert.strictEqual(pricing.issuance_fee_usd, 7); // Bitnob create + platform
+  assert.strictEqual(pricing.funding_fee_usd, 1);
   assert.strictEqual(pricing.processing_fee_usd, 1.5);
-  assert.strictEqual(pricing.platform_markup_usd, 6.5); // issuance + processing
-  assert.strictEqual(pricing.initial_load_usd, 25);
-  assert.strictEqual(pricing.total_charge_usdt, 31.5);
-  assert.strictEqual(pricing.total_usdt, 31.5);
-  assert.strictEqual(pricing.total_usd_required, 31.5);
-  assert.ok(pricing.note.includes('Bitnob') || pricing.note.includes('processing'));
+  assert.strictEqual(pricing.platform_markup_usd, 6.5); // platform issuance + processing
+  assert.strictEqual(pricing.total_charge_usdt, 34.5); // 25+2+1+5+1.5
+  assert.strictEqual(pricing.payment_wallet, 'usdt');
+  assert.strictEqual(pricing.mmk_wallet_allowed, false);
+  assert.ok(pricing.note.includes('Bitnob'));
   console.log('ok');
 }
 
@@ -42,6 +43,8 @@ function testWalletServiceMarkupFlow() {
 
   assert.ok(src.includes('ensureSupabaseUserWallet'), 'ensures Supabase wallet before debit');
   assert.ok(src.includes('provider_load_usd'), 'tracks provider load');
+  assert.ok(src.includes('bitnob_create_fee_usd'), 'tracks Bitnob create fee');
+  assert.ok(src.includes('bitnob_funding_fee_usd'), 'tracks Bitnob funding fee');
   assert.ok(src.includes('platform_markup_usd'), 'tracks platform markup');
   assert.ok(src.includes('amount: providerLoadUsd'), 'provider receives load only');
   assert.ok(src.includes('recordPlatformUsdFee(platformMarkupUsd'), 'markup recorded in ledger');
@@ -79,24 +82,24 @@ function testNextCardsIssueRoute() {
   console.log('ok');
 }
 
-function testCardRequestRoute() {
+function testCardRequestRouteSharesPurchase() {
   section('POST /api/user/card/request still uses shared purchase flow');
   const route = fs.readFileSync(path.join(ROOT, 'backend/src/routes/user.js'), 'utf8');
-  assert.ok(route.includes('buildCardPurchaseSuccessPayload(result)'));
-  assert.ok(route.includes('respondCardPurchaseError(res, err, \'user/card/request\')'));
+  const idx = route.indexOf("router.post('/card/request'");
+  assert.ok(idx >= 0);
+  const block = route.slice(idx, idx + 1200);
+  assert.ok(block.includes('purchaseCardFromUsdtWallet'));
+  assert.ok(block.includes('USDT_ONLY_CARD_ISSUANCE'));
   console.log('ok');
 }
 
-async function main() {
+function main() {
   testPricingBreakdown();
   testWalletServiceMarkupFlow();
   testCardsIssueRouteUsesWalletPurchase();
   testNextCardsIssueRoute();
-  testCardRequestRoute();
+  testCardRequestRouteSharesPurchase();
   console.log('\nAll card issuance profit markup tests passed.');
 }
 
-main().catch((err) => {
-  console.error('\nFAILED:', err);
-  process.exit(1);
-});
+main();
