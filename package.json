@@ -10,6 +10,7 @@
     "dev": "npm run dev --prefix backend",
     "migrate": "npm run migrate --prefix backend",
     "test:card-pool": "node backend/scripts/test-card-pool.js",
+    "test:bitnob-virtual-cards": "node backend/scripts/test-bitnob-virtual-cards.js",
     "test:kripicard-createcard": "node backend/scripts/test-kripicard-createcard-integration.js",
     "test:kripicard-live-bins": "node backend/scripts/test-kripicard-live-bins.js",
     "test:kripicard-bins-parser": "node backend/scripts/test-kripicard-bins-parser.js",
