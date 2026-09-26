@@ -1,11 +1,14 @@
--- Eisy Myanmar — Kripicard card inventory + issued cards
--- Run in Supabase SQL Editor (after supabase/schema.sql if starting fresh).
+-- Eisy Myanmar — legacy card_pools inventory schema (RETIRED)
+-- Bitnob on-demand issuance replaces the retired card-pool model.
+-- This SQL is kept only for historical / migration reference.
+-- Do not use pool sync in new code — issue via Bitnob createVirtualCard.
 --
--- Flows:
+-- Former flows (retired):
 -- A) Pool Model: admin fetches blank cards → card_pools (available)
 --    → purchase assigns one row + inserts user_cards
--- B) Real-time issue: POST createcard (name_on_card, bin, amount, api_key)
---    → store directly in user_cards (pool_id null)
+-- B) Real-time issue: provider createcard → user_cards (pool_id null)
+--
+-- Current flow: USDT wallet debit → Bitnob createVirtualCard → user_cards
 
 CREATE TABLE IF NOT EXISTS card_pools (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

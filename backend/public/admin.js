@@ -4106,7 +4106,7 @@
                     (t.card_last_four ? '<br><small>•••• ' + this.esc(t.card_last_four) + '</small>' : '') +
                   '</td>' +
                   '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small></td>' +
-                  '<td>$' + Number(t.kripicard_cost_usd || 0).toFixed(2) + '</td>' +
+                  '<td>$' + Number(t.provider_load_usd || 0).toFixed(2) + '</td>' +
                   '<td><strong>$' + Number(t.platform_markup_usd || 0).toFixed(2) + '</strong></td>' +
                   '<td>' + Number(t.total_charge_usdt || 0).toFixed(2) + ' USDT</td>' +
                   '<td>' + this.esc((t.wallet_type || '—').toUpperCase()) + '</td>' +

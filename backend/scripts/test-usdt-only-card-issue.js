@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * Tests for USDT-only automated card issuance (no MMK / KBZ / Wave on purchase).
+ * Provider: Bitnob (no BIN select).
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -13,7 +14,7 @@ function section(title) {
 }
 
 function testUiUsdtOnly() {
-  section('Apply Card UI is USDT-only');
+  section('Apply Card UI is USDT-only (Bitnob, no BIN)');
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   const i18n = fs.readFileSync(path.join(ROOT, 'backend/public/i18n.js'), 'utf8');
@@ -31,25 +32,25 @@ function testUiUsdtOnly() {
   assert.ok(!formHtml.includes('KBZPay') && !formHtml.includes('WavePay'), 'no KBZ/Wave options in apply form');
   assert.ok(!formHtml.includes('cardPaymentMethodDetails'), 'no manual bank QR details block');
   assert.ok(formHtml.includes('cardHolderNameInput'), 'name on card field');
-  assert.ok(formHtml.includes('cardBinSelect'), 'BIN select');
-  assert.ok(formHtml.includes('Loading available BINs'), 'loading placeholder while live BINs fetch');
-  assert.ok(!formHtml.includes('539502'), 'outdated BIN 539502 must not be hardcoded');
-  assert.ok(!formHtml.includes('525847'), 'outdated BIN 525847 must not be hardcoded');
-  assert.ok(!formHtml.includes('441357'), 'fallback BIN 441357 must not be seeded in HTML (backend supplies it)');
+  assert.ok(!formHtml.includes('cardBinSelect'), 'BIN select removed');
+  assert.ok(!formHtml.includes('Loading available BINs'), 'no BIN loading placeholder');
+  assert.ok(!formHtml.includes('Kripicard'), 'no Kripicard copy in apply form');
+  assert.ok(formHtml.includes('Bitnob') || html.includes('apply_new_card_hint'), 'Bitnob / i18n hint present');
   assert.ok(!formHtml.includes('id="pbMmkRow"'), 'MMK pricing row removed from apply form');
   assert.ok(formHtml.includes('id="pbUsdtRow"'), 'USDT pricing row present');
   assert.ok(formHtml.includes('usdt_parity_rate') || formHtml.includes('1 USDT'), 'USDT parity rate label');
 
   assert.ok(!dash.includes('FALLBACK_BINS'), 'no hardcoded client FALLBACK_BINS');
-  assert.ok(!dash.includes('539502'), 'dashboard must not hardcode outdated BINs');
-  assert.ok(dash.includes('populateCardBinOptions'), 'BIN population helper');
-  assert.ok(dash.includes('No active BINs available') || dash.includes('Loading available BINs'), 'empty/loading BIN UI states');
+  assert.ok(!dash.includes('populateCardBinOptions'), 'BIN population helper removed');
+  assert.ok(!dash.includes('getSelectedCardBin'), 'BIN getter removed');
+  assert.ok(!dash.includes('kripicard_bins'), 'no kripicard_bins client refs');
   assert.ok(dash.includes("wallet_type: 'usdt'"), 'submit forces usdt');
+  assert.ok(dash.includes('bitnob_customer_ready'), 'checks Bitnob customer readiness');
   assert.ok(!dash.includes("pay_from_wallet && walletType === 'mmk'"), 'no MMK wallet branch in submit');
   assert.ok(!dash.includes('populateDepositFromCardRequest'), 'orphan MMK deposit-from-card helper removed');
   const cardPayFn = dash.slice(
     dash.indexOf('populateCardPaymentMethodOptions() {'),
-    dash.indexOf('populateCardBinOptions() {')
+    dash.indexOf('populateReloadPaymentMethodOptions() {')
   );
   assert.ok(cardPayFn.includes('wallet_usdt'), 'card pay options include USDT');
   assert.ok(!cardPayFn.includes('wallet_mmk'), 'card pay options exclude MMK');
@@ -67,8 +68,10 @@ function testUiUsdtOnly() {
   assert.ok(i18n.includes('usdt_parity_rate'), 'i18n has USDT parity rate');
   assert.ok(!i18n.includes('pay_mmk_wallet_issuance'), 'i18n MMK issuance option removed');
   assert.ok(!i18n.includes('card_wallet_ok_mmk'), 'dead MMK card-wallet i18n removed');
+  assert.ok(!i18n.includes('card_bin'), 'card_bin i18n removed');
+  assert.ok(!i18n.includes('Kripicard'), 'no Kripicard i18n strings');
+  assert.ok(i18n.includes('Bitnob'), 'Bitnob i18n strings present');
   assert.ok(i18n.includes('Issue Card Instantly') || i18n.includes('instant issue'));
-  assert.ok(i18n.includes('Kripicard'));
   assert.ok(
     !html.includes('virtual card issuance and card reloads'),
     'HTML no longer claims MMK is for card issuance'
@@ -77,7 +80,7 @@ function testUiUsdtOnly() {
 }
 
 function testBackendUsdtOnly() {
-  section('Backend rejects MMK / manual card issuance');
+  section('Backend rejects MMK / uses Bitnob issuance');
   const route = fs.readFileSync(path.join(ROOT, 'backend/src/routes/user.js'), 'utf8');
   const wallet = fs.readFileSync(path.join(ROOT, 'backend/src/services/cardWalletService.js'), 'utf8');
   const settings = fs.readFileSync(path.join(ROOT, 'backend/src/services/settingsService.js'), 'utf8');
@@ -87,9 +90,11 @@ function testBackendUsdtOnly() {
 
   assert.ok(route.includes('USDT_ONLY_CARD_ISSUANCE'));
   assert.ok(route.includes('purchaseCardFromUsdtWallet'));
-  assert.ok(route.includes('kripicard_default_bin'));
+  assert.ok(route.includes('bitnob_customer_ready'));
+  assert.ok(route.includes('provider: \'bitnob\'') || route.includes("provider: 'bitnob'"));
   assert.ok(route.includes('card_issuance_rate'));
   assert.ok(route.includes('exchange_rate_applied: false'));
+  assert.ok(!route.includes('kripicard_default_bin'), 'kripicard bin pricing fields removed');
   assert.ok(!route.includes("walletType === 'mmk'"), 'card/request no longer branches on mmk');
   const requestIdx = route.indexOf("router.post('/card/request'");
   const reloadIdx = route.indexOf("router.post('/card/reload'");
@@ -101,12 +106,17 @@ function testBackendUsdtOnly() {
   assert.ok(requestBlock.includes('name_on_card') || requestBlock.includes('card_holder_name'));
 
   assert.ok(wallet.includes('issueCardForUser'));
+  assert.ok(wallet.includes('resolveBitnobCustomerId'));
+  assert.ok(wallet.includes('assertBitnobConfigured'));
   assert.ok(!wallet.includes('purchaseCardFromWallet'), 'MMK purchaseCardFromWallet stub removed');
+  assert.ok(!wallet.includes('getKripicardBinOptions'), 'Kripicard BIN helpers removed');
   assert.ok(wallet.includes('creditUsdt'), 'refunds on provider failure');
   assert.ok(wallet.includes('CARD_ISSUED_MESSAGE'));
 
   assert.ok(!settings.includes('function calculateCardRequestPricing('), 'MMK FX card pricing removed');
   assert.ok(settings.includes('function calculateCardRequestPricingUsdt('), 'USDT pricing retained');
+  assert.ok(settings.includes('provider_load_usd'), 'pricing exposes provider_load_usd');
+  assert.ok(settings.includes('Bitnob'), 'pricing note mentions Bitnob');
 
   const allowList = walletSvc.slice(
     walletSvc.indexOf('MMK_WALLET_ALLOWED_DEBIT_PURPOSES'),
@@ -121,18 +131,24 @@ function testBackendUsdtOnly() {
 
   assert.ok(cardIssue.includes('resolveIssuanceCurrency'), 'Next/lib rejects MMK currency');
   assert.ok(cardIssue.includes("value === 'MMK'"), 'MMK currency rejected in lib/cardIssue');
+  assert.ok(cardIssue.includes('createAndPersistBitnobCard'), 'Bitnob issue helper exported');
+  assert.ok(!cardIssue.includes('Kripicard') && !cardIssue.includes('kripicard'), 'lib/cardIssue has no Kripicard');
   console.log('ok');
 }
 
 async function testIssuanceHelpers() {
-  section('Issuance helpers reject MMK and resolve BINs');
+  section('Issuance helpers reject MMK and require Bitnob customer');
   delete require.cache[require.resolve(path.join(ROOT, 'backend/src/services/cardWalletService'))];
   delete require.cache[require.resolve(path.join(ROOT, 'lib/cardIssue'))];
 
   const { purchaseCardFromUsdtWallet } = require(
     path.join(ROOT, 'backend/src/services/cardWalletService')
   );
-  const { resolveIssuanceCurrency } = require(path.join(ROOT, 'lib/cardIssue'));
+  const {
+    resolveIssuanceCurrency,
+    resolveBitnobCustomerId,
+    validateIssueInput,
+  } = require(path.join(ROOT, 'lib/cardIssue'));
 
   assert.strictEqual(typeof purchaseCardFromUsdtWallet, 'function');
   assert.strictEqual(resolveIssuanceCurrency('USDT'), 'USD');
@@ -146,77 +162,34 @@ async function testIssuanceHelpers() {
   assert.ok(currencyErr);
   assert.strictEqual(currencyErr.code, 'USDT_ONLY_CARD_ISSUANCE');
 
-  process.env.KRIPICARD_API_KEY = 'test-kripicard-key';
-  process.env.KRIPICARD_DEFAULT_BIN = '428803';
-  process.env.KRIPICARD_ALLOWED_BINS = '428803,411111';
+  const prevDefault = process.env.BITNOB_DEFAULT_CUSTOMER_ID;
+  delete process.env.BITNOB_DEFAULT_CUSTOMER_ID;
+  assert.strictEqual(resolveBitnobCustomerId({}), null);
+  assert.strictEqual(resolveBitnobCustomerId({ customerId: 'cust_1' }), 'cust_1');
+  assert.strictEqual(
+    resolveBitnobCustomerId({ user: { bitnob_customer_id: 'cust_user' } }),
+    'cust_user'
+  );
+  process.env.BITNOB_DEFAULT_CUSTOMER_ID = 'cust_env';
+  assert.strictEqual(resolveBitnobCustomerId({}), 'cust_env');
 
-  // Env allow-list is used when the live Kripicard BIN API is unreachable.
-  const originalFetch = global.fetch;
-  global.fetch = async () => {
-    const err = new Error('network down');
-    err.code = 'KRIPICARD_NETWORK';
-    throw err;
-  };
+  let validateErr = null;
   try {
-    const {
-      resolveKripicardBin: resolveBin,
-      getKripicardBinOptions: getBins,
-      resetKripicardBinCacheForTests,
-    } = require(path.join(ROOT, 'backend/src/services/cardWalletService'));
-    resetKripicardBinCacheForTests();
-
-    // Env allow-list must NOT populate the dropdown when the live API is down.
-    // Known-active builtin fallback (441357) may populate so users can still issue.
-    const opts = await getBins({ forceRefresh: true });
-    assert.ok(!opts.bins.includes('428803'), 'env allow-list BIN must not appear');
-    assert.ok(!opts.bins.includes('411111'), 'env allow-list BIN must not appear');
-    assert.notStrictEqual(opts.source, 'env_fallback');
-    assert.notStrictEqual(opts.source, 'env');
-    assert.deepStrictEqual(opts.bins, ['441357']);
-    assert.strictEqual(opts.source, 'builtin_fallback');
-    assert.strictEqual(await resolveBin('441357'), '441357');
-    let binErr = null;
-    try {
-      await resolveBin('428803');
-    } catch (e) {
-      binErr = e;
-    }
-    assert.ok(binErr, 'must reject env-only BINs outside builtin/live catalog');
-    assert.strictEqual(binErr.code, 'INVALID_BIN');
-  } finally {
-    global.fetch = originalFetch;
+    delete process.env.BITNOB_DEFAULT_CUSTOMER_ID;
+    validateIssueInput({
+      userId: '1',
+      nameOnCard: 'Test User',
+      amount: 10,
+    });
+  } catch (e) {
+    validateErr = e;
   }
+  assert.ok(validateErr);
+  assert.strictEqual(validateErr.code, 'BITNOB_CUSTOMER_REQUIRED');
 
-  // Live API path: only active BINs returned (maintenance filtered out).
-  delete process.env.KRIPICARD_ALLOWED_BINS;
-  delete process.env.KRIPICARD_DEFAULT_BIN;
-  delete require.cache[require.resolve(path.join(ROOT, 'backend/src/services/cardWalletService'))];
-  delete require.cache[require.resolve(path.join(ROOT, 'lib/kripicard'))];
-  global.fetch = async () => ({
-    ok: true,
-    status: 200,
-    async text() {
-      return JSON.stringify({
-        success: true,
-        bins: [
-          { bin: '400011', status: 'active' },
-          { bin: '539502', status: 'maintenance' },
-          { bin: '400022', available: true },
-        ],
-      });
-    },
-  });
-  try {
-    const refreshed = require(path.join(ROOT, 'backend/src/services/cardWalletService'));
-    refreshed.resetKripicardBinCacheForTests();
-    const catalog = await refreshed.getKripicardBinOptions({ forceRefresh: true });
-    assert.ok(catalog.bins.includes('400011'));
-    assert.ok(catalog.bins.includes('400022'));
-    assert.ok(!catalog.bins.includes('539502'), 'maintenance BIN filtered out');
-    assert.strictEqual(catalog.source, 'kripicard_api');
-  } finally {
-    global.fetch = originalFetch;
-  }
+  if (prevDefault !== undefined) process.env.BITNOB_DEFAULT_CUSTOMER_ID = prevDefault;
+  else delete process.env.BITNOB_DEFAULT_CUSTOMER_ID;
+
   console.log('ok');
 }
 

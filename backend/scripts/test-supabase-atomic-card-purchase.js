@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Atomic Supabase card purchase wallet flow:
- * debit RPC → Kripicard (external) → finalize completed/refunded RPC.
+ * debit RPC → Bitnob (external) → finalize completed/refunded RPC.
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -20,10 +20,11 @@ function testSupabaseSqlRpc() {
   assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS wallet_transactions'));
   assert.ok(sql.includes('debit_usdt_for_card_purchase'));
   assert.ok(sql.includes('finalize_card_purchase_wallet'));
-  assert.ok(sql.includes("FOR UPDATE"), 'wallet row locked during debit/refund');
+  assert.ok(sql.includes('FOR UPDATE'), 'wallet row locked during debit/refund');
   assert.ok(sql.includes("'card_purchase_refund'"), 'compensating refund tx type');
   assert.ok(sql.includes('INSUFFICIENT_USDT_BALANCE'));
   assert.ok(sql.includes("status IN ('pending', 'completed', 'refunded'"));
+  assert.ok(sql.includes('provider_load_usd') || sql.includes('p_kripicard_cost'), 'provider load tracked');
   console.log('ok');
 }
 
@@ -38,7 +39,8 @@ function testLedgerService() {
   assert.ok(src.includes("rpc('finalize_card_purchase_wallet'"));
   assert.ok(src.includes('invalidateUserWalletCache'));
   assert.ok(src.includes('required_usdt'));
-  assert.ok(src.includes("outcome must be completed or refunded"));
+  assert.ok(src.includes('outcome must be completed or refunded'));
+  assert.ok(src.includes('providerLoadUsd'), 'passes provider load to RPC');
   console.log('ok');
 }
 
@@ -55,14 +57,15 @@ function testCardWalletIntegration() {
   const block = src.slice(fnStart, fnEnd);
 
   assert.ok(block.includes('debitUsdtForCardPurchase'), 'Supabase atomic debit first');
-  assert.ok(block.indexOf('debitUsdtForCardPurchase') < block.indexOf('issueCardForUser'), 'debit before Kripicard');
+  assert.ok(block.indexOf('debitUsdtForCardPurchase') < block.indexOf('issueCardForUser'), 'debit before Bitnob');
   assert.ok(block.includes('SUPABASE_CARD_PURCHASE_RPC_MISSING'), 'fallback when RPC missing');
   assert.ok(block.includes('supabaseAtomicDebit'), 'tracks whether RPC debit ran');
   assert.ok(block.includes("outcome: 'refunded'"), 'refund on provider failure');
   assert.ok(block.includes("outcome: 'completed'"), 'finalize after successful issue');
   assert.ok(block.includes('supabase_journal_id'), 'journal id stored on card metadata');
   assert.ok(block.includes('tursoDebited'), 'Turso mirror with compensating credit');
-  assert.ok(block.includes('stage: \'kripicard_issue\''), 'failure reason tagged');
+  assert.ok(block.includes("stage: 'bitnob_issue'"), 'failure reason tagged');
+  assert.ok(block.includes('provider_load_usd'), 'tracks provider load');
   console.log('ok');
 }
 

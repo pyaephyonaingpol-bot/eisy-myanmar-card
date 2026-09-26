@@ -21,9 +21,8 @@ const { ensureSupabaseUserWalletInBackground } = require('../services/supabaseSy
 const {
   purchaseCardFromUsdtWallet,
   reloadCardFromUsdtWallet,
-  getKripicardBinOptions,
 } = require('../services/cardWalletService');
-const { assignCardToUser, isSupabaseAdminEnabled } = require('../services/cardPoolService');
+const { resolveBitnobCustomerId } = require('../services/cardIssueService');
 const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
   isPendingCardRecord,
@@ -82,23 +81,24 @@ function respondCardPurchaseError(res, err, logTag) {
   }
   if (
     code === 'USDT_ONLY_CARD_ISSUANCE'
-    || code === 'INVALID_BIN'
+    || code === 'BITNOB_CUSTOMER_REQUIRED'
     || code === 'INVALID_NAME_ON_CARD'
     || code === 'INVALID_AMOUNT'
-    || code === 'KRIPICARD_NOT_CONFIGURED'
+    || code === 'BITNOB_NOT_CONFIGURED'
     || code === 'SUPABASE_NOT_CONFIGURED'
   ) {
-    const status = (code === 'KRIPICARD_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED')
+    const status = (code === 'BITNOB_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED')
       ? 503
       : 400;
     return res.status(status).json({ error: message, code });
   }
   if (
-    code === 'KRIPICARD_HTTP_ERROR'
-    || code === 'KRIPICARD_API_ERROR'
-    || code === 'KRIPICARD_TIMEOUT'
-    || code === 'KRIPICARD_BAD_RESPONSE'
-    || code === 'KRIPICARD_MISSING_CARD_ID'
+    code === 'BITNOB_HTTP_ERROR'
+    || code === 'BITNOB_API_ERROR'
+    || code === 'BITNOB_TIMEOUT'
+    || code === 'BITNOB_BAD_RESPONSE'
+    || code === 'BITNOB_MISSING_CARD_ID'
+    || code === 'BITNOB_NETWORK_ERROR'
   ) {
     return res.status(502).json({
       error: message || 'Card provider issuance failed',
@@ -257,76 +257,38 @@ router.post('/cards/:id/remove', requireAuth, requireSensitive, async (req, res)
 });
 
 /**
- * Pool Model — assign an available Kripicard from card_pools → user_cards.
- * Mirrors Next.js route: app/api/cards/purchase/route.js
+ * On-demand Bitnob virtual card purchase (USDT debit + create).
+ * Replaces the old pool-assign endpoint (retired; Bitnob on-demand only).
  */
 router.post('/cards/purchase', requireAuth, requireSensitive, async (req, res) => {
   try {
-    if (!isSupabaseAdminEnabled()) {
-      return res.status(503).json({
-        error: 'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.',
-        code: 'SUPABASE_NOT_CONFIGURED',
-      });
-    }
-
+    const user = await User.findById(req.user.id);
     const body = req.body || {};
-    const purchaseAmount =
-      body.purchase_amount != null
-        ? Number(body.purchase_amount)
-        : body.amount != null
-          ? Number(body.amount)
-          : null;
+    const initialLoadUsd = parseFloat(
+      body.initial_load_usd ?? body.purchase_amount ?? body.amount ?? body.initial_amount
+    );
 
-    const result = await assignCardToUser({
-      userId: req.user.id,
-      purchaseAmount: Number.isFinite(purchaseAmount) ? purchaseAmount : null,
-      purchaseCurrency: body.purchase_currency || body.currency || null,
-      cardholderName: body.cardholder_name || body.cardHolderName || req.user.name || null,
-      metadata: {
-        ...(body.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
-        source: 'user/cards/purchase',
-        assigned_via: 'user',
-      },
+    const result = await purchaseCardFromUsdtWallet(req.user.id, {
+      initialLoadUsd,
+      cardHolderName: body.name_on_card || body.cardholder_name || body.cardHolderName || user.name,
+      note: body.note,
+      customerId: body.customer_id || body.customerId || null,
+      paymentRef: body.payment_ref || body.paymentRef || body.idempotency_key || body.idempotencyKey || null,
     });
 
-    const card = result.user_card || {};
     res.json({
-      success: true,
-      message: 'Card assigned successfully',
-      card: {
-        id: card.id,
-        user_id: card.user_id,
-        card_id: card.card_id,
-        card_number: card.card_number,
-        cvv: card.cvv,
-        exp_date: card.exp_date,
-        cardholder_name: card.cardholder_name,
-        brand: card.brand,
-        currency: card.currency,
-        balance: card.balance,
-        status: card.status,
-        purchase_amount: card.purchase_amount,
-        purchase_currency: card.purchase_currency,
-        created_at: card.created_at,
-      },
-      pool_card_id: result.pool_card?.id || null,
+      ...buildCardPurchaseSuccessPayload(result),
+      reused: false,
     });
   } catch (err) {
-    console.error('[user/cards/purchase]', err);
-    const code = err.code || 'INTERNAL_ERROR';
-    const status =
-      code === 'USER_REQUIRED' ? 400
-        : code === 'POOL_EMPTY' || code === 'POOL_RACE' || code === 'ALREADY_ASSIGNED' ? 409
-          : 500;
-    res.status(status).json({ error: err.message || 'Purchase failed', code });
+    return respondCardPurchaseError(res, err, 'user/cards/purchase');
   }
 });
 
 /**
- * Real-time Kripicard issuance with profit markup.
- * Debits USDT wallet (card load + admin markup), sends only card load to Kripicard,
+ * Real-time Bitnob issuance with profit markup.
+ * Debits USDT wallet (card load + admin markup), sends only card load to Bitnob,
  * and records markup in platform_fee_events.
- * Mirrors Next.js route: app/api/cards/issue/route.js
  */
 router.post('/cards/issue', requireAuth, requireSensitive, async (req, res) => {
   try {
@@ -340,7 +302,7 @@ router.post('/cards/issue', requireAuth, requireSensitive, async (req, res) => {
       initialLoadUsd,
       cardHolderName: body.name_on_card || body.cardholder_name || body.cardHolderName || user.name,
       note: body.note,
-      bin: body.bin ?? body.bank_bin ?? body.bankBin,
+      customerId: body.customer_id || body.customerId || null,
       paymentRef: body.payment_ref || body.paymentRef || body.idempotency_key || body.idempotencyKey || null,
     });
 
@@ -508,14 +470,16 @@ router.get('/card', requireAuth, requireSensitive, async (req, res) => {
   }
 });
 
-router.get('/card/pricing', requireAuth, async (_req, res) => {
+router.get('/card/pricing', requireAuth, async (req, res) => {
   try {
     const settings = await getCardPricingSettings();
     const currentRate = await getCurrentRateSummary();
-    const bins = await getKripicardBinOptions({ pricingSettings: settings });
-    const binCatalog = Array.isArray(bins.catalog) && bins.catalog.length
-      ? bins.catalog
-      : (Array.isArray(bins.details) ? bins.details : []);
+    const user = await User.findById(req.user.id);
+    const customerId = resolveBitnobCustomerId({ user });
+    const bitnobConfigured = Boolean(
+      String(process.env.BITNOB_CLIENT_ID || '').trim()
+      && String(process.env.BITNOB_CLIENT_SECRET || process.env.BITNOB_SECRET_KEY || '').trim()
+    );
     res.json({
       card_issuance_fee_usd: settings.card_issuance_fee_usd,
       card_funding_fee_percent: settings.card_funding_fee_percent,
@@ -537,15 +501,10 @@ router.get('/card/pricing', requireAuth, async (_req, res) => {
       card_issuance_rate: '1 USDT ≈ 1 USD',
       exchange_rate_applied: false,
       auto_issue: true,
-      kripicard_default_bin: bins.default_bin,
-      kripicard_bins: bins.bins,
-      kripicard_bins_source: bins.source,
-      // BIN fee/markup catalog (populated for builtin_fallback; may be empty for live lists).
-      kripicard_bin_catalog: binCatalog,
-      kripicard_bins_fallback_reason: bins.fallback_reason || undefined,
-      // Safe debug aids when the resolved catalog is still empty (no secrets / raw body).
-      kripicard_bins_raw_keys: bins.bins.length ? undefined : bins.raw_keys,
-      kripicard_bins_error: bins.bins.length ? undefined : (bins.error || undefined),
+      provider: 'bitnob',
+      bitnob_configured: bitnobConfigured,
+      bitnob_customer_ready: Boolean(customerId),
+      bitnob_customer_id: customerId || null,
       withdrawal_fees: await getWithdrawalFeeSettings(),
       deposit_fees: await getDepositFeeSettings(),
     });
@@ -560,8 +519,7 @@ router.post('/card/request', requireAuth, requireSensitive, async (req, res) => 
     const user = await User.findById(req.user.id);
     const walletType = String(req.body.wallet_type || 'usdt').toLowerCase();
 
-    // Card purchase always debits USDT and auto-issues via Kripicard.
-    // Reject any leftover MMK / bank payment flags from older clients.
+    // Card purchase always debits USDT and auto-issues via Bitnob.
     if (walletType && walletType !== 'usdt') {
       return res.status(400).json({
         error: 'Card issuance accepts USDT wallet payment only. MMK wallet and KBZPay/WavePay are not supported for new cards.',
@@ -573,7 +531,7 @@ router.post('/card/request', requireAuth, requireSensitive, async (req, res) => 
       initialLoadUsd: parseFloat(req.body.initial_load_usd),
       cardHolderName: req.body.name_on_card || req.body.card_holder_name || user.name,
       note: req.body.note,
-      bin: req.body.bin ?? req.body.bank_bin ?? req.body.bankBin,
+      customerId: req.body.customer_id || req.body.customerId || null,
       paymentRef: req.body.payment_ref || req.body.idempotency_key || null,
     });
 

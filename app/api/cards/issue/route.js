@@ -1,15 +1,11 @@
 /**
  * POST /api/cards/issue
- * Real-time Kripicard creation with profit markup on user purchases.
+ * Real-time Bitnob virtual-card creation with profit markup on user purchases.
  *
  * User session: debits USDT wallet (card load + admin markup), sends only
- * card load to Kripicard, records markup in platform_fee_events.
+ * card load to Bitnob, records markup in platform_fee_events.
  *
  * Admin (X-Admin-Key): direct provider issue without wallet debit (legacy ops).
- *
- * Calls: POST https://appapi.kripicard.com/api/external/cards/createcard
- * Body to provider: { api_key, name_on_card, bin, amount }
- * Persists result to Supabase user_cards linked to the buyer.
  *
  * Auth (one of):
  *   - Authorization: Bearer <session token>
@@ -19,9 +15,9 @@
  *   {
  *     user_id?: string|number,       // required for admin auth
  *     name_on_card: string,          // min 2 chars
- *     bin: string|number,            // chosen BIN
- *     amount: number,                // initial card load (Kripicard cost, not total charge)
+ *     amount: number,                // initial card load (provider cost, not total charge)
  *     initial_load_usd?: number,     // alias for amount
+ *     customer_id?: string,          // Bitnob Card KYC customer id
  *     currency?: string,             // USD or USDT only (MMK rejected)
  *     payment_ref?: string,          // optional idempotency / payment id
  *     idempotency_key?: string,
@@ -33,7 +29,7 @@ import { NextResponse } from 'next/server';
 
 const require = createRequire(import.meta.url);
 const {
-  createAndPersistKripicardCard,
+  createAndPersistBitnobCard,
   publicUserCard,
 } = require('../../../../lib/cardIssue');
 const { isSupabaseAdminEnabled } = require('../../../../lib/supabaseAdmin');
@@ -59,6 +55,14 @@ function getBearerToken(request) {
   if (!header.toLowerCase().startsWith('bearer ')) return null;
   const token = header.slice(7).trim();
   return token || null;
+}
+
+function isBitnobConfigured() {
+  const clientId = String(process.env.BITNOB_CLIENT_ID || '').trim();
+  const clientSecret = String(
+    process.env.BITNOB_CLIENT_SECRET || process.env.BITNOB_SECRET_KEY || ''
+  ).trim();
+  return Boolean(clientId && clientSecret && !clientSecret.includes('...'));
 }
 
 async function resolveUserIdFromSession(token) {
@@ -91,21 +95,22 @@ function mapPurchaseError(err) {
   if (
     code === 'USER_REQUIRED'
     || code === 'INVALID_NAME_ON_CARD'
-    || code === 'INVALID_BIN'
     || code === 'INVALID_AMOUNT'
+    || code === 'BITNOB_CUSTOMER_REQUIRED'
     || code === 'USDT_ONLY_CARD_ISSUANCE'
   ) {
     return { status: 400, body: { error: message, code, errors: err.errors } };
   }
-  if (code === 'KRIPICARD_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED') {
+  if (code === 'BITNOB_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED') {
     return { status: 503, body: { error: message, code } };
   }
   if (
-    code === 'KRIPICARD_HTTP_ERROR'
-    || code === 'KRIPICARD_API_ERROR'
-    || code === 'KRIPICARD_TIMEOUT'
-    || code === 'KRIPICARD_BAD_RESPONSE'
-    || code === 'KRIPICARD_MISSING_CARD_ID'
+    code === 'BITNOB_HTTP_ERROR'
+    || code === 'BITNOB_API_ERROR'
+    || code === 'BITNOB_TIMEOUT'
+    || code === 'BITNOB_BAD_RESPONSE'
+    || code === 'BITNOB_MISSING_CARD_ID'
+    || code === 'BITNOB_NETWORK'
   ) {
     return {
       status: 502,
@@ -138,20 +143,21 @@ function mapAdminIssueError(err) {
   if (
     code === 'USER_REQUIRED'
     || code === 'INVALID_NAME_ON_CARD'
-    || code === 'INVALID_BIN'
     || code === 'INVALID_AMOUNT'
+    || code === 'BITNOB_CUSTOMER_REQUIRED'
   ) {
     return { status: 400, body: { error: message, code, errors } };
   }
-  if (code === 'KRIPICARD_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED') {
+  if (code === 'BITNOB_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED') {
     return { status: 503, body: { error: message, code } };
   }
   if (
-    code === 'KRIPICARD_HTTP_ERROR'
-    || code === 'KRIPICARD_API_ERROR'
-    || code === 'KRIPICARD_TIMEOUT'
-    || code === 'KRIPICARD_BAD_RESPONSE'
-    || code === 'KRIPICARD_MISSING_CARD_ID'
+    code === 'BITNOB_HTTP_ERROR'
+    || code === 'BITNOB_API_ERROR'
+    || code === 'BITNOB_TIMEOUT'
+    || code === 'BITNOB_BAD_RESPONSE'
+    || code === 'BITNOB_MISSING_CARD_ID'
+    || code === 'BITNOB_NETWORK'
   ) {
     return {
       status: 502,
@@ -181,9 +187,12 @@ export async function POST(request) {
       );
     }
 
-    if (!String(process.env.KRIPICARD_API_KEY || '').trim()) {
+    if (!isBitnobConfigured()) {
       return json(
-        { error: 'KRIPICARD_API_KEY is not configured', code: 'KRIPICARD_NOT_CONFIGURED' },
+        {
+          error: 'Bitnob API credentials are not configured (BITNOB_CLIENT_ID / BITNOB_CLIENT_SECRET)',
+          code: 'BITNOB_NOT_CONFIGURED',
+        },
         503
       );
     }
@@ -217,11 +226,11 @@ export async function POST(request) {
     }
 
     if (isAdmin) {
-      const result = await createAndPersistKripicardCard({
+      const result = await createAndPersistBitnobCard({
         userId,
         nameOnCard: body.name_on_card || body.cardholder_name || body.cardHolderName,
-        bin: body.bin ?? body.bank_bin ?? body.bankBin,
         amount: body.amount ?? body.purchase_amount ?? body.initial_amount ?? body.initial_load_usd,
+        customerId: body.customer_id || body.customerId || null,
         currency: body.currency || body.purchase_currency || 'USD',
         paymentRef: body.payment_ref || body.paymentRef || body.deposit_id || null,
         idempotencyKey: body.idempotency_key || body.idempotencyKey || null,
@@ -252,7 +261,7 @@ export async function POST(request) {
       initialLoadUsd,
       cardHolderName: body.name_on_card || body.cardholder_name || body.cardHolderName || user?.name,
       note: body.note,
-      bin: body.bin ?? body.bank_bin ?? body.bankBin,
+      customerId: body.customer_id || body.customerId || null,
       paymentRef: body.payment_ref || body.paymentRef || body.idempotency_key || body.idempotencyKey || null,
     });
 
@@ -266,7 +275,6 @@ export async function POST(request) {
       card: result.card,
       card_request_id: result.card?.id,
       provider_card_id: result.provider_card_id || null,
-      bin: result.bin || null,
       pricing_breakdown: {
         ...result.pricing,
         payment_method: 'USDT Wallet',

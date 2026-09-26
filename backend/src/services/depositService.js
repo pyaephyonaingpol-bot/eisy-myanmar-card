@@ -172,10 +172,10 @@ async function createDepositRequest(userId, {
   metadata,
   amount_usd,
 }) {
-  // New cards are USDT-only via Kripicard. Block creating MMK/KBZ/Wave deposits for issuance.
+  // New cards are USDT-only via Bitnob. Block creating MMK/KBZ/Wave deposits for issuance.
   if (purpose === 'card_issuance') {
     const err = new Error(
-      'Card issuance no longer accepts MMK or bank deposits. Pay with USDT wallet for instant Kripicard issue.'
+      'Card issuance no longer accepts MMK or bank deposits. Pay with USDT wallet for instant Bitnob card issue.'
     );
     err.code = 'USDT_ONLY_CARD_ISSUANCE';
     throw err;

@@ -795,19 +795,19 @@ function calculateCardRequestPricingUsdt(initialLoadUsd, settings) {
     throw new Error(`Minimum initial deposit is $${Number(min || 0).toFixed(2)} USD`);
   }
 
-  const kripicardCostUsd = roundUsd(initial);
+  const providerLoadUsd = roundUsd(initial);
   const issuanceFeeUsd = roundUsd(Number.isFinite(issuanceFee) && issuanceFee >= 0 ? issuanceFee : 0);
-  const fundingFeeUsd = resolveCardFundingFeeUsd(kripicardCostUsd, {
+  const fundingFeeUsd = resolveCardFundingFeeUsd(providerLoadUsd, {
     card_funding_fee_percent: fundingFeePercent,
   });
   const processingFeeUsd = roundUsd(CARD_PROCESSING_FEE_USD);
   const platformMarkupUsd = roundUsd(issuanceFeeUsd + fundingFeeUsd + processingFeeUsd);
-  const totalUsd = roundUsd(kripicardCostUsd + platformMarkupUsd);
+  const totalUsd = roundUsd(providerLoadUsd + platformMarkupUsd);
   const totalUsdt = totalUsd;
 
   return {
-    initial_load_usd: kripicardCostUsd,
-    kripicard_cost_usd: kripicardCostUsd,
+    initial_load_usd: providerLoadUsd,
+    provider_load_usd: providerLoadUsd,
     issuance_fee_usd: issuanceFeeUsd,
     funding_fee_percent: fundingFeePercent,
     funding_fee_usd: fundingFeeUsd,
@@ -818,7 +818,7 @@ function calculateCardRequestPricingUsdt(initialLoadUsd, settings) {
     total_charge_usdt: totalUsdt,
     payment_currency: 'USDT',
     exchange_rate_applied: false,
-    note: '1 USDT ≈ 1 USD — issuance + funding + processing fees retained; only card load sent to Kripicard',
+    note: '1 USDT ≈ 1 USD — issuance + funding + processing fees retained; only card load sent to Bitnob',
   };
 }
 

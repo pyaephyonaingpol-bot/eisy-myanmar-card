@@ -41,7 +41,7 @@ function testPricingFormula() {
   assert.strictEqual(pricing.total_usd_required, 108.5);
   assert.strictEqual(pricing.total_charge_usdt, 108.5);
   assert.strictEqual(pricing.platform_markup_usd, 8.5);
-  assert.strictEqual(pricing.kripicard_cost_usd, 100);
+  assert.strictEqual(pricing.provider_load_usd, 100);
   console.log('ok');
 }
 
