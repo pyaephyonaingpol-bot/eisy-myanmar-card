@@ -34,17 +34,38 @@ function section(title) {
   console.log(`\n== ${title} ==`);
 }
 
+const MOCK_CLIENT_ID = 'client-test-id';
+const MOCK_CLIENT_SECRET = 'client-test-secret';
+
+/** Snapshot of Bitnob-related env before mock suite mutates process.env. */
+const SAVED_BITNOB_ENV = {
+  BITNOB_CLIENT_ID: process.env.BITNOB_CLIENT_ID,
+  BITNOB_CLIENT_SECRET: process.env.BITNOB_CLIENT_SECRET,
+  BITNOB_SECRET_KEY: process.env.BITNOB_SECRET_KEY,
+  BITNOB_API_BASE_URL: process.env.BITNOB_API_BASE_URL,
+  BITNOB_CARD_WEBHOOK_URL: process.env.BITNOB_CARD_WEBHOOK_URL,
+};
+
 function reloadBitnob() {
   delete require.cache[require.resolve(path.join(ROOT, 'lib/bitnob'))];
   return require(path.join(ROOT, 'lib/bitnob'));
 }
 
 function setMockCreds() {
-  process.env.BITNOB_CLIENT_ID = 'client-test-id';
-  process.env.BITNOB_CLIENT_SECRET = 'client-test-secret';
+  process.env.BITNOB_CLIENT_ID = MOCK_CLIENT_ID;
+  process.env.BITNOB_CLIENT_SECRET = MOCK_CLIENT_SECRET;
   process.env.BITNOB_API_BASE_URL = 'https://api.bitnob.com';
   delete process.env.BITNOB_CARD_WEBHOOK_URL;
   delete process.env.BITNOB_SECRET_KEY;
+}
+
+function restoreBitnobEnv() {
+  for (const [key, value] of Object.entries(SAVED_BITNOB_ENV)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  delete require.cache[require.resolve(path.join(ROOT, 'lib/bitnob'))];
+  delete require.cache[require.resolve(path.join(ROOT, 'backend/src/services/bitnobService'))];
 }
 
 function hasLiveCreds() {
@@ -52,7 +73,10 @@ function hasLiveCreds() {
   const secret = String(
     process.env.BITNOB_CLIENT_SECRET || process.env.BITNOB_SECRET_KEY || ''
   ).trim();
-  return Boolean(id && secret && !secret.includes('...'));
+  if (!id || !secret || secret.includes('...')) return false;
+  // Never treat mock-suite placeholders as real API keys.
+  if (id === MOCK_CLIENT_ID || secret === MOCK_CLIENT_SECRET) return false;
+  return true;
 }
 
 function liveCustomerId() {
@@ -521,6 +545,7 @@ async function runMockSuite() {
   await testGetSecureCardDetails();
   await testUsdtOrchestrationWithMockWallet();
   await testMissingConfig();
+  restoreBitnobEnv();
   console.log('\nMocked Bitnob virtual-card checks passed.');
 }
 
@@ -528,14 +553,13 @@ async function runMockSuite() {
 
 async function runLiveSuite() {
   console.log('\n──── Live Bitnob API suite ────');
+  // Drop any mock-suite env leftovers before reading credentials.
+  restoreBitnobEnv();
   if (!hasLiveCreds()) {
     console.log('SKIP live — set BITNOB_CLIENT_ID and BITNOB_CLIENT_SECRET (or BITNOB_SECRET_KEY)');
     return { skipped: true, reason: 'missing_credentials' };
   }
 
-  // Ensure mock overrides from earlier tests do not win.
-  delete require.cache[require.resolve(path.join(ROOT, 'lib/bitnob'))];
-  delete require.cache[require.resolve(path.join(ROOT, 'backend/src/services/bitnobService'))];
   const bitnob = require(path.join(ROOT, 'lib/bitnob'));
   const cfg = bitnob.getBitnobConfig();
   console.log(`Using base URL ${cfg.baseUrl} (client ${cfg.clientId.slice(0, 6)}…)`);
