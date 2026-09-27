@@ -48,6 +48,8 @@
     "test:usdt-scan-pay": "node scripts/test-usdt-scan-pay.js",
     "test:bitnob-virtual-cards": "node scripts/test-bitnob-virtual-cards.js",
     "test:bitnob-card-webhooks": "node scripts/test-bitnob-card-webhooks.js",
+    "test:bitnob-egress-proxy": "node scripts/test-bitnob-egress-proxy.js",
+    "bitnob-egress-proxy": "node scripts/bitnob-egress-proxy.js",
     "test:ensure-supabase-usdt-wallet": "node scripts/test-ensure-supabase-usdt-wallet.js",
     "test:pin-login": "node scripts/test-pin-login.js",
     "test:otp-email-async": "node scripts/test-otp-email-async.js",

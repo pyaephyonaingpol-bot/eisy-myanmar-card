@@ -44,6 +44,8 @@ const SAVED_BITNOB_ENV = {
   BITNOB_SECRET_KEY: process.env.BITNOB_SECRET_KEY,
   BITNOB_API_BASE_URL: process.env.BITNOB_API_BASE_URL,
   BITNOB_CARD_WEBHOOK_URL: process.env.BITNOB_CARD_WEBHOOK_URL,
+  BITNOB_EGRESS_PROXY_URL: process.env.BITNOB_EGRESS_PROXY_URL,
+  BITNOB_EGRESS_PROXY_SECRET: process.env.BITNOB_EGRESS_PROXY_SECRET,
 };
 
 function reloadBitnob() {
@@ -57,6 +59,8 @@ function setMockCreds() {
   process.env.BITNOB_API_BASE_URL = 'https://api.bitnob.com';
   delete process.env.BITNOB_CARD_WEBHOOK_URL;
   delete process.env.BITNOB_SECRET_KEY;
+  delete process.env.BITNOB_EGRESS_PROXY_URL;
+  delete process.env.BITNOB_EGRESS_PROXY_SECRET;
 }
 
 function restoreBitnobEnv() {
