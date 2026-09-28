@@ -83,15 +83,29 @@ const Dashboard = {
     return text;
   },
 
-  /** Dedicated Instant (/instant) or Standard (/standard) portal, or hub (/). */
+  /** Dedicated Instant (/instant) or Business (/business, alias /standard) portal, or hub (/). */
   getPortal() {
     if (window.__EISY_PORTAL__ === 'instant' || window.__EISY_PORTAL__ === 'standard') {
       return window.__EISY_PORTAL__;
     }
     const pathName = String(window.location.pathname || '/').replace(/\/+$/, '') || '/';
     if (pathName === '/instant' || pathName.endsWith('/instant.html')) return 'instant';
-    if (pathName === '/standard' || pathName.endsWith('/standard.html')) return 'standard';
+    if (
+      pathName === '/business'
+      || pathName === '/standard'
+      || pathName.endsWith('/business.html')
+      || pathName.endsWith('/standard.html')
+    ) {
+      return 'standard';
+    }
     return null;
+  },
+
+  /** Public URL for a portal id (`standard` → `/business`). */
+  portalHref(portal) {
+    if (portal === 'standard') return '/business';
+    if (portal === 'instant') return '/instant';
+    return '/';
   },
 
   rememberPortal(portal) {
@@ -111,7 +125,7 @@ const Dashboard = {
     }
   },
 
-  /** Instant-only pages blocked on the Standard (Bitnob) portal. */
+  /** Instant-only pages blocked on the Business (Bitnob) portal. */
   standardPortalBlockedPages() {
     return new Set([
       'instant-card',
@@ -128,8 +142,8 @@ const Dashboard = {
 
   /**
    * Enterprise-style portal isolation: remove the other flow's pages/nav from the DOM
-   * and replace the Instant↔Standard switch with a link to the other portal URL.
-   * Standard portal also strips P2P, Master USDT wallet chrome, and Instant-only modals.
+   * and replace the Instant↔Business switch with a link to the other portal URL.
+   * Business portal also strips P2P, Master USDT wallet chrome, and Instant-only modals.
    * Hub (/) is a clean gateway — portal selector only, no wallet/card widgets.
    */
   applyPortalIsolation() {
@@ -152,7 +166,7 @@ const Dashboard = {
       ).forEach((el) => el.remove());
       $('standardAppPageHost')?.closest('.app-page')?.remove();
     } else {
-      // Standard = Bitnob wallet + Standard Card + KYC only.
+      // Business = Bitnob wallet + Business Card + KYC only.
       // Remove Instant shells, Master USDT wallet, P2P Express, and Instant deposit history.
       document.querySelectorAll(
         [
@@ -196,7 +210,7 @@ const Dashboard = {
 
       const kycHint = $('settingsKycHint');
       if (kycHint) {
-        kycHint.textContent = 'Required for Standard Card and Bitnob wallet (verified banking / KYC).';
+        kycHint.textContent = 'Required for Business Card and Bitnob wallet (verified banking / KYC).';
       }
     }
 
@@ -208,12 +222,12 @@ const Dashboard = {
     if (brandTitle) {
       brandTitle.textContent = portal === 'instant'
         ? 'Eisy · Instant'
-        : 'Eisy · Standard';
+        : 'Eisy · Business';
     }
 
     document.title = portal === 'instant'
       ? 'Eisy Myanmar — Instant'
-      : 'Eisy Myanmar — Standard';
+      : 'Eisy Myanmar — Business';
 
     // Hide hub-only chooser if present
     $('portalHubChooser')?.remove();
@@ -222,9 +236,9 @@ const Dashboard = {
   },
 
   /**
-   * Hub (/) is a gateway only: Instant vs Standard selector.
+   * Hub (/) is a gateway only: Instant vs Business selector.
    * Strip wallet overview, activity, cards CTAs, and sidebar app nav so nothing
-   * loads until the user enters /instant or /standard.
+   * loads until the user enters /instant or /business.
    */
   applyHubGateway() {
     const home = document.querySelector('.app-page[data-page="home"]');
@@ -236,7 +250,7 @@ const Dashboard = {
       home.classList.add('is-active', 'portal-hub-home');
     }
 
-    // Remove app pages — hub must not expose Instant/Standard tools in-place.
+    // Remove app pages — hub must not expose Instant/Business tools in-place.
     document.querySelectorAll('.app-page[data-page]:not([data-page="home"])').forEach((el) => {
       el.remove();
     });
@@ -253,7 +267,7 @@ const Dashboard = {
     const brandTitle = document.querySelector('.sidebar-brand-title');
     if (brandTitle) brandTitle.textContent = 'Eisy Myanmar';
     const brandSub = document.querySelector('.sidebar-brand-sub');
-    if (brandSub) brandSub.textContent = 'Choose Instant or Standard';
+    if (brandSub) brandSub.textContent = 'Choose Instant or Business';
 
     const heading = document.querySelector('.header .page-heading');
     if (heading) {
@@ -262,7 +276,7 @@ const Dashboard = {
     }
     const subtitle = document.querySelector('.header .subtitle');
     if (subtitle) {
-      subtitle.textContent = 'Enter Instant or Standard to open wallets and cards';
+      subtitle.textContent = 'Enter Instant or Business to open wallets and cards';
       subtitle.removeAttribute('data-i18n');
     }
     document.title = 'Eisy Myanmar — Choose portal';
@@ -273,7 +287,7 @@ const Dashboard = {
   },
 
   /**
-   * Header links between dedicated portals — never an in-app Instant↔Standard toggle.
+   * Header links between dedicated portals — never an in-app Instant↔Business toggle.
    */
   renderPortalHeaderNav() {
     const header = $('appModeSwitchHeader');
@@ -281,9 +295,9 @@ const Dashboard = {
     const portal = this._portal || this.getPortal();
     if (portal === 'instant' || portal === 'standard') {
       const other = portal === 'instant' ? 'standard' : 'instant';
-      const otherLabel = other === 'instant' ? 'Instant portal' : 'Standard portal';
+      const otherLabel = other === 'instant' ? 'Instant portal' : 'Business portal';
       header.innerHTML = `
-        <a class="btn btn-secondary btn-sm portal-switch-link" href="/${other}" data-portal-switch="${other}">
+        <a class="btn btn-secondary btn-sm portal-switch-link" href="${this.portalHref(other)}" data-portal-switch="${other}">
           ${portal === 'instant' ? `${otherLabel} →` : `← ${otherLabel}`}
         </a>`;
       header.setAttribute('aria-label', 'Switch portal');
@@ -291,7 +305,7 @@ const Dashboard = {
     }
     header.innerHTML = `
       <a class="btn btn-secondary btn-sm portal-switch-link" href="/instant" data-portal-switch="instant">Instant</a>
-      <a class="btn btn-secondary btn-sm portal-switch-link" href="/standard" data-portal-switch="standard">Standard</a>`;
+      <a class="btn btn-secondary btn-sm portal-switch-link" href="/business" data-portal-switch="standard">Business</a>`;
     header.setAttribute('aria-label', 'Choose portal');
   },
 
@@ -316,7 +330,7 @@ const Dashboard = {
   },
 
   renderPortalHubChooser() {
-    // Only on hub (/) — offer Instant vs Standard portals after login.
+    // Only on hub (/) — offer Instant vs Business portals after login.
     if (this.getPortal()) return;
     const home = document.querySelector('.app-page[data-page="home"]');
     if (!home) return;
@@ -329,15 +343,15 @@ const Dashboard = {
     }
     box.innerHTML = `
       <h2 data-i18n="portal_hub_heading">Choose your portal</h2>
-      <p class="hint" data-i18n="portal_hub_hint">Instant and Standard are separate apps with their own wallets and cards.</p>
+      <p class="hint" data-i18n="portal_hub_hint">Instant and Business are separate apps with their own wallets and cards.</p>
       <div class="portal-hub-grid">
         <a class="portal-hub-card" href="/instant">
           <strong data-i18n="portal_hub_instant_title">Instant</strong>
           <span data-i18n="portal_hub_instant_desc">Master USDT Wallet · Instant Card (No KYC)</span>
         </a>
-        <a class="portal-hub-card" href="/standard">
-          <strong data-i18n="portal_hub_standard_title">Standard</strong>
-          <span data-i18n="portal_hub_standard_desc">Bitnob wallet · Standard Card (Verified KYC)</span>
+        <a class="portal-hub-card" href="/business">
+          <strong data-i18n="portal_hub_standard_title">Business</strong>
+          <span data-i18n="portal_hub_standard_desc">Bitnob wallet · Business Card (Verified KYC)</span>
         </a>
       </div>`;
     if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(box);
@@ -651,7 +665,7 @@ const Dashboard = {
           forceRefresh: force || hasPending || !this._isFresh('cards'),
         });
         this.loadReloadHistory({ force });
-        // My Cards never nests Instant↔Standard toggles — apply via dedicated routes.
+        // My Cards never nests Instant↔Business toggles — apply via dedicated routes.
         this.syncCardsApplyCtas();
         this.renderPortalHeaderNav();
       }
@@ -1046,7 +1060,7 @@ const Dashboard = {
     const p = this.cardPricing;
     const required = p?.total_usdt ?? p?.total_usd_required;
     if (!required) return;
-    // Standard Card form uses Bitnob ledger — never compare against Master USDT.
+    // Business Card form uses Bitnob ledger — never compare against Master USDT.
     const inStandard = Boolean($('standardCardApplyPanel') || $('standardAppView'));
     const available = inStandard
       ? Number(this.walletBitnobUsdt ?? this.cardFundingWallets?.standard?.balance_usdt ?? 0)
@@ -1977,7 +1991,7 @@ const Dashboard = {
   },
 
   populateCardPaymentMethodOptions() {
-    // Standard Card form pays from Bitnob wallet only — never overwrite with Master USDT.
+    // Business Card form pays from Bitnob wallet only — never overwrite with Master USDT.
     const hidden = $('cardPaymentMethod');
     const label = $('cardPayFromUsdt');
     const inStandard = Boolean($('standardCardApplyPanel') || $('standardAppView'));
@@ -2446,15 +2460,15 @@ const Dashboard = {
         const bitnob = this._kycStatus?.bitnob_kyc || this._bitnobKyc || Auth.user?.bitnob_kyc;
         const ready = Boolean(bitnob?.can_issue_standard_card || bitnob?.customer_ready);
         intro.textContent = ready
-          ? 'Your identity is verified and Bitnob Card KYC is ready for Standard Cards.'
-          : 'Your identity is verified. Bitnob Card KYC will finish before Standard Card issuance.';
+          ? 'Your identity is verified and Bitnob Card KYC is ready for Business Cards.'
+          : 'Your identity is verified. Bitnob Card KYC will finish before Business Card issuance.';
       } else if (status === 'PENDING_REVIEW') {
         intro.textContent = 'Your submission is under review. You will be notified once approved.';
       } else if (status === 'REJECTED') {
         const reason = this._kycStatus?.latest_submission?.rejection_reason;
         intro.textContent = reason ? `Previous submission rejected: ${reason}. Please resubmit.` : 'Please resubmit your documents.';
       } else {
-        intro.textContent = 'Submit your identity documents to unlock Standard Cards (Bitnob) and verified banking features.';
+        intro.textContent = 'Submit your identity documents to unlock Business Cards (Bitnob) and verified banking features.';
       }
     }
   },
@@ -5737,7 +5751,7 @@ const Dashboard = {
   },
 
   bindDashboardForms() {
-    // Portal header links + My Cards CTAs (no nested Instant↔Standard toggle).
+    // Portal header links + My Cards CTAs (no nested Instant↔Business toggle).
     this.renderPortalHeaderNav();
     this.syncCardsApplyCtas();
     if (this._portal === 'instant' || this._portal === 'standard') {
@@ -5849,7 +5863,7 @@ const Dashboard = {
       return;
     }
 
-    // Hub (/) gateway: show Instant vs Standard selector only — do not load wallets/cards.
+    // Hub (/) gateway: show Instant vs Business selector only — do not load wallets/cards.
     if (this.isHubGateway()) {
       this.applyHubGateway();
       this.renderPortalHubChooser();
@@ -6088,8 +6102,8 @@ const Dashboard = {
 
   /**
    * mode: 'instant' | 'standard'
-   * Mounts exclusive InstantAppView / StandardAppView on dedicated page hosts only.
-   * Never mounts an Instant↔Standard toggle inside My Cards.
+   * Mounts exclusive InstantAppView / BusinessAppView on dedicated page hosts only.
+   * Never mounts an Instant↔Business toggle inside My Cards.
    */
   mountAppModeUi(mode = 'instant') {
     const comps = (typeof EisyComponents !== 'undefined') ? EisyComponents : null;
@@ -6157,13 +6171,13 @@ const Dashboard = {
   },
 
   setAppMode(mode) {
-    // Route-level separation: Instant/Standard always live on dedicated portal URLs.
+    // Route-level separation: Instant/Business always live on dedicated portal URLs.
     if (mode === 'instant' || mode === 'standard') {
       if (this._portal === mode) {
         this.mountAppModeUi(mode);
         return;
       }
-      window.location.href = `/${mode}`;
+      window.location.href = this.portalHref(mode);
     }
   },
 

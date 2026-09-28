@@ -1,7 +1,7 @@
 /**
  * Instant Card view — Non-KYC page.
  * Uses internal USDT Wallet (platform balance_usdt) and issues via Kripicard only.
- * Independent markup + handlers — never shares DOM with Standard Card.
+ * Independent markup + handlers — never shares DOM with Business Card.
  */
 (function (root) {
   'use strict';

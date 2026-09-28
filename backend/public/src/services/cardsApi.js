@@ -1,6 +1,6 @@
 /**
  * Cards / reload / pricing API (user SPA).
- * Instant and Standard clients live in dedicated service modules;
+ * Instant and Business clients live in dedicated service modules;
  * this barrel keeps shared list/reload helpers and re-exports both.
  */
 (function (root) {

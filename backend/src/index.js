@@ -73,7 +73,7 @@ function sendPortalApp(res, portal) {
     return res.status(500).send(`Dashboard missing. Expected: ${INDEX_HTML}`);
   }
   let html = fs.readFileSync(INDEX_HTML, 'utf8');
-  const label = portal === 'instant' ? 'Instant' : 'Standard';
+  const label = portal === 'instant' ? 'Instant' : 'Business';
   const inject = `<script>window.__EISY_PORTAL__=${JSON.stringify(portal)};</script>`;
   html = html.replace(/<head([^>]*)>/i, (m) => `${m}\n  ${inject}`);
   html = html.replace(/<html([^>]*)>/i, (m, attrs = '') => (
@@ -102,7 +102,8 @@ app.get(['/instant', '/instant.html'], (_req, res) => {
   sendPortalApp(res, 'instant');
 });
 
-app.get(['/standard', '/standard.html'], (_req, res) => {
+// Business portal (Bitnob) — /business preferred; /standard kept as alias.
+app.get(['/business', '/business.html', '/standard', '/standard.html'], (_req, res) => {
   sendPortalApp(res, 'standard');
 });
 
@@ -148,7 +149,7 @@ function sendAdminPipeline(res, pipeline) {
     return res.status(500).send(`Admin missing. Expected: ${adminHtml}`);
   }
   let html = fs.readFileSync(adminHtml, 'utf8');
-  const label = pipeline === 'instant' ? 'Instant Admin' : 'Standard Admin';
+  const label = pipeline === 'instant' ? 'Instant Admin' : 'Business Admin';
   const inject = `<script>window.__EISY_ADMIN_PIPELINE__=${JSON.stringify(pipeline)};</script>`;
   if (!html.includes('__EISY_ADMIN_PIPELINE__')) {
     html = html.replace(/<head([^>]*)>/i, (m) => `${m}\n  ${inject}`);
@@ -176,7 +177,8 @@ app.get(['/admin/instant', '/admin/instant.html'], (_req, res) => {
   sendAdminPipeline(res, 'instant');
 });
 
-app.get(['/admin/standard', '/admin/standard.html'], (_req, res) => {
+// Business Admin — /admin/business preferred; /admin/standard kept as alias.
+app.get(['/admin/business', '/admin/business.html', '/admin/standard', '/admin/standard.html'], (_req, res) => {
   sendAdminPipeline(res, 'standard');
 });
 

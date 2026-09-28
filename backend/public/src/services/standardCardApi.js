@@ -1,6 +1,7 @@
 /**
- * Standard Card (KYC) API — Bitnob wallet + Bitnob issuance only.
+ * Business Card (KYC) API — Bitnob wallet + Bitnob issuance only.
  * Does not call Non-KYC Instant / Master Wallet issue endpoints.
+ * Internal route paths remain `/api/user/wallets/standard/*`.
  */
 (function (root) {
   'use strict';
