@@ -1149,7 +1149,7 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             <span data-i18n="nav_deposits">Deposit &amp; History</span>
           </button>
-          <button type="button" class="nav-item" data-page="usdt-wallet">
+          <button type="button" class="nav-item" data-page="usdt-wallet" data-mode-nav="instant">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>
             <span data-i18n="nav_usdt_wallet">USDT Wallet</span>
           </button>
@@ -1262,11 +1262,12 @@
             <section class="panel summary-panel">
               <h2><span data-i18n="wallet_overview">Wallet Overview</span> <span class="badge-secure" data-i18n="pin_protected">🔒 PIN Protected</span></h2>
               <div class="wallet-overview-grid">
-                <div class="wallet-hero-card usdt" id="walletHeroUsdt">
-                  <div class="wallet-hero-label" data-i18n="header_usdt_wallet">USDT Wallet</div>
+                <!-- Instant mode: Master USDT only -->
+                <div class="wallet-hero-card usdt" id="walletHeroUsdt" data-mode-shell="instant">
+                  <div class="wallet-hero-label" data-i18n="header_usdt_wallet">Master USDT Wallet</div>
                   <div class="wallet-hero-value" id="sumBalanceUsdt">—</div>
-                  <p class="wallet-hero-hint" data-i18n="usdt_wallet_hint">TRC20 / BEP20 deposit · 1 USDT ≈ 1 USD to card (after fee)</p>
-                  <div class="wallet-hero-actions" role="group" aria-label="USDT wallet actions">
+                  <p class="wallet-hero-hint" data-i18n="usdt_wallet_hint">TRC20 deposit · Instant Card funding only</p>
+                  <div class="wallet-hero-actions" role="group" aria-label="Master USDT wallet actions">
                     <span class="wallet-actions-label" data-i18n="wallet_actions_label">Wallet actions</span>
                     <div class="wallet-hero-actions-row">
                       <button type="button" class="btn btn-secondary btn-sm" data-goto="usdt-wallet" data-i18n="btn_manage_usdt_wallet">Manage Wallet</button>
@@ -1277,15 +1278,35 @@
                     </div>
                   </div>
                 </div>
+                <!-- Standard mode: Bitnob direct wallet only -->
+                <div class="wallet-hero-card bitnob hidden" id="walletHeroBitnob" data-mode-shell="standard">
+                  <div class="wallet-hero-label" data-i18n="header_bitnob_wallet">Bitnob Wallet</div>
+                  <div class="wallet-hero-value" id="sumBalanceBitnob">—</div>
+                  <p class="wallet-hero-hint" data-i18n="bitnob_wallet_hint">Bitnob deposit address · Standard Card funding only (KYC required)</p>
+                  <div class="wallet-hero-actions" role="group" aria-label="Bitnob wallet actions">
+                    <span class="wallet-actions-label" data-i18n="wallet_actions_label">Wallet actions</span>
+                    <div class="wallet-hero-actions-row">
+                      <button type="button" class="btn btn-primary btn-sm" data-goto="standard-card" data-i18n="nav_standard_card">Standard Card</button>
+                      <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="nav_my_cards">My Cards</button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </section>
 
-            <section class="panel home-card-purchase">
-              <h2 data-i18n="home_card_purchase_heading">Get a Virtual Card</h2>
-              <p class="hint" data-i18n="home_card_purchase_hint">Choose Instant Card (No KYC, Master Wallet) or Standard Card (Verified, Bitnob wallet).</p>
+            <section class="panel home-card-purchase" data-mode-shell="instant">
+              <h2 data-i18n="home_card_purchase_heading_instant">Get Instant Card</h2>
+              <p class="hint" data-i18n="home_card_purchase_hint_instant">Master USDT Wallet · Instant Card (No KYC).</p>
               <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
                 <button type="button" class="btn btn-primary btn-sm" data-goto="instant-card" data-i18n="nav_instant_card">Instant Card</button>
-                <button type="button" class="btn btn-secondary btn-sm" data-goto="standard-card" data-i18n="nav_standard_card">Standard Card</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="nav_my_cards">My Cards</button>
+              </div>
+            </section>
+            <section class="panel home-card-purchase hidden" data-mode-shell="standard">
+              <h2 data-i18n="home_card_purchase_heading_standard">Get Standard Card</h2>
+              <p class="hint" data-i18n="home_card_purchase_hint_standard">Bitnob wallet · Standard Card (Verified KYC).</p>
+              <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
+                <button type="button" class="btn btn-primary btn-sm" data-goto="standard-card" data-i18n="nav_standard_card">Standard Card</button>
                 <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="nav_my_cards">My Cards</button>
               </div>
             </section>
@@ -1822,9 +1843,9 @@
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
   <script defer src="/src/components/instantCardView.js?v=20260928appModes"></script>
   <script defer src="/src/components/standardCardView.js?v=20260928appModes"></script>
-  <script defer src="/src/components/instantAppView.js?v=20260928appModes2"></script>
-  <script defer src="/src/components/standardAppView.js?v=20260928appModes2"></script>
-  <script defer src="/src/components/appModeSwitcher.js?v=20260928appModes2"></script>
+  <script defer src="/src/components/instantAppView.js?v=20260928wallets"></script>
+  <script defer src="/src/components/standardAppView.js?v=20260928wallets"></script>
+  <script defer src="/src/components/appModeSwitcher.js?v=20260928wallets"></script>
   <script defer src="/src/components/cardProviderSwitch.js?v=20260928appModes"></script>
   <script defer src="/src/components/index.js?v=20260928appModes"></script>
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>

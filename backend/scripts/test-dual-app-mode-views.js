@@ -29,20 +29,29 @@ function testAppViewFilesIsolated() {
   );
 
   assert.ok(instant.includes('instantAppView'));
-  assert.ok(instant.includes('USDT Wallet'));
+  assert.ok(instant.includes('USDT Wallet') || instant.includes('Master USDT'));
+  assert.ok(instant.includes('instantAppTrc20Address'), 'Instant must show TRC20 deposit address');
   assert.ok(instant.includes('instantCardView'));
   assert.ok(instant.includes('data-app-mode="instant"'));
+  assert.ok(instant.includes('data-wallet="usdt"'));
   assert.ok(!/bitnob/i.test(instant), 'InstantAppView must not mention Bitnob');
   assert.ok(!instant.includes('standardCardView'));
   assert.ok(!instant.includes('standardDepositAddress'));
+  assert.ok(!instant.includes('standardAppBitnobBalance'));
 
   assert.ok(standard.includes('standardAppView'));
   assert.ok(standard.includes('Bitnob'));
+  assert.ok(standard.includes('standardAppVerifyStatus'), 'Standard must show verification status');
+  assert.ok(standard.includes('standardAppBitnobBalance'));
   assert.ok(standard.includes('standardCardView'));
   assert.ok(standard.includes('data-app-mode="standard"'));
+  assert.ok(standard.includes('data-wallet="bitnob_usdt"'));
   assert.ok(!/kripicard/i.test(standard), 'StandardAppView must not mention Kripicard');
   assert.ok(!standard.includes('instantCardView'));
   assert.ok(!standard.includes('instantUsdtBalance'));
+  assert.ok(!standard.includes('instantAppTrc20Address'));
+  assert.ok(!standard.includes('data-open-usdt-topup'));
+  assert.ok(!standard.includes('btnInstantAppWithdraw'));
 
   assert.ok(switcher.includes('appModeSwitcher'));
   assert.ok(switcher.includes('appModeActiveHost'));
@@ -68,9 +77,23 @@ function testHtmlHostsAppMode() {
   assert.ok(html.includes('id="standardAppPageHost"'));
   assert.ok(html.includes('data-mode-nav="instant"'));
   assert.ok(html.includes('data-mode-nav="standard"'));
+  assert.ok(html.includes('data-mode-shell="instant"'));
+  assert.ok(html.includes('data-mode-shell="standard"'));
+  assert.ok(html.includes('id="walletHeroUsdt"'));
+  assert.ok(html.includes('id="walletHeroBitnob"'));
   assert.ok(html.includes('instantAppView.js'));
   assert.ok(html.includes('standardAppView.js'));
   assert.ok(html.includes('appModeSwitcher.js'));
+  console.log('ok');
+}
+
+function testDashboardKeepsWalletsIsolated() {
+  section('dashboard does not mix Master USDT into Standard payment UI');
+  const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
+  assert.ok(dash.includes('wallet_bitnob_usdt'));
+  assert.ok(dash.includes('card_wallet_ok_bitnob') || dash.includes("okKey = inStandard"));
+  assert.ok(dash.includes('syncModeScopedHomeWallets'));
+  assert.ok(dash.includes('setHomeBitnobBalanceDisplay'));
   console.log('ok');
 }
 
@@ -116,6 +139,7 @@ function main() {
   testAppViewFilesIsolated();
   testHtmlHostsAppMode();
   testDashboardWiresAppMode();
+  testDashboardKeepsWalletsIsolated();
   testApisAndRoutesStillIsolated();
   console.log('\nDual app-mode view checks passed.');
 }

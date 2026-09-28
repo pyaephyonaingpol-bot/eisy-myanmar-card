@@ -102,10 +102,10 @@
       }
     }
 
-    document.querySelectorAll('[data-mode-nav="instant"]').forEach((el) => {
+    document.querySelectorAll('[data-mode-nav="instant"], [data-mode-shell="instant"]').forEach((el) => {
       el.classList.toggle('hidden', which !== 'instant');
     });
-    document.querySelectorAll('[data-mode-nav="standard"]').forEach((el) => {
+    document.querySelectorAll('[data-mode-nav="standard"], [data-mode-shell="standard"]').forEach((el) => {
       el.classList.toggle('hidden', which !== 'standard');
     });
     document.documentElement.setAttribute('data-app-mode', which);
