@@ -14,8 +14,17 @@
     getPricing() {
       return api().request('GET', '/api/user/card/pricing');
     },
+    getKripicardPricing() {
+      return api().request('GET', '/api/user/card/pricing-kripicard');
+    },
+    getBins() {
+      return api().request('GET', '/api/user/card/bins');
+    },
     requestCard(body) {
       return api().request('POST', '/api/user/card/request', body, { sensitive: true });
+    },
+    requestKripicard(body) {
+      return api().request('POST', '/api/user/card/request-kripicard', body, { sensitive: true });
     },
     reload(body) {
       return api().request('POST', '/api/user/card/reload', body, { sensitive: true });

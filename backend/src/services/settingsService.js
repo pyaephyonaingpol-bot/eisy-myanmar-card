@@ -6,6 +6,7 @@ const {
 } = require('../constants/cardReloadFees');
 const {
   CARD_PROCESSING_FEE_USD,
+  resolveCardFundingFeeUsd,
   roundUsd,
 } = require('../constants/cardIssuanceFees');
 const {
@@ -851,6 +852,58 @@ function calculateCardRequestPricingUsdt(initialLoadUsd, settings) {
   };
 }
 
+/**
+ * Non-KYC Kripicard pricing (USDT wallet).
+ * Card load goes to Kripicard; issuance + funding% + processing stay on-platform.
+ */
+function calculateKripicardRequestPricingUsdt(initialLoadUsd, settings) {
+  const initial = parseFloat(initialLoadUsd);
+  const issuanceFee = parseFloat(settings.card_issuance_fee_usd);
+  const min = parseFloat(settings.minimum_initial_deposit_usd);
+  const fundingFeePercent = parseFloat(settings.card_funding_fee_percent) || 0;
+
+  if (!Number.isFinite(initial) || initial <= 0) {
+    throw new Error('Initial card load amount must be a positive number');
+  }
+  if (!Number.isFinite(min) || initial < min) {
+    throw new Error(`Minimum initial deposit is $${Number(min || 0).toFixed(2)} USD`);
+  }
+
+  const kripicardCostUsd = roundUsd(initial);
+  const issuanceFeeUsd = roundUsd(
+    Number.isFinite(issuanceFee) && issuanceFee >= 0 ? issuanceFee : 0
+  );
+  const fundingFeeUsd = resolveCardFundingFeeUsd(kripicardCostUsd, {
+    card_funding_fee_percent: fundingFeePercent,
+  });
+  const processingFeeUsd = roundUsd(CARD_PROCESSING_FEE_USD);
+  const platformMarkupUsd = roundUsd(issuanceFeeUsd + fundingFeeUsd + processingFeeUsd);
+  const totalUsd = roundUsd(kripicardCostUsd + platformMarkupUsd);
+  const totalUsdt = totalUsd;
+
+  return {
+    initial_load_usd: kripicardCostUsd,
+    kripicard_cost_usd: kripicardCostUsd,
+    provider_load_usd: kripicardCostUsd,
+    issuance_fee_usd: issuanceFeeUsd,
+    funding_fee_percent: fundingFeePercent,
+    funding_fee_usd: fundingFeeUsd,
+    processing_fee_usd: processingFeeUsd,
+    platform_markup_usd: platformMarkupUsd,
+    total_usd_required: totalUsd,
+    total_usdt: totalUsdt,
+    total_charge_usdt: totalUsdt,
+    payment_currency: 'USDT',
+    payment_wallet: 'usdt',
+    mmk_wallet_allowed: false,
+    exchange_rate_applied: false,
+    provider: 'kripicard',
+    note:
+      '1 USDT ≈ 1 USD — Non-KYC Instant Card. Issuance + funding + processing fees retained; '
+      + 'only card load sent to Kripicard. Fund USDT via crypto deposit (master wallet) first.',
+  };
+}
+
 function calculateCardReloadPricingUsdt(topUpUsdt, settings) {
   const topUp = parseFloat(topUpUsdt);
   const minTopUp = settings.minimum_usdt_reload ?? settings.minimum_initial_deposit_usd ?? 5;
@@ -936,6 +989,7 @@ module.exports = {
   listExchangeRateHistory,
   updateSettings,
   calculateCardRequestPricingUsdt,
+  calculateKripicardRequestPricingUsdt,
   calculateCardReloadPricingUsdt,
   getUsdtDepositSettings,
   calculateP2pFeeBreakdown,
