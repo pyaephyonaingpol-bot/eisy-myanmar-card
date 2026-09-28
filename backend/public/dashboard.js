@@ -5718,27 +5718,60 @@ const Dashboard = {
   },
 
   bindCardProviderTabs() {
-    document.querySelectorAll('.card-provider-tab').forEach((btn) => {
+    const onPick = (provider) => {
+      this.setCardProviderTab(provider);
+    };
+
+    document.querySelectorAll('.card-provider-tab[data-card-provider]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const provider = btn.getAttribute('data-card-provider') || 'kripicard';
-        this.setCardProviderTab(provider);
+        onPick(provider);
       });
     });
+
+    // Keyboard: left/right within the main switch
+    const main = $('cardProviderSwitch');
+    if (main) {
+      main.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        const next = e.key === 'ArrowRight' ? 'bitnob' : 'kripicard';
+        onPick(next);
+        const focusBtn = main.querySelector(`[data-card-provider="${next}"]`);
+        focusBtn?.focus();
+      });
+    }
+
     this.setCardProviderTab(this.isKycVerified() ? 'bitnob' : 'kripicard');
   },
 
   setCardProviderTab(provider) {
     const which = provider === 'bitnob' ? 'bitnob' : 'kripicard';
-    document.querySelectorAll('.card-provider-tab').forEach((btn) => {
-      const active = btn.getAttribute('data-card-provider') === which;
-      btn.classList.toggle('is-active', active);
-      btn.classList.toggle('btn-primary', active);
-      btn.classList.toggle('btn-secondary', !active);
+
+    document.querySelectorAll('.card-provider-switch').forEach((track) => {
+      track.setAttribute('data-active', which);
+      track.querySelectorAll('.card-provider-tab').forEach((btn) => {
+        const active = btn.getAttribute('data-card-provider') === which;
+        btn.classList.toggle('is-active', active);
+        btn.setAttribute('aria-selected', active ? 'true' : 'false');
+        btn.tabIndex = track.id === 'cardProviderSwitch' ? (active ? 0 : -1) : -1;
+      });
     });
+
     const kripi = $('kripicardApplyPanel');
     const bitnob = $('bitnobApplyPanel');
-    if (kripi) kripi.classList.toggle('hidden', which !== 'kripicard');
-    if (bitnob) bitnob.classList.toggle('hidden', which !== 'bitnob');
+    if (kripi) {
+      const on = which === 'kripicard';
+      kripi.classList.toggle('is-active', on);
+      kripi.hidden = !on;
+      kripi.classList.toggle('hidden', !on);
+    }
+    if (bitnob) {
+      const on = which === 'bitnob';
+      bitnob.classList.toggle('is-active', on);
+      bitnob.hidden = !on;
+      bitnob.classList.toggle('hidden', !on);
+    }
 
     const gate = $('bitnobKycGate');
     const form = $('cardRequestForm');
