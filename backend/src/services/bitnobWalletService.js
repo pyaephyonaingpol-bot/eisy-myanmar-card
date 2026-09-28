@@ -145,7 +145,9 @@ async function getDualWalletOverview(userId) {
 
   const kycStatus = normalizeKycStatus(user.kyc_status);
   const kycVerified = isKycVerified(kycStatus);
-  const customerId = resolveBitnobCustomerId({ user });
+  const { getBitnobKycPublicStatus } = require('./bitnobKycService');
+  const bitnobKyc = getBitnobKycPublicStatus(user);
+  const customerId = bitnobKyc.customer_id || resolveBitnobCustomerId({ user });
   const masterUsdt = Number(user.balance_usdt ?? 0);
   const bitnobUsdt = Number(user.balance_bitnob_usdt ?? 0);
 
@@ -172,12 +174,17 @@ async function getDualWalletOverview(userId) {
       kyc_status: kycStatus,
       is_kyc_verified: kycVerified,
       customer_id: customerId || null,
-      customer_ready: Boolean(customerId),
+      customer_ready: Boolean(bitnobKyc.customer_ready),
+      bitnob_kyc_status: bitnobKyc.bitnob_kyc_status,
+      bitnob_kyc_reason: bitnobKyc.bitnob_kyc_reason,
+      can_issue_standard_card: Boolean(bitnobKyc.can_issue_standard_card),
       deposit_path: 'bitnob_address',
       deposit_address: user.bitnob_deposit_address || null,
       deposit_chain: user.bitnob_deposit_chain || depositChain(),
       deposit_hint: kycVerified
-        ? 'Deposit USDT to your Standard Card (Bitnob) address. This balance is separate from Master Wallet.'
+        ? (bitnobKyc.customer_ready
+          ? 'Deposit USDT to your Standard Card (Bitnob) address. This balance is separate from Master Wallet.'
+          : 'KYC verified — Bitnob Card KYC is still pending. You can deposit after Card KYC completes.')
         : 'Complete KYC to unlock Standard Card deposits via Bitnob.',
     },
     separation: {
@@ -185,6 +192,7 @@ async function getDualWalletOverview(userId) {
       bitnob_wallet_funds_standard_only: true,
       cross_ledger_card_payments: false,
     },
+    bitnob_kyc: bitnobKyc,
   };
 }
 

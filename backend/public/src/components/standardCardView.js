@@ -17,6 +17,14 @@
   <h2 data-i18n="apply_standard_card">Standard Card (Verified)</h2>
   <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_standard_card_hint">Requires verified KYC. Pay from your Bitnob Standard Card wallet (deposit address — separate from USDT Wallet).</p>
   <div id="bitnobKycGate" class="wallet-pay-hint err hidden" data-i18n="standard_kyc_required">Complete KYC verification before applying for a Standard Card. Without KYC, use Instant Card instead.</div>
+  <div id="bitnobCardKycPanel" class="wallet-pay-hint hidden" style="margin-bottom:0.75rem">
+    <div style="margin-bottom:0.35rem">
+      <span data-i18n="bitnob_card_kyc_label">Bitnob Card KYC</span>:
+      <strong id="bitnobCardKycStatusLabel">—</strong>
+    </div>
+    <p id="bitnobCardKycHint" class="hint" style="margin:0 0 0.5rem"></p>
+    <button type="button" class="btn btn-secondary btn-sm" id="btnRetryBitnobKyc" data-i18n="retry_bitnob_kyc">Submit / Retry Bitnob Card KYC</button>
+  </div>
   <div id="standardWalletPanel" class="standard-wallet-panel" style="margin-bottom:0.85rem">
     <div class="wallet-pay-hint ok" style="margin-bottom:0.5rem">
       <span data-i18n="standard_wallet_balance_label">Bitnob / Standard Card wallet</span>:
@@ -48,6 +56,7 @@
       <div class="pricing-row"><span data-i18n="initial_card_load_row">Initial Card Load</span><strong id="pbInitialLoad">$0.00</strong></div>
       <div class="pricing-row"><span data-i18n="card_issuance_fee">+ Card Issuance Fee</span><strong id="pbIssuanceFee">$0.00</strong></div>
       <div class="pricing-row"><span data-i18n="card_funding_fee">+ Funding Fee</span><strong id="pbFundingFee">$0.00</strong></div>
+      <div class="pricing-row"><span data-i18n="card_processing_fee">+ Processing Fee</span><strong id="pbProcessingFee">$0.00</strong></div>
       <div class="pricing-row pricing-total"><span data-i18n="total_usd_required">= Total USD Required</span><strong id="pbTotalUsd">$0.00</strong></div>
       <div class="pricing-row pricing-usdt" id="pbUsdtRow"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="pbTotalUsdt">$0.00 USDT</strong></div>
       <p id="pbRateLabel" class="hint pricing-rate" data-i18n="usdt_parity_rate">1 USDT ≈ 1 USD</p>
@@ -65,21 +74,94 @@
     return root.EisyServices && root.EisyServices.standardCard;
   }
 
+  function isBitnobCustomerReady(ctx) {
+    if (typeof ctx.isBitnobCustomerReady === 'function') {
+      return Boolean(ctx.isBitnobCustomerReady());
+    }
+    const p = ctx.pricing || ctx.bitnobKyc || {};
+    if (p.can_issue_standard_card != null) return Boolean(p.can_issue_standard_card);
+    if (p.customer_ready != null) return Boolean(p.customer_ready);
+    if (p.bitnob_customer_ready != null) return Boolean(p.bitnob_customer_ready);
+    return true;
+  }
+
+  function formatBitnobKycLabel(status, ctx) {
+    const s = String(status || '').toLowerCase();
+    const t = ctx.t;
+    if (!s) {
+      return typeof t === 'function' ? t('bitnob_kyc_not_started') : 'Not submitted';
+    }
+    if (s === 'approved') {
+      return typeof t === 'function' ? t('bitnob_kyc_approved') : 'Approved — ready to issue';
+    }
+    if (s === 'pending' || s === 'initiated' || s === 'submitted') {
+      return typeof t === 'function' ? t('bitnob_kyc_pending') : 'Pending Bitnob verification';
+    }
+    if (s === 'rejected' || s === 'failed' || s === 'denied') {
+      return typeof t === 'function' ? t('bitnob_kyc_rejected') : 'Rejected — retry required';
+    }
+    return s;
+  }
+
+  function syncBitnobKycPanel(ctx) {
+    const panel = $('bitnobCardKycPanel');
+    const label = $('bitnobCardKycStatusLabel');
+    const hint = $('bitnobCardKycHint');
+    const retryBtn = $('btnRetryBitnobKyc');
+    const verified = Boolean(ctx.isKycVerified?.());
+    if (!panel) return;
+
+    if (!verified) {
+      panel.classList.add('hidden');
+      return;
+    }
+
+    const kyc = ctx.bitnobKyc || ctx.pricing || {};
+    const ready = isBitnobCustomerReady(ctx);
+    const status = kyc.bitnob_kyc_status || null;
+    const reason = kyc.bitnob_kyc_reason || null;
+
+    panel.classList.remove('hidden');
+    panel.classList.toggle('ok', ready);
+    panel.classList.toggle('err', !ready);
+
+    if (label) label.textContent = formatBitnobKycLabel(status, ctx);
+    if (hint) {
+      if (ready) {
+        hint.textContent = typeof ctx.t === 'function'
+          ? ctx.t('bitnob_kyc_ready_hint')
+          : 'Your Bitnob card profile is ready. Deposit USDT, then issue a Standard Card.';
+      } else if (reason) {
+        hint.textContent = reason;
+      } else {
+        hint.textContent = typeof ctx.t === 'function'
+          ? ctx.t('bitnob_customer_required')
+          : 'Complete Card KYC first so your verified card profile is ready, then try again.';
+      }
+    }
+    if (retryBtn) {
+      retryBtn.disabled = false;
+      retryBtn.classList.toggle('hidden', ready && status === 'approved');
+    }
+  }
+
   function syncKycGate(ctx) {
     const gate = $('bitnobKycGate');
     const form = $('cardRequestForm');
     const btn = $('btnRequestCard');
     const panel = $('standardWalletPanel');
     const verified = Boolean(ctx.isKycVerified?.());
+    const bitnobReady = isBitnobCustomerReady(ctx);
     if (gate) gate.classList.toggle('hidden', verified);
     if (panel) panel.classList.toggle('hidden', !verified);
     if (form) {
       form.querySelectorAll('input,button,select').forEach((el) => {
         if (el.id === 'cardPaymentMethod') return;
-        el.disabled = !verified;
+        el.disabled = !verified || !bitnobReady;
       });
     }
-    if (btn) btn.disabled = !verified;
+    if (btn) btn.disabled = !verified || !bitnobReady;
+    syncBitnobKycPanel(ctx);
   }
 
   function renderWalletBalance(ctx) {
@@ -126,9 +208,54 @@
 
     ctx.pricing = {
       ...p,
+      processing_fee_usd: processingFeeUsd,
       total_usd_required: totalUsd,
       total_usdt: totalUsd,
     };
+  }
+
+  async function loadBitnobKyc(ctx) {
+    const svc = api();
+    if (!svc?.getBitnobKyc) return null;
+    try {
+      const data = await svc.getBitnobKyc();
+      ctx.bitnobKyc = data;
+      ctx.onBitnobKycLoaded?.(data);
+      syncKycGate(ctx);
+      return data;
+    } catch (err) {
+      console.warn('[standardCardView bitnob-kyc]', err.message);
+      return null;
+    }
+  }
+
+  async function retryBitnobKyc(ctx) {
+    const svc = api();
+    const toast = ctx.toast || (() => {});
+    if (!svc?.submitBitnobKyc) return null;
+    const btn = $('btnRetryBitnobKyc');
+    if (btn) btn.disabled = true;
+    try {
+      const data = await svc.submitBitnobKyc({ force: true });
+      ctx.bitnobKyc = data;
+      ctx.onBitnobKycLoaded?.(data);
+      syncKycGate(ctx);
+      toast(
+        data.message
+          || (data.can_issue_standard_card || data.customer_ready
+            ? 'Bitnob Card KYC ready'
+            : 'Bitnob Card KYC submitted'),
+        data.can_issue_standard_card || data.customer_ready ? 'ok' : 'ok'
+      );
+      return data;
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') ctx.openPinUnlock?.();
+      toast(err.message || 'Bitnob Card KYC failed', 'error');
+      return null;
+    } finally {
+      if (btn) btn.disabled = false;
+      syncBitnobKycPanel(ctx);
+    }
   }
 
   async function loadPricing(ctx) {
@@ -199,10 +326,23 @@
     try {
       const data = await svc.getCardFundingWallets();
       ctx.fundingWallets = data;
+      if (data?.bitnob_kyc) {
+        ctx.bitnobKyc = data.bitnob_kyc;
+      } else if (data?.standard) {
+        ctx.bitnobKyc = {
+          ...(ctx.bitnobKyc || {}),
+          customer_id: data.standard.customer_id,
+          customer_ready: data.standard.customer_ready,
+          bitnob_kyc_status: data.standard.bitnob_kyc_status,
+          bitnob_kyc_reason: data.standard.bitnob_kyc_reason,
+          can_issue_standard_card: data.standard.can_issue_standard_card,
+        };
+      }
       if (typeof ctx.setBitnobBalance === 'function') {
         ctx.setBitnobBalance(Number(data?.standard?.balance_usdt ?? 0));
       }
       renderWalletBalance(ctx);
+      syncKycGate(ctx);
       return data;
     } catch (err) {
       console.warn('[standardCardView wallets]', err.message);
@@ -244,6 +384,14 @@
       });
     }
 
+    const retryBtn = $('btnRetryBitnobKyc');
+    if (retryBtn && retryBtn.dataset.bound !== '1') {
+      retryBtn.dataset.bound = '1';
+      retryBtn.addEventListener('click', () => {
+        retryBitnobKyc(ctx).catch(() => {});
+      });
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const svc = api();
@@ -271,13 +419,14 @@
           toast(typeof t === 'function' ? t('name_on_card_required') : 'Enter the name on card (min 2 characters)', 'error');
           return;
         }
-        if (ctx.pricing && ctx.pricing.bitnob_customer_ready === false) {
+        if (!isBitnobCustomerReady(ctx)) {
           toast(
             typeof t === 'function'
               ? t('bitnob_customer_required')
               : 'Complete Card KYC first so your verified card profile is ready, then try again.',
             'error'
           );
+          syncBitnobKycPanel(ctx);
           return;
         }
         if (bitnobBal < required) {
@@ -332,6 +481,10 @@
           if (err.code === 'INSUFFICIENT_BITNOB_BALANCE' || err.code === 'BITNOB_WALLET_ONLY_CARD_ISSUANCE') {
             loadDepositAddress(ctx, { force: true }).catch(() => {});
           }
+          if (err.code === 'BITNOB_CUSTOMER_REQUIRED') {
+            loadBitnobKyc(ctx).catch(() => {});
+            syncBitnobKycPanel(ctx);
+          }
           if (err.code === 'KYC_REQUIRED_FOR_BITNOB') ctx.onNeedInstant?.();
           return;
         }
@@ -350,6 +503,7 @@
     syncKycGate(ctx);
     renderWalletBalance(ctx);
     await loadPricing(ctx);
+    await loadBitnobKyc(ctx);
     await loadFundingWallets(ctx);
     if (ctx.isKycVerified?.()) {
       await loadDepositAddress(ctx, { force: false });
@@ -373,9 +527,12 @@
     activate,
     deactivate,
     syncKycGate,
+    syncBitnobKycPanel,
     renderWalletBalance,
     updatePricingBreakdown,
     loadPricing,
+    loadBitnobKyc,
+    retryBitnobKyc,
     loadDepositAddress,
     loadFundingWallets,
   };

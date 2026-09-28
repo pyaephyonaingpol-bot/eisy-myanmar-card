@@ -894,13 +894,41 @@
         <h3 id="kycModalTitle">KYC Verification</h3>
         <button type="button" id="kycModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" id="kycModalIntro" style="margin-bottom:1rem">Submit your identity documents to unlock P2P trading.</p>
+      <p class="hint" id="kycModalIntro" style="margin-bottom:1rem">Submit your identity documents to unlock Standard Cards (Bitnob) and verified banking features.</p>
       <form id="kycForm" class="form">
-        <div class="field"><label for="kycFullName">Full Name (as on ID)</label><input id="kycFullName" required placeholder="Legal full name" /></div>
+        <div class="field"><label for="kycFullName">Full Name (as on ID)</label><input id="kycFullName" required placeholder="Legal full name" autocomplete="name" /></div>
         <div class="field"><label for="kycIdType">ID Type</label>
           <select id="kycIdType" required><option value="NRC">NRC</option><option value="Passport">Passport</option></select>
         </div>
-        <div class="field"><label for="kycIdNumber">ID Number</label><input id="kycIdNumber" required placeholder="NRC or Passport number" /></div>
+        <div class="field"><label for="kycIdNumber">ID Number</label><input id="kycIdNumber" required placeholder="NRC or Passport number" autocomplete="off" /></div>
+        <div class="field"><label for="kycDateOfBirth">Date of Birth</label>
+          <input id="kycDateOfBirth" type="date" required autocomplete="bday" />
+          <small class="hint">Required for Bitnob Card KYC / Standard Card issuance</small>
+        </div>
+        <div class="field"><label for="kycAddressLine1">Street Address</label>
+          <input id="kycAddressLine1" required placeholder="House / street" autocomplete="address-line1" />
+        </div>
+        <div class="field"><label for="kycAddressLine2">Address Line 2 <span class="hint">(optional)</span></label>
+          <input id="kycAddressLine2" placeholder="Township / building" autocomplete="address-line2" />
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="kycAddressCity">City</label>
+            <input id="kycAddressCity" required placeholder="Yangon" autocomplete="address-level2" />
+          </div>
+          <div class="field"><label for="kycAddressState">State / Region</label>
+            <input id="kycAddressState" required placeholder="Yangon" autocomplete="address-level1" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="kycAddressPostal">Postal Code</label>
+            <input id="kycAddressPostal" required placeholder="11181" autocomplete="postal-code" />
+          </div>
+          <div class="field"><label for="kycAddressCountry">Country</label>
+            <select id="kycAddressCountry" required>
+              <option value="MMR" selected>Myanmar (MMR)</option>
+            </select>
+          </div>
+        </div>
         <div class="field">
           <label for="kycFrontPhoto">Front Photo of ID</label>
           <input id="kycFrontPhoto" type="file" accept="image/*" required data-kyc-photo="front" />
@@ -1366,7 +1394,7 @@
                     <a class="btn btn-secondary btn-sm" href="/standard" data-portal-cta="standard" data-i18n="nav_standard_card">Standard Card</a>
                   </div>
                 </div>
-                <details style="margin-top:1rem" class="hint">
+                <details style="margin-top:1rem" class="hint" data-instant-only>
                   <summary>Demo: self-issue card (dev only)</summary>
                   <form id="issueCardForm" class="form" style="margin-top:0.75rem">
                     <div class="field"><label>Card Number</label><input id="cardNumber" value="4532 8765 4321 0987" /></div>
@@ -1378,7 +1406,7 @@
                     <button type="submit" class="btn btn-secondary">Issue / Update Card (Demo)</button>
                   </form>
                 </details>
-                <pre class="output hidden" id="issueCardOutput" aria-hidden="true"></pre>
+                <pre class="output hidden" id="issueCardOutput" aria-hidden="true" data-instant-only></pre>
               </section>
 
               <section class="panel">
@@ -1835,7 +1863,7 @@
   <script defer src="/src/services/withdrawalApi.js?v=20260817m2"></script>
   <script defer src="/src/services/cardsApi.js?v=20260928cardViews"></script>
   <script defer src="/src/services/instantCardApi.js?v=20260928cardViews"></script>
-  <script defer src="/src/services/standardCardApi.js?v=20260928cardViews"></script>
+  <script defer src="/src/services/standardCardApi.js?v=20260928bitnobKyc"></script>
   <script defer src="/src/services/accountApi.js?v=20260823profile"></script>
   <script defer src="/src/services/p2pApi.js?v=20260819p2p"></script>
   <script defer src="/src/services/index.js?v=20260817m2"></script>
@@ -1848,9 +1876,9 @@
   <script defer src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
   <script defer src="/src/components/instantCardView.js?v=20260928appModes"></script>
-  <script defer src="/src/components/standardCardView.js?v=20260928appModes"></script>
+  <script defer src="/src/components/standardCardView.js?v=20260928bitnobKyc"></script>
   <script defer src="/src/components/instantAppView.js?v=20260928wallets"></script>
-  <script defer src="/src/components/standardAppView.js?v=20260928wallets"></script>
+  <script defer src="/src/components/standardAppView.js?v=20260928bitnobKyc"></script>
   <script defer src="/src/components/appModeSwitcher.js?v=20260928wallets"></script>
   <script defer src="/src/components/cardProviderSwitch.js?v=20260928appModes"></script>
   <script defer src="/src/components/index.js?v=20260928appModes"></script>

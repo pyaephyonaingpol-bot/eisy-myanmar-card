@@ -74,9 +74,28 @@
       statusEl.classList.toggle('err', !verified);
     }
     if (label) {
-      label.textContent = verified
-        ? (typeof ctx.t === 'function' ? ctx.t('kyc_verified') : 'Verified')
-        : (typeof ctx.t === 'function' ? ctx.t('kyc_unverified') : 'Unverified — KYC required');
+      if (!verified) {
+        label.textContent = typeof ctx.t === 'function' ? ctx.t('kyc_unverified') : 'Unverified — KYC required';
+        return;
+      }
+      const bitnob = ctx.bitnobKyc || ctx.pricing || {};
+      const bitnobReady = typeof ctx.isBitnobCustomerReady === 'function'
+        ? ctx.isBitnobCustomerReady()
+        : Boolean(bitnob.can_issue_standard_card || bitnob.customer_ready || bitnob.bitnob_customer_ready);
+      const status = String(bitnob.bitnob_kyc_status || '').toLowerCase();
+      if (bitnobReady) {
+        label.textContent = typeof ctx.t === 'function'
+          ? ctx.t('kyc_verified_bitnob_ready')
+          : 'Verified · Bitnob Card KYC ready';
+      } else if (status === 'pending' || status === 'initiated' || status === 'submitted') {
+        label.textContent = typeof ctx.t === 'function'
+          ? ctx.t('kyc_verified_bitnob_pending')
+          : 'Verified · Bitnob Card KYC pending';
+      } else {
+        label.textContent = typeof ctx.t === 'function'
+          ? ctx.t('kyc_verified_bitnob_needed')
+          : 'Verified · Bitnob Card KYC required';
+      }
     }
   }
 
@@ -121,13 +140,41 @@
     if (!svc) return null;
     try {
       const data = await svc.getCardFundingWallets();
+      if (data?.bitnob_kyc) {
+        ctx.bitnobKyc = data.bitnob_kyc;
+      } else if (data?.standard) {
+        ctx.bitnobKyc = {
+          ...(ctx.bitnobKyc || {}),
+          customer_id: data.standard.customer_id,
+          customer_ready: data.standard.customer_ready,
+          bitnob_kyc_status: data.standard.bitnob_kyc_status,
+          bitnob_kyc_reason: data.standard.bitnob_kyc_reason,
+          can_issue_standard_card: data.standard.can_issue_standard_card,
+        };
+      }
       if (typeof ctx.setBitnobBalance === 'function') {
         ctx.setBitnobBalance(Number(data?.standard?.balance_usdt ?? 0));
       }
       renderBalance(ctx);
+      syncKyc(ctx);
       return data;
     } catch (err) {
       console.warn('[standardAppView wallets]', err.message);
+      return null;
+    }
+  }
+
+  async function loadBitnobKyc(ctx) {
+    const svc = api();
+    if (!svc?.getBitnobKyc) return null;
+    try {
+      const data = await svc.getBitnobKyc();
+      ctx.bitnobKyc = data;
+      ctx.onBitnobKycLoaded?.(data);
+      syncKyc(ctx);
+      return data;
+    } catch (err) {
+      console.warn('[standardAppView bitnob-kyc]', err.message);
       return null;
     }
   }
@@ -197,6 +244,7 @@
     renderBalance(ctx);
     await loadFunding(ctx);
     if (ctx.isKycVerified?.()) {
+      await loadBitnobKyc(ctx);
       await loadDepositAddress(ctx, { force: false });
     }
     const card = cardView();
@@ -225,6 +273,7 @@
     renderBalance,
     loadDepositAddress,
     loadFunding,
+    loadBitnobKyc,
     syncKyc,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);
