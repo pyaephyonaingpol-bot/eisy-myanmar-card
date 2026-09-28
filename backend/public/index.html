@@ -1137,11 +1137,11 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
             <span data-i18n="nav_my_cards">My Cards</span>
           </button>
-          <button type="button" class="nav-item" data-page="instant-card">
+          <button type="button" class="nav-item" data-page="instant-card" data-mode-nav="instant">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
             <span data-i18n="nav_instant_card">Instant Card</span>
           </button>
-          <button type="button" class="nav-item" data-page="standard-card">
+          <button type="button" class="nav-item" data-page="standard-card" data-mode-nav="standard">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             <span data-i18n="nav_standard_card">Standard Card</span>
           </button>
@@ -1206,6 +1206,7 @@
               </div>
             </div>
             <div class="header-actions">
+              <div id="appModeSwitchHeader" class="app-mode-switch-header" aria-label="App mode"></div>
               <div id="langSwitcher">
                 <div class="lang-switcher" role="group" aria-label="Language">
                   <button type="button" class="lang-btn" data-lang="my" aria-pressed="false">MY</button>
@@ -1335,8 +1336,8 @@
 
             <div class="grid-2">
               <section class="panel card-apply-panel">
-                <!-- Noon toggle mounts InstantCardView + StandardCardView as independent components -->
-                <div id="cardProviderSwitchShell" data-card-switch-shell></div>
+                <!-- Compact Instant ↔ Standard app-mode switch mounts full independent views -->
+                <div id="appModeSwitcherShell" data-app-mode-shell></div>
                 <details style="margin-top:1rem" class="hint">
                   <summary>Demo: self-issue card (dev only)</summary>
                   <form id="issueCardForm" class="form" style="margin-top:0.75rem">
@@ -1387,30 +1388,26 @@
             </section>
           </section>
 
-          <!-- ══ PAGE: Instant Card (mounts InstantCardView only) ══ -->
+          <!-- ══ PAGE: Instant (full InstantAppView — USDT Wallet + Kripicard) ══ -->
           <section id="pageInstantCard" class="app-page" data-page="instant-card">
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="nav_instant_card">Instant Card</h2>
-                <p class="page-desc" data-i18n="instant_card_page_desc">No KYC. Fund via Master Wallet USDT (TRC20), then issue Instant Card. Isolated from Standard Card.</p>
+                <p class="page-desc" data-i18n="instant_card_page_desc">No KYC. Fund via USDT Wallet (TRC20), then issue Instant Card. Isolated from Standard / Bitnob.</p>
               </div>
             </div>
-            <section class="panel">
-              <div id="instantCardPageHost" data-card-view-host="instant-page"></div>
-            </section>
+            <div id="instantAppPageHost" data-app-view-host="instant"></div>
           </section>
 
-          <!-- ══ PAGE: Standard Card (mounts StandardCardView only via cards Noon switch) ══ -->
+          <!-- ══ PAGE: Standard (full StandardAppView — Bitnob wallet + card) ══ -->
           <section id="pageStandardCard" class="app-page" data-page="standard-card">
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="nav_standard_card">Standard Card</h2>
-                <p class="page-desc" data-i18n="standard_card_page_desc">KYC verified only. Deposit USDT to your Standard Card address, then issue. Isolated from Instant Card / Master Wallet.</p>
+                <p class="page-desc" data-i18n="standard_card_page_desc">KYC verified only. Bitnob wallet deposit + Standard Card. Isolated from Instant / USDT Wallet issuance.</p>
               </div>
             </div>
-            <section class="panel">
-              <div id="standardCardPageHost" data-card-view-host="standard-page"></div>
-            </section>
+            <div id="standardAppPageHost" data-app-view-host="standard"></div>
           </section>
 
           <!-- ══ PAGE: USDT Wallet ══ -->
@@ -1823,14 +1820,17 @@
   <script defer src="/src/components/depositFeePreview.js?v=20260817m2"></script>
   <script defer src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
-  <script defer src="/src/components/instantCardView.js?v=20260928exclusiveViews"></script>
-  <script defer src="/src/components/standardCardView.js?v=20260928exclusiveViews"></script>
-  <script defer src="/src/components/cardProviderSwitch.js?v=20260928exclusiveViews"></script>
-  <script defer src="/src/components/index.js?v=20260928exclusiveViews"></script>
+  <script defer src="/src/components/instantCardView.js?v=20260928appModes"></script>
+  <script defer src="/src/components/standardCardView.js?v=20260928appModes"></script>
+  <script defer src="/src/components/instantAppView.js?v=20260928appModes2"></script>
+  <script defer src="/src/components/standardAppView.js?v=20260928appModes2"></script>
+  <script defer src="/src/components/appModeSwitcher.js?v=20260928appModes2"></script>
+  <script defer src="/src/components/cardProviderSwitch.js?v=20260928appModes"></script>
+  <script defer src="/src/components/index.js?v=20260928appModes"></script>
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20260928exclusiveViews"></script>
+  <script defer src="/dashboard.js?v=20260928appModes"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
