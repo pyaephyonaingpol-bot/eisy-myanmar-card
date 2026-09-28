@@ -1,7 +1,7 @@
 /**
  * Noon-style Instant ↔ Standard pill switch.
- * Renders / switches independent InstantCardView and StandardCardView hosts.
- * Does not contain issuance logic for either provider.
+ * Mounts exactly ONE independent view at a time into a single host —
+ * like swapping full HTML pages. No overlapping wallet DOM or handlers.
  */
 (function (root) {
   'use strict';
@@ -43,9 +43,11 @@
     </button>
   </div>
 </div>
+<p id="cardProviderFlowDesc" class="hint card-provider-flow-desc" data-i18n="card_flow_desc_instant" style="margin:0 0 1rem">
+  Instant Card uses your internal USDT Wallet and issues via Instant (No KYC).
+</p>
 <div class="card-provider-panels">
-  <div id="instantCardViewHost" data-card-view-host="instant"></div>
-  <div id="standardCardViewHost" data-card-view-host="standard"></div>
+  <div id="cardProviderActiveHost" data-card-view-host="active" aria-live="polite"></div>
 </div>
 <div class="card-provider-switch-footer">
   <div
@@ -66,6 +68,9 @@
   </div>
 </div>`.trim();
 
+  let _activeProvider = null;
+  let _boundCtx = null;
+
   function $(id) {
     return typeof document !== 'undefined' ? document.getElementById(id) : null;
   }
@@ -82,6 +87,10 @@
     };
   }
 
+  function activeHost() {
+    return $('cardProviderActiveHost');
+  }
+
   function syncSwitchUi(provider) {
     const which = normalizeProvider(provider);
     document.querySelectorAll('.card-provider-switch').forEach((track) => {
@@ -93,6 +102,29 @@
         btn.tabIndex = track.id === 'cardProviderSwitch' ? (active ? 0 : -1) : -1;
       });
     });
+
+    const desc = $('cardProviderFlowDesc');
+    if (desc) {
+      if (which === 'kripicard') {
+        desc.setAttribute('data-i18n', 'card_flow_desc_instant');
+        desc.textContent = 'Instant Card uses your internal USDT Wallet and issues via Instant (No KYC).';
+      } else {
+        desc.setAttribute('data-i18n', 'card_flow_desc_standard');
+        desc.textContent = 'Standard Card uses your Bitnob wallet deposit address and requires verified KYC.';
+      }
+      if (typeof root.I18n !== 'undefined' && typeof root.I18n.apply === 'function') {
+        root.I18n.apply(desc.parentElement || document);
+      }
+    }
+  }
+
+  function clearActiveHost() {
+    const host = activeHost();
+    const views = getViews();
+    views.instant?.unmount?.(host);
+    views.standard?.unmount?.(host);
+    if (host) host.innerHTML = '';
+    _activeProvider = null;
   }
 
   function mountShell(host) {
@@ -103,91 +135,96 @@
     return host;
   }
 
-  function mountViews({ instantHost, standardHost } = {}) {
+  /**
+   * Exclusive mount: destroy whatever is in the active host, then mount
+   * only Instant OR only Standard — never both.
+   */
+  async function setActive(provider, ctx = {}) {
+    const which = normalizeProvider(provider);
     const views = getViews();
-    const iHost = instantHost || $('instantCardViewHost');
-    const sHost = standardHost || $('standardCardViewHost');
-    if (views.instant && iHost && !iHost.querySelector('#kripicardRequestForm')) {
-      views.instant.mount(iHost, { replace: true });
+    const host = activeHost();
+    const mergedCtx = {
+      ...(_boundCtx || {}),
+      ...ctx,
+      instantCtx: ctx.instantCtx || (_boundCtx && _boundCtx.instantCtx) || ctx,
+      standardCtx: ctx.standardCtx || (_boundCtx && _boundCtx.standardCtx) || ctx,
+    };
+    _boundCtx = mergedCtx;
+
+    syncSwitchUi(which);
+
+    if (!host) {
+      _activeProvider = which;
+      mergedCtx.onProviderChange?.(which);
+      return which;
     }
-    if (views.standard && sHost && !sHost.querySelector('#cardRequestForm')) {
-      views.standard.mount(sHost, { replace: true });
+
+    // Full page-style swap: wipe previous view DOM + handlers first.
+    clearActiveHost();
+
+    if (which === 'kripicard') {
+      views.instant?.mount(host, { replace: true });
+      views.instant?.bind(mergedCtx.instantCtx || mergedCtx);
+      await views.instant?.activate(mergedCtx.instantCtx || mergedCtx);
+    } else {
+      views.standard?.mount(host, { replace: true });
+      views.standard?.bind(mergedCtx.standardCtx || mergedCtx);
+      await views.standard?.activate(mergedCtx.standardCtx || mergedCtx);
     }
+
+    _activeProvider = which;
+    mergedCtx.onProviderChange?.(which);
+    return which;
   }
 
   function bind(ctx = {}) {
+    _boundCtx = ctx;
     const main = $('cardProviderSwitch');
-    if (!main || main.dataset.bound === '1') {
-      // Still ensure views are bound if switch already exists
-      const views = getViews();
-      views.instant?.bind(ctx.instantCtx || ctx);
-      views.standard?.bind(ctx.standardCtx || ctx);
-      return;
-    }
-    main.dataset.bound = '1';
-    const views = getViews();
+    if (!main) return;
 
-    const onPick = (provider) => {
-      setActive(provider, ctx);
-    };
+    if (main.dataset.bound !== '1') {
+      main.dataset.bound = '1';
 
-    document.querySelectorAll('.card-provider-tab[data-card-provider]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        onPick(btn.getAttribute('data-card-provider') || 'kripicard');
+      document.querySelectorAll('.card-provider-tab[data-card-provider]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          setActive(btn.getAttribute('data-card-provider') || 'kripicard', _boundCtx || ctx);
+        });
       });
-    });
 
-    main.addEventListener('keydown', (e) => {
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      e.preventDefault();
-      const next = e.key === 'ArrowRight' ? 'bitnob' : 'kripicard';
-      onPick(next);
-      main.querySelector(`[data-card-provider="${next}"]`)?.focus();
-    });
-
-    views.instant?.bind(ctx.instantCtx || ctx);
-    views.standard?.bind(ctx.standardCtx || ctx);
+      main.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        const next = e.key === 'ArrowRight' ? 'bitnob' : 'kripicard';
+        setActive(next, _boundCtx || ctx);
+        main.querySelector(`[data-card-provider="${next}"]`)?.focus();
+      });
+    }
 
     const initial = ctx.initialProvider
       || (ctx.isKycVerified?.() ? 'bitnob' : 'kripicard');
     setActive(initial, ctx);
   }
 
-  function setActive(provider, ctx = {}) {
-    const which = normalizeProvider(provider);
-    const views = getViews();
-    syncSwitchUi(which);
-
-    if (which === 'kripicard') {
-      views.standard?.deactivate();
-      views.instant?.activate(ctx.instantCtx || ctx);
-    } else {
-      views.instant?.deactivate();
-      views.standard?.activate(ctx.standardCtx || ctx);
-    }
-
-    ctx.onProviderChange?.(which);
-    return which;
-  }
-
-  /**
-   * Mount Noon switch + both views into a cards apply shell.
-   */
   function mountInto(shellHost, ctx = {}) {
     mountShell(shellHost);
-    mountViews();
+    clearActiveHost();
     bind(ctx);
     return $('cardProviderSwitch');
+  }
+
+  function getActiveProvider() {
+    return _activeProvider;
   }
 
   root.EisyComponents.cardProviderSwitch = {
     SWITCH_MARKUP,
     mountShell,
-    mountViews,
     mountInto,
     bind,
     setActive,
     syncSwitchUi,
     normalizeProvider,
+    clearActiveHost,
+    getActiveProvider,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

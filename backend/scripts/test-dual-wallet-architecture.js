@@ -114,17 +114,25 @@ function testUiLabelsAndDepositPanels() {
     path.join(ROOT, 'backend/public/src/components/standardCardView.js'),
     'utf8'
   );
-  assert.ok(instantView.includes('instantMasterBalance'));
-  assert.ok(instantView.includes('pay_master_wallet_issuance'));
+  assert.ok(instantView.includes('instantUsdtBalance') || instantView.includes('USDT Wallet'));
+  assert.ok(instantView.includes('pay_usdt_wallet_issuance') || instantView.includes('USDT Wallet'));
   assert.ok(standardView.includes('standardDepositAddress'));
   assert.ok(standardView.includes('pay_standard_wallet_issuance'));
   assert.ok(standardView.includes("wallet_type: 'bitnob_usdt'") || standardView.includes('bitnob_usdt'));
+
+  const switcher = fs.readFileSync(
+    path.join(ROOT, 'backend/public/src/components/cardProviderSwitch.js'),
+    'utf8'
+  );
+  assert.ok(switcher.includes('cardProviderActiveHost'));
+  assert.ok(switcher.includes('clearActiveHost'));
 
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('loadCardFundingWallets'));
   assert.ok(dash.includes('loadStandardDepositAddress'));
   assert.ok(dash.includes('mountCardProviderUi'));
   assert.ok(dash.includes('setCardProviderTab'));
+  assert.ok(dash.includes('getUsdtWalletBalance'));
   console.log('ok');
 }
 

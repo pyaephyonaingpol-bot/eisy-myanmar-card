@@ -1,5 +1,5 @@
 /**
- * Dedicated Instant vs Standard component files + Noon toggle shell.
+ * Dedicated Instant vs Standard component files + exclusive Noon toggle.
  */
 'use strict';
 
@@ -30,24 +30,47 @@ function testComponentFilesExist() {
 
   assert.ok(instant.includes('instantCardView'));
   assert.ok(instant.includes('id="kripicardRequestForm"') || instant.includes('kripicardRequestForm'));
-  assert.ok(instant.includes('instantMasterBalance'));
-  assert.ok(instant.includes('Master Wallet'));
+  assert.ok(instant.includes('instantUsdtBalance') || instant.includes('USDT Wallet'));
+  assert.ok(instant.includes('getUsdtWalletBalance') || instant.includes('wallet_type: \'usdt\''));
+  assert.ok(instant.includes("WALLET = 'usdt'") || instant.includes("data-wallet=\"usdt\""));
   assert.ok(!/bitnob/i.test(instant), 'Instant component must not mention Bitnob');
   assert.ok(!instant.includes('id="cardRequestForm"'), 'Instant must not embed Standard form id');
   assert.ok(!instant.includes('standardDepositAddress'));
+  assert.ok(instant.includes('function unmount') || instant.includes('unmount('));
 
   assert.ok(standard.includes('standardCardView'));
   assert.ok(standard.includes('id="cardRequestForm"') || standard.includes('cardRequestForm'));
   assert.ok(standard.includes('standardDepositAddress'));
   assert.ok(standard.includes('bitnob'));
+  assert.ok(standard.includes("WALLET = 'bitnob_usdt'") || standard.includes('bitnob_usdt'));
   assert.ok(!/kripicard/i.test(standard), 'Standard component must not mention Kripicard');
   assert.ok(!standard.includes('id="kripicardRequestForm"'));
-  assert.ok(!standard.includes('instantMasterBalance'));
+  assert.ok(!standard.includes('instantUsdtBalance'));
+  assert.ok(standard.includes('function unmount') || standard.includes('unmount('));
 
   assert.ok(switcher.includes('cardProviderSwitch'));
+  assert.ok(switcher.includes('cardProviderActiveHost'), 'single exclusive host');
+  assert.ok(switcher.includes('clearActiveHost'));
   assert.ok(switcher.includes('instantCardView'));
   assert.ok(switcher.includes('standardCardView'));
   assert.ok(switcher.includes('card-provider-switch-footer'));
+  assert.ok(!switcher.includes('instantCardViewHost') || switcher.includes('cardProviderActiveHost'));
+  console.log('ok');
+}
+
+function testExclusiveMountOnSwitch() {
+  section('Noon switch mounts exactly one view at a time');
+  const switcher = fs.readFileSync(
+    path.join(ROOT, 'backend/public/src/components/cardProviderSwitch.js'),
+    'utf8'
+  );
+  assert.ok(switcher.includes('clearActiveHost()'));
+  assert.ok(switcher.includes('views.instant?.mount(host'));
+  assert.ok(switcher.includes('views.standard?.mount(host'));
+  // Must not pre-mount both panels side-by-side anymore.
+  assert.ok(!switcher.includes('id="instantCardViewHost"'));
+  assert.ok(!switcher.includes('id="standardCardViewHost"'));
+  assert.ok(switcher.includes('card_flow_desc_instant') || switcher.includes('cardProviderFlowDesc'));
   console.log('ok');
 }
 
@@ -88,7 +111,6 @@ function testHtmlHostsAndNoonSwitch() {
   assert.ok(html.includes('cardProviderSwitch.js'));
   assert.ok(html.includes('instantCardApi.js'));
   assert.ok(html.includes('standardCardApi.js'));
-  // Markup lives in component files, not duplicated inline on cards page.
   assert.ok(!html.includes('id="kripicardRequestForm"'));
   assert.ok(!html.includes('id="cardRequestForm"'));
   assert.ok(!html.includes('id="cardProviderSwitch"'));
@@ -103,6 +125,8 @@ function testDashboardWiresComponents() {
   assert.ok(dash.includes("mountCardProviderUi('instant')"));
   assert.ok(dash.includes("mountCardProviderUi('standard')"));
   assert.ok(dash.includes('setCardProviderTab'));
+  assert.ok(dash.includes('getUsdtWalletBalance'));
+  assert.ok(dash.includes('refreshUsdtWallet'));
   assert.ok(dash.includes('cardProviderSwitch'));
   assert.ok(dash.includes('instantCardView'));
   assert.ok(dash.includes('standardCardView'));
@@ -130,6 +154,7 @@ function testRouteModulesIsolated() {
 
 function main() {
   testComponentFilesExist();
+  testExclusiveMountOnSwitch();
   testServiceApisIsolated();
   testHtmlHostsAndNoonSwitch();
   testDashboardWiresComponents();
