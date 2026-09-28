@@ -44,8 +44,12 @@ assert(/id="profileForm"/.test(profile), 'profile must contain profileForm');
 assert(!/id="profileForm"/.test(settings), 'settings must not host profileForm');
 assert(/data-goto="profile"/.test(settings), 'settings should link to profile');
 
-assert(/data-page="profile"/.test(html), 'nav/page profile required');
+assert(/id="pageProfile"[^>]*data-page="profile"/.test(html), 'profile page required');
 assert(/data-page-title="profile"/.test(html), 'page title for profile required');
+assert(/id="accountMenuPanel"[\s\S]*data-goto="profile"/.test(html), 'account menu must link to profile');
+assert(!/<nav[\s\S]*?data-page="profile"[\s\S]*?<\/nav>/.test(
+  html.slice(html.indexOf('id="userSidebar"'), html.indexOf('</aside>', html.indexOf('id="userSidebar"')))
+), 'sidebar must not include Profile nav item');
 assert(/id="sumBalanceUsdt"/.test(home), 'home must keep wallet balance');
 assert(/home-card-purchase/.test(home), 'home must keep card purchase panel');
 assert(!/quick_actions/.test(home), 'home must not contain redundant quick actions panel');
