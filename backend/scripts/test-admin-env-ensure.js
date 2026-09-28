@@ -22,10 +22,18 @@ const html = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');
 
 assert.ok(service.includes('async function ensureEnvSuperAdmin'), 'ensureEnvSuperAdmin defined');
 assert.ok(service.includes('async function getEnvAdminMappingStatus'), 'mapping status helper');
+assert.ok(service.includes('maybeHealEnvAdminCredentials'), 'login heals env password drift');
+assert.ok(service.includes("source: 'login-heal'"), 'login-heal ensure source');
 assert.ok(routes.includes("/auth/ensure-env-admin"), 'ensure-env-admin route');
 assert.ok(routes.includes('env_admin'), 'auth/status exposes env_admin');
 assert.ok(routes.includes('database:'), 'auth/status exposes database identity');
+assert.ok(routes.includes('ADMIN_EMAIL / ADMIN_PASSWORD unset'), 'auth/status warns when env admin unset');
 assert.ok(index.includes('ensureEnvSuperAdmin'), 'boot calls ensureEnvSuperAdmin');
+const vercelApi = fs.readFileSync(path.join(ROOT, 'api/index.js'), 'utf8');
+assert.ok(vercelApi.includes("source: 'vercel-bootstrap'"), 'Vercel bootstrap ensures env admin');
+const ensureCli = fs.readFileSync(path.join(ROOT, 'scripts/ensure-env-admin.js'), 'utf8');
+assert.ok(ensureCli.includes('body.email = email'), 'remote ensure sends ADMIN_EMAIL override');
+assert.ok(ensureCli.includes('body.password = password'), 'remote ensure sends ADMIN_PASSWORD override');
 assert.ok(!html.includes(', 8000)'), 'splash no longer waits 8s');
 assert.ok(html.includes('dismissAdminSplash') || html.includes('1500'), 'faster splash dismiss');
 console.log('ok');
@@ -70,6 +78,24 @@ const {
     password: 'TestAdmin!23456',
   });
   assert.ok(session.sessionToken, 'can login with env password after ensure');
+
+  // Drift the stored hash, then login with env password must auto-heal.
+  const { hashPassword } = require('../src/services/cryptoService');
+  await User.updatePassword(session.user.id, hashPassword('WrongDrifted!999'));
+  const healedLogin = await loginAdmin({
+    email: 'ops-admin@example.com',
+    password: 'TestAdmin!23456',
+  });
+  assert.ok(healedLogin.sessionToken, 'login heals drifted password via ADMIN_PASSWORD');
+
+  // Wrong password still fails (no heal when credentials do not match env).
+  let wrongFailed = false;
+  try {
+    await loginAdmin({ email: 'ops-admin@example.com', password: 'NotTheEnvPassword1' });
+  } catch (err) {
+    wrongFailed = /Invalid email or password/i.test(err.message || '');
+  }
+  assert.ok(wrongFailed, 'wrong password still rejected');
 
   // Promote a normal user email that already exists without admin_role
   const plain = await User.create({
