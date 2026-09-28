@@ -2,6 +2,8 @@
  * Compact Instant ↔ Standard app-mode switcher.
  * Exclusively mounts InstantAppView or StandardAppView (full independent pages).
  * Zero shared wallet/card DOM between modes.
+ *
+ * Multiple switch pills (header + My Cards shell) share one mode; every pill is bound.
  */
 (function (root) {
   'use strict';
@@ -10,14 +12,15 @@
 
   const STORAGE_KEY = 'eisy_app_mode';
 
+  // No fixed element id — header and shell both mount a pill; duplicate ids broke binding.
   const SWITCH_MARKUP = `
-<div class="app-mode-switch" id="appModeSwitch" role="tablist" aria-label="App mode" data-active="instant">
+<div class="app-mode-switch" data-app-mode-switch role="tablist" aria-label="App mode" data-active="instant">
   <span class="app-mode-switch-thumb" aria-hidden="true"></span>
-  <button type="button" class="app-mode-tab is-active" role="tab" aria-selected="true" data-app-mode="instant" id="tabAppInstant">
+  <button type="button" class="app-mode-tab is-active" role="tab" aria-selected="true" data-app-mode="instant">
     <span class="app-mode-tab-title" data-i18n="pill_instant_card">Instant</span>
     <span class="app-mode-tab-sub" data-i18n="pill_no_kyc">No KYC</span>
   </button>
-  <button type="button" class="app-mode-tab" role="tab" aria-selected="false" data-app-mode="standard" id="tabAppStandard">
+  <button type="button" class="app-mode-tab" role="tab" aria-selected="false" data-app-mode="standard">
     <span class="app-mode-tab-title" data-i18n="pill_standard_card">Standard</span>
     <span class="app-mode-tab-sub" data-i18n="pill_verified">Verified</span>
   </button>
@@ -27,7 +30,7 @@
 <div class="app-mode-shell">
   <div class="app-mode-switch-bar">
     <p class="app-mode-switch-label" data-i18n="choose_app_mode">Mode</p>
-    <div id="appModeSwitchMount"></div>
+    <div data-app-mode-switch-mount></div>
   </div>
   <p id="appModeFlowDesc" class="hint app-mode-flow-desc" data-i18n="card_flow_desc_instant">
     Instant mode: USDT Wallet + Instant Card (No KYC).
@@ -40,6 +43,11 @@
 
   function $(id) {
     return typeof document !== 'undefined' ? document.getElementById(id) : null;
+  }
+
+  function allSwitches() {
+    if (typeof document === 'undefined') return [];
+    return Array.from(document.querySelectorAll('[data-app-mode-switch]'));
   }
 
   function normalizeMode(mode) {
@@ -70,7 +78,7 @@
 
   function syncSwitchUi(mode) {
     const which = normalizeMode(mode);
-    document.querySelectorAll('.app-mode-switch').forEach((track) => {
+    allSwitches().forEach((track) => {
       track.setAttribute('data-active', which);
       track.querySelectorAll('.app-mode-tab').forEach((btn) => {
         const active = btn.getAttribute('data-app-mode') === which;
@@ -94,7 +102,6 @@
       }
     }
 
-    // Toggle mode-scoped nav items
     document.querySelectorAll('[data-mode-nav="instant"]').forEach((el) => {
       el.classList.toggle('hidden', which !== 'instant');
     });
@@ -114,12 +121,11 @@
   }
 
   function mountSwitch(into) {
-    const target = into || $('appModeSwitchMount');
-    if (!target) return null;
-    if (!target.querySelector('#appModeSwitch')) {
-      target.innerHTML = SWITCH_MARKUP;
+    if (!into) return null;
+    if (!into.querySelector('[data-app-mode-switch]')) {
+      into.innerHTML = SWITCH_MARKUP;
     }
-    return $('appModeSwitch');
+    return into.querySelector('[data-app-mode-switch]');
   }
 
   function mountShell(host) {
@@ -127,7 +133,8 @@
     if (!host.querySelector('#appModeActiveHost')) {
       host.innerHTML = SHELL_MARKUP;
     }
-    mountSwitch($('appModeSwitchMount'));
+    const mount = host.querySelector('[data-app-mode-switch-mount]') || $('appModeSwitchMount');
+    mountSwitch(mount);
     if (typeof root.I18n !== 'undefined' && root.I18n.apply) {
       root.I18n.apply(host);
     }
@@ -172,27 +179,32 @@
     return which;
   }
 
+  function bindTrack(track, ctx) {
+    if (!track || track.dataset.bound === '1') return;
+    track.dataset.bound = '1';
+    track.querySelectorAll('.app-mode-tab[data-app-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setMode(btn.getAttribute('data-app-mode') || 'instant', _boundCtx || ctx);
+      });
+    });
+    track.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      const next = e.key === 'ArrowRight' ? 'standard' : 'instant';
+      setMode(next, _boundCtx || ctx);
+      track.querySelector(`[data-app-mode="${next}"]`)?.focus();
+    });
+  }
+
+  /** Bind click/keyboard handlers on every Instant↔Standard pill currently in the DOM. */
+  function bindAllTracks(ctx = {}) {
+    _boundCtx = { ...(_boundCtx || {}), ...ctx };
+    allSwitches().forEach((track) => bindTrack(track, _boundCtx));
+  }
+
   function bind(ctx = {}) {
     _boundCtx = ctx;
-    const main = $('appModeSwitch');
-    if (!main) return;
-
-    if (main.dataset.bound !== '1') {
-      main.dataset.bound = '1';
-      main.querySelectorAll('.app-mode-tab[data-app-mode]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          setMode(btn.getAttribute('data-app-mode') || 'instant', _boundCtx || ctx);
-        });
-      });
-      main.addEventListener('keydown', (e) => {
-        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-        e.preventDefault();
-        const next = e.key === 'ArrowRight' ? 'standard' : 'instant';
-        setMode(next, _boundCtx || ctx);
-        main.querySelector(`[data-app-mode="${next}"]`)?.focus();
-      });
-    }
-
+    bindAllTracks(ctx);
     const initial = ctx.initialMode
       || (ctx.isKycVerified?.() ? 'standard' : readStoredMode());
     setMode(initial, ctx);
@@ -201,31 +213,16 @@
   function mountInto(shellHost, ctx = {}) {
     mountShell(shellHost);
     bind(ctx);
-    return $('appModeSwitch');
+    return shellHost?.querySelector('[data-app-mode-switch]') || null;
   }
 
   /** Compact switch only (e.g. header) — does not own the content host. */
   function mountCompact(into, ctx = {}) {
     mountSwitch(into);
-    _boundCtx = ctx;
-    const main = $('appModeSwitch');
-    if (main && main.dataset.bound !== '1') {
-      main.dataset.bound = '1';
-      main.querySelectorAll('.app-mode-tab[data-app-mode]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const mode = btn.getAttribute('data-app-mode') || 'instant';
-          if ($('appModeActiveHost')) {
-            setMode(mode, _boundCtx || ctx);
-          } else {
-            syncSwitchUi(mode);
-            writeStoredMode(mode);
-            (_boundCtx || ctx).onModeChange?.(mode);
-          }
-        });
-      });
-    }
+    _boundCtx = { ...(_boundCtx || {}), ...ctx };
+    bindAllTracks(_boundCtx);
     syncSwitchUi(ctx.initialMode || readStoredMode());
-    return main;
+    return into?.querySelector('[data-app-mode-switch]') || null;
   }
 
   function getActiveMode() {
@@ -241,6 +238,7 @@
     mountCompact,
     mountInto,
     bind,
+    bindAllTracks,
     setMode,
     syncSwitchUi,
     normalizeMode,

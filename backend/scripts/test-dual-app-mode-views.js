@@ -50,6 +50,12 @@ function testAppViewFilesIsolated() {
   assert.ok(switcher.includes('instantAppView'));
   assert.ok(switcher.includes('standardAppView'));
   assert.ok(switcher.includes('setMode'));
+  assert.ok(switcher.includes('data-app-mode-switch'));
+  assert.ok(switcher.includes('bindAllTracks'));
+  assert.ok(
+    !switcher.includes('id="appModeSwitch"'),
+    'Switcher pills must not share a fixed id (header + shell both mount one)'
+  );
   console.log('ok');
 }
 
