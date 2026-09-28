@@ -1329,7 +1329,7 @@
                     id="cardProviderSwitch"
                     class="card-provider-switch"
                     role="tablist"
-                    aria-label="Card providers"
+                    aria-label="Card types"
                     data-active="kripicard"
                   >
                     <span class="card-provider-switch-thumb" aria-hidden="true"></span>
@@ -1339,10 +1339,10 @@
                       role="tab"
                       aria-selected="true"
                       data-card-provider="kripicard"
-                      id="tabKripicardCard"
+                      id="tabInstantCard"
                     >
-                      <span class="card-provider-tab-title" data-i18n="pill_instant_card">Instant</span>
-                      <span class="card-provider-tab-sub" data-i18n="pill_no_kyc">No KYC · Kripicard</span>
+                      <span class="card-provider-tab-title" data-i18n="pill_instant_card">Instant Card</span>
+                      <span class="card-provider-tab-sub" data-i18n="pill_no_kyc">No KYC</span>
                     </button>
                     <button
                       type="button"
@@ -1350,19 +1350,19 @@
                       role="tab"
                       aria-selected="false"
                       data-card-provider="bitnob"
-                      id="tabBitnobCard"
+                      id="tabStandardCard"
                     >
-                      <span class="card-provider-tab-title" data-i18n="pill_bitnob_card">Bitnob</span>
-                      <span class="card-provider-tab-sub" data-i18n="pill_kyc_required">KYC required</span>
+                      <span class="card-provider-tab-title" data-i18n="pill_standard_card">Standard Card</span>
+                      <span class="card-provider-tab-sub" data-i18n="pill_verified">Verified</span>
                     </button>
                   </div>
                 </div>
 
                 <div class="card-provider-panels">
-                <!-- Non-KYC: Kripicard -->
-                <div id="kripicardApplyPanel" class="card-provider-panel is-active" data-provider="kripicard" role="tabpanel" aria-labelledby="tabKripicardCard">
-                  <h2 data-i18n="apply_instant_card">Instant Card (Kripicard)</h2>
-                  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_instant_card_hint">No KYC required. Pay from your USDT wallet (top up via crypto deposit / master wallet). Card is issued via Kripicard.</p>
+                <!-- Non-KYC: Instant Card -->
+                <div id="kripicardApplyPanel" class="card-provider-panel is-active" data-provider="kripicard" role="tabpanel" aria-labelledby="tabInstantCard">
+                  <h2 data-i18n="apply_instant_card">Instant Card (No KYC)</h2>
+                  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_instant_card_hint">No KYC required. Pay from your USDT wallet (top up via crypto deposit / master wallet).</p>
                   <p class="hint" style="margin-bottom:0.75rem">
                     <button type="button" class="btn btn-secondary btn-sm" data-goto="wallet" data-i18n="top_up_usdt_first">Top up USDT wallet first</button>
                   </p>
@@ -1396,11 +1396,11 @@
                   <div id="kripicardRequestReceipt" class="pricing-receipt hidden"></div>
                 </div>
 
-                <!-- KYC: Bitnob -->
-                <div id="bitnobApplyPanel" class="card-provider-panel" data-provider="bitnob" role="tabpanel" aria-labelledby="tabBitnobCard" hidden>
-                  <h2 data-i18n="apply_bitnob_card">Bitnob Card (KYC)</h2>
-                  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_bitnob_card_hint">Requires verified KYC. Pay from your USDT wallet. Issued via Bitnob.</p>
-                  <div id="bitnobKycGate" class="wallet-pay-hint err hidden" data-i18n="bitnob_kyc_required">Complete KYC verification before applying for a Bitnob card. Non-KYC users can use Instant Card instead.</div>
+                <!-- KYC: Standard Card -->
+                <div id="bitnobApplyPanel" class="card-provider-panel" data-provider="bitnob" role="tabpanel" aria-labelledby="tabStandardCard" hidden>
+                  <h2 data-i18n="apply_standard_card">Standard Card (Verified)</h2>
+                  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_standard_card_hint">Requires verified KYC. Pay from your USDT wallet.</p>
+                  <div id="bitnobKycGate" class="wallet-pay-hint err hidden" data-i18n="standard_kyc_required">Complete KYC verification before applying for a Standard Card. Without KYC, use Instant Card instead.</div>
                   <form id="cardRequestForm" class="form">
                     <div class="field"><label for="cardHolderNameInput" data-i18n="name_on_card">Name on Card</label>
                       <input id="cardHolderNameInput" type="text" minlength="2" maxlength="50" autocomplete="name" placeholder="Cardholder name" required />
@@ -1425,20 +1425,27 @@
                       <div class="pricing-row pricing-usdt" id="pbUsdtRow"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="pbTotalUsdt">$0.00 USDT</strong></div>
                       <p id="pbRateLabel" class="hint pricing-rate" data-i18n="usdt_parity_rate">1 USDT ≈ 1 USD</p>
                     </div>
-                    <button type="submit" class="btn btn-primary" id="btnRequestCard" data-i18n="submit_card_request">Issue Bitnob Card</button>
+                    <button type="submit" class="btn btn-primary" id="btnRequestCard" data-i18n="submit_standard_card">Issue Standard Card</button>
                   </form>
                   <div id="cardRequestReceipt" class="pricing-receipt hidden"></div>
                 </div>
                 </div>
 
                 <div class="card-provider-switch-footer">
-                  <div class="card-provider-switch card-provider-switch--compact" data-mirror="cardProviderSwitch" aria-hidden="true">
+                  <div
+                    class="card-provider-switch card-provider-switch--compact"
+                    data-mirror="cardProviderSwitch"
+                    role="presentation"
+                    aria-hidden="true"
+                  >
                     <span class="card-provider-switch-thumb" aria-hidden="true"></span>
                     <button type="button" class="card-provider-tab is-active" data-card-provider="kripicard" tabindex="-1">
-                      <span class="card-provider-tab-title" data-i18n="pill_instant_card">Instant</span>
+                      <span class="card-provider-tab-title" data-i18n="pill_instant_card">Instant Card</span>
+                      <span class="card-provider-tab-sub" data-i18n="pill_no_kyc">No KYC</span>
                     </button>
                     <button type="button" class="card-provider-tab" data-card-provider="bitnob" tabindex="-1">
-                      <span class="card-provider-tab-title" data-i18n="pill_bitnob_card">Bitnob</span>
+                      <span class="card-provider-tab-title" data-i18n="pill_standard_card">Standard Card</span>
+                      <span class="card-provider-tab-sub" data-i18n="pill_verified">Verified</span>
                     </button>
                   </div>
                 </div>

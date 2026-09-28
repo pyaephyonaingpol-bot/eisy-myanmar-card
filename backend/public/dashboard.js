@@ -5398,7 +5398,7 @@ const Dashboard = {
         try {
           if (!this.isKycVerified()) {
             this.toast(
-              typeof t === 'function' ? t('bitnob_kyc_required') : 'Complete KYC before applying for a Bitnob card.',
+              typeof t === 'function' ? t('standard_kyc_required') : 'Complete KYC before applying for a Standard Card.',
               'error'
             );
             this.setCardProviderTab('kripicard');
@@ -5416,7 +5416,7 @@ const Dashboard = {
             this.toast(
               typeof t === 'function'
                 ? t('bitnob_customer_required')
-                : 'Complete Card KYC first so a Bitnob customer profile is ready, then try again.',
+                : 'Complete Card KYC first so your verified card profile is ready, then try again.',
               'error'
             );
             return;
@@ -5529,7 +5529,7 @@ const Dashboard = {
             receipt.classList.remove('hidden');
             receipt.innerHTML = `
               <p class="wallet-pay-hint ok" style="margin:0">
-                Instant Kripicard issued.
+                Instant Card issued.
                 ${debited ? `<br><small>Debited ${debited}</small>` : ''}
               </p>`;
           }
@@ -5914,7 +5914,7 @@ const Dashboard = {
         this.toast(
           typeof t === 'function'
             ? t('bitnob_customer_required')
-            : 'Complete Card KYC first so a Bitnob customer profile is ready, then try again.',
+            : 'Complete Card KYC first so your verified card profile is ready, then try again.',
           'error'
         );
       }
