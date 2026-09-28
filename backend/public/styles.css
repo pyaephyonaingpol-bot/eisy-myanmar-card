@@ -4917,3 +4917,127 @@ html.doc-scroll .auth-screen {
     animation: none !important;
   }
 }
+
+/* ── Compact Instant ↔ Standard app-mode switch ── */
+.app-mode-switch-header {
+  display: flex;
+  align-items: center;
+  margin-right: 0.35rem;
+}
+
+.app-mode-switch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.app-mode-switch-label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.app-mode-switch {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 0.2rem;
+  min-width: 11.5rem;
+  border-radius: var(--radius-pill);
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.app-mode-switch-thumb {
+  position: absolute;
+  top: 0.2rem;
+  left: 0.2rem;
+  width: calc(50% - 0.2rem);
+  height: calc(100% - 0.4rem);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, #fff 0%, #f1f5f9 100%);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.35);
+  transform: translateX(0);
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app-mode-switch[data-active="standard"] .app-mode-switch-thumb {
+  transform: translateX(100%);
+}
+
+.app-mode-switch .app-mode-tab {
+  position: relative;
+  z-index: 1;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-pill);
+  padding: 0.45rem 0.55rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.05rem;
+  min-height: 2.35rem;
+  font: inherit;
+  line-height: 1.1;
+  transition: color 200ms ease;
+}
+
+.app-mode-switch .app-mode-tab.is-active {
+  color: #0f172a;
+}
+
+.app-mode-tab-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.app-mode-tab-sub {
+  font-size: 0.62rem;
+  font-weight: 500;
+  opacity: 0.78;
+}
+
+.app-mode-flow-desc {
+  margin: 0 0 0.85rem;
+}
+
+.app-mode-active-host,
+.app-mode-view {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.app-mode-view .app-mode-card-panel {
+  margin: 0;
+}
+
+html[data-app-mode="instant"] [data-mode-nav="standard"],
+html[data-app-mode="standard"] [data-mode-nav="instant"] {
+  display: none !important;
+}
+
+@media (max-width: 720px) {
+  .app-mode-switch-header .app-mode-switch {
+    min-width: 9.5rem;
+  }
+  .app-mode-tab-title {
+    font-size: 0.74rem;
+  }
+  .app-mode-tab-sub {
+    display: none;
+  }
+}

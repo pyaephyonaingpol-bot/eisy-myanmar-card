@@ -374,7 +374,7 @@ const Dashboard = {
           forceRefresh: force || hasPending || !this._isFresh('cards'),
         });
         this.loadReloadHistory({ force });
-        this.mountCardProviderUi('switch');
+        this.mountAppModeUi('switch');
       }
       if (page === 'instant-card') {
         this.enterInstantCardPage({ force });
@@ -5382,8 +5382,8 @@ const Dashboard = {
   },
 
   bindDashboardForms() {
-    // Instant / Standard apply UI lives in dedicated component files + Noon switch.
-    this.mountCardProviderUi('switch');
+    // Exclusive Instant / Standard app views via compact mode switch.
+    this.mountAppModeUi('switch');
 
     $('issueCardForm').onsubmit = async (e) => {
       e.preventDefault();
@@ -5553,13 +5553,25 @@ const Dashboard = {
   },
 
   bindCardProviderTabs() {
-    this.mountCardProviderUi('switch');
+    this.mountAppModeUi('switch');
   },
 
   clearCardViewHosts() {
-    ['cardProviderSwitchShell', 'instantCardPageHost', 'standardCardPageHost'].forEach((id) => {
+    [
+      'appModeSwitcherShell',
+      'cardProviderSwitchShell',
+      'instantAppPageHost',
+      'standardAppPageHost',
+      'instantCardPageHost',
+      'standardCardPageHost',
+      'appModeSwitchHeader',
+    ].forEach((id) => {
       const el = $(id);
-      if (el) el.innerHTML = '';
+      if (el && (id === 'appModeSwitchHeader' || id.includes('Shell') || id.includes('Host'))) {
+        // Keep header switch mount node; clear content hosts.
+        if (id === 'appModeSwitchHeader') return;
+        el.innerHTML = '';
+      }
     });
   },
 
@@ -5571,6 +5583,10 @@ const Dashboard = {
       formatUsdt: (n) => self.formatUsdt(n),
       openPinUnlock: () => self.openPinUnlockModal(),
       openUsdtTopUp: () => self.openUsdtTopUpModal(),
+      openUsdtWithdraw: () => {
+        if (typeof self.openWithdrawModal === 'function') self.openWithdrawModal();
+        else $('btnOpenWithdrawUsdt')?.click();
+      },
       userName: self.user?.name || Auth.user?.name || '',
       isKycVerified: () => self.isKycVerified(),
     };
@@ -5578,7 +5594,6 @@ const Dashboard = {
     const instantCtx = {
       ...shared,
       pricing: self.kripicardPricing,
-      /** Internal USDT Wallet available balance (platform balance_usdt). */
       getUsdtWalletBalance: () => Number(self.walletUsdt ?? self.cardFundingWallets?.instant?.balance_usdt ?? 0),
       getMasterBalance: () => Number(self.walletUsdt ?? self.cardFundingWallets?.instant?.balance_usdt ?? 0),
       refreshUsdtWallet: async () => {
@@ -5604,8 +5619,8 @@ const Dashboard = {
         self.updateHomeRateSummary?.();
       },
       onNeedInstant: () => {
+        self.setAppMode('instant');
         if (typeof AppNav !== 'undefined') AppNav.navigate('instant-card', { pushHash: true });
-        else self.setCardProviderTab('kripicard');
       },
       onIssued: () => {
         self.loadWallet();
@@ -5622,15 +5637,70 @@ const Dashboard = {
       instantCtx,
       standardCtx,
       initialProvider: self.isKycVerified() ? 'bitnob' : 'kripicard',
+      initialMode: self.isKycVerified() ? 'standard' : (EisyComponents?.appModeSwitcher?.readStoredMode?.() || 'instant'),
+      onModeChange: (mode) => {
+        self._appMode = mode;
+        // Keep header compact switch in sync
+        EisyComponents?.appModeSwitcher?.syncSwitchUi?.(mode);
+      },
     };
   },
 
   /**
    * mode: 'switch' | 'instant' | 'standard'
-   * Renders independent InstantCardView / StandardCardView component files.
+   * Mounts exclusive InstantAppView / StandardAppView (full independent pages).
    */
+  mountAppModeUi(mode = 'switch') {
+    const comps = (typeof EisyComponents !== 'undefined') ? EisyComponents : null;
+    if (!comps?.instantAppView || !comps?.standardAppView || !comps?.appModeSwitcher) {
+      // Fallback to legacy card-only switch if app views missing
+      return this.mountCardProviderUi(mode);
+    }
+
+    this.clearCardViewHosts();
+    const ctx = this.buildCardViewContexts();
+
+    // Compact header switch (always available once logged in)
+    comps.appModeSwitcher.mountCompact($('appModeSwitchHeader'), {
+      ...ctx,
+      onModeChange: (m) => {
+        ctx.onModeChange?.(m);
+        if ($('appModeActiveHost')) {
+          comps.appModeSwitcher.setMode(m, ctx);
+        } else if (m === 'instant') {
+          this.mountAppModeUi('instant');
+        } else {
+          this.mountAppModeUi('standard');
+        }
+      },
+    });
+
+    if (mode === 'instant') {
+      comps.instantAppView.mount($('instantAppPageHost'), { replace: true });
+      comps.instantAppView.bind(ctx.instantCtx);
+      comps.instantAppView.activate(ctx.instantCtx);
+      comps.appModeSwitcher.syncSwitchUi('instant');
+      return;
+    }
+
+    if (mode === 'standard') {
+      comps.standardAppView.mount($('standardAppPageHost'), { replace: true });
+      comps.standardAppView.bind(ctx.standardCtx);
+      comps.standardAppView.activate(ctx.standardCtx);
+      comps.appModeSwitcher.syncSwitchUi('standard');
+      return;
+    }
+
+    // Default: exclusive Instant/Standard app pages on My Cards
+    comps.appModeSwitcher.mountInto($('appModeSwitcherShell'), ctx);
+  },
+
+  /** @deprecated legacy card-only switch — prefer mountAppModeUi */
   mountCardProviderUi(mode = 'switch') {
     const comps = (typeof EisyComponents !== 'undefined') ? EisyComponents : null;
+    if (comps?.instantAppView && comps?.appModeSwitcher) {
+      return this.mountAppModeUi(mode);
+    }
     if (!comps?.instantCardView || !comps?.standardCardView || !comps?.cardProviderSwitch) {
       console.warn('[Dashboard] card view components not loaded');
       return;
@@ -5640,24 +5710,44 @@ const Dashboard = {
     const ctx = this.buildCardViewContexts();
 
     if (mode === 'instant') {
-      comps.instantCardView.mount($('instantCardPageHost'), { replace: true });
+      const host = $('instantCardPageHost') || $('instantAppPageHost');
+      comps.instantCardView.mount(host, { replace: true });
       comps.instantCardView.bind(ctx.instantCtx);
       comps.instantCardView.activate(ctx.instantCtx);
       return;
     }
 
     if (mode === 'standard') {
-      comps.standardCardView.mount($('standardCardPageHost'), { replace: true });
+      const host = $('standardCardPageHost') || $('standardAppPageHost');
+      comps.standardCardView.mount(host, { replace: true });
       comps.standardCardView.bind(ctx.standardCtx);
       comps.standardCardView.activate(ctx.standardCtx);
       return;
     }
 
-    // Default: Noon toggle on My Cards hosts both independent components.
-    comps.cardProviderSwitch.mountInto($('cardProviderSwitchShell'), ctx);
+    const shell = $('cardProviderSwitchShell') || $('appModeSwitcherShell');
+    comps.cardProviderSwitch.mountInto(shell, ctx);
+  },
+
+  setAppMode(mode) {
+    const switcher = EisyComponents?.appModeSwitcher;
+    if (!switcher) {
+      this.setCardProviderTab(mode === 'standard' ? 'bitnob' : 'kripicard');
+      return;
+    }
+    const ctx = this.buildCardViewContexts();
+    if (!$('appModeActiveHost')) {
+      this.mountAppModeUi('switch');
+    }
+    switcher.setMode(mode, ctx);
   },
 
   setCardProviderTab(provider) {
+    const mode = (provider === 'bitnob' || provider === 'standard') ? 'standard' : 'instant';
+    if (EisyComponents?.appModeSwitcher) {
+      this.setAppMode(mode);
+      return;
+    }
     const switcher = EisyComponents?.cardProviderSwitch;
     if (!switcher) return;
     if (!$('cardProviderSwitch')) {
@@ -5669,11 +5759,11 @@ const Dashboard = {
 
   enterInstantCardPage({ force = false } = {}) {
     this.loadWallet({ force: false }).catch(() => {});
-    this.mountCardProviderUi('instant');
+    this.mountAppModeUi('instant');
   },
 
   enterStandardCardPage({ force = false } = {}) {
-    this.mountCardProviderUi('standard');
+    this.mountAppModeUi('standard');
   },
 
   syncStandardCardPageGate() {

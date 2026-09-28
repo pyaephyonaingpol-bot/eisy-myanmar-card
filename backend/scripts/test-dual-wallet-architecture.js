@@ -102,9 +102,9 @@ function testUiLabelsAndDepositPanels() {
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
   assert.ok(html.includes('data-page="instant-card"'));
   assert.ok(html.includes('data-page="standard-card"'));
-  assert.ok(html.includes('cardProviderSwitchShell'));
-  assert.ok(html.includes('instantCardView.js'));
-  assert.ok(html.includes('standardCardView.js'));
+  assert.ok(html.includes('cardProviderSwitchShell') || html.includes('appModeSwitcherShell'));
+  assert.ok(html.includes('instantCardView.js') || html.includes('instantAppView.js'));
+  assert.ok(html.includes('standardCardView.js') || html.includes('standardAppView.js'));
 
   const instantView = fs.readFileSync(
     path.join(ROOT, 'backend/public/src/components/instantCardView.js'),
@@ -120,18 +120,19 @@ function testUiLabelsAndDepositPanels() {
   assert.ok(standardView.includes('pay_standard_wallet_issuance'));
   assert.ok(standardView.includes("wallet_type: 'bitnob_usdt'") || standardView.includes('bitnob_usdt'));
 
-  const switcher = fs.readFileSync(
-    path.join(ROOT, 'backend/public/src/components/cardProviderSwitch.js'),
-    'utf8'
-  );
-  assert.ok(switcher.includes('cardProviderActiveHost'));
-  assert.ok(switcher.includes('clearActiveHost'));
+  const switcherPath = path.join(ROOT, 'backend/public/src/components/appModeSwitcher.js');
+  const legacySwitcherPath = path.join(ROOT, 'backend/public/src/components/cardProviderSwitch.js');
+  const switcher = fs.existsSync(switcherPath)
+    ? fs.readFileSync(switcherPath, 'utf8')
+    : fs.readFileSync(legacySwitcherPath, 'utf8');
+  assert.ok(switcher.includes('appModeActiveHost') || switcher.includes('cardProviderActiveHost'));
+  assert.ok(switcher.includes('clearHost') || switcher.includes('clearActiveHost'));
 
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('loadCardFundingWallets'));
   assert.ok(dash.includes('loadStandardDepositAddress'));
-  assert.ok(dash.includes('mountCardProviderUi'));
-  assert.ok(dash.includes('setCardProviderTab'));
+  assert.ok(dash.includes('mountAppModeUi') || dash.includes('mountCardProviderUi'));
+  assert.ok(dash.includes('setAppMode') || dash.includes('setCardProviderTab'));
   assert.ok(dash.includes('getUsdtWalletBalance'));
   console.log('ok');
 }

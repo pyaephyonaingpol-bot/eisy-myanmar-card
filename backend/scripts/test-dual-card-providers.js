@@ -77,10 +77,10 @@ function testRoutesWired() {
 function testUiSplit() {
   section('dashboard UI uses Noon switch + dedicated Instant/Standard components');
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
-  assert.ok(html.includes('cardProviderSwitchShell'));
+  assert.ok(html.includes('cardProviderSwitchShell') || html.includes('appModeSwitcherShell'));
   assert.ok(html.includes('instantCardView.js'));
   assert.ok(html.includes('standardCardView.js'));
-  assert.ok(html.includes('cardProviderSwitch.js'));
+  assert.ok(html.includes('appModeSwitcher.js') || html.includes('cardProviderSwitch.js'));
   assert.ok(html.includes('data-page="instant-card"'));
   assert.ok(html.includes('data-page="standard-card"'));
 
@@ -92,17 +92,27 @@ function testUiSplit() {
     path.join(ROOT, 'backend/public/src/components/standardCardView.js'),
     'utf8'
   );
+  const instantApp = fs.readFileSync(
+    path.join(ROOT, 'backend/public/src/components/instantAppView.js'),
+    'utf8'
+  );
+  const standardApp = fs.readFileSync(
+    path.join(ROOT, 'backend/public/src/components/standardAppView.js'),
+    'utf8'
+  );
   assert.ok(instantView.includes('kripicardRequestForm'));
   assert.ok(instantView.includes('kripicardBinSelect'));
   assert.ok(!/bitnob/i.test(instantView));
+  assert.ok(!/bitnob/i.test(instantApp));
   assert.ok(standardView.includes('cardRequestForm'));
   assert.ok(!/kripicard/i.test(standardView));
+  assert.ok(!/kripicard/i.test(standardApp));
 
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
-  assert.ok(dash.includes('mountCardProviderUi'));
-  assert.ok(dash.includes('setCardProviderTab'));
-  assert.ok(dash.includes('instantCardView'));
-  assert.ok(dash.includes('standardCardView'));
+  assert.ok(dash.includes('mountAppModeUi') || dash.includes('mountCardProviderUi'));
+  assert.ok(dash.includes('setAppMode') || dash.includes('setCardProviderTab'));
+  assert.ok(dash.includes('instantAppView') || dash.includes('instantCardView'));
+  assert.ok(dash.includes('standardAppView') || dash.includes('standardCardView'));
   console.log('ok');
 }
 
