@@ -1,10 +1,12 @@
 /**
  * Bitnob virtual-card service (Express-facing).
  *
- * Wraps lib/bitnob.js and ties create/fund to the USDT wallet ledger:
- *   1. Debit the user's available USDT (1 USDT ≈ 1 USD for card load)
- *   2. Call Bitnob create / fund
- *   3. On Bitnob failure, credit the USDT back (refund)
+ * Standard Card path uses the Bitnob user ledger (balance_bitnob_usdt), funded by
+ * Bitnob deposit addresses — never Master Wallet (balance_usdt).
+ *
+ * Legacy helpers createVirtualCardFromUsdt / fundVirtualCardFromUsdt can still debit
+ * Master Wallet when skipWalletDebit is false; cardWalletService passes Bitnob-ledger
+ * debits separately and calls issueCardForUser (no Master Wallet debit).
  *
  * Sensitive PAN/CVV are never stored here — use getSecureCardDetails only
  * when the UI needs them, and discard after render.

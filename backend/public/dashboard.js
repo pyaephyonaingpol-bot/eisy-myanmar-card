@@ -377,6 +377,7 @@ const Dashboard = {
         this.loadCardPricing().catch(() => {});
         this.loadKripicardPricing().catch(() => {});
         this.loadKripicardBins().catch(() => {});
+        this.loadCardFundingWallets().catch(() => {});
         this.setCardProviderTab(this.isKycVerified() ? 'bitnob' : 'kripicard');
       }
       if (page === 'home') {
@@ -5421,9 +5422,13 @@ const Dashboard = {
             );
             return;
           }
-          if (Number(this.walletUsdt ?? 0) < required) {
-            this.toast(`Insufficient USDT wallet. Need ${this.formatUsdt(required)}. Top up first.`, 'error');
-            this.openUsdtTopUpModal();
+          if (Number(this.walletBitnobUsdt ?? 0) < required) {
+            this.toast(
+              `Insufficient Standard Card wallet. Need ${this.formatUsdt(required)}. Deposit to your Standard Card address first.`,
+              'error'
+            );
+            this.loadStandardDepositAddress({ force: true }).catch(() => {});
+            this.setCardProviderTab('bitnob');
             return;
           }
 
@@ -5432,10 +5437,10 @@ const Dashboard = {
             card_holder_name: nameOnCard,
             initial_load_usd: initialLoad,
             pay_from_wallet: true,
-            wallet_type: 'usdt',
+            wallet_type: 'bitnob_usdt',
           };
 
-          const data = await Auth.api('POST', '/api/user/card/request', body, { sensitive: true });
+          const data = await Auth.api('POST', '/api/user/card/request-standard', body, { sensitive: true });
 
           const debited = data.wallet?.usdt_formatted
             || this.formatUsdt(data.wallet?.debited_usdt);
@@ -5463,6 +5468,7 @@ const Dashboard = {
           this.updateCardPricingBreakdown();
           this.loadWallet();
           this.loadUsdtWalletPage(true);
+          this.loadCardFundingWallets({ force: true }).catch(() => {});
           this.loadAllCards({ forceRefresh: true });
           this.loadDepositHistory();
           if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
@@ -5470,11 +5476,16 @@ const Dashboard = {
           if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
           if (
             err.code === 'INSUFFICIENT_USDT_BALANCE'
+            || err.code === 'INSUFFICIENT_BITNOB_BALANCE'
             || err.code === 'USDT_ONLY_CARD_ISSUANCE'
+            || err.code === 'BITNOB_WALLET_ONLY_CARD_ISSUANCE'
             || err.code === 'BITNOB_CUSTOMER_REQUIRED'
             || err.code === 'KYC_REQUIRED_FOR_BITNOB'
           ) {
             this.toast(err.message, 'error');
+            if (err.code === 'INSUFFICIENT_BITNOB_BALANCE' || err.code === 'BITNOB_WALLET_ONLY_CARD_ISSUANCE') {
+              this.loadStandardDepositAddress({ force: true }).catch(() => {});
+            }
             if (err.code === 'INSUFFICIENT_USDT_BALANCE' && typeof AppNav !== 'undefined') {
               this.openUsdtTopUpModal();
             }
@@ -5743,6 +5754,9 @@ const Dashboard = {
     }
 
     this.setCardProviderTab(this.isKycVerified() ? 'bitnob' : 'kripicard');
+    $('btnRefreshStandardDeposit')?.addEventListener('click', () => {
+      this.loadStandardDepositAddress({ force: true }).catch(() => {});
+    });
   },
 
   setCardProviderTab(provider) {
@@ -5789,8 +5803,72 @@ const Dashboard = {
     if (which === 'kripicard') {
       this.loadKripicardPricing().catch(() => {});
       this.loadKripicardBins().catch(() => {});
+      this.renderInstantWalletBalance();
     } else {
       this.loadCardPricing().catch(() => {});
+      this.loadCardFundingWallets().catch(() => {});
+      if (verified) this.loadStandardDepositAddress().catch(() => {});
+    }
+  },
+
+  async loadCardFundingWallets({ force = false } = {}) {
+    try {
+      const data = await Auth.api('GET', '/api/user/wallets/card-funding');
+      this.cardFundingWallets = data;
+      this.walletBitnobUsdt = Number(data?.standard?.balance_usdt ?? 0);
+      this.renderInstantWalletBalance();
+      this.renderStandardWalletBalance();
+      return data;
+    } catch (err) {
+      console.warn('[card-funding wallets]', err.message);
+      if (force) throw err;
+      return null;
+    }
+  },
+
+  renderInstantWalletBalance() {
+    const el = $('instantMasterBalance');
+    if (!el) return;
+    const bal = this.walletUsdt ?? this.cardFundingWallets?.instant?.balance_usdt ?? 0;
+    el.textContent = this.formatUsdt ? this.formatUsdt(bal) : `$ ${Number(bal).toFixed(2)} USDT`;
+  },
+
+  renderStandardWalletBalance() {
+    const el = $('standardBitnobBalance');
+    if (!el) return;
+    const bal = this.walletBitnobUsdt ?? this.cardFundingWallets?.standard?.balance_usdt ?? 0;
+    el.textContent = this.formatUsdt ? this.formatUsdt(bal) : `$ ${Number(bal).toFixed(2)} USDT`;
+  },
+
+  async loadStandardDepositAddress({ force = false } = {}) {
+    const input = $('standardDepositAddress');
+    const chainHint = $('standardDepositChainHint');
+    const panel = $('standardWalletPanel');
+    if (!this.isKycVerified()) {
+      if (panel) panel.classList.add('hidden');
+      return null;
+    }
+    if (panel) panel.classList.remove('hidden');
+    if (input && !force && input.value) return { address: input.value };
+    try {
+      if (input) input.value = 'Loading…';
+      const data = await Auth.api(
+        'GET',
+        `/api/user/wallets/standard/deposit-address${force ? '?refresh=1' : ''}`
+      );
+      if (input) input.value = data.address || '';
+      if (chainHint) {
+        chainHint.textContent = data.chain
+          ? `Network: ${String(data.chain).toUpperCase()} · Standard Card deposits only`
+          : 'Standard Card deposits only (not Master Wallet)';
+      }
+      this.standardDeposit = data;
+      return data;
+    } catch (err) {
+      if (input) input.value = '';
+      if (chainHint) chainHint.textContent = err.message || 'Deposit address unavailable';
+      console.warn('[standard deposit address]', err.message);
+      return null;
     }
   },
 
