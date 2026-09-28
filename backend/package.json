@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "predev": "node scripts/free-port.js",
+    "predev": "node scripts/free-port.js && node scripts/write-portal-html.js",
     "dev": "node --watch src/index.js",
     "seed": "node src/seed.js",
     "migrate": "node src/migrate.js",

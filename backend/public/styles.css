@@ -5032,6 +5032,53 @@ html[data-app-mode="standard"] [data-mode-shell="instant"] {
   display: none !important;
 }
 
+.portal-hub-chooser {
+  margin-bottom: 1rem;
+}
+
+.portal-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+.portal-hub-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.25));
+  background: rgba(15, 23, 42, 0.65);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.portal-hub-card:hover {
+  border-color: rgba(56, 189, 248, 0.55);
+  transform: translateY(-1px);
+}
+
+.portal-hub-card strong {
+  font-size: 1.05rem;
+}
+
+.portal-hub-card span {
+  font-size: 0.85rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.portal-switch-link {
+  white-space: nowrap;
+}
+
+html[data-eisy-portal="instant"] .app-mode-switch-header .app-mode-switch,
+html[data-eisy-portal="standard"] .app-mode-switch-header .app-mode-switch {
+  display: none !important;
+}
+
 .wallet-hero-card.bitnob {
   background: linear-gradient(135deg, rgba(14, 116, 144, 0.35), rgba(15, 23, 42, 0.9));
   border: 1px solid rgba(34, 211, 238, 0.25);
