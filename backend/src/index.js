@@ -138,8 +138,46 @@ app.get('/about.html', (_req, res) => {
   sendHtmlFile(res, path.join(PUBLIC_DIR, 'about.html'));
 });
 
+function sendAdminPipeline(res, pipeline) {
+  const filePath = path.join(PUBLIC_DIR, `admin-${pipeline}.html`);
+  if (fs.existsSync(filePath)) {
+    return sendHtmlFile(res, filePath);
+  }
+  const adminHtml = path.join(PUBLIC_DIR, 'admin.html');
+  if (!fs.existsSync(adminHtml)) {
+    return res.status(500).send(`Admin missing. Expected: ${adminHtml}`);
+  }
+  let html = fs.readFileSync(adminHtml, 'utf8');
+  const label = pipeline === 'instant' ? 'Instant Admin' : 'Standard Admin';
+  const inject = `<script>window.__EISY_ADMIN_PIPELINE__=${JSON.stringify(pipeline)};</script>`;
+  if (!html.includes('__EISY_ADMIN_PIPELINE__')) {
+    html = html.replace(/<head([^>]*)>/i, (m) => `${m}\n  ${inject}`);
+  } else {
+    html = html.replace(
+      /window\.__EISY_ADMIN_PIPELINE__\s*=\s*["'][^"']*["']/,
+      `window.__EISY_ADMIN_PIPELINE__=${JSON.stringify(pipeline)}`
+    );
+  }
+  html = html.replace(/<html([^>]*)>/i, (m, attrs = '') => (
+    /data-admin-pipeline=/.test(attrs)
+      ? m.replace(/data-admin-pipeline="[^"]*"/, `data-admin-pipeline="${pipeline}"`)
+      : `<html${attrs} data-admin-pipeline="${pipeline}">`
+  ));
+  html = html.replace(/<title>[^<]*<\/title>/i, `<title>Eisy Myanmar — ${label}</title>`);
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.type('html').send(html);
+}
+
 app.get('/admin', (_req, res) => {
   sendHtmlFile(res, path.join(PUBLIC_DIR, 'admin.html'));
+});
+
+app.get(['/admin/instant', '/admin/instant.html'], (_req, res) => {
+  sendAdminPipeline(res, 'instant');
+});
+
+app.get(['/admin/standard', '/admin/standard.html'], (_req, res) => {
+  sendAdminPipeline(res, 'standard');
 });
 
 app.use(express.static(PUBLIC_DIR, {

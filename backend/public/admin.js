@@ -5,6 +5,28 @@
   const $ = (id) => document.getElementById(id);
   const TOKEN_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.ADMIN_TOKEN) || 'eisy_admin_token';
   const LEGACY_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.ADMIN_KEY_LEGACY) || 'eisy_admin_key';
+  const PIPELINE_STORAGE_KEY = 'eisy_last_admin_pipeline';
+
+  /** Instant vs Standard admin page segregation (matches user portals). */
+  const INSTANT_ADMIN_PAGES = new Set([
+    'overview',
+    'deposits',
+    'mmk-withdrawals',
+    'cards',
+    'users',
+    'transactions',
+    'revenue',
+    'support',
+    'settings',
+    'admins',
+  ]);
+  const STANDARD_ADMIN_PAGES = new Set([
+    'cards',
+    'kyc-requests',
+    'users',
+    'support',
+    'admins',
+  ]);
 
   const Admin = {
     token: null,
@@ -22,11 +44,208 @@
     pendingReloadsById: {},
     pricingSettings: null,
     kycDocsBySubmissionId: {},
+    _pipeline: null,
+    _pipelineIsolated: false,
+
+    /** Dedicated Instant (/admin/instant) or Standard (/admin/standard) pipeline, or hub (/admin). */
+    getPipeline() {
+      if (window.__EISY_ADMIN_PIPELINE__ === 'instant' || window.__EISY_ADMIN_PIPELINE__ === 'standard') {
+        return window.__EISY_ADMIN_PIPELINE__;
+      }
+      const path = String(location.pathname || '');
+      if (/\/admin\/instant\/?$/.test(path)) return 'instant';
+      if (/\/admin\/standard\/?$/.test(path)) return 'standard';
+      return null;
+    },
+
+    rememberPipeline(pipeline) {
+      try {
+        if (pipeline === 'instant' || pipeline === 'standard') {
+          localStorage.setItem(PIPELINE_STORAGE_KEY, pipeline);
+        }
+      } catch (_) { /* ignore */ }
+    },
+
+    lastPipeline() {
+      try {
+        const v = localStorage.getItem(PIPELINE_STORAGE_KEY);
+        return v === 'instant' || v === 'standard' ? v : null;
+      } catch (_) {
+        return null;
+      }
+    },
+
+    pagesForPipeline(pipeline) {
+      if (pipeline === 'instant') return INSTANT_ADMIN_PAGES;
+      if (pipeline === 'standard') return STANDARD_ADMIN_PAGES;
+      return null;
+    },
+
+    pipelineDefaultPage(pipeline) {
+      if (pipeline === 'standard') {
+        if (this.pages?.includes('kyc-requests')) return 'kyc-requests';
+        if (this.pages?.includes('cards')) return 'cards';
+        return this.pages?.[0] || 'cards';
+      }
+      if (this.pages?.includes('overview')) return 'overview';
+      if (this.pages?.includes('deposits')) return 'deposits';
+      return this.pages?.[0] || 'deposits';
+    },
+
+    /**
+     * Strip the opposite Instant/Standard admin chrome so management tools
+     * never overlap in this document. Hub (/admin) shows a pipeline chooser.
+     */
+    applyPipelineIsolation() {
+      const pipeline = this.getPipeline();
+      this._pipeline = pipeline;
+      document.documentElement.setAttribute('data-admin-pipeline', pipeline || 'hub');
+      if (pipeline) this.rememberPipeline(pipeline);
+
+      if (!pipeline) {
+        this.renderPipelineHubChooser();
+        this.renderPipelineSwitcher();
+        return pipeline;
+      }
+
+      if (this._pipelineIsolated) {
+        this.renderPipelineSwitcher();
+        this.applyPipelineCopy(pipeline);
+        return pipeline;
+      }
+      this._pipelineIsolated = true;
+
+      if (pipeline === 'instant') {
+        document.querySelectorAll('[data-admin-pipeline="standard"]').forEach((el) => el.remove());
+      } else {
+        document.querySelectorAll('[data-admin-pipeline="instant"]').forEach((el) => el.remove());
+      }
+      // Hub chooser is only for /admin
+      $('adminPipelineHub')?.remove();
+
+      const loginTitle = $('adminLoginTitle');
+      if (loginTitle) {
+        loginTitle.textContent = pipeline === 'instant' ? 'Instant Admin' : 'Standard Admin';
+      }
+      const loginSub = $('adminLoginSubtitle');
+      if (loginSub) {
+        loginSub.textContent = pipeline === 'instant'
+          ? 'USDT wallets · TRC20 · Instant Card · P2P · MMK'
+          : 'Bitnob wallets · Standard Card · KYC';
+      }
+
+      this.renderPipelineSwitcher();
+      this.applyPipelineCopy(pipeline);
+
+      const brandTitle = document.querySelector('.sidebar-brand-title');
+      if (brandTitle) {
+        brandTitle.textContent = pipeline === 'instant' ? 'Instant Admin' : 'Standard Admin';
+      }
+      const brandSub = document.querySelector('.sidebar-brand-sub');
+      if (brandSub) {
+        brandSub.textContent = pipeline === 'instant'
+          ? 'USDT · TRC20 · Instant Card · P2P · MMK'
+          : 'Bitnob · Standard Card · KYC';
+      }
+      document.title = pipeline === 'instant'
+        ? 'Eisy Myanmar — Instant Admin'
+        : 'Eisy Myanmar — Standard Admin';
+
+      const userApp = $('adminUserAppLink');
+      if (userApp) {
+        userApp.setAttribute('href', pipeline === 'instant' ? '/instant' : '/standard');
+      }
+
+      return pipeline;
+    },
+
+    applyPipelineCopy(pipeline) {
+      const cardsLabel = document.querySelector('[data-admin-cards-label]');
+      if (cardsLabel) {
+        cardsLabel.textContent = pipeline === 'instant' ? 'Instant Cards' : 'Standard Cards';
+        cardsLabel.removeAttribute('data-i18n');
+      }
+      const cardsHeading = $('adminCardsHeading');
+      if (cardsHeading) {
+        cardsHeading.textContent = pipeline === 'instant'
+          ? 'Instant Card Management'
+          : 'Standard Card Management';
+        cardsHeading.removeAttribute('data-i18n');
+      }
+      const cardsHint = $('adminCardsHint');
+      if (cardsHint) {
+        cardsHint.textContent = pipeline === 'instant'
+          ? 'Internal USDT wallet · Kripicard / Instant Card issuance and reloads.'
+          : 'Bitnob wallet · Standard Card issuance after KYC verification.';
+        cardsHint.removeAttribute('data-i18n');
+      }
+      const usersHeading = $('adminUsersHeading');
+      if (usersHeading) {
+        usersHeading.textContent = pipeline === 'instant'
+          ? 'Users & Internal USDT Wallets'
+          : 'Users & Standard / Bitnob Access';
+      }
+      const usersHint = $('adminUsersHint');
+      if (usersHint) {
+        usersHint.textContent = pipeline === 'instant'
+          ? 'Manage internal USDT wallet balances used for Instant Card, P2P, and TRC20 flows.'
+          : 'Review users for Standard Card eligibility. KYC status gates Bitnob wallet and Standard Card issuance.';
+      }
+      const pageTitle = document.querySelector('[data-page-title="cards"]');
+      if (pageTitle) {
+        pageTitle.textContent = pipeline === 'instant' ? 'Instant Cards' : 'Standard Cards';
+      }
+    },
+
+    renderPipelineSwitcher() {
+      const host = $('adminPipelineSwitcher');
+      if (!host) return;
+      const pipeline = this._pipeline || this.getPipeline();
+      if (pipeline === 'instant' || pipeline === 'standard') {
+        const other = pipeline === 'instant' ? 'standard' : 'instant';
+        const otherLabel = other === 'instant' ? 'Instant Admin' : 'Standard Admin';
+        host.innerHTML = `<a class="btn btn-secondary btn-sm portal-switch-link" href="/admin/${other}" data-admin-pipeline-switch="${other}">${otherLabel} →</a>`;
+        return;
+      }
+      host.innerHTML = [
+        '<a class="btn btn-secondary btn-sm portal-switch-link" href="/admin/instant" data-admin-pipeline-switch="instant">Instant</a>',
+        '<a class="btn btn-secondary btn-sm portal-switch-link" href="/admin/standard" data-admin-pipeline-switch="standard">Standard</a>',
+      ].join(' ');
+    },
+
+    renderPipelineHubChooser() {
+      const box = $('adminPipelineHub');
+      if (!box) return;
+      box.classList.remove('hidden');
+      box.innerHTML = `
+        <h2 style="margin:0 0 0.5rem">Choose admin pipeline</h2>
+        <p class="hint" style="margin:0 0 1rem">Instant and Standard tools are isolated — pick the management surface that matches the user portal.</p>
+        <div class="portal-hub-grid">
+          <a class="portal-hub-card" href="/admin/instant">
+            <strong>Instant Admin</strong>
+            <span>Internal USDT wallets, TRC20 deposits, Instant Card, P2P, MMK withdrawals</span>
+          </a>
+          <a class="portal-hub-card" href="/admin/standard">
+            <strong>Standard Admin</strong>
+            <span>Bitnob wallets, Standard Card issuance, and user KYC verifications</span>
+          </a>
+        </div>
+      `;
+    },
+
+    /** Filter RBAC pages to the active Instant/Standard pipeline. */
+    filterPagesForPipeline(pages) {
+      const pipeline = this._pipeline || this.getPipeline();
+      const allowed = this.pagesForPipeline(pipeline);
+      if (!allowed) return Array.isArray(pages) ? pages.slice() : [];
+      return (pages || []).filter((p) => allowed.has(p));
+    },
 
     init() {
       try {
         this.token = localStorage.getItem(TOKEN_KEY) || null;
         this.key = localStorage.getItem(LEGACY_KEY) || null;
+        this.applyPipelineIsolation();
         this.bindLoginEvents();
         this.bindEvents();
         this.bindNavigation();
@@ -87,6 +306,24 @@
       if (app) {
         app.classList.remove('hidden');
         app.style.display = '';
+      }
+      // Hub (/admin): show Instant vs Standard chooser instead of mixed tools.
+      const pipeline = this._pipeline || this.getPipeline();
+      if (!pipeline) {
+        this.renderPipelineHubChooser();
+        this.renderPipelineSwitcher();
+        // Hide sidebar nav sections on hub — chooser is the only entry.
+        document.querySelectorAll('.admin-sidebar-nav .nav-item[data-page]').forEach((el) => {
+          el.style.display = 'none';
+        });
+        document.querySelectorAll('.app-page[data-page]').forEach((el) => {
+          el.classList.remove('is-active');
+          el.style.display = 'none';
+        });
+        const heading = document.querySelector('.header .page-heading');
+        if (heading) heading.textContent = 'Admin pipelines';
+        const subtitle = document.querySelector('.header .subtitle');
+        if (subtitle) subtitle.textContent = 'Choose Instant or Standard management';
       }
     },
 
@@ -171,7 +408,7 @@
     applySession(data) {
       this.user = data.user || null;
       this.permissions = data.permissions || [];
-      this.pages = data.pages || [];
+      this.pages = this.filterPagesForPipeline(data.pages || []);
       if (data.role_labels) this.roleLabels = data.role_labels;
       if (data.sessionToken) {
         this.token = data.sessionToken;
@@ -199,9 +436,20 @@
     },
 
     applyRoleVisibility() {
+      const pipeline = this._pipeline || this.getPipeline();
+      // Hub has no tab chrome — chooser only.
+      if (!pipeline) {
+        document.querySelectorAll('.admin-sidebar-nav .nav-item[data-page]').forEach((el) => {
+          el.style.display = 'none';
+        });
+        return;
+      }
+
       document.querySelectorAll('[data-admin-perm]').forEach((el) => {
         const perm = el.getAttribute('data-admin-perm');
-        const allowed = this.hasPermission(perm);
+        const page = el.getAttribute('data-page');
+        const inPipeline = !page || !this.pagesForPipeline(pipeline) || this.pagesForPipeline(pipeline).has(page);
+        const allowed = this.hasPermission(perm) && inPipeline;
         if (el.classList.contains('nav-item')) {
           el.style.display = allowed ? '' : 'none';
           if (!allowed) el.classList.remove('active');
@@ -226,16 +474,14 @@
 
       const allowedPages = this.pages && this.pages.length
         ? this.pages
-        : ['deposits'];
-      // Prefer Overview as the Super Admin / Finance home when available
-      const preferred = allowedPages.includes('overview')
-        ? 'overview'
-        : allowedPages[0];
+        : [this.pipelineDefaultPage(pipeline)];
+      const preferred = this.pipelineDefaultPage(pipeline);
+      const preferredAllowed = allowedPages.includes(preferred) ? preferred : allowedPages[0];
       const current = (location.hash || '').replace(/^#admin-/, '') || null;
       if (current && allowedPages.includes(current)) {
         this.switchTab(current);
-      } else if (preferred) {
-        this.switchTab(preferred);
+      } else if (preferredAllowed) {
+        this.switchTab(preferredAllowed);
       }
     },
 
@@ -384,9 +630,27 @@
       }
       if (typeof AppNav !== 'undefined' && AppNav.navigate) {
         AppNav.navigate(name, { pushHash: true });
+        this.syncPageHeading(name);
         return;
       }
       this._showTabPanel(name);
+      this.syncPageHeading(name);
+    },
+
+    syncPageHeading(page) {
+      const titleEl = document.querySelector(`[data-page-title="${page}"]`);
+      const heading = document.querySelector('.header .page-heading');
+      if (!heading) return;
+      if (page === 'cards') {
+        const pipeline = this._pipeline || this.getPipeline();
+        heading.textContent = pipeline === 'standard' ? 'Standard Cards' : (pipeline === 'instant' ? 'Instant Cards' : 'Cards');
+        heading.removeAttribute('data-i18n');
+        return;
+      }
+      if (titleEl) {
+        heading.textContent = titleEl.textContent.trim();
+        heading.removeAttribute('data-i18n');
+      }
     },
 
     _showTabPanel(name) {
@@ -440,22 +704,25 @@
 
     /** Load only the visible admin tab so login/session restore feels instant. */
     loadActiveTabData() {
+      const pipeline = this._pipeline || this.getPipeline();
+      if (!pipeline) return;
       if (this.hasPermission('settings_read') || this.hasPermission('rates')) {
         this.loadPricingSettings();
       }
       const page = (typeof AppNav !== 'undefined' && AppNav.currentPage)
         || (location.hash || '').replace(/^#admin-/, '')
-        || 'overview';
+        || this.pipelineDefaultPage(pipeline);
       this._showTabPanel(page);
     },
 
     bindNavigation() {
       if (typeof AppNav === 'undefined') return;
+      const pipeline = this._pipeline || this.getPipeline();
       AppNav.init({
         root: $('adminAppShell') || document,
         navSelector: '.sidebar-nav [data-page]',
         pageSelector: '.app-page[data-page]',
-        defaultPage: 'deposits',
+        defaultPage: this.pipelineDefaultPage(pipeline),
         hashPrefix: 'admin-',
         onChange: (page) => this._showTabPanel(page),
       });
@@ -1134,26 +1401,42 @@
     },
 
     loadAll() {
+      const pipeline = this._pipeline || this.getPipeline();
+      if (!pipeline) return Promise.resolve([]);
+      const pageOk = (page) => !this.pagesForPipeline(pipeline) || this.pagesForPipeline(pipeline).has(page);
       const tasks = [];
-      if (this.hasPermission('settings_read') || this.hasPermission('rates')) {
+      if (pageOk('settings') && (this.hasPermission('settings_read') || this.hasPermission('rates'))) {
         tasks.push(this.loadPricingSettings());
       }
-      if (this.hasPermission('deposits')) {
+      if (pageOk('deposits') && this.hasPermission('deposits')) {
         tasks.push(this.loadDeposits(), this.loadP2pDisputes(), this.loadP2pBuyOrders(), this.loadP2pSellOrders());
       }
-      if (this.hasPermission('withdrawals')) {
+      if (pageOk('mmk-withdrawals') && this.hasPermission('withdrawals')) {
         tasks.push(this.loadUsdtWithdrawals(), this.loadMmkWithdrawals());
+      } else if (pageOk('deposits') && this.hasPermission('withdrawals')) {
+        tasks.push(this.loadUsdtWithdrawals());
       }
-      if (this.hasPermission('cards')) {
+      if (pageOk('cards') && this.hasPermission('cards')) {
         tasks.push(this.loadPendingCards(), this.loadIssuedCards(), this.loadPendingReloads());
       }
-      if (this.hasPermission('users')) tasks.push(this.loadUsers());
-      if (this.hasPermission('transactions')) tasks.push(this.loadTransactions());
-      if (this.hasPermission('manage_admins')) tasks.push(this.loadAdmins());
-      if (this.hasPermission('overview') || this.hasPermission('master_wallet')) {
+      if (pageOk('users') && this.hasPermission('users')) tasks.push(this.loadUsers());
+      if (pageOk('transactions') && this.hasPermission('transactions')) tasks.push(this.loadTransactions());
+      if (pageOk('admins') && this.hasPermission('manage_admins')) tasks.push(this.loadAdmins());
+      if (pageOk('overview') && (this.hasPermission('overview') || this.hasPermission('master_wallet'))) {
         tasks.push(this.checkMasterWalletBalance());
       }
-      if (this.hasPermission('withdrawal_rates_read')) tasks.push(this.loadWithdrawalRates());
+      if (pageOk('overview') && this.hasPermission('withdrawal_rates_read')) {
+        tasks.push(this.loadWithdrawalRates());
+      }
+      if (pageOk('kyc-requests') && this.hasPermission('kyc')) {
+        tasks.push(this.loadKycRequests());
+      }
+      if (pageOk('support') && this.hasPermission('support')) {
+        tasks.push(this.loadSupportThreads());
+      }
+      if (pageOk('revenue') && this.hasPermission('revenue')) {
+        tasks.push(this.loadRevenueDashboard());
+      }
       return Promise.allSettled(tasks);
     },
 
