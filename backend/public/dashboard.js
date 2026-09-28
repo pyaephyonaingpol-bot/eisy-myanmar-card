@@ -83,9 +83,130 @@ const Dashboard = {
     return text;
   },
 
+  /** Dedicated Instant (/instant) or Standard (/standard) portal, or hub (/). */
+  getPortal() {
+    if (window.__EISY_PORTAL__ === 'instant' || window.__EISY_PORTAL__ === 'standard') {
+      return window.__EISY_PORTAL__;
+    }
+    const pathName = String(window.location.pathname || '/').replace(/\/+$/, '') || '/';
+    if (pathName === '/instant' || pathName.endsWith('/instant.html')) return 'instant';
+    if (pathName === '/standard' || pathName.endsWith('/standard.html')) return 'standard';
+    return null;
+  },
+
+  rememberPortal(portal) {
+    try {
+      if (portal === 'instant' || portal === 'standard') {
+        localStorage.setItem('eisy_last_portal', portal);
+      }
+    } catch (_) { /* ignore */ }
+  },
+
+  readLastPortal() {
+    try {
+      const v = localStorage.getItem('eisy_last_portal');
+      return (v === 'instant' || v === 'standard') ? v : null;
+    } catch (_) {
+      return null;
+    }
+  },
+
+  /**
+   * Enterprise-style portal isolation: remove the other flow's pages/nav from the DOM
+   * and replace the Instant↔Standard switch with a link to the other portal URL.
+   */
+  applyPortalIsolation() {
+    const portal = this.getPortal();
+    this._portal = portal;
+    document.documentElement.setAttribute('data-eisy-portal', portal || 'hub');
+    if (portal) this.rememberPortal(portal);
+
+    if (!portal) {
+      this.renderPortalHubChooser();
+      return portal;
+    }
+
+    // Strip opposite portal chrome so pages never overlap in this document.
+    if (portal === 'instant') {
+      document.querySelectorAll(
+        '[data-mode-nav="standard"], [data-mode-shell="standard"], [data-page="standard-card"]'
+      ).forEach((el) => el.remove());
+      $('standardAppPageHost')?.closest('.app-page')?.remove();
+    } else {
+      document.querySelectorAll(
+        '[data-mode-nav="instant"], [data-mode-shell="instant"], [data-page="instant-card"], [data-page="usdt-wallet"]'
+      ).forEach((el) => el.remove());
+      $('instantAppPageHost')?.closest('.app-page')?.remove();
+      $('pageUsdtWallet')?.remove();
+    }
+
+    // Header: portal switch link instead of in-app mode pill.
+    const header = $('appModeSwitchHeader');
+    if (header) {
+      const other = portal === 'instant' ? 'standard' : 'instant';
+      const otherLabel = other === 'instant' ? 'Instant portal' : 'Standard portal';
+      header.innerHTML = `
+        <a class="btn btn-secondary btn-sm portal-switch-link" href="/${other}" data-portal-switch="${other}">
+          ${portal === 'instant' ? `${otherLabel} →` : `← ${otherLabel}`}
+        </a>`;
+      header.setAttribute('aria-label', 'Switch portal');
+    }
+
+    // Sidebar brand badge
+    const brandTitle = document.querySelector('.sidebar-brand-title');
+    if (brandTitle) {
+      brandTitle.textContent = portal === 'instant'
+        ? 'Eisy · Instant'
+        : 'Eisy · Standard';
+    }
+
+    document.title = portal === 'instant'
+      ? 'Eisy Myanmar — Instant'
+      : 'Eisy Myanmar — Standard';
+
+    // Hide hub-only chooser if present
+    $('portalHubChooser')?.remove();
+
+    return portal;
+  },
+
+  renderPortalHubChooser() {
+    // Only on hub (/) — offer Instant vs Standard portals after login.
+    if (this.getPortal()) return;
+    const home = document.querySelector('.app-page[data-page="home"]');
+    if (!home || $('portalHubChooser')) return;
+
+    const box = document.createElement('section');
+    box.id = 'portalHubChooser';
+    box.className = 'panel portal-hub-chooser';
+    box.innerHTML = `
+      <h2 data-i18n="portal_hub_heading">Choose your portal</h2>
+      <p class="hint" data-i18n="portal_hub_hint">Instant and Standard are separate apps with their own wallets and cards.</p>
+      <div class="portal-hub-grid">
+        <a class="portal-hub-card" href="/instant">
+          <strong data-i18n="portal_hub_instant_title">Instant</strong>
+          <span data-i18n="portal_hub_instant_desc">Master USDT Wallet · Instant Card (No KYC)</span>
+        </a>
+        <a class="portal-hub-card" href="/standard">
+          <strong data-i18n="portal_hub_standard_title">Standard</strong>
+          <span data-i18n="portal_hub_standard_desc">Bitnob wallet · Standard Card (Verified KYC)</span>
+        </a>
+      </div>`;
+    home.insertBefore(box, home.firstChild);
+    if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(box);
+  },
+
+  portalDefaultPage() {
+    const portal = this._portal || this.getPortal();
+    if (portal === 'instant') return 'instant-card';
+    if (portal === 'standard') return 'standard-card';
+    return 'home';
+  },
+
   init() {
     console.log('[Dashboard] init');
     try {
+      this.applyPortalIsolation();
       this.bindI18n();
       this.clearStaleDepositDrafts();
       this.bindAuthForms();
@@ -148,7 +269,7 @@ const Dashboard = {
       const data = await Auth.completeGoogleOAuth();
       this.log('Signed in with Google', 'ok');
       // Clean OAuth params from the URL without a full reload.
-      history.replaceState(null, '', '/dashboard');
+      history.replaceState(null, '', this.readLastPortal() ? `/${this.readLastPortal()}` : '/');
       if (data?.needs_pin_setup || data?.has_pin === false || !data?.user?.has_pin) {
         // Defer until dashboard chrome is visible.
         setTimeout(() => {
@@ -206,7 +327,7 @@ const Dashboard = {
       root: shell,
       navSelector: '.sidebar-nav [data-page]',
       pageSelector: '.app-page[data-page]',
-      defaultPage: 'home',
+      defaultPage: this.portalDefaultPage(),
       onChange: (page, opts = {}) => this.onPageChange(page, opts),
     });
 
@@ -214,6 +335,9 @@ const Dashboard = {
       btn.addEventListener('click', () => {
         const target = btn.dataset.goto;
         if (!target || typeof AppNav === 'undefined') return;
+        // Portal lock: never navigate to the other flow's pages.
+        if (this._portal === 'instant' && (target === 'standard-card' || target === 'standard')) return;
+        if (this._portal === 'standard' && (target === 'instant-card' || target === 'usdt-wallet' || target === 'instant')) return;
         const opts = { pushHash: true };
         if (btn.dataset.depositTab) opts.depositTab = btn.dataset.depositTab;
         if (btn.dataset.p2pTab) opts.p2pTab = btn.dataset.p2pTab;
@@ -374,12 +498,17 @@ const Dashboard = {
           forceRefresh: force || hasPending || !this._isFresh('cards'),
         });
         this.loadReloadHistory({ force });
-        this.mountAppModeUi('switch');
+        // Portal pages never mount both Instant+Standard; hub keeps the switcher.
+        if (this._portal === 'instant') this.mountAppModeUi('instant');
+        else if (this._portal === 'standard') this.mountAppModeUi('standard');
+        else this.mountAppModeUi('switch');
       }
       if (page === 'instant-card') {
+        if (this._portal === 'standard') return;
         this.enterInstantCardPage({ force });
       }
       if (page === 'standard-card') {
+        if (this._portal === 'instant') return;
         this.enterStandardCardPage({ force });
       }
       if (page === 'home') {
@@ -5577,15 +5706,25 @@ const Dashboard = {
     this.populateReloadCardSelect();
     this.updateChangePasswordUI();
     this.bindSupabaseUserRealtime();
+    this.renderPortalHubChooser();
 
     if (typeof AppNav !== 'undefined' && AppNav.currentPage == null) {
       const hashPage = AppNav.pageFromHash?.();
-      AppNav.navigate(hashPage || 'home', { pushHash: !hashPage, replace: true });
+      const fallback = this.portalDefaultPage();
+      // Ignore hash targets that were removed by portal isolation.
+      const pageExists = hashPage
+        && document.querySelector(`.app-page[data-page="${hashPage}"]`);
+      AppNav.navigate(pageExists ? hashPage : fallback, {
+        pushHash: !pageExists,
+        replace: true,
+      });
     }
   },
 
   bindCardProviderTabs() {
-    this.mountAppModeUi('switch');
+    if (this._portal === 'instant') this.mountAppModeUi('instant');
+    else if (this._portal === 'standard') this.mountAppModeUi('standard');
+    else this.mountAppModeUi('switch');
   },
 
   clearCardViewHosts() {
@@ -5674,6 +5813,10 @@ const Dashboard = {
         self.updateHomeRateSummary?.();
       },
       onNeedInstant: () => {
+        if (self._portal === 'standard') {
+          window.location.href = '/instant';
+          return;
+        }
         self.setAppMode('instant');
         if (typeof AppNav !== 'undefined') AppNav.navigate('instant-card', { pushHash: true });
       },
@@ -5717,38 +5860,43 @@ const Dashboard = {
     this.clearCardViewHosts();
     const ctx = this.buildCardViewContexts();
 
-    // Compact header switch (always available once logged in)
-    comps.appModeSwitcher.mountCompact($('appModeSwitchHeader'), {
-      ...ctx,
-      onModeChange: (m) => {
-        ctx.onModeChange?.(m);
-        if ($('appModeActiveHost')) {
-          comps.appModeSwitcher.setMode(m, ctx);
-        } else if (m === 'instant') {
-          this.mountAppModeUi('instant');
-        } else {
-          this.mountAppModeUi('standard');
-        }
-      },
-    });
+    // Compact header switch (hub only). Portals use a link to the other URL.
+    if (!this._portal) {
+      comps.appModeSwitcher.mountCompact($('appModeSwitchHeader'), {
+        ...ctx,
+        onModeChange: (m) => {
+          ctx.onModeChange?.(m);
+          if ($('appModeActiveHost')) {
+            comps.appModeSwitcher.setMode(m, ctx);
+          } else if (m === 'instant') {
+            this.mountAppModeUi('instant');
+          } else {
+            this.mountAppModeUi('standard');
+          }
+        },
+      });
+    }
 
-    if (mode === 'instant') {
+    const locked = this._portal;
+    const effective = locked || mode;
+
+    if (effective === 'instant') {
       comps.instantAppView.mount($('instantAppPageHost'), { replace: true });
       comps.instantAppView.bind(ctx.instantCtx);
       comps.instantAppView.activate(ctx.instantCtx);
-      comps.appModeSwitcher.syncSwitchUi('instant');
+      comps.appModeSwitcher?.syncSwitchUi?.('instant');
       return;
     }
 
-    if (mode === 'standard') {
+    if (effective === 'standard') {
       comps.standardAppView.mount($('standardAppPageHost'), { replace: true });
       comps.standardAppView.bind(ctx.standardCtx);
       comps.standardAppView.activate(ctx.standardCtx);
-      comps.appModeSwitcher.syncSwitchUi('standard');
+      comps.appModeSwitcher?.syncSwitchUi?.('standard');
       return;
     }
 
-    // Default: exclusive Instant/Standard app pages on My Cards
+    // Hub My Cards: exclusive Instant/Standard switcher shell
     comps.appModeSwitcher.mountInto($('appModeSwitcherShell'), ctx);
   },
 
@@ -5787,6 +5935,15 @@ const Dashboard = {
   },
 
   setAppMode(mode) {
+    // On a dedicated portal URL, cross-mode switches navigate to that portal.
+    if (this._portal && this._portal !== mode && (mode === 'instant' || mode === 'standard')) {
+      window.location.href = `/${mode}`;
+      return;
+    }
+    if (this._portal) {
+      this.mountAppModeUi(this._portal);
+      return;
+    }
     const switcher = EisyComponents?.appModeSwitcher;
     if (!switcher) {
       this.setCardProviderTab(mode === 'standard' ? 'bitnob' : 'kripicard');

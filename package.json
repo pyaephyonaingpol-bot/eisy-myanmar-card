@@ -16,6 +16,8 @@
     "test:dual-wallet-architecture": "node backend/scripts/test-dual-wallet-architecture.js",
     "test:dedicated-card-pages": "node backend/scripts/test-dedicated-card-pages.js",
     "test:dual-app-mode-views": "node backend/scripts/test-dual-app-mode-views.js",
+    "test:portal-routes": "node backend/scripts/test-portal-routes.js",
+    "write-portal-html": "node backend/scripts/write-portal-html.js",
     "bitnob-egress-proxy": "node backend/scripts/bitnob-egress-proxy.js",
     "test:usdt-card-issue": "node backend/scripts/test-usdt-only-card-issue.js",
     "test:dashboard-usdt-wallet": "node backend/scripts/test-dashboard-usdt-wallet-only.js",
@@ -23,7 +25,7 @@
     "test:deposits-usdt-only": "node backend/scripts/test-deposits-usdt-only.js",
     "test:admin-usdt-mmk-wd": "node backend/scripts/test-admin-usdt-mmk-withdrawals.js",
     "test:legal-pages": "node backend/scripts/test-legal-pages.js",
-    "vercel-build": "node backend/scripts/test-tron-wallet-init.js || echo \"[vercel-build] TRON wallet init check failed (non-blocking — see /health/tron after deploy)\"; mkdir -p public && cp -R backend/public/. public/",
+    "vercel-build": "node backend/scripts/write-portal-html.js; node backend/scripts/test-tron-wallet-init.js || echo \"[vercel-build] TRON wallet init check failed (non-blocking — see /health/tron after deploy)\"; mkdir -p public && cp -R backend/public/. public/",
     "android:apk": "bash scripts/build-android-apk.sh debug",
     "android:apk:release": "bash scripts/build-android-apk.sh release"
   },

@@ -55,67 +55,91 @@ app.use(express.urlencoded({ extended: true, limit: '55mb' }));
 // API rate limiting (webhooks skipped inside limiter)
 app.use('/api', createApiRateLimiter());
 
-app.get('/', (_req, res) => {
+function sendHtmlFile(res, filePath) {
+  if (!fs.existsSync(filePath)) {
+    return res.status(500).send(`Page missing. Expected: ${filePath}`);
+  }
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  return res.sendFile(filePath);
+}
+
+function sendPortalApp(res, portal) {
+  const filePath = path.join(PUBLIC_DIR, `${portal}.html`);
+  if (fs.existsSync(filePath)) {
+    return sendHtmlFile(res, filePath);
+  }
+  // Fallback: inject portal lock into index.html when generated portals are absent.
   if (!fs.existsSync(INDEX_HTML)) {
     return res.status(500).send(`Dashboard missing. Expected: ${INDEX_HTML}`);
   }
+  let html = fs.readFileSync(INDEX_HTML, 'utf8');
+  const label = portal === 'instant' ? 'Instant' : 'Standard';
+  const inject = `<script>window.__EISY_PORTAL__=${JSON.stringify(portal)};</script>`;
+  html = html.replace(/<head([^>]*)>/i, (m) => `${m}\n  ${inject}`);
+  html = html.replace(/<html([^>]*)>/i, (m, attrs = '') => (
+    /data-eisy-portal=/.test(attrs)
+      ? m
+      : `<html${attrs} data-eisy-portal="${portal}">`
+  ));
+  html = html.replace(/<title>[^<]*<\/title>/i, `<title>Eisy Myanmar — ${label}</title>`);
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.sendFile(INDEX_HTML);
+  res.type('html').send(html);
+}
+
+app.get('/', (_req, res) => {
+  sendHtmlFile(res, INDEX_HTML);
 });
 
 app.get('/dashboard', (_req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.sendFile(INDEX_HTML);
+  sendHtmlFile(res, INDEX_HTML);
 });
 
 app.get('/auth/callback', (_req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.sendFile(INDEX_HTML);
+  sendHtmlFile(res, INDEX_HTML);
+});
+
+app.get(['/instant', '/instant.html'], (_req, res) => {
+  sendPortalApp(res, 'instant');
+});
+
+app.get(['/standard', '/standard.html'], (_req, res) => {
+  sendPortalApp(res, 'standard');
 });
 
 app.get('/terms', (_req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.sendFile(path.join(PUBLIC_DIR, 'terms.html'));
+  sendHtmlFile(res, path.join(PUBLIC_DIR, 'terms.html'));
 });
 
 app.get('/terms.html', (_req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.sendFile(path.join(PUBLIC_DIR, 'terms.html'));
+  sendHtmlFile(res, path.join(PUBLIC_DIR, 'terms.html'));
 });
 
 app.get('/privacy', (_req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.sendFile(path.join(PUBLIC_DIR, 'privacy.html'));
+  sendHtmlFile(res, path.join(PUBLIC_DIR, 'privacy.html'));
 });
 
 app.get('/privacy.html', (_req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.sendFile(path.join(PUBLIC_DIR, 'privacy.html'));
+  sendHtmlFile(res, path.join(PUBLIC_DIR, 'privacy.html'));
 });
 
 app.get('/refund', (_req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.sendFile(path.join(PUBLIC_DIR, 'refund.html'));
+  sendHtmlFile(res, path.join(PUBLIC_DIR, 'refund.html'));
 });
 
 app.get('/refund.html', (_req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.sendFile(path.join(PUBLIC_DIR, 'refund.html'));
+  sendHtmlFile(res, path.join(PUBLIC_DIR, 'refund.html'));
 });
 
 app.get('/about', (_req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.sendFile(path.join(PUBLIC_DIR, 'about.html'));
+  sendHtmlFile(res, path.join(PUBLIC_DIR, 'about.html'));
 });
 
 app.get('/about.html', (_req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.sendFile(path.join(PUBLIC_DIR, 'about.html'));
+  sendHtmlFile(res, path.join(PUBLIC_DIR, 'about.html'));
 });
 
 app.get('/admin', (_req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.sendFile(path.join(PUBLIC_DIR, 'admin.html'));
+  sendHtmlFile(res, path.join(PUBLIC_DIR, 'admin.html'));
 });
 
 app.use(express.static(PUBLIC_DIR, {
