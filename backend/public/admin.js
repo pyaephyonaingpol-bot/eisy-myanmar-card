@@ -630,9 +630,20 @@
       }
       if (typeof AppNav !== 'undefined' && AppNav.navigate) {
         AppNav.navigate(name, { pushHash: true });
+        this.syncPageHeading(name);
         return;
       }
       this._showTabPanel(name);
+      this.syncPageHeading(name);
+    },
+
+    syncPageHeading(page) {
+      const titleEl = document.querySelector(`[data-page-title="${page}"]`);
+      const heading = document.querySelector('.header .page-heading');
+      if (titleEl && heading) {
+        heading.textContent = titleEl.textContent.trim();
+        heading.removeAttribute('data-i18n');
+      }
     },
 
     _showTabPanel(name) {
