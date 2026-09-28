@@ -75,12 +75,32 @@ function testUiSplit() {
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
   assert.ok(html.includes('kripicardRequestForm'));
   assert.ok(html.includes('cardRequestForm'));
-  assert.ok(html.includes('tabKripicardCard'));
-  assert.ok(html.includes('tabBitnobCard'));
+  assert.ok(html.includes('tabInstantCard'));
+  assert.ok(html.includes('tabStandardCard'));
   assert.ok(html.includes('kripicardBinSelect'));
   assert.ok(html.includes('card-provider-switch'));
   assert.ok(html.includes('card-provider-switch-thumb'));
   assert.ok(html.includes('card-provider-switch-footer'));
+  assert.ok(html.includes('pill_instant_card'));
+  assert.ok(html.includes('pill_standard_card'));
+  assert.ok(html.includes('pill_no_kyc'));
+  assert.ok(html.includes('pill_verified'));
+  // Visible switch labels must not expose vendor names.
+  const titleMatches = [...html.matchAll(/card-provider-tab-title[^>]*>([^<]*)</g)].map((m) => m[1]);
+  const subMatches = [...html.matchAll(/card-provider-tab-sub[^>]*>([^<]*)</g)].map((m) => m[1]);
+  for (const label of [...titleMatches, ...subMatches]) {
+    assert.ok(!/Kripicard|Bitnob/i.test(label), `switch label must not show vendor names: ${label}`);
+  }
+  assert.ok(titleMatches.includes('Instant Card'));
+  assert.ok(titleMatches.includes('Standard Card'));
+  assert.ok(subMatches.includes('No KYC'));
+  assert.ok(subMatches.includes('Verified'));
+
+  const i18n = fs.readFileSync(path.join(ROOT, 'backend/public/i18n.js'), 'utf8');
+  assert.ok(i18n.includes("pill_instant_card: 'Instant Card'"));
+  assert.ok(i18n.includes("pill_standard_card: 'Standard Card'"));
+  assert.ok(i18n.includes("pill_no_kyc: 'No KYC'"));
+  assert.ok(i18n.includes("pill_verified: 'Verified'"));
 
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('bindCardProviderTabs'));
