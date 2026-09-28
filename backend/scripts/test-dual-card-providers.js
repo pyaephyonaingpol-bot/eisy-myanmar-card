@@ -75,9 +75,14 @@ function testRoutesWired() {
 }
 
 function testUiSplit() {
-  section('dashboard UI uses Noon switch + dedicated Instant/Standard components');
+  section('dashboard UI uses dedicated Instant/Standard pages (no nested My Cards toggle)');
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
-  assert.ok(html.includes('cardProviderSwitchShell') || html.includes('appModeSwitcherShell'));
+  assert.ok(
+    html.includes('cardsApplyCta')
+      || html.includes('data-portal-cta="instant"')
+      || html.includes('instantAppPageHost')
+  );
+  assert.ok(!html.includes('id="appModeSwitcherShell"'));
   assert.ok(html.includes('instantCardView.js'));
   assert.ok(html.includes('standardCardView.js'));
   assert.ok(html.includes('appModeSwitcher.js') || html.includes('cardProviderSwitch.js'));

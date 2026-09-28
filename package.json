@@ -18,6 +18,7 @@
     "test:dual-app-mode-views": "node backend/scripts/test-dual-app-mode-views.js",
     "test:portal-routes": "node backend/scripts/test-portal-routes.js",
     "test:standard-portal-cleanup": "node backend/scripts/test-standard-portal-cleanup.js",
+    "test:mycards-no-mode-toggle": "node backend/scripts/test-mycards-no-mode-toggle.js",
     "write-portal-html": "node backend/scripts/write-portal-html.js",
     "bitnob-egress-proxy": "node backend/scripts/bitnob-egress-proxy.js",
     "test:usdt-card-issue": "node backend/scripts/test-usdt-only-card-issue.js",

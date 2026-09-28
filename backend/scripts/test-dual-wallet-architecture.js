@@ -98,11 +98,16 @@ function testRoutesExposeDualWallets() {
 }
 
 function testUiLabelsAndDepositPanels() {
-  section('UI has Noon switch + isolated Instant/Standard component markup');
+  section('UI has dedicated Instant/Standard pages + route CTAs (no nested My Cards toggle)');
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
   assert.ok(html.includes('data-page="instant-card"'));
   assert.ok(html.includes('data-page="standard-card"'));
-  assert.ok(html.includes('cardProviderSwitchShell') || html.includes('appModeSwitcherShell'));
+  assert.ok(
+    html.includes('cardsApplyCta')
+      || html.includes('data-portal-cta="instant"')
+      || html.includes('instantAppPageHost')
+  );
+  assert.ok(!html.includes('id="appModeSwitcherShell"'));
   assert.ok(html.includes('instantCardView.js') || html.includes('instantAppView.js'));
   assert.ok(html.includes('standardCardView.js') || html.includes('standardAppView.js'));
 
