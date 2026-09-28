@@ -100,9 +100,9 @@ function testServiceApisIsolated() {
 }
 
 function testHtmlHostsAndNoonSwitch() {
-  section('HTML hosts app-mode / Noon switch shell + dedicated page hosts');
+  section('HTML hosts dedicated Instant/Standard page hosts + My Cards route CTAs');
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
-  assert.ok(html.includes('id="appModeSwitcherShell"') || html.includes('id="cardProviderSwitchShell"'));
+  assert.ok(html.includes('id="cardsApplyCta"') || html.includes('data-portal-cta="instant"'));
   assert.ok(html.includes('id="instantAppPageHost"') || html.includes('id="instantCardPageHost"'));
   assert.ok(html.includes('id="standardAppPageHost"') || html.includes('id="standardCardPageHost"'));
   assert.ok(html.includes('card-apply-panel'));
@@ -111,22 +111,23 @@ function testHtmlHostsAndNoonSwitch() {
   assert.ok(html.includes('appModeSwitcher.js') || html.includes('cardProviderSwitch.js'));
   assert.ok(html.includes('instantCardApi.js'));
   assert.ok(html.includes('standardCardApi.js'));
+  assert.ok(!html.includes('id="appModeSwitcherShell"'));
   assert.ok(!html.includes('id="kripicardRequestForm"'));
   assert.ok(!html.includes('id="cardRequestForm"'));
   console.log('ok');
 }
 
 function testDashboardWiresComponents() {
-  section('dashboard mounts app-mode / Noon switch / dedicated component modes');
+  section('dashboard mounts Instant/Standard on dedicated pages (no My Cards nested toggle)');
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('mountAppModeUi') || dash.includes('mountCardProviderUi'));
-  assert.ok(dash.includes("mountAppModeUi('switch')") || dash.includes("mountCardProviderUi('switch')"));
   assert.ok(dash.includes("mountAppModeUi('instant')") || dash.includes("mountCardProviderUi('instant')"));
   assert.ok(dash.includes("mountAppModeUi('standard')") || dash.includes("mountCardProviderUi('standard')"));
+  assert.ok(!dash.includes("mountAppModeUi('switch')") && !dash.includes("mountCardProviderUi('switch')"));
   assert.ok(dash.includes('setAppMode') || dash.includes('setCardProviderTab'));
   assert.ok(dash.includes('getUsdtWalletBalance'));
   assert.ok(dash.includes('refreshUsdtWallet'));
-  assert.ok(dash.includes('appModeSwitcher') || dash.includes('cardProviderSwitch'));
+  assert.ok(dash.includes('syncCardsApplyCtas') || dash.includes('renderPortalHeaderNav'));
   assert.ok(dash.includes('instantAppView') || dash.includes('instantCardView'));
   assert.ok(dash.includes('standardAppView') || dash.includes('standardCardView'));
   console.log('ok');

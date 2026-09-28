@@ -12,7 +12,7 @@ Reusable UI helpers for the vanilla SPA. Attached to `window.EisyComponents`.
 | `standardCardView.js` | KYC Standard Card form — Bitnob wallet + deposit only |
 | `instantAppView.js` | Full Instant portal page — Master USDT + TRC20 + Instant Card |
 | `standardAppView.js` | Full Standard portal page — Bitnob wallet + KYC + Standard Card |
-| `appModeSwitcher.js` | Hub-only Instant ↔ Standard exclusive mount |
+| `appModeSwitcher.js` | Legacy helper (route portals preferred; not mounted inside My Cards) |
 | `cardProviderSwitch.js` | Legacy card-only Noon pill (fallback) |
 
 ## Portals
@@ -21,7 +21,9 @@ Dedicated URLs (enterprise-style split):
 
 - `/instant` → Instant portal (Master USDT Wallet + Kripicard + P2P only)
 - `/standard` → Standard portal (Bitnob wallet + KYC + Standard Card only — no P2P / master USDT)
-- `/` hub → portal chooser after login; optional in-app Noon switch on My Cards
+- `/` hub → portal chooser after login; header links to `/instant` and `/standard`
+
+**My Cards** shows card management + route CTAs only. It never nests an Instant↔Standard toggle — apply flows live on dedicated portal pages (`#instant-card` / `#standard-card` or `/instant` / `/standard`).
 
 Generated shells: `instant.html` / `standard.html` via `npm run write-portal-html`.
 Each portal removes the other flow's pages from the DOM so wallets never overlap.

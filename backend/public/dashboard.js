@@ -139,13 +139,15 @@ const Dashboard = {
 
     if (!portal) {
       this.renderPortalHubChooser();
+      this.renderPortalHeaderNav();
+      this.syncCardsApplyCtas();
       return portal;
     }
 
     // Strip opposite portal chrome so pages never overlap in this document.
     if (portal === 'instant') {
       document.querySelectorAll(
-        '[data-mode-nav="standard"], [data-mode-shell="standard"], [data-page="standard-card"], [data-standard-only]'
+        '[data-mode-nav="standard"], [data-mode-shell="standard"], [data-page="standard-card"], [data-standard-only], [data-portal-cta="standard"]'
       ).forEach((el) => el.remove());
       $('standardAppPageHost')?.closest('.app-page')?.remove();
     } else {
@@ -160,6 +162,7 @@ const Dashboard = {
           '[data-page="p2p"]',
           '[data-page="deposits"]',
           '[data-instant-only]',
+          '[data-portal-cta="instant"]',
         ].join(', ')
       ).forEach((el) => el.remove());
       $('instantAppPageHost')?.closest('.app-page')?.remove();
@@ -196,17 +199,8 @@ const Dashboard = {
       }
     }
 
-    // Header: portal switch link instead of in-app mode pill.
-    const header = $('appModeSwitchHeader');
-    if (header) {
-      const other = portal === 'instant' ? 'standard' : 'instant';
-      const otherLabel = other === 'instant' ? 'Instant portal' : 'Standard portal';
-      header.innerHTML = `
-        <a class="btn btn-secondary btn-sm portal-switch-link" href="/${other}" data-portal-switch="${other}">
-          ${portal === 'instant' ? `${otherLabel} →` : `← ${otherLabel}`}
-        </a>`;
-      header.setAttribute('aria-label', 'Switch portal');
-    }
+    this.renderPortalHeaderNav();
+    this.syncCardsApplyCtas();
 
     // Sidebar brand badge
     const brandTitle = document.querySelector('.sidebar-brand-title');
@@ -224,6 +218,49 @@ const Dashboard = {
     $('portalHubChooser')?.remove();
 
     return portal;
+  },
+
+  /**
+   * Header links between dedicated portals — never an in-app Instant↔Standard toggle.
+   */
+  renderPortalHeaderNav() {
+    const header = $('appModeSwitchHeader');
+    if (!header) return;
+    const portal = this._portal || this.getPortal();
+    if (portal === 'instant' || portal === 'standard') {
+      const other = portal === 'instant' ? 'standard' : 'instant';
+      const otherLabel = other === 'instant' ? 'Instant portal' : 'Standard portal';
+      header.innerHTML = `
+        <a class="btn btn-secondary btn-sm portal-switch-link" href="/${other}" data-portal-switch="${other}">
+          ${portal === 'instant' ? `${otherLabel} →` : `← ${otherLabel}`}
+        </a>`;
+      header.setAttribute('aria-label', 'Switch portal');
+      return;
+    }
+    header.innerHTML = `
+      <a class="btn btn-secondary btn-sm portal-switch-link" href="/instant" data-portal-switch="instant">Instant</a>
+      <a class="btn btn-secondary btn-sm portal-switch-link" href="/standard" data-portal-switch="standard">Standard</a>`;
+    header.setAttribute('aria-label', 'Choose portal');
+  },
+
+  /**
+   * My Cards apply CTAs point at dedicated portal routes — no nested mode switcher.
+   */
+  syncCardsApplyCtas() {
+    const portal = this._portal || this.getPortal();
+    const instantCta = document.querySelector('[data-portal-cta="instant"]');
+    const standardCta = document.querySelector('[data-portal-cta="standard"]');
+    if (portal === 'instant') {
+      standardCta?.remove();
+      if (instantCta) {
+        instantCta.setAttribute('href', '#instant-card');
+      }
+    } else if (portal === 'standard') {
+      instantCta?.remove();
+      if (standardCta) {
+        standardCta.setAttribute('href', '#standard-card');
+      }
+    }
   },
 
   renderPortalHubChooser() {
@@ -560,10 +597,9 @@ const Dashboard = {
           forceRefresh: force || hasPending || !this._isFresh('cards'),
         });
         this.loadReloadHistory({ force });
-        // Portal pages never mount both Instant+Standard; hub keeps the switcher.
-        if (this._portal === 'instant') this.mountAppModeUi('instant');
-        else if (this._portal === 'standard') this.mountAppModeUi('standard');
-        else this.mountAppModeUi('switch');
+        // My Cards never nests Instant↔Standard toggles — apply via dedicated routes.
+        this.syncCardsApplyCtas();
+        this.renderPortalHeaderNav();
       }
       if (page === 'instant-card') {
         if (this._portal === 'standard') return;
@@ -5613,8 +5649,12 @@ const Dashboard = {
   },
 
   bindDashboardForms() {
-    // Exclusive Instant / Standard app views via compact mode switch.
-    this.mountAppModeUi('switch');
+    // Portal header links + My Cards CTAs (no nested Instant↔Standard toggle).
+    this.renderPortalHeaderNav();
+    this.syncCardsApplyCtas();
+    if (this._portal === 'instant' || this._portal === 'standard') {
+      this.mountAppModeUi(this._portal);
+    }
 
     $('issueCardForm').onsubmit = async (e) => {
       e.preventDefault();
@@ -5792,13 +5832,16 @@ const Dashboard = {
   },
 
   bindCardProviderTabs() {
-    if (this._portal === 'instant') this.mountAppModeUi('instant');
-    else if (this._portal === 'standard') this.mountAppModeUi('standard');
-    else this.mountAppModeUi('switch');
+    this.renderPortalHeaderNav();
+    this.syncCardsApplyCtas();
+    if (this._portal === 'instant' || this._portal === 'standard') {
+      this.mountAppModeUi(this._portal);
+    }
   },
 
   clearCardViewHosts() {
     [
+      'cardsApplyCta',
       'appModeSwitcherShell',
       'cardProviderSwitchShell',
       'instantAppPageHost',
@@ -5808,11 +5851,10 @@ const Dashboard = {
       'appModeSwitchHeader',
     ].forEach((id) => {
       const el = $(id);
-      if (el && (id === 'appModeSwitchHeader' || id.includes('Shell') || id.includes('Host'))) {
-        // Keep header switch mount node; clear content hosts.
-        if (id === 'appModeSwitchHeader') return;
-        el.innerHTML = '';
-      }
+      if (!el) return;
+      // Keep My Cards CTA + header mount nodes; clear exclusive content hosts only.
+      if (id === 'appModeSwitchHeader' || id === 'cardsApplyCta') return;
+      if (id.includes('Shell') || id.includes('Host')) el.innerHTML = '';
     });
   },
 
@@ -5917,128 +5959,89 @@ const Dashboard = {
   },
 
   /**
-   * mode: 'switch' | 'instant' | 'standard'
-   * Mounts exclusive InstantAppView / StandardAppView (full independent pages).
+   * mode: 'instant' | 'standard'
+   * Mounts exclusive InstantAppView / StandardAppView on dedicated page hosts only.
+   * Never mounts an Instant↔Standard toggle inside My Cards.
    */
-  mountAppModeUi(mode = 'switch') {
+  mountAppModeUi(mode = 'instant') {
     const comps = (typeof EisyComponents !== 'undefined') ? EisyComponents : null;
-    if (!comps?.instantAppView || !comps?.standardAppView || !comps?.appModeSwitcher) {
-      // Fallback to legacy card-only switch if app views missing
+    if (!comps?.instantAppView || !comps?.standardAppView) {
       return this.mountCardProviderUi(mode);
     }
 
     this.clearCardViewHosts();
     const ctx = this.buildCardViewContexts();
-
-    // Compact header switch (hub only). Portals use a link to the other URL.
-    if (!this._portal) {
-      comps.appModeSwitcher.mountCompact($('appModeSwitchHeader'), {
-        ...ctx,
-        onModeChange: (m) => {
-          ctx.onModeChange?.(m);
-          if ($('appModeActiveHost')) {
-            comps.appModeSwitcher.setMode(m, ctx);
-          } else if (m === 'instant') {
-            this.mountAppModeUi('instant');
-          } else {
-            this.mountAppModeUi('standard');
-          }
-        },
-      });
-    }
+    this.renderPortalHeaderNav();
+    this.syncCardsApplyCtas();
 
     const locked = this._portal;
-    const effective = locked || mode;
+    const effective = locked || (mode === 'standard' ? 'standard' : 'instant');
 
     if (effective === 'instant') {
+      if (!$('instantAppPageHost')) return;
       comps.instantAppView.mount($('instantAppPageHost'), { replace: true });
       comps.instantAppView.bind(ctx.instantCtx);
       comps.instantAppView.activate(ctx.instantCtx);
-      comps.appModeSwitcher?.syncSwitchUi?.('instant');
+      document.documentElement.setAttribute('data-app-mode', 'instant');
       return;
     }
 
     if (effective === 'standard') {
+      if (!$('standardAppPageHost')) return;
       comps.standardAppView.mount($('standardAppPageHost'), { replace: true });
       comps.standardAppView.bind(ctx.standardCtx);
       comps.standardAppView.activate(ctx.standardCtx);
-      comps.appModeSwitcher?.syncSwitchUi?.('standard');
-      return;
+      document.documentElement.setAttribute('data-app-mode', 'standard');
     }
-
-    // Hub My Cards: exclusive Instant/Standard switcher shell
-    comps.appModeSwitcher.mountInto($('appModeSwitcherShell'), ctx);
   },
 
-  /** @deprecated legacy card-only switch — prefer mountAppModeUi */
-  mountCardProviderUi(mode = 'switch') {
+  /** @deprecated legacy card-only mount — prefer mountAppModeUi / portal routes */
+  mountCardProviderUi(mode = 'instant') {
     const comps = (typeof EisyComponents !== 'undefined') ? EisyComponents : null;
-    if (comps?.instantAppView && comps?.appModeSwitcher) {
+    if (comps?.instantAppView && comps?.standardAppView) {
       return this.mountAppModeUi(mode);
     }
-    if (!comps?.instantCardView || !comps?.standardCardView || !comps?.cardProviderSwitch) {
+    if (!comps?.instantCardView || !comps?.standardCardView) {
       console.warn('[Dashboard] card view components not loaded');
       return;
     }
 
     this.clearCardViewHosts();
     const ctx = this.buildCardViewContexts();
+    const effective = this._portal || (mode === 'standard' ? 'standard' : 'instant');
 
-    if (mode === 'instant') {
+    if (effective === 'instant') {
       const host = $('instantCardPageHost') || $('instantAppPageHost');
+      if (!host) return;
       comps.instantCardView.mount(host, { replace: true });
       comps.instantCardView.bind(ctx.instantCtx);
       comps.instantCardView.activate(ctx.instantCtx);
       return;
     }
 
-    if (mode === 'standard') {
+    if (effective === 'standard') {
       const host = $('standardCardPageHost') || $('standardAppPageHost');
+      if (!host) return;
       comps.standardCardView.mount(host, { replace: true });
       comps.standardCardView.bind(ctx.standardCtx);
       comps.standardCardView.activate(ctx.standardCtx);
-      return;
     }
-
-    const shell = $('cardProviderSwitchShell') || $('appModeSwitcherShell');
-    comps.cardProviderSwitch.mountInto(shell, ctx);
   },
 
   setAppMode(mode) {
-    // On a dedicated portal URL, cross-mode switches navigate to that portal.
-    if (this._portal && this._portal !== mode && (mode === 'instant' || mode === 'standard')) {
+    // Route-level separation: Instant/Standard always live on dedicated portal URLs.
+    if (mode === 'instant' || mode === 'standard') {
+      if (this._portal === mode) {
+        this.mountAppModeUi(mode);
+        return;
+      }
       window.location.href = `/${mode}`;
-      return;
     }
-    if (this._portal) {
-      this.mountAppModeUi(this._portal);
-      return;
-    }
-    const switcher = EisyComponents?.appModeSwitcher;
-    if (!switcher) {
-      this.setCardProviderTab(mode === 'standard' ? 'bitnob' : 'kripicard');
-      return;
-    }
-    const ctx = this.buildCardViewContexts();
-    if (!$('appModeActiveHost')) {
-      this.mountAppModeUi('switch');
-    }
-    switcher.setMode(mode, ctx);
   },
 
   setCardProviderTab(provider) {
     const mode = (provider === 'bitnob' || provider === 'standard') ? 'standard' : 'instant';
-    if (EisyComponents?.appModeSwitcher) {
-      this.setAppMode(mode);
-      return;
-    }
-    const switcher = EisyComponents?.cardProviderSwitch;
-    if (!switcher) return;
-    if (!$('cardProviderSwitch')) {
-      this.mountCardProviderUi('switch');
-    }
-    const ctx = this.buildCardViewContexts();
-    switcher.setActive(provider, ctx);
+    this.setAppMode(mode);
   },
 
   enterInstantCardPage({ force = false } = {}) {

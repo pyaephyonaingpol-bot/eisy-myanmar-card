@@ -1359,8 +1359,15 @@
 
             <div class="grid-2">
               <section class="panel card-apply-panel">
-                <!-- Compact Instant ↔ Standard app-mode switch mounts full independent views -->
-                <div id="appModeSwitcherShell" data-app-mode-shell></div>
+                <!-- Route-level Instant / Standard only — no nested mode toggle on My Cards -->
+                <div id="cardsApplyCta" class="cards-apply-cta">
+                  <h2 data-i18n="cards_apply_heading">Get a new card</h2>
+                  <p class="hint" data-i18n="cards_apply_hint">Instant and Standard are separate portals with their own wallets and cards.</p>
+                  <div class="action-row cards-apply-cta-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
+                    <a class="btn btn-primary btn-sm" href="/instant" data-portal-cta="instant" data-i18n="nav_instant_card">Instant Card</a>
+                    <a class="btn btn-secondary btn-sm" href="/standard" data-portal-cta="standard" data-i18n="nav_standard_card">Standard Card</a>
+                  </div>
+                </div>
                 <details style="margin-top:1rem" class="hint">
                   <summary>Demo: self-issue card (dev only)</summary>
                   <form id="issueCardForm" class="form" style="margin-top:0.75rem">

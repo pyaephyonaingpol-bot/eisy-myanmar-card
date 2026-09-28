@@ -69,21 +69,21 @@ function testAppViewFilesIsolated() {
 }
 
 function testHtmlHostsAppMode() {
-  section('HTML hosts app-mode shell + compact header switch');
+  section('HTML hosts dedicated Instant/Standard page hosts (no My Cards nested toggle)');
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
-  assert.ok(html.includes('id="appModeSwitcherShell"'));
+  assert.ok(html.includes('id="cardsApplyCta"') || html.includes('data-portal-cta="instant"'));
   assert.ok(html.includes('id="appModeSwitchHeader"'));
   assert.ok(html.includes('id="instantAppPageHost"'));
   assert.ok(html.includes('id="standardAppPageHost"'));
   assert.ok(html.includes('data-mode-nav="instant"'));
   assert.ok(html.includes('data-mode-nav="standard"'));
   assert.ok(html.includes('data-mode-shell="instant"'));
-  assert.ok(html.includes('data-mode-shell="standard"'));
   assert.ok(html.includes('id="walletHeroUsdt"'));
   assert.ok(html.includes('id="walletHeroBitnob"'));
   assert.ok(html.includes('instantAppView.js'));
   assert.ok(html.includes('standardAppView.js'));
   assert.ok(html.includes('appModeSwitcher.js'));
+  assert.ok(!html.includes('id="appModeSwitcherShell"'), 'My Cards must not nest appModeSwitcherShell');
   console.log('ok');
 }
 
@@ -98,16 +98,17 @@ function testDashboardKeepsWalletsIsolated() {
 }
 
 function testDashboardWiresAppMode() {
-  section('dashboard mounts exclusive app-mode views');
+  section('dashboard mounts exclusive Instant/Standard views on dedicated pages only');
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('mountAppModeUi'));
-  assert.ok(dash.includes("mountAppModeUi('switch')"));
   assert.ok(dash.includes("mountAppModeUi('instant')"));
   assert.ok(dash.includes("mountAppModeUi('standard')"));
+  assert.ok(!dash.includes("mountAppModeUi('switch')"));
   assert.ok(dash.includes('setAppMode'));
   assert.ok(dash.includes('instantAppView'));
   assert.ok(dash.includes('standardAppView'));
-  assert.ok(dash.includes('appModeSwitcher'));
+  assert.ok(dash.includes('syncCardsApplyCtas'));
+  assert.ok(dash.includes('renderPortalHeaderNav'));
   console.log('ok');
 }
 
