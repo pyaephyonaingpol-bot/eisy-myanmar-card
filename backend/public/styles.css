@@ -5074,6 +5074,27 @@ html[data-app-mode="standard"] [data-mode-shell="instant"] {
   white-space: nowrap;
 }
 
+.admin-pipeline-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
+
+.admin-pipeline-switcher .portal-switch-link {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.55rem;
+}
+
+html[data-admin-pipeline="hub"] .admin-sidebar-nav .nav-item[data-page] {
+  display: none !important;
+}
+
+html[data-admin-pipeline="instant"] .sidebar-brand-title,
+html[data-admin-pipeline="standard"] .sidebar-brand-title {
+  letter-spacing: 0.01em;
+}
+
 html[data-eisy-portal="instant"] .app-mode-switch-header .app-mode-switch,
 html[data-eisy-portal="standard"] .app-mode-switch-header .app-mode-switch {
   display: none !important;
