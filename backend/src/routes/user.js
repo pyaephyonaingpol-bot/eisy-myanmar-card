@@ -13,6 +13,7 @@ const {
   getDepositFeeSettings,
   parseRecordMetadata,
   getCurrentRateSummary,
+  calculateKripicardRequestPricingUsdt,
 } = require('../services/settingsService');
 const CardReloadRequest = require('../models/CardReloadRequest');
 const { walletPayload, formatUsdt, migrateLegacyUsdToMmk } = require('../services/walletService');
@@ -22,12 +23,17 @@ const {
   purchaseCardFromUsdtWallet,
   reloadCardFromUsdtWallet,
 } = require('../services/cardWalletService');
+const {
+  purchaseKripicardFromUsdtWallet,
+  getKripicardBinOptions,
+} = require('../services/kripicardCardWalletService');
 const { resolveBitnobCustomerId } = require('../services/cardIssueService');
 const { syncBitnobCardFromProvider } = require('../services/bitnobCardWebhookService');
 const {
   BITNOB_CARD_CREATE_FEE_USD,
   getBitnobFeeSchedule,
 } = require('../constants/bitnobFees');
+const { isKycVerified, normalizeKycStatus } = require('../services/kycService');
 const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
   isPendingCardRecord,
@@ -38,6 +44,26 @@ const {
 } = require('../constants/cardStatuses');
 
 const router = express.Router();
+
+/** Bitnob (KYC) cards require platform KYC VERIFIED. Non-KYC users use Kripicard instead. */
+async function assertKycVerifiedForBitnob(userId) {
+  const user = await User.findById(userId);
+  if (!user) {
+    const err = new Error('User not found');
+    err.code = 'USER_NOT_FOUND';
+    throw err;
+  }
+  const status = normalizeKycStatus(user.kyc_status);
+  if (!isKycVerified(status)) {
+    const err = new Error(
+      'Bitnob cards require KYC verification. Use Instant Card (Kripicard) without KYC, or complete KYC first.'
+    );
+    err.code = 'KYC_REQUIRED_FOR_BITNOB';
+    err.kyc_status = status;
+    throw err;
+  }
+  return user;
+}
 
 function resolveClientCardStatus(c) {
   if (isPendingCardRecord(c)) return 'pending';
@@ -87,15 +113,28 @@ function respondCardPurchaseError(res, err, logTag) {
   if (
     code === 'USDT_ONLY_CARD_ISSUANCE'
     || code === 'BITNOB_CUSTOMER_REQUIRED'
+    || code === 'KYC_REQUIRED_FOR_BITNOB'
     || code === 'INVALID_NAME_ON_CARD'
     || code === 'INVALID_AMOUNT'
+    || code === 'INVALID_BIN'
     || code === 'BITNOB_NOT_CONFIGURED'
+    || code === 'KRIPICARD_NOT_CONFIGURED'
     || code === 'SUPABASE_NOT_CONFIGURED'
   ) {
-    const status = (code === 'BITNOB_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED')
+    const status = (
+      code === 'BITNOB_NOT_CONFIGURED'
+      || code === 'KRIPICARD_NOT_CONFIGURED'
+      || code === 'SUPABASE_NOT_CONFIGURED'
+    )
       ? 503
-      : 400;
-    return res.status(status).json({ error: message, code });
+      : code === 'KYC_REQUIRED_FOR_BITNOB'
+        ? 403
+        : 400;
+    return res.status(status).json({
+      error: message,
+      code,
+      kyc_status: err.kyc_status || undefined,
+    });
   }
   if (
     code === 'BITNOB_HTTP_ERROR'
@@ -104,6 +143,9 @@ function respondCardPurchaseError(res, err, logTag) {
     || code === 'BITNOB_BAD_RESPONSE'
     || code === 'BITNOB_MISSING_CARD_ID'
     || code === 'BITNOB_NETWORK_ERROR'
+    || code === 'KRIPICARD_HTTP_ERROR'
+    || code === 'KRIPICARD_API_ERROR'
+    || code === 'KRIPICARD_TIMEOUT'
   ) {
     return res.status(502).json({
       error: message || 'Card provider issuance failed',
@@ -304,6 +346,7 @@ router.post('/cards/:id/sync', requireAuth, requireSensitive, async (req, res) =
  */
 router.post('/cards/purchase', requireAuth, requireSensitive, async (req, res) => {
   try {
+    await assertKycVerifiedForBitnob(req.user.id);
     const user = await User.findById(req.user.id);
     const body = req.body || {};
     const initialLoadUsd = parseFloat(
@@ -334,6 +377,7 @@ router.post('/cards/purchase', requireAuth, requireSensitive, async (req, res) =
  */
 router.post('/cards/issue', requireAuth, requireSensitive, async (req, res) => {
   try {
+    await assertKycVerifiedForBitnob(req.user.id);
     const user = await User.findById(req.user.id);
     const body = req.body || {};
     const initialLoadUsd = parseFloat(
@@ -522,6 +566,8 @@ router.get('/card/pricing', requireAuth, async (req, res) => {
       String(process.env.BITNOB_CLIENT_ID || '').trim()
       && String(process.env.BITNOB_CLIENT_SECRET || process.env.BITNOB_SECRET_KEY || '').trim()
     );
+    const kycStatus = normalizeKycStatus(user?.kyc_status);
+    const kycVerified = isKycVerified(kycStatus);
     res.json({
       card_issuance_fee_usd: settings.card_issuance_fee_usd,
       card_funding_fee_percent: settings.card_funding_fee_percent,
@@ -552,9 +598,13 @@ router.get('/card/pricing', requireAuth, async (req, res) => {
       exchange_rate_applied: false,
       auto_issue: true,
       provider: 'bitnob',
+      requires_kyc: true,
+      kyc_status: kycStatus,
+      is_kyc_verified: kycVerified,
       bitnob_configured: bitnobConfigured,
       bitnob_customer_ready: Boolean(customerId),
       bitnob_customer_id: customerId || null,
+      bitnob_eligible: kycVerified && Boolean(customerId),
       withdrawal_fees: await getWithdrawalFeeSettings(),
       deposit_fees: await getDepositFeeSettings(),
     });
@@ -564,12 +614,90 @@ router.get('/card/pricing', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/card/request', requireAuth, requireSensitive, async (req, res) => {
+/** Live Kripicard BIN catalog for Non-KYC Instant Card form. */
+router.get('/card/bins', requireAuth, async (req, res) => {
+  try {
+    const settings = await getCardPricingSettings();
+    const options = await getKripicardBinOptions({ pricingSettings: settings });
+    res.json({
+      provider: 'kripicard',
+      requires_kyc: false,
+      default_bin: options.default_bin,
+      bins: options.bins,
+      details: options.details || options.catalog || [],
+      source: options.source,
+      error: options.error || null,
+    });
+  } catch (err) {
+    console.error('[user/card/bins]', err);
+    res.status(500).json({ error: err.message || 'Failed to load BINs', code: err.code });
+  }
+});
+
+/** Non-KYC Kripicard pricing (USDT wallet / master-wallet deposit funded). */
+router.get('/card/pricing-kripicard', requireAuth, async (req, res) => {
+  try {
+    const settings = await getCardPricingSettings();
+    const sampleLoad = Number(settings.minimum_initial_deposit_usd) || 10;
+    let sample = null;
+    try {
+      sample = calculateKripicardRequestPricingUsdt(sampleLoad, settings);
+    } catch (_) { /* ignore sample pricing errors */ }
+    const kripicardConfigured = Boolean(String(process.env.KRIPICARD_API_KEY || '').trim());
+    res.json({
+      provider: 'kripicard',
+      requires_kyc: false,
+      kripicard_configured: kripicardConfigured,
+      card_issuance_fee_usd: settings.card_issuance_fee_usd,
+      card_funding_fee_percent: settings.card_funding_fee_percent,
+      card_processing_fee_usd: settings.card_processing_fee_usd,
+      minimum_initial_deposit_usd: settings.minimum_initial_deposit_usd,
+      payment_currency: 'USDT',
+      payment_wallet: 'usdt',
+      card_issuance_rate: '1 USDT ≈ 1 USD',
+      deposit_hint: 'Top up your USDT wallet via crypto deposit (master wallet) before issuing.',
+      sample_pricing: sample,
+      auto_issue: true,
+    });
+  } catch (err) {
+    console.error('[user/card/pricing-kripicard]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/** Non-KYC Instant Card — Kripicard createcard via USDT wallet. */
+router.post('/card/request-kripicard', requireAuth, requireSensitive, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     const walletType = String(req.body.wallet_type || 'usdt').toLowerCase();
+    if (walletType && walletType !== 'usdt') {
+      return res.status(400).json({
+        error: 'Card issuance accepts USDT wallet payment only.',
+        code: 'USDT_ONLY_CARD_ISSUANCE',
+      });
+    }
 
-    // Card purchase always debits USDT and auto-issues via Bitnob.
+    const result = await purchaseKripicardFromUsdtWallet(req.user.id, {
+      initialLoadUsd: parseFloat(req.body.initial_load_usd),
+      cardHolderName: req.body.name_on_card || req.body.card_holder_name || user.name,
+      note: req.body.note,
+      bin: req.body.bin || req.body.card_bin || null,
+      paymentRef: req.body.payment_ref || req.body.idempotency_key || null,
+    });
+
+    return res.json(buildCardPurchaseSuccessPayload(result));
+  } catch (err) {
+    return respondCardPurchaseError(res, err, 'user/card/request-kripicard');
+  }
+});
+
+router.post('/card/request', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    await assertKycVerifiedForBitnob(req.user.id);
+    const user = await User.findById(req.user.id);
+    const walletType = String(req.body.wallet_type || 'usdt').toLowerCase();
+
+    // Card purchase always debits USDT and auto-issues via Bitnob (KYC only).
     if (walletType && walletType !== 'usdt') {
       return res.status(400).json({
         error: 'Card issuance accepts USDT wallet payment only. MMK wallet and KBZPay/WavePay are not supported for new cards.',

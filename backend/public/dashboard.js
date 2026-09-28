@@ -375,6 +375,9 @@ const Dashboard = {
         });
         this.loadReloadHistory({ force });
         this.loadCardPricing().catch(() => {});
+        this.loadKripicardPricing().catch(() => {});
+        this.loadKripicardBins().catch(() => {});
+        this.setCardProviderTab(this.isKycVerified() ? 'bitnob' : 'kripicard');
       }
       if (page === 'home') {
         this.updateHomeRateSummary();
@@ -5376,9 +5379,16 @@ const Dashboard = {
   },
 
   bindDashboardForms() {
+    this.bindCardProviderTabs();
+
     const cardInitialLoad = $('cardInitialLoad');
     if (cardInitialLoad) {
       cardInitialLoad.addEventListener('input', () => this.updateCardPricingBreakdown());
+    }
+
+    const kripicardInitialLoad = $('kripicardInitialLoad');
+    if (kripicardInitialLoad) {
+      kripicardInitialLoad.addEventListener('input', () => this.updateKripicardPricingBreakdown());
     }
 
     const cardRequestForm = $('cardRequestForm');
@@ -5386,6 +5396,14 @@ const Dashboard = {
       cardRequestForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         try {
+          if (!this.isKycVerified()) {
+            this.toast(
+              typeof t === 'function' ? t('bitnob_kyc_required') : 'Complete KYC before applying for a Bitnob card.',
+              'error'
+            );
+            this.setCardProviderTab('kripicard');
+            return;
+          }
           const initialLoad = parseFloat($('cardInitialLoad').value);
           const nameOnCard = ($('cardHolderNameInput')?.value || $('holderName')?.value || '').trim();
           const required = this.cardPricing?.total_usdt ?? this.cardPricing?.total_usd_required ?? 0;
@@ -5454,15 +5472,80 @@ const Dashboard = {
             err.code === 'INSUFFICIENT_USDT_BALANCE'
             || err.code === 'USDT_ONLY_CARD_ISSUANCE'
             || err.code === 'BITNOB_CUSTOMER_REQUIRED'
+            || err.code === 'KYC_REQUIRED_FOR_BITNOB'
           ) {
             this.toast(err.message, 'error');
             if (err.code === 'INSUFFICIENT_USDT_BALANCE' && typeof AppNav !== 'undefined') {
               this.openUsdtTopUpModal();
             }
+            if (err.code === 'KYC_REQUIRED_FOR_BITNOB') this.setCardProviderTab('kripicard');
             return;
           }
           this.toast(err.message || 'Card request failed', 'error');
           this.log(err.message, 'error');
+        }
+      });
+    }
+
+    const kripicardForm = $('kripicardRequestForm');
+    if (kripicardForm) {
+      kripicardForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          const initialLoad = parseFloat($('kripicardInitialLoad').value);
+          const nameOnCard = ($('kripicardHolderName')?.value || '').trim();
+          const bin = ($('kripicardBinSelect')?.value || '').trim();
+          const required = this.kripicardPricing?.sample_pricing?.total_charge_usdt
+            || this._estimateKripicardTotal(initialLoad);
+
+          if (!nameOnCard || nameOnCard.length < 2) {
+            this.toast(typeof t === 'function' ? t('name_on_card_required') : 'Enter the name on card (min 2 characters)', 'error');
+            return;
+          }
+          if (!bin) {
+            this.toast(typeof t === 'function' ? t('select_card_bin') : 'Select a card BIN', 'error');
+            return;
+          }
+          if (Number(this.walletUsdt ?? 0) < required) {
+            this.toast(`Insufficient USDT wallet. Need ${this.formatUsdt(required)}. Top up via crypto deposit first.`, 'error');
+            this.openUsdtTopUpModal();
+            return;
+          }
+
+          const data = await Auth.api('POST', '/api/user/card/request-kripicard', {
+            name_on_card: nameOnCard,
+            card_holder_name: nameOnCard,
+            initial_load_usd: initialLoad,
+            bin,
+            wallet_type: 'usdt',
+          }, { sensitive: true });
+
+          const debited = data.wallet?.usdt_formatted
+            || this.formatUsdt(data.wallet?.debited_usdt);
+          this.toast(data.message || (typeof t === 'function' ? t('card_issued_ok') : 'Card issued'), 'ok');
+
+          const receipt = $('kripicardRequestReceipt');
+          if (receipt) {
+            receipt.classList.remove('hidden');
+            receipt.innerHTML = `
+              <p class="wallet-pay-hint ok" style="margin:0">
+                Instant Kripicard issued.
+                ${debited ? `<br><small>Debited ${debited}</small>` : ''}
+              </p>`;
+          }
+
+          $('kripicardRequestForm')?.reset();
+          if ($('kripicardHolderName') && nameOnCard) $('kripicardHolderName').value = nameOnCard;
+          this.loadKripicardBins().catch(() => {});
+          this.updateKripicardPricingBreakdown();
+          this.loadWallet();
+          this.loadUsdtWalletPage(true);
+          this.loadAllCards({ forceRefresh: true });
+          if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
+        } catch (err) {
+          if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+          this.toast(err.message || 'Instant card request failed', 'error');
+          if (err.code === 'INSUFFICIENT_USDT_BALANCE') this.openUsdtTopUpModal();
         }
       });
     }
@@ -5634,6 +5717,135 @@ const Dashboard = {
     }
   },
 
+  bindCardProviderTabs() {
+    document.querySelectorAll('.card-provider-tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const provider = btn.getAttribute('data-card-provider') || 'kripicard';
+        this.setCardProviderTab(provider);
+      });
+    });
+    this.setCardProviderTab(this.isKycVerified() ? 'bitnob' : 'kripicard');
+  },
+
+  setCardProviderTab(provider) {
+    const which = provider === 'bitnob' ? 'bitnob' : 'kripicard';
+    document.querySelectorAll('.card-provider-tab').forEach((btn) => {
+      const active = btn.getAttribute('data-card-provider') === which;
+      btn.classList.toggle('is-active', active);
+      btn.classList.toggle('btn-primary', active);
+      btn.classList.toggle('btn-secondary', !active);
+    });
+    const kripi = $('kripicardApplyPanel');
+    const bitnob = $('bitnobApplyPanel');
+    if (kripi) kripi.classList.toggle('hidden', which !== 'kripicard');
+    if (bitnob) bitnob.classList.toggle('hidden', which !== 'bitnob');
+
+    const gate = $('bitnobKycGate');
+    const form = $('cardRequestForm');
+    const btn = $('btnRequestCard');
+    const verified = this.isKycVerified();
+    if (gate) gate.classList.toggle('hidden', verified || which !== 'bitnob');
+    if (form) {
+      form.querySelectorAll('input,button,select').forEach((el) => {
+        if (el.id === 'cardPaymentMethod') return;
+        el.disabled = which === 'bitnob' && !verified;
+      });
+    }
+    if (btn) btn.disabled = which === 'bitnob' && !verified;
+
+    if (which === 'kripicard') {
+      this.loadKripicardPricing().catch(() => {});
+      this.loadKripicardBins().catch(() => {});
+    } else {
+      this.loadCardPricing().catch(() => {});
+    }
+  },
+
+  async loadKripicardBins() {
+    const select = $('kripicardBinSelect');
+    if (!select || !Auth.isLoggedIn()) return;
+    try {
+      const data = await Auth.api('GET', '/api/user/card/bins');
+      const bins = Array.isArray(data.bins) ? data.bins : [];
+      const details = Array.isArray(data.details) ? data.details : [];
+      const labelFor = (bin) => {
+        const d = details.find((x) => String(x.bin) === String(bin));
+        if (d?.label) return d.label;
+        if (d?.brand) return `${String(d.brand).toUpperCase()} ${bin}`;
+        return String(bin);
+      };
+      select.innerHTML = '';
+      if (!bins.length) {
+        select.innerHTML = '<option value="">No BINs available</option>';
+        return;
+      }
+      bins.forEach((bin) => {
+        const opt = document.createElement('option');
+        opt.value = bin;
+        opt.textContent = labelFor(bin);
+        if (bin === data.default_bin) opt.selected = true;
+        select.appendChild(opt);
+      });
+    } catch (err) {
+      console.warn('[kripicard bins]', err.message);
+      select.innerHTML = '<option value="441357">US Visa 441357 (fallback)</option>';
+    }
+  },
+
+  async loadKripicardPricing() {
+    if (!Auth.isLoggedIn()) return;
+    try {
+      const data = await Auth.api('GET', '/api/user/card/pricing-kripicard');
+      this.kripicardPricing = data;
+      const min = data.minimum_initial_deposit_usd ?? 10;
+      const input = $('kripicardInitialLoad');
+      if (input) {
+        input.min = min;
+        input.placeholder = Number(min).toFixed(2);
+        if (!input.value) input.value = Number(min).toFixed(2);
+      }
+      const hint = $('kripicardMinDepositHint');
+      if (hint) hint.textContent = `Minimum initial deposit: $${Number(min).toFixed(2)}`;
+      const nameInput = $('kripicardHolderName');
+      if (nameInput && !nameInput.value && this.user?.name) {
+        nameInput.value = this.user.name;
+      }
+      this.updateKripicardPricingBreakdown();
+    } catch (err) {
+      console.warn('[kripicard pricing]', err.message);
+    }
+  },
+
+  _estimateKripicardTotal(initialLoad) {
+    const p = this.kripicardPricing || {};
+    const load = Number(initialLoad) || 0;
+    const issuance = Number(p.card_issuance_fee_usd) || 0;
+    const pct = Number(p.card_funding_fee_percent) || 0;
+    const funding = Math.round((load * pct) / 100 * 100) / 100;
+    const processing = Number(p.card_processing_fee_usd);
+    const proc = Number.isFinite(processing) ? processing : 1.5;
+    return Math.round((load + issuance + funding + proc) * 100) / 100;
+  },
+
+  updateKripicardPricingBreakdown() {
+    const p = this.kripicardPricing;
+    if (!p) return;
+    const initial = parseFloat($('kripicardInitialLoad')?.value) || 0;
+    const issuance = Number(p.card_issuance_fee_usd) || 0;
+    const pct = Number(p.card_funding_fee_percent) || 0;
+    const funding = Math.round((initial * pct) / 100 * 100) / 100;
+    const processing = Number(p.card_processing_fee_usd);
+    const proc = Number.isFinite(processing) ? processing : 1.5;
+    const total = Math.round((initial + issuance + funding + proc) * 100) / 100;
+    const set = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+    set('kpbInitialLoad', `$${initial.toFixed(2)}`);
+    set('kpbIssuanceFee', `$${issuance.toFixed(2)}`);
+    set('kpbFundingFee', `$${funding.toFixed(2)}`);
+    set('kpbProcessingFee', `$${proc.toFixed(2)}`);
+    set('kpbTotalUsd', `$${total.toFixed(2)}`);
+    set('kpbTotalUsdt', `$${total.toFixed(2)} USDT`);
+  },
+
   async loadCardPricing() {
     if (!Auth.isLoggedIn()) return;
     if (this.cardPricing && this._isFresh('pricing')) {
@@ -5661,7 +5873,11 @@ const Dashboard = {
       if (nameInput && !nameInput.value && this.user?.name) {
         nameInput.value = this.user.name;
       }
-      if (data.bitnob_customer_ready === false) {
+      if (data.is_kyc_verified === false || data.requires_kyc) {
+        const gate = $('bitnobKycGate');
+        if (gate && !this.isKycVerified()) gate.classList.remove('hidden');
+      }
+      if (data.bitnob_customer_ready === false && this.isKycVerified()) {
         this.toast(
           typeof t === 'function'
             ? t('bitnob_customer_required')
