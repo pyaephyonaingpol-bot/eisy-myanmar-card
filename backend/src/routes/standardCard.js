@@ -22,6 +22,10 @@ const {
   getDualWalletOverview,
   getOrCreateStandardDepositAddress,
 } = require('../services/bitnobWalletService');
+const {
+  getBitnobKycPublicStatus,
+  submitBitnobCardKycForUser,
+} = require('../services/bitnobKycService');
 
 const router = express.Router();
 
@@ -50,7 +54,8 @@ function attachHelpers({ respondCardPurchaseError, buildCardPurchaseSuccessPaylo
       const settings = await getCardPricingSettings();
       const currentRate = await getCurrentRateSummary();
       const user = await User.findById(req.user.id);
-      const customerId = resolveBitnobCustomerId({ user });
+      const bitnobKyc = getBitnobKycPublicStatus(user);
+      const customerId = bitnobKyc.customer_id || resolveBitnobCustomerId({ user });
       const bitnobConfigured = Boolean(
         String(process.env.BITNOB_CLIENT_ID || '').trim()
         && String(process.env.BITNOB_CLIENT_SECRET || process.env.BITNOB_SECRET_KEY || '').trim()
@@ -95,9 +100,11 @@ function attachHelpers({ respondCardPurchaseError, buildCardPurchaseSuccessPaylo
         kyc_status: kycStatus,
         is_kyc_verified: kycVerified,
         bitnob_configured: bitnobConfigured,
-        bitnob_customer_ready: Boolean(customerId),
+        bitnob_customer_ready: Boolean(bitnobKyc.customer_ready),
         bitnob_customer_id: customerId || null,
-        bitnob_eligible: kycVerified && Boolean(customerId),
+        bitnob_kyc_status: bitnobKyc.bitnob_kyc_status,
+        bitnob_kyc_reason: bitnobKyc.bitnob_kyc_reason,
+        bitnob_eligible: kycVerified && Boolean(bitnobKyc.can_issue_standard_card),
         withdrawal_fees: await getWithdrawalFeeSettings(),
         deposit_fees: await getDepositFeeSettings(),
       });
@@ -194,6 +201,44 @@ function attachHelpers({ respondCardPurchaseError, buildCardPurchaseSuccessPaylo
           : 400;
       console.error('[user/wallets/standard/deposit-address]', err.message, code);
       res.status(status).json({ error: err.message, code, kyc_status: err.kyc_status });
+    }
+  });
+
+  router.get('/wallets/standard/bitnob-kyc', requireAuth, async (req, res) => {
+    try {
+      const user = await User.findById(req.user.id);
+      const platform = normalizeKycStatus(user?.kyc_status);
+      res.json({
+        success: true,
+        platform_kyc_status: platform,
+        is_kyc_verified: isKycVerified(platform),
+        ...getBitnobKycPublicStatus(user),
+      });
+    } catch (err) {
+      console.error('[user/wallets/standard/bitnob-kyc]', err);
+      res.status(500).json({ error: err.message || 'Failed to load Bitnob KYC status' });
+    }
+  });
+
+  router.post('/wallets/standard/bitnob-kyc', requireAuth, requireSensitive, async (req, res) => {
+    try {
+      await assertKycVerifiedForBitnob(req.user.id);
+      const result = await submitBitnobCardKycForUser(req.user.id, {
+        force: String(req.body?.force || '') === '1' || req.body?.force === true,
+      });
+      const user = await User.findById(req.user.id);
+      res.json({
+        success: true,
+        ...result,
+        ...getBitnobKycPublicStatus(user),
+      });
+    } catch (err) {
+      const code = err.code || 'BITNOB_KYC_ERROR';
+      const status = code === 'KYC_REQUIRED_FOR_BITNOB' ? 403
+        : code === 'BITNOB_NOT_CONFIGURED' ? 503
+          : 400;
+      console.error('[user/wallets/standard/bitnob-kyc POST]', err.message, code);
+      res.status(status).json({ error: err.message, code });
     }
   });
 

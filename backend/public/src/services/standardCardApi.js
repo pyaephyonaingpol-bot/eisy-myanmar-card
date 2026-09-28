@@ -22,5 +22,11 @@
       const q = refresh ? '?refresh=1' : '';
       return api().request('GET', `/api/user/wallets/standard/deposit-address${q}`);
     },
+    getBitnobKyc() {
+      return api().request('GET', '/api/user/wallets/standard/bitnob-kyc');
+    },
+    submitBitnobKyc(body = {}) {
+      return api().request('POST', '/api/user/wallets/standard/bitnob-kyc', body, { sensitive: true });
+    },
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

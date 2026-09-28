@@ -25,6 +25,9 @@ const HANDLED_EVENTS = new Set([
   'virtualcard.created.failed',
   'virtualcard.topup.completed',
   'virtualcard.topup.failed',
+  'virtualcard.user.kyc.pending',
+  'virtualcard.user.kyc.complete',
+  'virtualcard.user.kyc.failed',
 ]);
 
 /** In-memory idempotency for recent eventIds (retries reuse the same id). */
@@ -318,6 +321,19 @@ async function processBitnobCardWebhook(payload) {
 
   if (eventId && rememberEventId(eventId)) {
     return { handled: true, duplicate: true, event, eventId };
+  }
+
+  // Card KYC outcomes update users.bitnob_customer_id / bitnob_kyc_status.
+  if (event.startsWith('virtualcard.user.kyc.')) {
+    const { applyBitnobKycWebhook } = require('./bitnobKycService');
+    const kycResult = await applyBitnobKycWebhook(payload);
+    return {
+      handled: true,
+      event,
+      eventId,
+      kyc: true,
+      ...kycResult,
+    };
   }
 
   const providerCardId = extractProviderCardId(payload);

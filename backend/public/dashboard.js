@@ -2356,6 +2356,10 @@ const Dashboard = {
       if (Auth.user) {
         Auth.user.kyc_status = data.kyc_status;
         Auth.user.is_kyc_verified = data.is_verified;
+        if (data.bitnob_kyc) {
+          Auth.user.bitnob_kyc = data.bitnob_kyc;
+          this._bitnobKyc = data.bitnob_kyc;
+        }
       }
       this.updateKycSettingsUI();
       return data;
@@ -2384,12 +2388,20 @@ const Dashboard = {
     }
     const intro = $('kycModalIntro');
     if (intro) {
-      if (status === 'VERIFIED') intro.textContent = 'Your identity is verified. You can trade on the P2P marketplace.';
-      else if (status === 'PENDING_REVIEW') intro.textContent = 'Your submission is under review. You will be notified once approved.';
-      else if (status === 'REJECTED') {
+      if (status === 'VERIFIED') {
+        const bitnob = this._kycStatus?.bitnob_kyc || this._bitnobKyc || Auth.user?.bitnob_kyc;
+        const ready = Boolean(bitnob?.can_issue_standard_card || bitnob?.customer_ready);
+        intro.textContent = ready
+          ? 'Your identity is verified and Bitnob Card KYC is ready for Standard Cards.'
+          : 'Your identity is verified. Bitnob Card KYC will finish before Standard Card issuance.';
+      } else if (status === 'PENDING_REVIEW') {
+        intro.textContent = 'Your submission is under review. You will be notified once approved.';
+      } else if (status === 'REJECTED') {
         const reason = this._kycStatus?.latest_submission?.rejection_reason;
         intro.textContent = reason ? `Previous submission rejected: ${reason}. Please resubmit.` : 'Please resubmit your documents.';
-      } else intro.textContent = 'Submit your identity documents to unlock P2P trading.';
+      } else {
+        intro.textContent = 'Submit your identity documents to unlock Standard Cards (Bitnob) and verified banking features.';
+      }
     }
   },
 
@@ -2652,6 +2664,21 @@ const Dashboard = {
       if ($('kycFormError')) $('kycFormError').textContent = 'Please attach front, back, and selfie photos.';
       return;
     }
+    if (!$('kycDateOfBirth')?.value) {
+      if ($('kycFormError')) $('kycFormError').textContent = 'Date of birth is required for Bitnob Card KYC.';
+      return;
+    }
+    if (
+      !$('kycAddressLine1')?.value?.trim()
+      || !$('kycAddressCity')?.value?.trim()
+      || !$('kycAddressState')?.value?.trim()
+      || !$('kycAddressPostal')?.value?.trim()
+    ) {
+      if ($('kycFormError')) {
+        $('kycFormError').textContent = 'Address (street, city, state/region, postal code) is required for Bitnob Card KYC.';
+      }
+      return;
+    }
 
     this.setKycSubmitBusy(true);
     this.setKycCompressBanner('Compressing photos before upload…', true);
@@ -2670,6 +2697,13 @@ const Dashboard = {
       formData.append('full_name', $('kycFullName')?.value?.trim() || '');
       formData.append('id_type', $('kycIdType')?.value || 'NRC');
       formData.append('id_number', $('kycIdNumber')?.value?.trim() || '');
+      formData.append('date_of_birth', $('kycDateOfBirth')?.value?.trim() || '');
+      formData.append('address_line1', $('kycAddressLine1')?.value?.trim() || '');
+      formData.append('address_line2', $('kycAddressLine2')?.value?.trim() || '');
+      formData.append('address_city', $('kycAddressCity')?.value?.trim() || '');
+      formData.append('address_state', $('kycAddressState')?.value?.trim() || '');
+      formData.append('address_postal', $('kycAddressPostal')?.value?.trim() || '');
+      formData.append('address_country', $('kycAddressCountry')?.value?.trim() || 'MMR');
       formData.append('front_photo', front, front.name || 'front.jpg');
       formData.append('back_photo', back, back.name || 'back.jpg');
       formData.append('selfie_photo', selfie, selfie.name || 'selfie.jpg');
@@ -5656,7 +5690,7 @@ const Dashboard = {
       this.mountAppModeUi(this._portal);
     }
 
-    $('issueCardForm').onsubmit = async (e) => {
+    $('issueCardForm') && ($('issueCardForm').onsubmit = async (e) => {
       e.preventDefault();
       try {
         const data = await Auth.api('POST', '/api/admin/issue-card', {
@@ -5674,7 +5708,7 @@ const Dashboard = {
         showOutput('issueCardOutput', err.message, true);
         this.log(err.message, 'error');
       }
-    };
+    });
 
     $('btnLoadCard').onclick = () => this.loadAllCards({ forceRefresh: true });
     $('btnShowCardDetails')?.addEventListener('click', () => this.openCardDetailsForActiveCard());
@@ -5913,6 +5947,21 @@ const Dashboard = {
     const standardCtx = {
       ...shared,
       pricing: self.cardPricing,
+      bitnobKyc: self._bitnobKyc || self._kycStatus?.bitnob_kyc || Auth.user?.bitnob_kyc || null,
+      isBitnobCustomerReady: () => {
+        const kyc = self._bitnobKyc || self._kycStatus?.bitnob_kyc || Auth.user?.bitnob_kyc || self.cardPricing || {};
+        if (kyc.can_issue_standard_card != null) return Boolean(kyc.can_issue_standard_card);
+        if (kyc.customer_ready != null) return Boolean(kyc.customer_ready);
+        if (kyc.bitnob_customer_ready != null) return Boolean(kyc.bitnob_customer_ready);
+        return false;
+      },
+      onBitnobKycLoaded: (data) => {
+        self._bitnobKyc = data;
+        if (Auth.user) Auth.user.bitnob_kyc = data;
+        if (self._kycStatus) self._kycStatus.bitnob_kyc = data;
+        EisyComponents?.standardAppView?.syncKyc?.(self.buildCardViewContexts().standardCtx);
+        EisyComponents?.standardCardView?.syncKycGate?.(self.buildCardViewContexts().standardCtx);
+      },
       getBitnobBalance: () => Number(self.walletBitnobUsdt ?? self.cardFundingWallets?.standard?.balance_usdt ?? 0),
       setBitnobBalance: (n) => {
         self.walletBitnobUsdt = Number(n) || 0;
@@ -5922,6 +5971,17 @@ const Dashboard = {
       onPricingLoaded: (data) => {
         self.cardPricing = data;
         self.depositFees = data.deposit_fees || self.depositFees;
+        if (data.bitnob_customer_ready != null || data.bitnob_kyc_status != null) {
+          self._bitnobKyc = {
+            ...(self._bitnobKyc || {}),
+            customer_ready: data.bitnob_customer_ready,
+            bitnob_customer_ready: data.bitnob_customer_ready,
+            bitnob_kyc_status: data.bitnob_kyc_status,
+            bitnob_kyc_reason: data.bitnob_kyc_reason,
+            can_issue_standard_card: data.bitnob_eligible,
+            customer_id: data.bitnob_customer_id,
+          };
+        }
         self.updateHomeRateSummary?.();
       },
       onNeedInstant: () => {
@@ -6146,13 +6206,18 @@ const Dashboard = {
         const gate = $('bitnobKycGate');
         if (gate && !this.isKycVerified()) gate.classList.remove('hidden');
       }
-      if (data.bitnob_customer_ready === false && this.isKycVerified()) {
-        this.toast(
-          typeof t === 'function'
-            ? t('bitnob_customer_required')
-            : 'Complete Card KYC first so your verified card profile is ready, then try again.',
-          'error'
-        );
+      if (data.bitnob_customer_ready != null || data.bitnob_kyc_status != null) {
+        this._bitnobKyc = {
+          ...(this._bitnobKyc || {}),
+          customer_ready: data.bitnob_customer_ready,
+          bitnob_customer_ready: data.bitnob_customer_ready,
+          bitnob_kyc_status: data.bitnob_kyc_status,
+          bitnob_kyc_reason: data.bitnob_kyc_reason,
+          can_issue_standard_card: data.bitnob_eligible,
+          customer_id: data.bitnob_customer_id,
+        };
+        EisyComponents?.standardCardView?.syncKycGate?.(this.buildCardViewContexts().standardCtx);
+        EisyComponents?.standardAppView?.syncKyc?.(this.buildCardViewContexts().standardCtx);
       }
       this.updateCardPricingBreakdown();
       this.updateHomeRateSummary();

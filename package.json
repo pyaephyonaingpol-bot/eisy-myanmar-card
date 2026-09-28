@@ -11,6 +11,7 @@
     "migrate": "npm run migrate --prefix backend",
     "test:bitnob-virtual-cards": "node backend/scripts/test-bitnob-virtual-cards.js",
     "test:bitnob-card-webhooks": "node backend/scripts/test-bitnob-card-webhooks.js",
+    "test:bitnob-card-kyc": "node backend/scripts/test-bitnob-card-kyc.js",
     "test:bitnob-egress-proxy": "node backend/scripts/test-bitnob-egress-proxy.js",
     "test:dual-card-providers": "node backend/scripts/test-dual-card-providers.js",
     "test:dual-wallet-architecture": "node backend/scripts/test-dual-wallet-architecture.js",

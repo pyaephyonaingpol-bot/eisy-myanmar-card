@@ -42,6 +42,18 @@ const KycSubmission = {
     frontPhotoPath,
     backPhotoPath,
     selfiePhotoPath,
+    dateOfBirth = null,
+    addressLine1 = null,
+    addressLine2 = null,
+    addressCity = null,
+    addressState = null,
+    addressPostal = null,
+    addressCountry = 'MMR',
+    occupation = null,
+    employmentStatus = null,
+    accountPurpose = null,
+    annualSalary = null,
+    expectedMonthlyVolume = null,
   }) {
     const db = getDb();
     // Encrypt PII at rest (passport / NRC number + legal name)
@@ -52,8 +64,12 @@ const KycSubmission = {
       INSERT INTO ${this.TABLE} (
         user_id, full_name, id_type, id_number,
         front_photo_path, back_photo_path, selfie_photo_path,
+        date_of_birth, address_line1, address_line2, address_city,
+        address_state, address_postal, address_country,
+        occupation, employment_status, account_purpose,
+        annual_salary, expected_monthly_volume,
         status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING_REVIEW')
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_REVIEW')
     `,
       userId,
       encryptedFullName,
@@ -61,7 +77,19 @@ const KycSubmission = {
       encryptedIdNumber,
       frontPhotoPath,
       backPhotoPath,
-      selfiePhotoPath
+      selfiePhotoPath,
+      dateOfBirth || null,
+      addressLine1 || null,
+      addressLine2 || null,
+      addressCity || null,
+      addressState || null,
+      addressPostal || null,
+      addressCountry || 'MMR',
+      occupation || null,
+      employmentStatus || null,
+      accountPurpose || null,
+      annualSalary || null,
+      expectedMonthlyVolume || null
     );
     return this.findById(result.lastID);
   },
@@ -101,6 +129,18 @@ const KycSubmission = {
       frontPhotoUrl: row.front_photo_path,
       backPhotoUrl: row.back_photo_path,
       selfieUrl: row.selfie_photo_path,
+      date_of_birth: row.date_of_birth || null,
+      address_line1: row.address_line1 || null,
+      address_line2: row.address_line2 || null,
+      address_city: row.address_city || null,
+      address_state: row.address_state || null,
+      address_postal: row.address_postal || null,
+      address_country: row.address_country || null,
+      occupation: row.occupation || null,
+      employment_status: row.employment_status || null,
+      account_purpose: row.account_purpose || null,
+      bitnob_customer_id: row.bitnob_customer_id || null,
+      bitnob_kyc_status: row.bitnob_kyc_status || null,
       status: row.status,
       rejection_reason: row.rejection_reason || null,
       reviewed_by: row.reviewed_by || null,
