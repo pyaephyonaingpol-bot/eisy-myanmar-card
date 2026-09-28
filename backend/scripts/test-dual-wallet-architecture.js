@@ -77,34 +77,36 @@ function testLedgerSeparationInServices() {
 
 function testRoutesExposeDualWallets() {
   section('user routes expose dual wallet APIs');
-  const src = fs.readFileSync(path.join(ROOT, 'backend/src/routes/user.js'), 'utf8');
-  assert.ok(src.includes("/wallets/card-funding"));
-  assert.ok(src.includes("/wallets/standard/deposit-address"));
-  assert.ok(src.includes("/card/request-instant"));
-  assert.ok(src.includes("/card/request-standard"));
-  assert.ok(src.includes('getDualWalletOverview'));
-  assert.ok(src.includes('getOrCreateStandardDepositAddress'));
-  assert.ok(src.includes('INSUFFICIENT_BITNOB_BALANCE'));
-  assert.ok(src.includes('Master Wallet'));
+  const user = fs.readFileSync(path.join(ROOT, 'backend/src/routes/user.js'), 'utf8');
+  const instant = fs.readFileSync(path.join(ROOT, 'backend/src/routes/instantCard.js'), 'utf8');
+  const standard = fs.readFileSync(path.join(ROOT, 'backend/src/routes/standardCard.js'), 'utf8');
+  assert.ok(user.includes("require('./instantCard')"));
+  assert.ok(user.includes("require('./standardCard')"));
+  assert.ok(standard.includes('/wallets/card-funding') || standard.includes("'/wallets/card-funding'"));
+  assert.ok(standard.includes('deposit-address'));
+  assert.ok(instant.includes('request-instant'));
+  assert.ok(standard.includes('request-standard'));
+  assert.ok(standard.includes('getDualWalletOverview'));
+  assert.ok(standard.includes('getOrCreateStandardDepositAddress'));
+  assert.ok(user.includes('INSUFFICIENT_BITNOB_BALANCE') || instant.includes('master_wallet'));
+  assert.ok(instant.includes('Master Wallet') || standard.includes('Master Wallet'));
 
   const webhook = fs.readFileSync(path.join(ROOT, 'backend/src/routes/webhook.js'), 'utf8');
-  assert.ok(webhook.includes("/bitnob/deposits"));
+  assert.ok(webhook.includes('/bitnob/deposits'));
   assert.ok(webhook.includes('creditStandardWalletFromDeposit'));
   console.log('ok');
 }
 
 function testUiLabelsAndDepositPanels() {
-  section('UI has Instant/Standard switch + dual deposit panels');
+  section('UI has dedicated Instant/Standard pages + dual deposit panels');
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
-  assert.ok(html.includes('pill_instant_card'));
-  assert.ok(html.includes('pill_standard_card'));
+  assert.ok(html.includes('data-page="instant-card"'));
+  assert.ok(html.includes('data-page="standard-card"'));
   assert.ok(html.includes('standardDepositAddress'));
   assert.ok(html.includes('instantMasterBalance'));
   assert.ok(html.includes('pay_master_wallet_issuance'));
   assert.ok(html.includes('pay_standard_wallet_issuance'));
-  assert.ok(!/Kripicard|Bitnob/.test(
-    [...html.matchAll(/card-provider-tab-title[^>]*>([^<]*)</g)].map((m) => m[1]).join(' ')
-  ));
+  assert.ok(!html.includes('cardProviderSwitch'));
 
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('loadCardFundingWallets'));

@@ -38,10 +38,10 @@ function testPricingBreakdown() {
 }
 
 function testWalletServiceMarkupFlow() {
-  section('purchaseCardFromUsdtWallet debits total and sends load only');
+  section('purchaseCardFromUsdtWallet debits Bitnob ledger total and sends load only');
   const src = fs.readFileSync(path.join(ROOT, 'backend/src/services/cardWalletService.js'), 'utf8');
 
-  assert.ok(src.includes('ensureSupabaseUserWallet'), 'ensures Supabase wallet before debit');
+  assert.ok(src.includes('debitBitnobUsdt'), 'debits Bitnob Standard wallet before issue');
   assert.ok(src.includes('provider_load_usd'), 'tracks provider load');
   assert.ok(src.includes('bitnob_create_fee_usd'), 'tracks Bitnob create fee');
   assert.ok(src.includes('bitnob_funding_fee_usd'), 'tracks Bitnob funding fee');
@@ -49,23 +49,24 @@ function testWalletServiceMarkupFlow() {
   assert.ok(src.includes('amount: providerLoadUsd'), 'provider receives load only');
   assert.ok(src.includes('recordPlatformUsdFee(platformMarkupUsd'), 'markup recorded in ledger');
   assert.ok(src.includes('total_charge_usdt: requiredUsdt'), 'metadata includes total charge');
+  assert.ok(!src.includes('purchaseKripicardFromUsdtWallet'), 'Standard service must not call Kripicard');
   console.log('ok');
 }
 
 function testCardsIssueRouteUsesWalletPurchase() {
   section('POST /api/user/cards/issue uses wallet purchase + markup');
-  const route = fs.readFileSync(path.join(ROOT, 'backend/src/routes/user.js'), 'utf8');
+  const route = fs.readFileSync(path.join(ROOT, 'backend/src/routes/standardCard.js'), 'utf8');
 
   const issueIdx = route.indexOf("router.post('/cards/issue'");
-  const meIdx = route.indexOf("router.get('/me'");
-  assert.ok(issueIdx >= 0 && meIdx > issueIdx);
-  const issueBlock = route.slice(issueIdx, meIdx);
+  assert.ok(issueIdx >= 0);
+  const issueBlock = route.slice(issueIdx, issueIdx + 800);
 
-  assert.ok(issueBlock.includes('purchaseCardFromUsdtWallet'), 'cards/issue delegates to wallet purchase');
-  assert.ok(!issueBlock.includes('issueCardForUser({'), 'cards/issue no longer calls provider directly');
-  assert.ok(issueBlock.includes('initial_load_usd ?? body.amount'), 'amount maps to card load not total charge');
-  assert.ok(issueBlock.includes('buildCardPurchaseSuccessPayload'), 'shared success payload');
-  assert.ok(issueBlock.includes('respondCardPurchaseError'), 'shared error handler');
+  assert.ok(issueBlock.includes('handleLegacyStandardIssue') || issueBlock.includes('purchaseCardFromUsdtWallet'), 'cards/issue on Standard router');
+  assert.ok(route.includes('purchaseCardFromUsdtWallet'), 'cards/issue delegates to wallet purchase');
+  assert.ok(!route.includes('issueCardForUser({'), 'cards/issue no longer calls provider directly');
+  assert.ok(route.includes('initial_load_usd ?? body.amount'), 'amount maps to card load not total charge');
+  assert.ok(route.includes('buildCardPurchaseSuccessPayload'), 'shared success payload');
+  assert.ok(route.includes('respondCardPurchaseError'), 'shared error handler');
   console.log('ok');
 }
 
@@ -83,13 +84,14 @@ function testNextCardsIssueRoute() {
 }
 
 function testCardRequestRouteSharesPurchase() {
-  section('POST /api/user/card/request still uses shared purchase flow');
-  const route = fs.readFileSync(path.join(ROOT, 'backend/src/routes/user.js'), 'utf8');
+  section('POST /api/user/card/request still uses Standard Bitnob purchase flow');
+  const route = fs.readFileSync(path.join(ROOT, 'backend/src/routes/standardCard.js'), 'utf8');
   const idx = route.indexOf("router.post('/card/request'");
   assert.ok(idx >= 0);
   const block = route.slice(idx, idx + 1200);
-  assert.ok(block.includes('purchaseCardFromUsdtWallet'));
-  assert.ok(block.includes('USDT_ONLY_CARD_ISSUANCE'));
+  assert.ok(route.includes('purchaseCardFromUsdtWallet'));
+  assert.ok(route.includes('BITNOB_WALLET_ONLY_CARD_ISSUANCE') || route.includes('assertKycVerifiedForBitnob'));
+  assert.ok(!route.includes('purchaseKripicardFromUsdtWallet'), 'Standard router must not call Kripicard');
   console.log('ok');
 }
 

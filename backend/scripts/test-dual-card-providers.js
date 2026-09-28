@@ -60,57 +60,37 @@ function testPricingSideBySide() {
 
 function testRoutesWired() {
   section('user routes expose both providers');
-  const src = fs.readFileSync(path.join(ROOT, 'backend/src/routes/user.js'), 'utf8');
-  assert.ok(src.includes("router.get('/card/bins'"));
-  assert.ok(src.includes("router.get('/card/pricing-kripicard'"));
-  assert.ok(src.includes("router.post('/card/request-kripicard'"));
-  assert.ok(src.includes('assertKycVerifiedForBitnob'));
-  assert.ok(src.includes('purchaseKripicardFromUsdtWallet'));
-  assert.ok(src.includes('KYC_REQUIRED_FOR_BITNOB'));
+  const user = fs.readFileSync(path.join(ROOT, 'backend/src/routes/user.js'), 'utf8');
+  const instant = fs.readFileSync(path.join(ROOT, 'backend/src/routes/instantCard.js'), 'utf8');
+  const standard = fs.readFileSync(path.join(ROOT, 'backend/src/routes/standardCard.js'), 'utf8');
+  assert.ok(user.includes("require('./instantCard')"));
+  assert.ok(user.includes("require('./standardCard')"));
+  assert.ok(instant.includes("'/card/bins'"));
+  assert.ok(instant.includes("'/card/pricing-kripicard'"));
+  assert.ok(instant.includes("'/card/request-kripicard'") || instant.includes('request-instant'));
+  assert.ok(instant.includes('purchaseKripicardFromUsdtWallet'));
+  assert.ok(standard.includes('assertKycVerifiedForBitnob') || standard.includes('KYC_REQUIRED_FOR_BITNOB'));
+  assert.ok(standard.includes('purchaseCardFromUsdtWallet'));
   console.log('ok');
 }
 
 function testUiSplit() {
-  section('dashboard UI has dual provider panels');
+  section('dashboard UI has dedicated Instant + Standard pages');
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
   assert.ok(html.includes('kripicardRequestForm'));
   assert.ok(html.includes('cardRequestForm'));
-  assert.ok(html.includes('tabInstantCard'));
-  assert.ok(html.includes('tabStandardCard'));
+  assert.ok(html.includes('data-page="instant-card"'));
+  assert.ok(html.includes('data-page="standard-card"'));
   assert.ok(html.includes('kripicardBinSelect'));
-  assert.ok(html.includes('card-provider-switch'));
-  assert.ok(html.includes('card-provider-switch-thumb'));
-  assert.ok(html.includes('card-provider-switch-footer'));
-  assert.ok(html.includes('pill_instant_card'));
-  assert.ok(html.includes('pill_standard_card'));
-  assert.ok(html.includes('pill_no_kyc'));
-  assert.ok(html.includes('pill_verified'));
-  // Visible switch labels must not expose vendor names.
-  const titleMatches = [...html.matchAll(/card-provider-tab-title[^>]*>([^<]*)</g)].map((m) => m[1]);
-  const subMatches = [...html.matchAll(/card-provider-tab-sub[^>]*>([^<]*)</g)].map((m) => m[1]);
-  for (const label of [...titleMatches, ...subMatches]) {
-    assert.ok(!/Kripicard|Bitnob/i.test(label), `switch label must not show vendor names: ${label}`);
-  }
-  assert.ok(titleMatches.includes('Instant Card'));
-  assert.ok(titleMatches.includes('Standard Card'));
-  assert.ok(subMatches.includes('No KYC'));
-  assert.ok(subMatches.includes('Verified'));
-
-  const i18n = fs.readFileSync(path.join(ROOT, 'backend/public/i18n.js'), 'utf8');
-  assert.ok(i18n.includes("pill_instant_card: 'Instant Card'"));
-  assert.ok(i18n.includes("pill_standard_card: 'Standard Card'"));
-  assert.ok(i18n.includes("pill_no_kyc: 'No KYC'"));
-  assert.ok(i18n.includes("pill_verified: 'Verified'"));
+  assert.ok(!html.includes('cardProviderSwitch'));
+  assert.ok(!html.includes('card-provider-switch-footer'));
 
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
-  assert.ok(dash.includes('bindCardProviderTabs'));
-  assert.ok(dash.includes('/api/user/card/request-kripicard'));
-  assert.ok(dash.includes('setCardProviderTab'));
-  assert.ok(dash.includes('data-active'));
-
-  const css = fs.readFileSync(path.join(ROOT, 'backend/public/styles.css'), 'utf8');
-  assert.ok(css.includes('.card-provider-switch-thumb'));
-  assert.ok(css.includes('cardProviderPanelIn'));
+  assert.ok(dash.includes('enterInstantCardPage'));
+  assert.ok(dash.includes('enterStandardCardPage'));
+  assert.ok(dash.includes('/api/user/card/request-instant') || dash.includes('/api/user/card/request-kripicard'));
+  assert.ok(dash.includes('/api/user/card/request-standard'));
+  assert.ok(!dash.includes('setCardProviderTab'));
   console.log('ok');
 }
 

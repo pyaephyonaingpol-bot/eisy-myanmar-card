@@ -1137,6 +1137,14 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
             <span data-i18n="nav_my_cards">My Cards</span>
           </button>
+          <button type="button" class="nav-item" data-page="instant-card">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            <span data-i18n="nav_instant_card">Instant Card</span>
+          </button>
+          <button type="button" class="nav-item" data-page="standard-card">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span data-i18n="nav_standard_card">Standard Card</span>
+          </button>
           <button type="button" class="nav-item" data-page="deposits">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             <span data-i18n="nav_deposits">Deposit &amp; History</span>
@@ -1239,6 +1247,8 @@
           <!-- Hidden titles for page heading sync -->
           <span class="hidden" data-page-title="home" data-i18n="nav_dashboard">Dashboard</span>
           <span class="hidden" data-page-title="cards" data-i18n="nav_my_cards">My Cards</span>
+          <span class="hidden" data-page-title="instant-card" data-i18n="nav_instant_card">Instant Card</span>
+          <span class="hidden" data-page-title="standard-card" data-i18n="nav_standard_card">Standard Card</span>
           <span class="hidden" data-page-title="deposits" data-i18n="deposits_page_title">Deposit &amp; Reload History</span>
           <span class="hidden" data-page-title="usdt-wallet" data-i18n="usdt_wallet_page_title">USDT Wallet</span>
           <span class="hidden" data-page-title="p2p" data-i18n="nav_p2p">P2P Express</span>
@@ -1271,9 +1281,11 @@
 
             <section class="panel home-card-purchase">
               <h2 data-i18n="home_card_purchase_heading">Get a Virtual Card</h2>
-              <p class="hint" data-i18n="home_card_purchase_hint">Issue a new card or manage existing cards from My Cards.</p>
-              <div class="action-row">
-                <button type="button" class="btn btn-primary btn-sm" data-goto="cards" data-i18n="issue_card">Issue Card</button>
+              <p class="hint" data-i18n="home_card_purchase_hint">Choose Instant Card (No KYC, Master Wallet) or Standard Card (Verified, Bitnob wallet).</p>
+              <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
+                <button type="button" class="btn btn-primary btn-sm" data-goto="instant-card" data-i18n="nav_instant_card">Instant Card</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-goto="standard-card" data-i18n="nav_standard_card">Standard Card</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="nav_my_cards">My Cards</button>
               </div>
             </section>
 
@@ -1322,150 +1334,13 @@
             </section>
 
             <div class="grid-2">
-              <section class="panel card-apply-panel">
-                <div class="card-provider-switch-wrap">
-                  <p class="card-provider-switch-label" data-i18n="choose_card_type">Choose card type</p>
-                  <div
-                    id="cardProviderSwitch"
-                    class="card-provider-switch"
-                    role="tablist"
-                    aria-label="Card types"
-                    data-active="kripicard"
-                  >
-                    <span class="card-provider-switch-thumb" aria-hidden="true"></span>
-                    <button
-                      type="button"
-                      class="card-provider-tab is-active"
-                      role="tab"
-                      aria-selected="true"
-                      data-card-provider="kripicard"
-                      id="tabInstantCard"
-                    >
-                      <span class="card-provider-tab-title" data-i18n="pill_instant_card">Instant Card</span>
-                      <span class="card-provider-tab-sub" data-i18n="pill_no_kyc">No KYC</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="card-provider-tab"
-                      role="tab"
-                      aria-selected="false"
-                      data-card-provider="bitnob"
-                      id="tabStandardCard"
-                    >
-                      <span class="card-provider-tab-title" data-i18n="pill_standard_card">Standard Card</span>
-                      <span class="card-provider-tab-sub" data-i18n="pill_verified">Verified</span>
-                    </button>
-                  </div>
+              <section class="panel">
+                <h2 data-i18n="apply_new_card">Apply for New Card</h2>
+                <p class="hint" style="margin-bottom:0.85rem" data-i18n="cards_apply_split_hint">Issuance is split into dedicated pages so Instant and Standard wallets never mix.</p>
+                <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
+                  <button type="button" class="btn btn-primary btn-sm" data-goto="instant-card" data-i18n="nav_instant_card">Instant Card</button>
+                  <button type="button" class="btn btn-secondary btn-sm" data-goto="standard-card" data-i18n="nav_standard_card">Standard Card</button>
                 </div>
-
-                <div class="card-provider-panels">
-                <!-- Non-KYC: Instant Card -->
-                <div id="kripicardApplyPanel" class="card-provider-panel is-active" data-provider="kripicard" role="tabpanel" aria-labelledby="tabInstantCard">
-                  <h2 data-i18n="apply_instant_card">Instant Card (No KYC)</h2>
-                  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_instant_card_hint">No KYC required. Pay from Master Wallet USDT (TRC20 crypto deposit).</p>
-                  <div class="wallet-pay-hint ok" id="instantWalletBalanceHint" style="margin-bottom:0.75rem">
-                    <span data-i18n="master_wallet_balance_label">Master Wallet</span>:
-                    <strong id="instantMasterBalance">—</strong>
-                  </div>
-                  <p class="hint" style="margin-bottom:0.75rem">
-                    <button type="button" class="btn btn-secondary btn-sm" data-goto="wallet" data-i18n="top_up_master_wallet">Top up Master Wallet</button>
-                  </p>
-                  <form id="kripicardRequestForm" class="form">
-                    <div class="field"><label for="kripicardHolderName" data-i18n="name_on_card">Name on Card</label>
-                      <input id="kripicardHolderName" type="text" minlength="2" maxlength="50" autocomplete="name" placeholder="Cardholder name" required />
-                    </div>
-                    <div class="field"><label for="kripicardBinSelect" data-i18n="card_bin">Card BIN</label>
-                      <select id="kripicardBinSelect" required>
-                        <option value="">Loading BINs…</option>
-                      </select>
-                    </div>
-                    <div class="field"><label for="kripicardInitialLoad" data-i18n="initial_card_load">Initial Card Load Amount (USD)</label>
-                      <input id="kripicardInitialLoad" type="number" step="0.01" min="10" placeholder="10.00" required />
-                      <small id="kripicardMinDepositHint" class="hint" data-i18n="min_initial_deposit">Minimum initial deposit: $10.00</small>
-                    </div>
-                    <div class="field">
-                      <label data-i18n="pay_from">Pay From</label>
-                      <p class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_master_wallet_issuance">Master Wallet USDT (1 USDT ≈ 1 USD — Instant Card only)</p>
-                    </div>
-                    <div id="kripicardPricingBreakdown" class="pricing-breakdown">
-                      <div class="pricing-row"><span data-i18n="initial_card_load_row">Initial Card Load</span><strong id="kpbInitialLoad">$0.00</strong></div>
-                      <div class="pricing-row"><span data-i18n="card_issuance_fee">+ Card Issuance Fee</span><strong id="kpbIssuanceFee">$0.00</strong></div>
-                      <div class="pricing-row"><span data-i18n="card_funding_fee">+ Funding Fee</span><strong id="kpbFundingFee">$0.00</strong></div>
-                      <div class="pricing-row"><span data-i18n="card_processing_fee">+ Processing Fee</span><strong id="kpbProcessingFee">$1.50</strong></div>
-                      <div class="pricing-row pricing-total"><span data-i18n="total_usd_required">= Total USD Required</span><strong id="kpbTotalUsd">$0.00</strong></div>
-                      <div class="pricing-row pricing-usdt"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="kpbTotalUsdt">$0.00 USDT</strong></div>
-                    </div>
-                    <button type="submit" class="btn btn-primary" id="btnRequestKripicard" data-i18n="submit_instant_card">Issue Instant Card</button>
-                  </form>
-                  <div id="kripicardRequestReceipt" class="pricing-receipt hidden"></div>
-                </div>
-
-                <!-- KYC: Standard Card -->
-                <div id="bitnobApplyPanel" class="card-provider-panel" data-provider="bitnob" role="tabpanel" aria-labelledby="tabStandardCard" hidden>
-                  <h2 data-i18n="apply_standard_card">Standard Card (Verified)</h2>
-                  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_standard_card_hint">Requires verified KYC. Pay from your Standard Card wallet (Bitnob deposit address — separate from Master Wallet).</p>
-                  <div id="bitnobKycGate" class="wallet-pay-hint err hidden" data-i18n="standard_kyc_required">Complete KYC verification before applying for a Standard Card. Without KYC, use Instant Card instead.</div>
-                  <div id="standardWalletPanel" class="standard-wallet-panel" style="margin-bottom:0.85rem">
-                    <div class="wallet-pay-hint ok" style="margin-bottom:0.5rem">
-                      <span data-i18n="standard_wallet_balance_label">Standard Card wallet</span>:
-                      <strong id="standardBitnobBalance">—</strong>
-                    </div>
-                    <div class="field" style="margin-bottom:0.5rem">
-                      <label data-i18n="standard_deposit_address_label">Deposit address</label>
-                      <input id="standardDepositAddress" type="text" readonly value="" placeholder="Loading…" />
-                      <small class="hint" id="standardDepositChainHint"></small>
-                    </div>
-                    <button type="button" class="btn btn-secondary btn-sm" id="btnRefreshStandardDeposit" data-i18n="refresh_standard_deposit">Refresh deposit address</button>
-                  </div>
-                  <form id="cardRequestForm" class="form">
-                    <div class="field"><label for="cardHolderNameInput" data-i18n="name_on_card">Name on Card</label>
-                      <input id="cardHolderNameInput" type="text" minlength="2" maxlength="50" autocomplete="name" placeholder="Cardholder name" required />
-                    </div>
-                    <div class="field"><label for="cardInitialLoad" data-i18n="initial_card_load">Initial Card Load Amount (USD)</label>
-                      <input id="cardInitialLoad" type="number" step="0.01" min="10" placeholder="10.00" required />
-                      <small id="cardMinDepositHint" class="hint" data-i18n="min_initial_deposit">Minimum initial deposit: $10.00</small>
-                    </div>
-                    <div class="field">
-                      <label data-i18n="pay_from">Pay From</label>
-                      <p id="cardPayFromUsdt" class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_standard_wallet_issuance">Standard Card wallet (Bitnob deposits — not Master Wallet)</p>
-                      <input type="hidden" id="cardPaymentMethod" value="wallet_bitnob_usdt" />
-                    </div>
-                    <p id="cardWalletHint" class="wallet-pay-hint ok hidden"></p>
-                    <p id="cardWalletError" class="wallet-pay-hint err hidden"></p>
-                    <div id="cardPricingBreakdown" class="pricing-breakdown">
-                      <div class="pricing-row"><span data-i18n="initial_card_load_row">Initial Card Load</span><strong id="pbInitialLoad">$0.00</strong></div>
-                      <div class="pricing-row"><span data-i18n="card_issuance_fee">+ Card Issuance Fee</span><strong id="pbIssuanceFee">$0.00</strong></div>
-                      <div class="pricing-row"><span data-i18n="card_funding_fee">+ Funding Fee</span><strong id="pbFundingFee">$0.00</strong></div>
-                      <div class="pricing-row"><span data-i18n="card_processing_fee">+ Processing Fee</span><strong id="pbProcessingFee">$1.50</strong></div>
-                      <div class="pricing-row pricing-total"><span data-i18n="total_usd_required">= Total USD Required</span><strong id="pbTotalUsd">$0.00</strong></div>
-                      <div class="pricing-row pricing-usdt" id="pbUsdtRow"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="pbTotalUsdt">$0.00 USDT</strong></div>
-                      <p id="pbRateLabel" class="hint pricing-rate" data-i18n="usdt_parity_rate">1 USDT ≈ 1 USD</p>
-                    </div>
-                    <button type="submit" class="btn btn-primary" id="btnRequestCard" data-i18n="submit_standard_card">Issue Standard Card</button>
-                  </form>
-                  <div id="cardRequestReceipt" class="pricing-receipt hidden"></div>
-                </div>
-                </div>
-
-                <div class="card-provider-switch-footer">
-                  <div
-                    class="card-provider-switch card-provider-switch--compact"
-                    data-mirror="cardProviderSwitch"
-                    role="presentation"
-                    aria-hidden="true"
-                  >
-                    <span class="card-provider-switch-thumb" aria-hidden="true"></span>
-                    <button type="button" class="card-provider-tab is-active" data-card-provider="kripicard" tabindex="-1">
-                      <span class="card-provider-tab-title" data-i18n="pill_instant_card">Instant Card</span>
-                      <span class="card-provider-tab-sub" data-i18n="pill_no_kyc">No KYC</span>
-                    </button>
-                    <button type="button" class="card-provider-tab" data-card-provider="bitnob" tabindex="-1">
-                      <span class="card-provider-tab-title" data-i18n="pill_standard_card">Standard Card</span>
-                      <span class="card-provider-tab-sub" data-i18n="pill_verified">Verified</span>
-                    </button>
-                  </div>
-                </div>
-
                 <details style="margin-top:1rem" class="hint">
                   <summary>Demo: self-issue card (dev only)</summary>
                   <form id="issueCardForm" class="form" style="margin-top:0.75rem">
@@ -1516,6 +1391,109 @@
             </section>
           </section>
 
+          <!-- ══ PAGE: Instant Card (Non-KYC / Kripicard / Master Wallet) ══ -->
+          <section id="pageInstantCard" class="app-page" data-page="instant-card">
+            <div class="page-header">
+              <div>
+                <h2 class="page-heading" data-i18n="nav_instant_card">Instant Card</h2>
+                <p class="page-desc" data-i18n="instant_card_page_desc">No KYC. Fund via Master Wallet USDT (TRC20), then issue through Kripicard. Isolated from Standard Card / Bitnob.</p>
+              </div>
+            </div>
+            <section class="panel" id="instantCardApplyPanel" data-card-page="instant">
+              <h2 data-i18n="apply_instant_card">Instant Card (No KYC)</h2>
+              <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_instant_card_hint">No KYC required. Pay from Master Wallet USDT (TRC20 crypto deposit).</p>
+              <div class="wallet-pay-hint ok" id="instantWalletBalanceHint" style="margin-bottom:0.75rem">
+                <span data-i18n="master_wallet_balance_label">Master Wallet</span>:
+                <strong id="instantMasterBalance">—</strong>
+              </div>
+              <p class="hint" style="margin-bottom:0.75rem">
+                <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="top_up_master_wallet">Top up Master Wallet</button>
+              </p>
+              <form id="kripicardRequestForm" class="form">
+                <div class="field"><label for="kripicardHolderName" data-i18n="name_on_card">Name on Card</label>
+                  <input id="kripicardHolderName" type="text" minlength="2" maxlength="50" autocomplete="name" placeholder="Cardholder name" required />
+                </div>
+                <div class="field"><label for="kripicardBinSelect" data-i18n="card_bin">Card BIN</label>
+                  <select id="kripicardBinSelect" required>
+                    <option value="">Loading BINs…</option>
+                  </select>
+                </div>
+                <div class="field"><label for="kripicardInitialLoad" data-i18n="initial_card_load">Initial Card Load Amount (USD)</label>
+                  <input id="kripicardInitialLoad" type="number" step="0.01" min="10" placeholder="10.00" required />
+                  <small id="kripicardMinDepositHint" class="hint" data-i18n="min_initial_deposit">Minimum initial deposit: $10.00</small>
+                </div>
+                <div class="field">
+                  <label data-i18n="pay_from">Pay From</label>
+                  <p class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_master_wallet_issuance">Master Wallet USDT (1 USDT ≈ 1 USD — Instant Card only)</p>
+                </div>
+                <div id="kripicardPricingBreakdown" class="pricing-breakdown">
+                  <div class="pricing-row"><span data-i18n="initial_card_load_row">Initial Card Load</span><strong id="kpbInitialLoad">$0.00</strong></div>
+                  <div class="pricing-row"><span data-i18n="card_issuance_fee">+ Card Issuance Fee</span><strong id="kpbIssuanceFee">$0.00</strong></div>
+                  <div class="pricing-row"><span data-i18n="card_funding_fee">+ Funding Fee</span><strong id="kpbFundingFee">$0.00</strong></div>
+                  <div class="pricing-row"><span data-i18n="card_processing_fee">+ Processing Fee</span><strong id="kpbProcessingFee">$1.50</strong></div>
+                  <div class="pricing-row pricing-total"><span data-i18n="total_usd_required">= Total USD Required</span><strong id="kpbTotalUsd">$0.00</strong></div>
+                  <div class="pricing-row pricing-usdt"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="kpbTotalUsdt">$0.00 USDT</strong></div>
+                </div>
+                <button type="submit" class="btn btn-primary" id="btnRequestKripicard" data-i18n="submit_instant_card">Issue Instant Card</button>
+              </form>
+              <div id="kripicardRequestReceipt" class="pricing-receipt hidden"></div>
+            </section>
+          </section>
+
+          <!-- ══ PAGE: Standard Card (KYC / Bitnob wallet) ══ -->
+          <section id="pageStandardCard" class="app-page" data-page="standard-card">
+            <div class="page-header">
+              <div>
+                <h2 class="page-heading" data-i18n="nav_standard_card">Standard Card</h2>
+                <p class="page-desc" data-i18n="standard_card_page_desc">KYC verified only. Deposit USDT to your Bitnob address, then issue a Standard Card. Isolated from Instant Card / Master Wallet.</p>
+              </div>
+            </div>
+            <section class="panel" id="standardCardApplyPanel" data-card-page="standard">
+              <h2 data-i18n="apply_standard_card">Standard Card (Verified)</h2>
+              <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_standard_card_hint">Requires verified KYC. Pay from your Standard Card wallet (Bitnob deposit address — separate from Master Wallet).</p>
+              <div id="bitnobKycGate" class="wallet-pay-hint err hidden" data-i18n="standard_kyc_required">Complete KYC verification before applying for a Standard Card. Without KYC, use Instant Card instead.</div>
+              <div id="standardWalletPanel" class="standard-wallet-panel" style="margin-bottom:0.85rem">
+                <div class="wallet-pay-hint ok" style="margin-bottom:0.5rem">
+                  <span data-i18n="standard_wallet_balance_label">Standard Card wallet</span>:
+                  <strong id="standardBitnobBalance">—</strong>
+                </div>
+                <div class="field" style="margin-bottom:0.5rem">
+                  <label data-i18n="standard_deposit_address_label">Deposit address</label>
+                  <input id="standardDepositAddress" type="text" readonly value="" placeholder="Loading…" />
+                  <small class="hint" id="standardDepositChainHint"></small>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnRefreshStandardDeposit" data-i18n="refresh_standard_deposit">Refresh deposit address</button>
+              </div>
+              <form id="cardRequestForm" class="form">
+                <div class="field"><label for="cardHolderNameInput" data-i18n="name_on_card">Name on Card</label>
+                  <input id="cardHolderNameInput" type="text" minlength="2" maxlength="50" autocomplete="name" placeholder="Cardholder name" required />
+                </div>
+                <div class="field"><label for="cardInitialLoad" data-i18n="initial_card_load">Initial Card Load Amount (USD)</label>
+                  <input id="cardInitialLoad" type="number" step="0.01" min="10" placeholder="10.00" required />
+                  <small id="cardMinDepositHint" class="hint" data-i18n="min_initial_deposit">Minimum initial deposit: $10.00</small>
+                </div>
+                <div class="field">
+                  <label data-i18n="pay_from">Pay From</label>
+                  <p id="cardPayFromUsdt" class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_standard_wallet_issuance">Standard Card wallet (Bitnob deposits — not Master Wallet)</p>
+                  <input type="hidden" id="cardPaymentMethod" value="wallet_bitnob_usdt" />
+                </div>
+                <p id="cardWalletHint" class="wallet-pay-hint ok hidden"></p>
+                <p id="cardWalletError" class="wallet-pay-hint err hidden"></p>
+                <div id="cardPricingBreakdown" class="pricing-breakdown">
+                  <div class="pricing-row"><span data-i18n="initial_card_load_row">Initial Card Load</span><strong id="pbInitialLoad">$0.00</strong></div>
+                  <div class="pricing-row"><span data-i18n="card_issuance_fee">+ Card Issuance Fee</span><strong id="pbIssuanceFee">$0.00</strong></div>
+                  <div class="pricing-row"><span data-i18n="card_funding_fee">+ Funding Fee</span><strong id="pbFundingFee">$0.00</strong></div>
+                  <div class="pricing-row pricing-total"><span data-i18n="total_usd_required">= Total USD Required</span><strong id="pbTotalUsd">$0.00</strong></div>
+                  <div class="pricing-row pricing-usdt" id="pbUsdtRow"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="pbTotalUsdt">$0.00 USDT</strong></div>
+                  <p id="pbRateLabel" class="hint pricing-rate" data-i18n="usdt_parity_rate">1 USDT ≈ 1 USD</p>
+                </div>
+                <button type="submit" class="btn btn-primary" id="btnRequestCard" data-i18n="submit_standard_card">Issue Standard Card</button>
+              </form>
+              <div id="cardRequestReceipt" class="pricing-receipt hidden"></div>
+            </section>
+          </section>
+
+          <!-- ══ PAGE: USDT Wallet ══ -->
           <!-- ══ PAGE: USDT Wallet ══ -->
           <section id="pageUsdtWallet" class="app-page" data-page="usdt-wallet">
             <div class="page-header">
