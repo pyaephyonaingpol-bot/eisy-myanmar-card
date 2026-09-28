@@ -1,7 +1,7 @@
 /**
- * Standard App View — KYC / Bitnob pipeline only.
- * Owns Bitnob wallet balance, deposit address, Standard Card issuance, Bitnob actions.
- * Must never import or render Non-KYC Instant Card UI or APIs.
+ * Standard App View — Bitnob direct wallet + verification + Standard Card only.
+ * Shows Bitnob balance, KYC verification status, Bitnob deposit address, Bitnob actions.
+ * Must never import or render Instant / Master USDT wallet UI or APIs.
  */
 (function (root) {
   'use strict';
@@ -12,14 +12,23 @@
   const PROVIDER = 'bitnob';
 
   const TEMPLATE = `
-<div id="standardAppView" class="app-mode-view" data-app-mode="standard" data-provider="bitnob">
+<div id="standardAppView" class="app-mode-view" data-app-mode="standard" data-provider="bitnob" data-wallet="bitnob_usdt">
   <section class="panel app-mode-wallet-panel">
     <h2 data-i18n="standard_app_wallet_heading">Bitnob Wallet (Standard)</h2>
     <p class="hint" data-i18n="standard_app_wallet_desc">Verified KYC only. Deposit USDT to your Bitnob address, then issue a Standard Card.</p>
-    <div id="standardAppKycGate" class="wallet-pay-hint err hidden" data-i18n="standard_kyc_required">Complete KYC verification before using Standard Card / Bitnob wallet.</div>
+
+    <div id="standardAppVerifyStatus" class="wallet-pay-hint" style="margin-bottom:0.75rem" data-verify-status>
+      <span data-i18n="standard_verify_label">Verification</span>:
+      <strong id="standardAppVerifyLabel">—</strong>
+    </div>
+
+    <div id="standardAppKycGate" class="wallet-pay-hint err hidden" data-i18n="standard_kyc_required">
+      Complete KYC verification before using Standard Card / Bitnob wallet.
+    </div>
+
     <div id="standardAppWalletBody" class="standard-app-wallet-body">
       <div class="wallet-pay-hint ok" style="margin-bottom:0.5rem">
-        <span data-i18n="standard_wallet_balance_label">Bitnob / Standard Card wallet</span>:
+        <span data-i18n="standard_wallet_balance_label">Bitnob direct wallet</span>:
         <strong id="standardAppBitnobBalance">—</strong>
       </div>
       <div class="field" style="margin-bottom:0.5rem">
@@ -28,15 +37,11 @@
         <small class="hint" id="standardAppDepositChainHint"></small>
       </div>
       <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
+        <button type="button" class="btn btn-secondary btn-sm" id="btnStandardAppRefreshBalance" data-i18n="refresh_standard_balance">Refresh balance</button>
         <button type="button" class="btn btn-secondary btn-sm" id="btnStandardAppRefreshDeposit" data-i18n="refresh_standard_deposit">Refresh deposit address</button>
         <button type="button" class="btn btn-secondary btn-sm" id="btnStandardAppCopyDeposit" data-i18n="btn_copy">Copy</button>
       </div>
     </div>
-  </section>
-
-  <section class="panel app-mode-deposit-panel">
-    <h2 data-i18n="standard_app_deposit_heading">Standard Deposit</h2>
-    <p class="hint" data-i18n="standard_app_deposit_desc">Send USDT to the Bitnob deposit address above. Credits your Standard Card wallet only — not the Instant USDT Wallet.</p>
   </section>
 
   <section class="panel app-mode-card-panel">
@@ -60,8 +65,19 @@
     const verified = Boolean(ctx.isKycVerified?.());
     const gate = $('standardAppKycGate');
     const body = $('standardAppWalletBody');
+    const statusEl = $('standardAppVerifyStatus');
+    const label = $('standardAppVerifyLabel');
     if (gate) gate.classList.toggle('hidden', verified);
     if (body) body.classList.toggle('hidden', !verified);
+    if (statusEl) {
+      statusEl.classList.toggle('ok', verified);
+      statusEl.classList.toggle('err', !verified);
+    }
+    if (label) {
+      label.textContent = verified
+        ? (typeof ctx.t === 'function' ? ctx.t('kyc_verified') : 'Verified')
+        : (typeof ctx.t === 'function' ? ctx.t('kyc_unverified') : 'Unverified — KYC required');
+    }
   }
 
   function renderBalance(ctx) {
@@ -77,6 +93,7 @@
     const hint = $('standardAppDepositChainHint');
     if (!ctx.isKycVerified?.()) {
       if (input) input.value = '';
+      if (hint) hint.textContent = '';
       return null;
     }
     const svc = api();
@@ -115,6 +132,15 @@
     }
   }
 
+  function hideNestedWalletChrome() {
+    const host = $('standardAppCardHost');
+    if (!host) return;
+    host.querySelector('#standardWalletPanel')?.classList.add('hidden');
+    // Outer shell owns KYC status — hide duplicate gate in nested form when unverified
+    // (keep form's gate if outer already shows it).
+    host.querySelector('#bitnobKycGate')?.classList.add('hidden');
+  }
+
   function mount(host, { replace = true } = {}) {
     if (!host) return null;
     if (replace) host.innerHTML = TEMPLATE;
@@ -142,6 +168,10 @@
       loadDepositAddress(ctx, { force: true }).catch(() => {});
     });
 
+    $('btnStandardAppRefreshBalance')?.addEventListener('click', () => {
+      loadFunding(ctx).catch(() => {});
+    });
+
     $('btnStandardAppCopyDeposit')?.addEventListener('click', async () => {
       const val = $('standardAppDepositAddress')?.value || '';
       if (!val || val === 'Loading…') return;
@@ -156,16 +186,9 @@
     const cardHost = $('standardAppCardHost');
     const card = cardView();
     if (card && cardHost) {
-      // Mount Standard card form without duplicating the outer wallet panel:
-      // standardCardView includes its own wallet block — hide that inner duplicate
-      // when already shown in the app shell, OR mount full card view.
       card.mount(cardHost, { replace: true });
       card.bind(ctx);
-      // Hide nested wallet panel inside card view to avoid double wallet UI.
-      const nestedWallet = cardHost.querySelector('#standardWalletPanel');
-      if (nestedWallet) nestedWallet.classList.add('hidden');
-      const nestedHint = cardHost.querySelector('[data-i18n="apply_standard_card_hint"]');
-      // Keep form; outer app view owns deposit address.
+      hideNestedWalletChrome();
     }
   }
 
@@ -179,8 +202,7 @@
     const card = cardView();
     if (card) {
       await card.activate(ctx);
-      const nestedWallet = $('standardAppCardHost')?.querySelector('#standardWalletPanel');
-      if (nestedWallet) nestedWallet.classList.add('hidden');
+      hideNestedWalletChrome();
     }
     syncKyc(ctx);
     renderBalance(ctx);

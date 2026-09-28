@@ -5026,8 +5026,15 @@ html.doc-scroll .auth-screen {
 }
 
 html[data-app-mode="instant"] [data-mode-nav="standard"],
-html[data-app-mode="standard"] [data-mode-nav="instant"] {
+html[data-app-mode="instant"] [data-mode-shell="standard"],
+html[data-app-mode="standard"] [data-mode-nav="instant"],
+html[data-app-mode="standard"] [data-mode-shell="instant"] {
   display: none !important;
+}
+
+.wallet-hero-card.bitnob {
+  background: linear-gradient(135deg, rgba(14, 116, 144, 0.35), rgba(15, 23, 42, 0.9));
+  border: 1px solid rgba(34, 211, 238, 0.25);
 }
 
 @media (max-width: 720px) {

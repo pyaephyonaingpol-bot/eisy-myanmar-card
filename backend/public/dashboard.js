@@ -657,6 +657,24 @@ const Dashboard = {
     if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = label;
   },
 
+  setHomeBitnobBalanceDisplay(text) {
+    const label = text == null || text === '' ? '—' : String(text);
+    if ($('sumBalanceBitnob')) $('sumBalanceBitnob').textContent = label;
+  },
+
+  syncModeScopedHomeWallets() {
+    const mode = this._appMode
+      || EisyComponents?.appModeSwitcher?.getActiveMode?.()
+      || 'instant';
+    if (mode === 'standard') {
+      this.setHomeBitnobBalanceDisplay(
+        this.walletBitnobUsdt != null ? this.formatUsdt(this.walletBitnobUsdt) : '—'
+      );
+    } else if (this.walletUsdt != null) {
+      this.setHomeWalletBalanceDisplay(this.formatUsdt(this.walletUsdt));
+    }
+  },
+
   renderWalletBalancesFromCache() {
     if (this.walletUsdt == null && this.walletMmk == null) return false;
     this.renderWalletBalances({
@@ -747,18 +765,24 @@ const Dashboard = {
     const p = this.cardPricing;
     const required = p?.total_usdt ?? p?.total_usd_required;
     if (!required) return;
-    const available = Number(this.walletUsdt ?? 0);
+    // Standard Card form uses Bitnob ledger — never compare against Master USDT.
+    const inStandard = Boolean($('standardCardApplyPanel') || $('standardAppView'));
+    const available = inStandard
+      ? Number(this.walletBitnobUsdt ?? this.cardFundingWallets?.standard?.balance_usdt ?? 0)
+      : Number(this.walletUsdt ?? 0);
+    const okKey = inStandard ? 'card_wallet_ok_bitnob' : 'card_wallet_ok_usdt';
+    const errKey = inStandard ? 'card_wallet_err_bitnob' : 'card_wallet_err_usdt';
     if (available >= required) {
       this.setWalletHint('cardWalletHint', 'cardWalletError', {
         ok: true,
-        okMsg: t('card_wallet_ok_usdt', {
+        okMsg: t(okKey, {
           available: this.formatUsdt(available),
           required: this.formatUsdt(required),
         }),
       });
     } else {
       this.setWalletHint('cardWalletHint', 'cardWalletError', {
-        errMsg: t('card_wallet_err_usdt', {
+        errMsg: t(errKey, {
           available: this.formatUsdt(available),
           required: this.formatUsdt(required),
         }),
@@ -1668,10 +1692,18 @@ const Dashboard = {
   },
 
   populateCardPaymentMethodOptions() {
-    // Card issuance is USDT-only — no payment-method dropdown / bank options.
+    // Standard Card form pays from Bitnob wallet only — never overwrite with Master USDT.
     const hidden = $('cardPaymentMethod');
-    if (hidden) hidden.value = 'wallet_usdt';
     const label = $('cardPayFromUsdt');
+    const inStandard = Boolean($('standardCardApplyPanel') || $('standardAppView'));
+    if (inStandard) {
+      if (hidden) hidden.value = 'wallet_bitnob_usdt';
+      if (label && typeof t === 'function') {
+        label.textContent = t('pay_standard_wallet_issuance');
+      }
+      return;
+    }
+    if (hidden) hidden.value = 'wallet_usdt';
     if (label && typeof t === 'function') {
       label.textContent = t('pay_usdt_wallet_issuance');
     }
@@ -5596,8 +5628,27 @@ const Dashboard = {
       pricing: self.kripicardPricing,
       getUsdtWalletBalance: () => Number(self.walletUsdt ?? self.cardFundingWallets?.instant?.balance_usdt ?? 0),
       getMasterBalance: () => Number(self.walletUsdt ?? self.cardFundingWallets?.instant?.balance_usdt ?? 0),
+      getMasterDepositAddresses: () => self._usdtWalletCache?.deposit_addresses || null,
+      setMasterDepositAddresses: (addrs) => {
+        self._usdtWalletCache = {
+          ...(self._usdtWalletCache || {}),
+          deposit_addresses: Array.isArray(addrs) ? addrs : [],
+        };
+      },
+      setUsdtBalanceFromOverview: (data) => {
+        if (!data) return;
+        if (data.balance_usdt != null || data.available_usdt != null) {
+          self.walletUsdt = Number(data.available_usdt ?? data.balance_usdt);
+        }
+        if (data.balance_usdt_locked != null || data.locked_usdt != null) {
+          self.walletUsdtLocked = Number(data.locked_usdt ?? data.balance_usdt_locked ?? 0);
+        }
+        self.syncModeScopedHomeWallets?.();
+        EisyComponents?.instantAppView?.renderBalance?.(self.buildCardViewContexts().instantCtx);
+      },
       refreshUsdtWallet: async () => {
         await self.loadWallet({ force: false });
+        await self.loadUsdtWalletPage?.(false)?.catch?.(() => {});
         return self.walletUsdt;
       },
       onIssued: () => {
@@ -5612,7 +5663,11 @@ const Dashboard = {
       ...shared,
       pricing: self.cardPricing,
       getBitnobBalance: () => Number(self.walletBitnobUsdt ?? self.cardFundingWallets?.standard?.balance_usdt ?? 0),
-      setBitnobBalance: (n) => { self.walletBitnobUsdt = Number(n) || 0; },
+      setBitnobBalance: (n) => {
+        self.walletBitnobUsdt = Number(n) || 0;
+        self.setHomeBitnobBalanceDisplay(self.formatUsdt(self.walletBitnobUsdt));
+        EisyComponents?.standardAppView?.renderBalance?.(self.buildCardViewContexts().standardCtx);
+      },
       onPricingLoaded: (data) => {
         self.cardPricing = data;
         self.depositFees = data.deposit_fees || self.depositFees;
@@ -5624,7 +5679,6 @@ const Dashboard = {
       },
       onIssued: () => {
         self.loadWallet();
-        self.loadUsdtWalletPage?.(true);
         self.loadCardFundingWallets({ force: true }).catch(() => {});
         self.loadAllCards({ forceRefresh: true });
         self.loadDepositHistory?.();
@@ -5640,8 +5694,11 @@ const Dashboard = {
       initialMode: self.isKycVerified() ? 'standard' : (EisyComponents?.appModeSwitcher?.readStoredMode?.() || 'instant'),
       onModeChange: (mode) => {
         self._appMode = mode;
-        // Keep header compact switch in sync
         EisyComponents?.appModeSwitcher?.syncSwitchUi?.(mode);
+        self.syncModeScopedHomeWallets?.();
+        if (mode === 'standard') {
+          self.loadCardFundingWallets({ force: false }).catch(() => {});
+        }
       },
     };
   },
@@ -5778,8 +5835,11 @@ const Dashboard = {
         : await Auth.api('GET', '/api/user/wallets/card-funding');
       this.cardFundingWallets = data;
       this.walletBitnobUsdt = Number(data?.standard?.balance_usdt ?? 0);
+      this.setHomeBitnobBalanceDisplay(this.formatUsdt(this.walletBitnobUsdt));
       this.renderInstantWalletBalance();
       this.renderStandardWalletBalance();
+      EisyComponents?.instantAppView?.renderBalance?.(this.buildCardViewContexts().instantCtx);
+      EisyComponents?.standardAppView?.renderBalance?.(this.buildCardViewContexts().standardCtx);
       return data;
     } catch (err) {
       console.warn('[card-funding wallets]', err.message);
