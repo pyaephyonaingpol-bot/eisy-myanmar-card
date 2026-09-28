@@ -374,11 +374,12 @@ const Dashboard = {
           forceRefresh: force || hasPending || !this._isFresh('cards'),
         });
         this.loadReloadHistory({ force });
-        this.loadCardPricing().catch(() => {});
-        this.loadKripicardPricing().catch(() => {});
-        this.loadKripicardBins().catch(() => {});
-        this.loadCardFundingWallets().catch(() => {});
-        this.setCardProviderTab(this.isKycVerified() ? 'bitnob' : 'kripicard');
+      }
+      if (page === 'instant-card') {
+        this.enterInstantCardPage({ force });
+      }
+      if (page === 'standard-card') {
+        this.enterStandardCardPage({ force });
       }
       if (page === 'home') {
         this.updateHomeRateSummary();
@@ -5402,7 +5403,7 @@ const Dashboard = {
               typeof t === 'function' ? t('standard_kyc_required') : 'Complete KYC before applying for a Standard Card.',
               'error'
             );
-            this.setCardProviderTab('kripicard');
+            if (typeof AppNav !== 'undefined') AppNav.navigate('instant-card', { pushHash: true });
             return;
           }
           const initialLoad = parseFloat($('cardInitialLoad').value);
@@ -5428,7 +5429,6 @@ const Dashboard = {
               'error'
             );
             this.loadStandardDepositAddress({ force: true }).catch(() => {});
-            this.setCardProviderTab('bitnob');
             return;
           }
 
@@ -5489,7 +5489,9 @@ const Dashboard = {
             if (err.code === 'INSUFFICIENT_USDT_BALANCE' && typeof AppNav !== 'undefined') {
               this.openUsdtTopUpModal();
             }
-            if (err.code === 'KYC_REQUIRED_FOR_BITNOB') this.setCardProviderTab('kripicard');
+            if (err.code === 'KYC_REQUIRED_FOR_BITNOB' && typeof AppNav !== 'undefined') {
+              AppNav.navigate('instant-card', { pushHash: true });
+            }
             return;
           }
           this.toast(err.message || 'Card request failed', 'error');
@@ -5523,7 +5525,7 @@ const Dashboard = {
             return;
           }
 
-          const data = await Auth.api('POST', '/api/user/card/request-kripicard', {
+          const data = await Auth.api('POST', '/api/user/card/request-instant', {
             name_on_card: nameOnCard,
             card_holder_name: nameOnCard,
             initial_load_usd: initialLoad,
@@ -5729,86 +5731,43 @@ const Dashboard = {
   },
 
   bindCardProviderTabs() {
-    const onPick = (provider) => {
-      this.setCardProviderTab(provider);
-    };
-
-    document.querySelectorAll('.card-provider-tab[data-card-provider]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const provider = btn.getAttribute('data-card-provider') || 'kripicard';
-        onPick(provider);
-      });
-    });
-
-    // Keyboard: left/right within the main switch
-    const main = $('cardProviderSwitch');
-    if (main) {
-      main.addEventListener('keydown', (e) => {
-        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-        e.preventDefault();
-        const next = e.key === 'ArrowRight' ? 'bitnob' : 'kripicard';
-        onPick(next);
-        const focusBtn = main.querySelector(`[data-card-provider="${next}"]`);
-        focusBtn?.focus();
-      });
-    }
-
-    this.setCardProviderTab(this.isKycVerified() ? 'bitnob' : 'kripicard');
+    // Dedicated Instant / Standard pages — no shared toggle.
     $('btnRefreshStandardDeposit')?.addEventListener('click', () => {
       this.loadStandardDepositAddress({ force: true }).catch(() => {});
     });
   },
 
-  setCardProviderTab(provider) {
-    const which = provider === 'bitnob' ? 'bitnob' : 'kripicard';
+  enterInstantCardPage({ force = false } = {}) {
+    this.loadWallet({ force: false }).catch(() => {});
+    this.loadKripicardPricing().catch(() => {});
+    this.loadKripicardBins().catch(() => {});
+    this.renderInstantWalletBalance();
+  },
 
-    document.querySelectorAll('.card-provider-switch').forEach((track) => {
-      track.setAttribute('data-active', which);
-      track.querySelectorAll('.card-provider-tab').forEach((btn) => {
-        const active = btn.getAttribute('data-card-provider') === which;
-        btn.classList.toggle('is-active', active);
-        btn.setAttribute('aria-selected', active ? 'true' : 'false');
-        btn.tabIndex = track.id === 'cardProviderSwitch' ? (active ? 0 : -1) : -1;
-      });
-    });
-
-    const kripi = $('kripicardApplyPanel');
-    const bitnob = $('bitnobApplyPanel');
-    if (kripi) {
-      const on = which === 'kripicard';
-      kripi.classList.toggle('is-active', on);
-      kripi.hidden = !on;
-      kripi.classList.toggle('hidden', !on);
+  enterStandardCardPage({ force = false } = {}) {
+    this.syncStandardCardPageGate();
+    this.loadCardPricing().catch(() => {});
+    this.loadCardFundingWallets({ force }).catch(() => {});
+    if (this.isKycVerified()) {
+      this.loadStandardDepositAddress({ force }).catch(() => {});
     }
-    if (bitnob) {
-      const on = which === 'bitnob';
-      bitnob.classList.toggle('is-active', on);
-      bitnob.hidden = !on;
-      bitnob.classList.toggle('hidden', !on);
-    }
+  },
 
+  syncStandardCardPageGate() {
     const gate = $('bitnobKycGate');
     const form = $('cardRequestForm');
     const btn = $('btnRequestCard');
+    const panel = $('standardWalletPanel');
     const verified = this.isKycVerified();
-    if (gate) gate.classList.toggle('hidden', verified || which !== 'bitnob');
+    if (gate) gate.classList.toggle('hidden', verified);
+    if (panel) panel.classList.toggle('hidden', !verified);
     if (form) {
       form.querySelectorAll('input,button,select').forEach((el) => {
         if (el.id === 'cardPaymentMethod') return;
-        el.disabled = which === 'bitnob' && !verified;
+        el.disabled = !verified;
       });
     }
-    if (btn) btn.disabled = which === 'bitnob' && !verified;
-
-    if (which === 'kripicard') {
-      this.loadKripicardPricing().catch(() => {});
-      this.loadKripicardBins().catch(() => {});
-      this.renderInstantWalletBalance();
-    } else {
-      this.loadCardPricing().catch(() => {});
-      this.loadCardFundingWallets().catch(() => {});
-      if (verified) this.loadStandardDepositAddress().catch(() => {});
-    }
+    if (btn) btn.disabled = !verified;
   },
 
   async loadCardFundingWallets({ force = false } = {}) {

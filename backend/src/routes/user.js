@@ -7,37 +7,17 @@ const TransactionLog = require('../models/TransactionLog');
 const DepositRequest = require('../models/DepositRequest');
 const { enrichDeposit } = require('../services/depositEnrichment');
 const {
-  getCardPricingSettings,
   getUsdtDepositSettings,
-  getWithdrawalFeeSettings,
-  getDepositFeeSettings,
   parseRecordMetadata,
-  getCurrentRateSummary,
-  calculateKripicardRequestPricingUsdt,
 } = require('../services/settingsService');
 const CardReloadRequest = require('../models/CardReloadRequest');
 const { walletPayload, formatUsdt, migrateLegacyUsdToMmk } = require('../services/walletService');
 const { overlayWalletPayloadFromSupabase } = require('../services/supabaseWalletReadService');
 const { ensureSupabaseUserWalletInBackground } = require('../services/supabaseSyncService');
 const {
-  purchaseCardFromUsdtWallet,
   reloadCardFromUsdtWallet,
 } = require('../services/cardWalletService');
-const {
-  purchaseKripicardFromUsdtWallet,
-  getKripicardBinOptions,
-} = require('../services/kripicardCardWalletService');
-const {
-  getDualWalletOverview,
-  getOrCreateStandardDepositAddress,
-} = require('../services/bitnobWalletService');
-const { resolveBitnobCustomerId } = require('../services/cardIssueService');
 const { syncBitnobCardFromProvider } = require('../services/bitnobCardWebhookService');
-const {
-  BITNOB_CARD_CREATE_FEE_USD,
-  getBitnobFeeSchedule,
-} = require('../constants/bitnobFees');
-const { isKycVerified, normalizeKycStatus } = require('../services/kycService');
 const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
   isPendingCardRecord,
@@ -48,26 +28,6 @@ const {
 } = require('../constants/cardStatuses');
 
 const router = express.Router();
-
-/** Standard Card (Bitnob / KYC) requires platform KYC VERIFIED. Non-KYC uses Instant Card + Master Wallet. */
-async function assertKycVerifiedForBitnob(userId) {
-  const user = await User.findById(userId);
-  if (!user) {
-    const err = new Error('User not found');
-    err.code = 'USER_NOT_FOUND';
-    throw err;
-  }
-  const status = normalizeKycStatus(user.kyc_status);
-  if (!isKycVerified(status)) {
-    const err = new Error(
-      'Standard Card requires KYC verification. Use Instant Card (No KYC) with Master Wallet, or complete KYC first.'
-    );
-    err.code = 'KYC_REQUIRED_FOR_BITNOB';
-    err.kyc_status = status;
-    throw err;
-  }
-  return user;
-}
 
 function resolveClientCardStatus(c) {
   if (isPendingCardRecord(c)) return 'pending';
@@ -368,67 +328,6 @@ router.post('/cards/:id/sync', requireAuth, requireSensitive, async (req, res) =
   }
 });
 
-/**
- * On-demand Bitnob virtual card purchase (USDT debit + create).
- * Replaces the old pool-assign endpoint (retired; Bitnob on-demand only).
- */
-router.post('/cards/purchase', requireAuth, requireSensitive, async (req, res) => {
-  try {
-    await assertKycVerifiedForBitnob(req.user.id);
-    const user = await User.findById(req.user.id);
-    const body = req.body || {};
-    const initialLoadUsd = parseFloat(
-      body.initial_load_usd ?? body.purchase_amount ?? body.amount ?? body.initial_amount
-    );
-
-    const result = await purchaseCardFromUsdtWallet(req.user.id, {
-      initialLoadUsd,
-      cardHolderName: body.name_on_card || body.cardholder_name || body.cardHolderName || user.name,
-      note: body.note,
-      customerId: body.customer_id || body.customerId || null,
-      paymentRef: body.payment_ref || body.paymentRef || body.idempotency_key || body.idempotencyKey || null,
-    });
-
-    res.json({
-      ...buildCardPurchaseSuccessPayload(result),
-      reused: false,
-    });
-  } catch (err) {
-    return respondCardPurchaseError(res, err, 'user/cards/purchase');
-  }
-});
-
-/**
- * Real-time Bitnob issuance with profit markup.
- * Debits USDT wallet (card load + admin markup), sends only card load to Bitnob,
- * and records markup in platform_fee_events.
- */
-router.post('/cards/issue', requireAuth, requireSensitive, async (req, res) => {
-  try {
-    await assertKycVerifiedForBitnob(req.user.id);
-    const user = await User.findById(req.user.id);
-    const body = req.body || {};
-    const initialLoadUsd = parseFloat(
-      body.initial_load_usd ?? body.amount ?? body.purchase_amount ?? body.initial_amount
-    );
-
-    const result = await purchaseCardFromUsdtWallet(req.user.id, {
-      initialLoadUsd,
-      cardHolderName: body.name_on_card || body.cardholder_name || body.cardHolderName || user.name,
-      note: body.note,
-      customerId: body.customer_id || body.customerId || null,
-      paymentRef: body.payment_ref || body.paymentRef || body.idempotency_key || body.idempotencyKey || null,
-    });
-
-    res.json({
-      ...buildCardPurchaseSuccessPayload(result),
-      reused: false,
-    });
-  } catch (err) {
-    return respondCardPurchaseError(res, err, 'user/cards/issue');
-  }
-});
-
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -584,241 +483,17 @@ router.get('/card', requireAuth, requireSensitive, async (req, res) => {
   }
 });
 
-router.get('/card/pricing', requireAuth, async (req, res) => {
-  try {
-    const settings = await getCardPricingSettings();
-    const currentRate = await getCurrentRateSummary();
-    const user = await User.findById(req.user.id);
-    const customerId = resolveBitnobCustomerId({ user });
-    const bitnobConfigured = Boolean(
-      String(process.env.BITNOB_CLIENT_ID || '').trim()
-      && String(process.env.BITNOB_CLIENT_SECRET || process.env.BITNOB_SECRET_KEY || '').trim()
-    );
-    const kycStatus = normalizeKycStatus(user?.kyc_status);
-    const kycVerified = isKycVerified(kycStatus);
-    res.json({
-      card_issuance_fee_usd: settings.card_issuance_fee_usd,
-      card_funding_fee_percent: settings.card_funding_fee_percent,
-      card_processing_fee_usd: settings.card_processing_fee_usd,
-      platform_markup_usd: settings.card_issuance_fee_usd,
-      bitnob_create_fee_usd: BITNOB_CARD_CREATE_FEE_USD,
-      bitnob_fee_schedule: getBitnobFeeSchedule(),
-      minimum_initial_deposit_usd: settings.minimum_initial_deposit_usd,
-      card_reload_fee_usd: settings.card_reload_fee_usd,
-      card_reload_provider_cost_usd: settings.card_reload_provider_cost_usd,
-      card_reload_net_profit_usd: settings.card_reload_net_profit_usd,
-      minimum_usdt_deposit: settings.minimum_usdt_deposit,
-      minimum_usdt_reload: settings.minimum_usdt_reload,
-      // MMK rate is for withdrawals only — not used for card issuance or reloads.
-      mmk_to_usd_rate: settings.mmk_to_usd_rate,
-      rate_effective_date: currentRate.effective_date,
-      rate_label: "Today's Daily Exchange Rate",
-      currency: 'USD',
-      payment_currency: 'USDT',
-      payment_wallet: 'bitnob_usdt',
-      ledger: 'bitnob',
-      card_flow: 'standard',
-      mmk_wallet_allowed_for_cards: false,
-      wallet_rules: {
-        master_usdt: ['deposit', 'withdraw', 'instant_card_issuance', 'instant_card_reload'],
-        bitnob_usdt: ['standard_card_deposit', 'standard_card_issuance', 'standard_card_reload'],
-        mmk: ['bank_withdrawal_only'],
-      },
-      card_issuance_payment: 'bitnob_wallet',
-      card_issuance_rate: '1 USDT ≈ 1 USD',
-      exchange_rate_applied: false,
-      auto_issue: true,
-      provider: 'bitnob',
-      deposit_path: 'bitnob_address',
-      deposit_hint: 'Deposit USDT to your Standard Card address (Bitnob). Master Wallet cannot fund Standard Cards.',
-      requires_kyc: true,
-      kyc_status: kycStatus,
-      is_kyc_verified: kycVerified,
-      bitnob_configured: bitnobConfigured,
-      bitnob_customer_ready: Boolean(customerId),
-      bitnob_customer_id: customerId || null,
-      bitnob_eligible: kycVerified && Boolean(customerId),
-      withdrawal_fees: await getWithdrawalFeeSettings(),
-      deposit_fees: await getDepositFeeSettings(),
-    });
-  } catch (err) {
-    console.error('[user/card/pricing]', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+// Dedicated Instant Card (Kripicard / Master Wallet) + Standard Card (Bitnob) routers.
+const instantCardRoutes = require('./instantCard').attachHelpers({
+  respondCardPurchaseError,
+  buildCardPurchaseSuccessPayload,
 });
-
-/** Live Kripicard BIN catalog for Non-KYC Instant Card form. */
-router.get('/card/bins', requireAuth, async (req, res) => {
-  try {
-    const settings = await getCardPricingSettings();
-    const options = await getKripicardBinOptions({ pricingSettings: settings });
-    res.json({
-      provider: 'kripicard',
-      requires_kyc: false,
-      default_bin: options.default_bin,
-      bins: options.bins,
-      details: options.details || options.catalog || [],
-      source: options.source,
-      error: options.error || null,
-    });
-  } catch (err) {
-    console.error('[user/card/bins]', err);
-    res.status(500).json({ error: err.message || 'Failed to load BINs', code: err.code });
-  }
+const standardCardRoutes = require('./standardCard').attachHelpers({
+  respondCardPurchaseError,
+  buildCardPurchaseSuccessPayload,
 });
-
-/** Non-KYC Kripicard pricing (USDT wallet / master-wallet deposit funded). */
-router.get('/card/pricing-kripicard', requireAuth, async (req, res) => {
-  try {
-    const settings = await getCardPricingSettings();
-    const sampleLoad = Number(settings.minimum_initial_deposit_usd) || 10;
-    let sample = null;
-    try {
-      sample = calculateKripicardRequestPricingUsdt(sampleLoad, settings);
-    } catch (_) { /* ignore sample pricing errors */ }
-    const kripicardConfigured = Boolean(String(process.env.KRIPICARD_API_KEY || '').trim());
-    res.json({
-      provider: 'kripicard',
-      requires_kyc: false,
-      kripicard_configured: kripicardConfigured,
-      card_issuance_fee_usd: settings.card_issuance_fee_usd,
-      card_funding_fee_percent: settings.card_funding_fee_percent,
-      card_processing_fee_usd: settings.card_processing_fee_usd,
-      minimum_initial_deposit_usd: settings.minimum_initial_deposit_usd,
-      payment_currency: 'USDT',
-      payment_wallet: 'usdt',
-      ledger: 'master_wallet',
-      card_flow: 'instant',
-      card_issuance_rate: '1 USDT ≈ 1 USD',
-      deposit_path: 'master_wallet_trc20',
-      deposit_hint: 'Top up Master Wallet via TRC20 crypto deposit before issuing Instant Card. Separate from Standard Card (Bitnob) wallet.',
-      sample_pricing: sample,
-      auto_issue: true,
-    });
-  } catch (err) {
-    console.error('[user/card/pricing-kripicard]', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/** Non-KYC Instant Card — Kripicard createcard via Master Wallet USDT. */
-router.post('/card/request-kripicard', requireAuth, requireSensitive, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    const walletType = String(req.body.wallet_type || 'usdt').toLowerCase();
-    if (walletType && walletType !== 'usdt' && walletType !== 'master_usdt') {
-      return res.status(400).json({
-        error: 'Instant Card accepts Master Wallet USDT only.',
-        code: 'USDT_ONLY_CARD_ISSUANCE',
-        ledger: 'master_wallet',
-      });
-    }
-
-    const result = await purchaseKripicardFromUsdtWallet(req.user.id, {
-      initialLoadUsd: parseFloat(req.body.initial_load_usd),
-      cardHolderName: req.body.name_on_card || req.body.card_holder_name || user.name,
-      note: req.body.note,
-      bin: req.body.bin || req.body.card_bin || null,
-      paymentRef: req.body.payment_ref || req.body.idempotency_key || null,
-    });
-
-    return res.json(buildCardPurchaseSuccessPayload(result));
-  } catch (err) {
-    return respondCardPurchaseError(res, err, 'user/card/request-kripicard');
-  }
-});
-
-/** Alias — Instant Card (Master Wallet → Kripicard). */
-router.post('/card/request-instant', requireAuth, requireSensitive, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    const result = await purchaseKripicardFromUsdtWallet(req.user.id, {
-      initialLoadUsd: parseFloat(req.body.initial_load_usd),
-      cardHolderName: req.body.name_on_card || req.body.card_holder_name || user.name,
-      note: req.body.note,
-      bin: req.body.bin || req.body.card_bin || null,
-      paymentRef: req.body.payment_ref || req.body.idempotency_key || null,
-    });
-    return res.json(buildCardPurchaseSuccessPayload(result));
-  } catch (err) {
-    return respondCardPurchaseError(res, err, 'user/card/request-instant');
-  }
-});
-
-router.post('/card/request', requireAuth, requireSensitive, async (req, res) => {
-  try {
-    await assertKycVerifiedForBitnob(req.user.id);
-    const user = await User.findById(req.user.id);
-    const walletType = String(req.body.wallet_type || 'bitnob_usdt').toLowerCase();
-
-    // Standard Card debits Bitnob ledger only — never Master Wallet.
-    if (walletType && !['usdt', 'bitnob_usdt', 'bitnob'].includes(walletType)) {
-      return res.status(400).json({
-        error: 'Standard Card accepts Bitnob wallet USDT only. Master Wallet funds Instant Cards.',
-        code: 'BITNOB_WALLET_ONLY_CARD_ISSUANCE',
-        ledger: 'bitnob',
-      });
-    }
-
-    const result = await purchaseCardFromUsdtWallet(req.user.id, {
-      initialLoadUsd: parseFloat(req.body.initial_load_usd),
-      cardHolderName: req.body.name_on_card || req.body.card_holder_name || user.name,
-      note: req.body.note,
-      customerId: req.body.customer_id || req.body.customerId || null,
-      paymentRef: req.body.payment_ref || req.body.idempotency_key || null,
-    });
-
-    return res.json(buildCardPurchaseSuccessPayload(result));
-  } catch (err) {
-    return respondCardPurchaseError(res, err, 'user/card/request');
-  }
-});
-
-/** Alias — Standard Card (Bitnob wallet → Bitnob cards). */
-router.post('/card/request-standard', requireAuth, requireSensitive, async (req, res) => {
-  try {
-    await assertKycVerifiedForBitnob(req.user.id);
-    const user = await User.findById(req.user.id);
-    const result = await purchaseCardFromUsdtWallet(req.user.id, {
-      initialLoadUsd: parseFloat(req.body.initial_load_usd),
-      cardHolderName: req.body.name_on_card || req.body.card_holder_name || user.name,
-      note: req.body.note,
-      customerId: req.body.customer_id || req.body.customerId || null,
-      paymentRef: req.body.payment_ref || req.body.idempotency_key || null,
-    });
-    return res.json(buildCardPurchaseSuccessPayload(result));
-  } catch (err) {
-    return respondCardPurchaseError(res, err, 'user/card/request-standard');
-  }
-});
-
-/** Dual-wallet overview: Master (Instant) vs Bitnob (Standard). */
-router.get('/wallets/card-funding', requireAuth, async (req, res) => {
-  try {
-    const overview = await getDualWalletOverview(req.user.id);
-    res.json(overview);
-  } catch (err) {
-    console.error('[user/wallets/card-funding]', err);
-    res.status(500).json({ error: err.message || 'Failed to load wallets' });
-  }
-});
-
-/** Standard Card deposit address (Bitnob) — KYC required. */
-router.get('/wallets/standard/deposit-address', requireAuth, async (req, res) => {
-  try {
-    const deposit = await getOrCreateStandardDepositAddress(req.user.id, {
-      forceRefresh: String(req.query.refresh || '') === '1',
-    });
-    res.json(deposit);
-  } catch (err) {
-    const code = err.code || 'BITNOB_DEPOSIT_ADDRESS_ERROR';
-    const status = code === 'KYC_REQUIRED_FOR_BITNOB' ? 403
-      : code === 'BITNOB_NOT_CONFIGURED' ? 503
-        : 400;
-    console.error('[user/wallets/standard/deposit-address]', err.message, code);
-    res.status(status).json({ error: err.message, code, kyc_status: err.kyc_status });
-  }
-});
+router.use(instantCardRoutes);
+router.use(standardCardRoutes);
 
 router.post('/card/reload', requireAuth, requireSensitive, async (req, res) => {
   try {
