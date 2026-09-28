@@ -53,12 +53,30 @@ function testDashboardLocksPortal() {
   assert.ok(dash.includes('portal-switch-link'));
   assert.ok(dash.includes('.remove()'));
   assert.ok(dash.includes("window.location.href = '/instant'") || dash.includes('`/${mode}`'));
+  assert.ok(dash.includes('applyHubGateway'));
+  assert.ok(dash.includes('isHubGateway'));
+  assert.ok(dash.includes('portal-hub-home'));
+  assert.ok(dash.includes('Choose Instant or Standard') || dash.includes('Choose your portal'));
   assert.ok(dash.includes('standardPortalBlockedPages'));
   assert.ok(dash.includes('isStandardPortalBlockedPage'));
   assert.ok(dash.includes("data-instant-only"));
   assert.ok(dash.includes("'p2p'"));
   assert.ok(dash.includes('p2pBuyModal'));
   assert.ok(dash.includes('usdtTopUpModal'));
+  console.log('ok');
+}
+
+function testHubGatewayStripsAppChrome() {
+  section('hub gateway removes wallet widgets until Instant/Standard entry');
+  const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
+  assert.ok(dash.includes('applyHubGateway'));
+  assert.ok(/if\s*\(\s*this\.isHubGateway\(\)\s*\)/.test(dash) || dash.includes('isHubGateway()'));
+  assert.ok(dash.includes("querySelectorAll('.app-page[data-page]:not([data-page=\"home\"])')")
+    || dash.includes(".app-page[data-page]:not([data-page=\"home\"])"));
+  assert.ok(dash.includes('portalHubChooser'));
+  const css = fs.readFileSync(path.join(ROOT, 'backend/public/styles.css'), 'utf8');
+  assert.ok(css.includes('data-eisy-portal="hub"'));
+  assert.ok(css.includes(':not(#portalHubChooser)'));
   console.log('ok');
 }
 
@@ -97,6 +115,7 @@ function main() {
   testServerRoutesPortalPages();
   testPortalHtmlGenerator();
   testDashboardLocksPortal();
+  testHubGatewayStripsAppChrome();
   testStandardPortalStripsInstantModules();
   testViewsStayIsolated();
   console.log('\nPortal route checks passed.');
