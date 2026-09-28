@@ -78,11 +78,19 @@ function testUiSplit() {
   assert.ok(html.includes('tabKripicardCard'));
   assert.ok(html.includes('tabBitnobCard'));
   assert.ok(html.includes('kripicardBinSelect'));
+  assert.ok(html.includes('card-provider-switch'));
+  assert.ok(html.includes('card-provider-switch-thumb'));
+  assert.ok(html.includes('card-provider-switch-footer'));
 
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('bindCardProviderTabs'));
   assert.ok(dash.includes('/api/user/card/request-kripicard'));
   assert.ok(dash.includes('setCardProviderTab'));
+  assert.ok(dash.includes('data-active'));
+
+  const css = fs.readFileSync(path.join(ROOT, 'backend/public/styles.css'), 'utf8');
+  assert.ok(css.includes('.card-provider-switch-thumb'));
+  assert.ok(css.includes('cardProviderPanelIn'));
   console.log('ok');
 }
 

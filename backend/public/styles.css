@@ -4724,3 +4724,173 @@ html.doc-scroll .auth-screen {
   gap: 1rem;
   padding: 0.3rem 0;
 }
+
+/* ── Card provider Noon-style pill switch ── */
+.card-apply-panel {
+  position: relative;
+  padding-bottom: 4.5rem;
+}
+
+.card-provider-switch-wrap {
+  margin: 0 0 1.15rem;
+}
+
+.card-provider-switch-label {
+  margin: 0 0 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.card-provider-switch {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 0.28rem;
+  border-radius: var(--radius-pill);
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.card-provider-switch-thumb {
+  position: absolute;
+  top: 0.28rem;
+  left: 0.28rem;
+  width: calc(50% - 0.28rem);
+  height: calc(100% - 0.56rem);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, #fff 0%, #f1f5f9 100%);
+  box-shadow:
+    0 2px 8px rgba(15, 23, 42, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+  transform: translateX(0);
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.card-provider-switch[data-active="bitnob"] .card-provider-switch-thumb {
+  transform: translateX(100%);
+}
+
+.card-provider-switch .card-provider-tab {
+  position: relative;
+  z-index: 1;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-pill);
+  padding: 0.7rem 0.85rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.12rem;
+  min-height: 3.1rem;
+  transition: color 220ms ease;
+  font: inherit;
+  line-height: 1.15;
+}
+
+.card-provider-switch .card-provider-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.card-provider-tab-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.card-provider-tab-sub {
+  font-size: 0.68rem;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.card-provider-switch .card-provider-tab.is-active {
+  color: #0f172a;
+}
+
+.card-provider-switch .card-provider-tab.is-active .card-provider-tab-sub {
+  opacity: 0.72;
+  color: #334155;
+}
+
+.card-provider-panels {
+  position: relative;
+}
+
+.card-provider-panel {
+  display: none;
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.card-provider-panel.is-active {
+  display: block;
+  animation: cardProviderPanelIn 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cardProviderPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card-provider-switch-footer {
+  position: sticky;
+  bottom: calc(0.75rem + var(--safe-bottom));
+  z-index: 5;
+  margin-top: 1.25rem;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.card-provider-switch-footer .card-provider-switch {
+  pointer-events: auto;
+  width: min(100%, 22rem);
+  padding: 0.22rem;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-md), 0 0 0 1px rgba(148, 163, 184, 0.12);
+}
+
+.card-provider-switch--compact .card-provider-tab {
+  min-height: 2.45rem;
+  padding: 0.45rem 0.75rem;
+}
+
+.card-provider-switch--compact .card-provider-tab-title {
+  font-size: 0.86rem;
+}
+
+.card-provider-switch--compact .card-provider-switch-thumb {
+  top: 0.22rem;
+  left: 0.22rem;
+  width: calc(50% - 0.22rem);
+  height: calc(100% - 0.44rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-provider-switch-thumb,
+  .card-provider-panel.is-active {
+    transition: none !important;
+    animation: none !important;
+  }
+}
