@@ -71,11 +71,12 @@
     const hint = $('instantAppTrc20Hint');
     const svc = usdtApi();
     if (!svc) {
+      if (input) input.value = '';
       if (hint) hint.textContent = 'Deposit service unavailable';
       return null;
     }
     try {
-      if (input && !input.value) input.value = 'Loading…';
+      if (input) input.placeholder = 'Loading…';
       if (force && typeof ctx.refreshUsdtWallet === 'function') {
         await ctx.refreshUsdtWallet().catch(() => {});
       }
@@ -89,7 +90,10 @@
         }
       }
       const row = pickTrc20(addresses);
-      if (input) input.value = row?.address || '';
+      if (input) {
+        input.value = row?.address || '';
+        input.placeholder = row?.address ? '' : 'No address yet';
+      }
       if (hint) {
         if (row?.address) {
           const net = row.network_label || row.network || 'TRC20';
@@ -103,8 +107,17 @@
       ctx.trc20Deposit = row;
       return row;
     } catch (err) {
-      if (input) input.value = '';
-      if (hint) hint.textContent = err.message || 'Deposit address unavailable';
+      if (input) {
+        input.value = '';
+        input.placeholder = err.code === 'SENSITIVE_AUTH_REQUIRED'
+          ? 'Unlock PIN to view address'
+          : 'Unavailable';
+      }
+      if (hint) {
+        hint.textContent = err.code === 'SENSITIVE_AUTH_REQUIRED'
+          ? 'Unlock with PIN to load your Master TRC20 deposit address'
+          : (err.message || 'Deposit address unavailable');
+      }
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') ctx.openPinUnlock?.();
       return null;
     }
