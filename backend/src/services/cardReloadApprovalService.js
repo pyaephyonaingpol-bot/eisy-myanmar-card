@@ -182,13 +182,27 @@ async function rejectPendingReload(reloadId, {
     if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) {
       throw new Error('Invalid USDT refund amount on reload request');
     }
-    await creditUsdt(request.user_id, amountUsdt, {
-      description: `Card reload refund — ${formatUsdt(amountUsdt)} returned to wallet`,
-      referenceType: 'card_reload_requests',
-      referenceId: reloadId,
-      createdBy: reviewedBy,
-      metadata: { reload_request_id: reloadId, refund: true },
-    });
+    const pricingMeta = parseRecordMetadata(request.pricing_json);
+    const ledger = String(pricingMeta.ledger || pricingMeta.funding_wallet || '').toLowerCase();
+    if (ledger === 'bitnob' || ledger === 'bitnob_usdt') {
+      const { creditBitnobUsdt, formatBitnobUsdt } = require('./bitnobWalletLedgerService');
+      await creditBitnobUsdt(request.user_id, amountUsdt, {
+        description: `Standard Card reload refund — ${formatBitnobUsdt(amountUsdt)} returned to Bitnob wallet`,
+        referenceType: 'card_reload_requests',
+        referenceId: reloadId,
+        createdBy: reviewedBy,
+        purpose: 'standard_card_reload_refund',
+        metadata: { reload_request_id: reloadId, refund: true, ledger: 'bitnob' },
+      });
+    } else {
+      await creditUsdt(request.user_id, amountUsdt, {
+        description: `Card reload refund — ${formatUsdt(amountUsdt)} returned to Master Wallet`,
+        referenceType: 'card_reload_requests',
+        referenceId: reloadId,
+        createdBy: reviewedBy,
+        metadata: { reload_request_id: reloadId, refund: true, ledger: 'master_wallet' },
+      });
+    }
   } else {
     const amountMmk = Number(request.amount_mmk);
     if (!Number.isFinite(amountMmk) || amountMmk <= 0) {

@@ -1362,9 +1362,13 @@
                 <!-- Non-KYC: Instant Card -->
                 <div id="kripicardApplyPanel" class="card-provider-panel is-active" data-provider="kripicard" role="tabpanel" aria-labelledby="tabInstantCard">
                   <h2 data-i18n="apply_instant_card">Instant Card (No KYC)</h2>
-                  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_instant_card_hint">No KYC required. Pay from your USDT wallet (top up via crypto deposit / master wallet).</p>
+                  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_instant_card_hint">No KYC required. Pay from Master Wallet USDT (TRC20 crypto deposit).</p>
+                  <div class="wallet-pay-hint ok" id="instantWalletBalanceHint" style="margin-bottom:0.75rem">
+                    <span data-i18n="master_wallet_balance_label">Master Wallet</span>:
+                    <strong id="instantMasterBalance">—</strong>
+                  </div>
                   <p class="hint" style="margin-bottom:0.75rem">
-                    <button type="button" class="btn btn-secondary btn-sm" data-goto="wallet" data-i18n="top_up_usdt_first">Top up USDT wallet first</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-goto="wallet" data-i18n="top_up_master_wallet">Top up Master Wallet</button>
                   </p>
                   <form id="kripicardRequestForm" class="form">
                     <div class="field"><label for="kripicardHolderName" data-i18n="name_on_card">Name on Card</label>
@@ -1381,7 +1385,7 @@
                     </div>
                     <div class="field">
                       <label data-i18n="pay_from">Pay From</label>
-                      <p class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_usdt_wallet_issuance">USDT Wallet (1 USDT ≈ 1 USD — instant issue)</p>
+                      <p class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_master_wallet_issuance">Master Wallet USDT (1 USDT ≈ 1 USD — Instant Card only)</p>
                     </div>
                     <div id="kripicardPricingBreakdown" class="pricing-breakdown">
                       <div class="pricing-row"><span data-i18n="initial_card_load_row">Initial Card Load</span><strong id="kpbInitialLoad">$0.00</strong></div>
@@ -1399,8 +1403,20 @@
                 <!-- KYC: Standard Card -->
                 <div id="bitnobApplyPanel" class="card-provider-panel" data-provider="bitnob" role="tabpanel" aria-labelledby="tabStandardCard" hidden>
                   <h2 data-i18n="apply_standard_card">Standard Card (Verified)</h2>
-                  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_standard_card_hint">Requires verified KYC. Pay from your USDT wallet.</p>
+                  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_standard_card_hint">Requires verified KYC. Pay from your Standard Card wallet (Bitnob deposit address — separate from Master Wallet).</p>
                   <div id="bitnobKycGate" class="wallet-pay-hint err hidden" data-i18n="standard_kyc_required">Complete KYC verification before applying for a Standard Card. Without KYC, use Instant Card instead.</div>
+                  <div id="standardWalletPanel" class="standard-wallet-panel" style="margin-bottom:0.85rem">
+                    <div class="wallet-pay-hint ok" style="margin-bottom:0.5rem">
+                      <span data-i18n="standard_wallet_balance_label">Standard Card wallet</span>:
+                      <strong id="standardBitnobBalance">—</strong>
+                    </div>
+                    <div class="field" style="margin-bottom:0.5rem">
+                      <label data-i18n="standard_deposit_address_label">Deposit address</label>
+                      <input id="standardDepositAddress" type="text" readonly value="" placeholder="Loading…" />
+                      <small class="hint" id="standardDepositChainHint"></small>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btnRefreshStandardDeposit" data-i18n="refresh_standard_deposit">Refresh deposit address</button>
+                  </div>
                   <form id="cardRequestForm" class="form">
                     <div class="field"><label for="cardHolderNameInput" data-i18n="name_on_card">Name on Card</label>
                       <input id="cardHolderNameInput" type="text" minlength="2" maxlength="50" autocomplete="name" placeholder="Cardholder name" required />
@@ -1411,8 +1427,8 @@
                     </div>
                     <div class="field">
                       <label data-i18n="pay_from">Pay From</label>
-                      <p id="cardPayFromUsdt" class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_usdt_wallet_issuance">USDT Wallet (1 USDT ≈ 1 USD — instant issue)</p>
-                      <input type="hidden" id="cardPaymentMethod" value="wallet_usdt" />
+                      <p id="cardPayFromUsdt" class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_standard_wallet_issuance">Standard Card wallet (Bitnob deposits — not Master Wallet)</p>
+                      <input type="hidden" id="cardPaymentMethod" value="wallet_bitnob_usdt" />
                     </div>
                     <p id="cardWalletHint" class="wallet-pay-hint ok hidden"></p>
                     <p id="cardWalletError" class="wallet-pay-hint err hidden"></p>

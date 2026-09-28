@@ -1,9 +1,9 @@
 /**
- * Non-KYC Kripicard virtual-card purchase from the user's USDT wallet.
+ * Non-KYC Instant Card (Kripicard) purchase from the Master Wallet USDT ledger.
  *
- * Uses the same master-wallet → USDT balance deposit path as the rest of the app:
- * users top up via TRC-20 deposit addresses, then this service debits balance_usdt
- * and calls Kripicard createcard. Completely separate from Bitnob (KYC) issuance.
+ * Master/HD TRC-20 deposits credit users.balance_usdt. This service debits that
+ * balance, then calls Kripicard createcard. Completely separate from Bitnob
+ * (Standard Card / KYC) issuance and users.balance_bitnob_usdt.
  */
 const Card = require('../models/Card');
 const User = require('../models/User');

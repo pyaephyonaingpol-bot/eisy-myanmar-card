@@ -1,3 +1,10 @@
+/**
+ * Standard Card (Bitnob / KYC) wallet flows.
+ *
+ * Debits users.balance_bitnob_usdt only — never Master Wallet (balance_usdt).
+ * Instant Card (Kripicard) lives in kripicardCardWalletService.js.
+ */
+
 const Card = require('../models/Card');
 const User = require('../models/User');
 const TransactionLog = require('../models/TransactionLog');
@@ -5,22 +12,22 @@ const {
   getCardPricingSettings,
   calculateCardRequestPricingUsdt,
   calculateCardReloadPricingUsdt,
+  parseRecordMetadata,
 } = require('./settingsService');
-const { debitUsdt, creditUsdt, formatUsdt } = require('./walletService');
+const { formatUsdt } = require('./walletService');
+const {
+  debitBitnobUsdt,
+  creditBitnobUsdt,
+  formatBitnobUsdt,
+} = require('./bitnobWalletLedgerService');
 const CardReloadRequest = require('../models/CardReloadRequest');
 const { RELOAD_PENDING_MESSAGE } = require('./cardReloadApprovalService');
 const { recordPlatformUsdFee, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
 const {
   issueCardForUser,
-  isSupabaseAdminEnabled,
   resolveBitnobCustomerId,
   assertBitnobConfigured,
 } = require('./cardIssueService');
-const { ensureSupabaseUserWallet } = require('./supabaseSyncService');
-const {
-  debitUsdtForCardPurchase,
-  finalizeCardPurchaseWallet,
-} = require('./supabaseWalletLedgerService');
 
 const CARD_REQUEST_PENDING_MESSAGE =
   'Card request submitted. Provider is provisioning your virtual card details.';
@@ -29,9 +36,8 @@ const CARD_ISSUED_MESSAGE =
   'Card issued successfully. Your virtual card is ready to use.';
 
 /**
- * Purchase + auto-issue a Bitnob virtual card from the user's USDT wallet.
- * Debits total charge (card load + platform fees), then creates via Bitnob.
- * Only the card-load portion is sent to Bitnob; fees stay on-platform.
+ * Purchase + auto-issue a Standard (Bitnob) virtual card from the Bitnob ledger.
+ * Master Wallet USDT cannot pay for this path.
  */
 async function purchaseCardFromUsdtWallet(userId, {
   initialLoadUsd,
@@ -58,7 +64,7 @@ async function purchaseCardFromUsdtWallet(userId, {
   const resolvedCustomerId = resolveBitnobCustomerId({ customerId, user });
   if (!resolvedCustomerId) {
     const err = new Error(
-      'Bitnob customer_id is required. Complete Card KYC first, or set BITNOB_DEFAULT_CUSTOMER_ID.'
+      'Standard Card profile is not ready. Complete Card KYC first, or set BITNOB_DEFAULT_CUSTOMER_ID.'
     );
     err.code = 'BITNOB_CUSTOMER_REQUIRED';
     throw err;
@@ -70,32 +76,22 @@ async function purchaseCardFromUsdtWallet(userId, {
   const platformMarkupUsd = pricing.platform_markup_usd;
   const requiredUsdt = pricing.total_charge_usdt;
   const idempotencyKey = paymentRef
-    || `usdt-issue-${userId}-${providerLoadUsd}-${Date.now()}`;
+    || `bitnob-issue-${userId}-${providerLoadUsd}-${Date.now()}`;
 
-  if (!isSupabaseAdminEnabled()) {
-    const err = new Error(
-      'Card issuance requires Supabase. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.'
-    );
-    err.code = 'SUPABASE_NOT_CONFIGURED';
-    throw err;
-  }
   assertBitnobConfigured();
 
-  await ensureSupabaseUserWallet(userId, { syncIfExists: true });
-
-  const debitDescription = `New card purchase — ${formatUsdt(requiredUsdt)} `
-    + `($${providerLoadUsd.toFixed(2)} load + $${Number(pricing.bitnob_create_fee_usd || 0).toFixed(2)} Bitnob create `
-    + `+ $${Number(pricing.bitnob_funding_fee_usd || 0).toFixed(2)} Bitnob fund `
-    + `+ $${Number(pricing.platform_issuance_fee_usd || 0).toFixed(2)} platform `
-    + `+ $${Number(pricing.processing_fee_usd || 0).toFixed(2)} processing)`;
+  const debitDescription = `Standard Card purchase — ${formatBitnobUsdt(requiredUsdt)} `
+    + `($${providerLoadUsd.toFixed(2)} load + fees)`;
   const debitMetadata = {
     purpose: 'card_issuance',
     pricing,
-    wallet: 'usdt',
-    payment_wallet: 'usdt',
+    wallet: 'bitnob_usdt',
+    payment_wallet: 'bitnob_usdt',
+    ledger: 'bitnob',
     mmk_wallet_allowed: false,
     auto_issue: true,
     provider: 'bitnob',
+    card_flow: 'standard',
     provider_load_usd: providerLoadUsd,
     bitnob_create_fee_usd: pricing.bitnob_create_fee_usd,
     bitnob_funding_fee_usd: pricing.bitnob_funding_fee_usd,
@@ -103,56 +99,20 @@ async function purchaseCardFromUsdtWallet(userId, {
   };
 
   let journalId = idempotencyKey;
-  let tursoDebited = false;
-  let supabaseAtomicDebit = false;
+  let bitnobDebited = false;
 
   try {
-    const supabaseDebit = await debitUsdtForCardPurchase(userId, {
-      totalAmountUsdt: requiredUsdt,
-      providerLoadUsd,
-      platformMarkupUsd,
-      idempotencyKey,
-      description: debitDescription,
-      metadata: debitMetadata,
-    });
-    journalId = supabaseDebit.journal_id;
-    supabaseAtomicDebit = true;
-  } catch (rpcErr) {
-    if (rpcErr.code !== 'SUPABASE_CARD_PURCHASE_RPC_MISSING') {
-      throw rpcErr;
-    }
-    console.warn(
-      '[cardWallet] Supabase card-purchase RPC missing — using Turso debit fallback. '
-      + 'Apply supabase/wallet_card_purchase.sql for atomic ledger.'
-    );
-  }
-
-  try {
-    await debitUsdt(userId, requiredUsdt, {
+    await debitBitnobUsdt(userId, requiredUsdt, {
       description: debitDescription,
       createdBy: 'user',
       journalId,
-      metadata: {
-        ...debitMetadata,
-        supabase_atomic_debit: supabaseAtomicDebit,
-      },
+      purpose: 'standard_card_issuance',
+      referenceType: 'cards_v2',
+      metadata: debitMetadata,
     });
-    tursoDebited = true;
-  } catch (tursoErr) {
-    if (supabaseAtomicDebit) {
-      try {
-        await finalizeCardPurchaseWallet(journalId, {
-          outcome: 'refunded',
-          failureReason: `Local ledger sync failed: ${tursoErr.message}`,
-          metadata: { code: tursoErr.code || null, stage: 'turso_mirror_debit' },
-        });
-      } catch (refundErr) {
-        console.error('[cardWallet] Supabase refund failed after Turso debit error:', refundErr);
-        tursoErr.refund_failed = true;
-        tursoErr.refund_error = refundErr.message;
-      }
-    }
-    throw tursoErr;
+    bitnobDebited = true;
+  } catch (debitErr) {
+    throw debitErr;
   }
 
   let issued;
@@ -167,51 +127,35 @@ async function purchaseCardFromUsdtWallet(userId, {
       idempotencyKey,
       user,
       metadata: {
-        source: 'purchaseCardFromUsdtWallet',
-        wallet_type: 'usdt',
+        source: 'purchaseCardFromBitnobWallet',
+        wallet_type: 'bitnob_usdt',
+        ledger: 'bitnob',
         pricing,
         provider_load_usd: providerLoadUsd,
         platform_markup_usd: platformMarkupUsd,
         total_charge_usdt: requiredUsdt,
         note: note || null,
-        supabase_atomic_debit: supabaseAtomicDebit,
       },
     });
   } catch (issueErr) {
-    if (supabaseAtomicDebit) {
+    if (bitnobDebited) {
       try {
-        await finalizeCardPurchaseWallet(journalId, {
-          outcome: 'refunded',
-          failureReason: issueErr.message,
-          metadata: {
-            code: issueErr.code || null,
-            stage: 'bitnob_issue',
-          },
-        });
-      } catch (refundErr) {
-        console.error('[cardWallet] Supabase refund failed after issue error:', refundErr);
-        issueErr.refund_failed = true;
-        issueErr.refund_error = refundErr.message;
-      }
-    }
-
-    if (tursoDebited) {
-      try {
-        await creditUsdt(userId, requiredUsdt, {
-          description: `Card issuance refund — ${formatUsdt(requiredUsdt)} (provider issue failed)`,
+        await creditBitnobUsdt(userId, requiredUsdt, {
+          description: `Standard Card issuance refund — ${formatBitnobUsdt(requiredUsdt)}`,
           createdBy: 'system',
           journalId: `${journalId}-refund`,
+          purpose: 'standard_card_issuance_refund',
           metadata: {
             purpose: 'card_issuance_refund',
             reason: issueErr.message,
             code: issueErr.code || null,
-            supabase_journal_id: supabaseAtomicDebit ? journalId : null,
+            ledger: 'bitnob',
           },
         });
-      } catch (tursoRefundErr) {
-        console.error('[cardWallet] Turso refund failed after issue error:', tursoRefundErr);
+      } catch (refundErr) {
+        console.error('[cardWallet] Bitnob ledger refund failed after issue error:', refundErr);
         issueErr.refund_failed = true;
-        issueErr.refund_error = tursoRefundErr.message;
+        issueErr.refund_error = refundErr.message;
       }
     }
     throw issueErr;
@@ -232,11 +176,11 @@ async function purchaseCardFromUsdtWallet(userId, {
     provider_load_usd: providerLoadUsd,
     platform_markup_usd: platformMarkupUsd,
     total_charge_usdt: requiredUsdt,
-    supabase_journal_id: journalId,
-    supabase_atomic_debit: supabaseAtomicDebit,
-    payment_method: 'usdt_wallet',
+    payment_method: 'bitnob_wallet',
     paid_from_wallet: true,
-    wallet_type: 'usdt',
+    wallet_type: 'bitnob_usdt',
+    ledger: 'bitnob',
+    card_flow: 'standard',
     wallet_debit_usdt: requiredUsdt,
     requested_at: new Date().toISOString(),
     activated_at: hasFullPan ? new Date().toISOString() : null,
@@ -263,34 +207,19 @@ async function purchaseCardFromUsdtWallet(userId, {
       currency: 'USD',
       status: 'active',
       isPrimary: true,
-      adminNotes: note || 'Auto-issued via Bitnob (USDT wallet)',
+      adminNotes: note || 'Auto-issued via Bitnob (Standard Card wallet)',
       metadata: cardMetadata,
     });
   } else {
     card = await Card.requestPending({
       userId,
       cardHolderName: nameOnCard,
-      userNote: note || 'Awaiting card details from Bitnob',
+      userNote: note || 'Awaiting card details from provider',
       metadata: {
         ...cardMetadata,
         request_status: 'pending_provider_details',
       },
     });
-  }
-
-  try {
-    if (supabaseAtomicDebit) {
-      await finalizeCardPurchaseWallet(journalId, {
-        outcome: 'completed',
-        referenceId: card.id,
-        metadata: {
-          provider_card_id: cardMetadata.provider_card_id,
-          card_status: card.status,
-        },
-      });
-    }
-  } catch (finalizeErr) {
-    console.error('[cardWallet] Supabase finalize completed failed:', finalizeErr);
   }
 
   try {
@@ -306,6 +235,7 @@ async function purchaseCardFromUsdtWallet(userId, {
         platform_markup_usd: platformMarkupUsd,
         provider_card_id: cardMetadata.provider_card_id,
         provider: 'bitnob',
+        ledger: 'bitnob',
       },
     });
   } catch (feeErr) {
@@ -320,14 +250,15 @@ async function purchaseCardFromUsdtWallet(userId, {
     referenceType: 'cards_v2',
     referenceId: card.id,
     description: card.status === 'active'
-      ? `Virtual card issued via Bitnob — ${formatUsdt(requiredUsdt)} from USDT wallet`
-      : `Card purchase paid — ${formatUsdt(requiredUsdt)}; awaiting Bitnob card details`,
+      ? `Standard Card issued — ${formatBitnobUsdt(requiredUsdt)} from Bitnob wallet`
+      : `Standard Card purchase paid — ${formatBitnobUsdt(requiredUsdt)}; awaiting card details`,
     createdBy: 'user',
     metadata: {
       purpose: 'card_issuance',
       pricing,
       paid_from_wallet: true,
-      wallet: 'usdt',
+      wallet: 'bitnob_usdt',
+      ledger: 'bitnob',
       auto_issued: true,
       provider: 'bitnob',
       provider_card_id: cardMetadata.provider_card_id,
@@ -342,7 +273,10 @@ async function purchaseCardFromUsdtWallet(userId, {
     card,
     pricing,
     wallet_debit_usdt: requiredUsdt,
+    wallet_type: 'bitnob_usdt',
+    ledger: 'bitnob',
     balance_usdt: Number(updatedUser.balance_usdt ?? 0),
+    balance_bitnob_usdt: Number(updatedUser.balance_bitnob_usdt ?? 0),
     pending: card.status !== 'active',
     issued: card.status === 'active',
     provider_card_id: cardMetadata.provider_card_id,
@@ -351,6 +285,9 @@ async function purchaseCardFromUsdtWallet(userId, {
   };
 }
 
+/**
+ * Reload: Instant cards debit Master Wallet; Standard cards debit Bitnob ledger.
+ */
 async function reloadCardFromUsdtWallet(userId, { cardId, amountUsdt }) {
   const user = await User.findById(userId);
   if (!user) throw new Error('User not found');
@@ -359,27 +296,68 @@ async function reloadCardFromUsdtWallet(userId, { cardId, amountUsdt }) {
   if (!card || card.user_id !== userId) throw new Error('Card not found');
   if (card.status !== 'active') throw new Error('Only active cards can be reloaded');
 
+  const cardMeta = parseRecordMetadata(card.metadata);
+  const provider = String(cardMeta.provider || '').toLowerCase();
+  const isStandard = provider === 'bitnob';
+  // DB CHECK allows only mmk|usdt — ledger separation lives in pricing/metadata.
+  const walletType = 'usdt';
+  const ledger = isStandard ? 'bitnob' : 'master_wallet';
+  const fundingWallet = isStandard ? 'bitnob_usdt' : 'usdt';
+
   const settings = await getCardPricingSettings();
   const pricing = calculateCardReloadPricingUsdt(amountUsdt, settings);
   const requiredUsdt = pricing.deposit_usdt;
 
-  await debitUsdt(userId, requiredUsdt, {
-    description: `Card reload hold — ${formatUsdt(requiredUsdt)} (pending admin approval)`,
-    referenceType: 'cards_v2',
-    referenceId: cardId,
-    createdBy: 'user',
-    metadata: { purpose: 'card_reload', pricing, card_id: cardId, wallet: 'usdt', pending: true },
-  });
+  if (isStandard) {
+    await debitBitnobUsdt(userId, requiredUsdt, {
+      description: `Standard Card reload hold — ${formatBitnobUsdt(requiredUsdt)} (pending admin approval)`,
+      referenceType: 'cards_v2',
+      referenceId: cardId,
+      createdBy: 'user',
+      purpose: 'standard_card_reload',
+      metadata: {
+        purpose: 'card_reload',
+        pricing,
+        card_id: cardId,
+        wallet: 'bitnob_usdt',
+        ledger: 'bitnob',
+        pending: true,
+        provider: 'bitnob',
+      },
+    });
+  } else {
+    const { debitUsdt } = require('./walletService');
+    await debitUsdt(userId, requiredUsdt, {
+      description: `Instant Card reload hold — ${formatUsdt(requiredUsdt)} (pending admin approval)`,
+      referenceType: 'cards_v2',
+      referenceId: cardId,
+      createdBy: 'user',
+      metadata: {
+        purpose: 'card_reload',
+        pricing,
+        card_id: cardId,
+        wallet: 'usdt',
+        ledger: 'master_wallet',
+        pending: true,
+        provider: provider || 'kripicard',
+      },
+    });
+  }
 
   const reloadRequest = await CardReloadRequest.create({
     userId,
     cardId,
-    walletType: 'usdt',
+    walletType,
     amountUsdt: requiredUsdt,
     netUsdToCard: pricing.net_usd_to_card,
     reloadFeeUsd: pricing.reload_fee_usd,
     grossUsd: pricing.gross_usd,
-    pricing,
+    pricing: {
+      ...pricing,
+      ledger,
+      funding_wallet: fundingWallet,
+      provider: provider || 'kripicard',
+    },
   });
 
   await TransactionLog.create({
@@ -389,9 +367,18 @@ async function reloadCardFromUsdtWallet(userId, { cardId, amountUsdt }) {
     amountUsd: pricing.net_usd_to_card,
     referenceType: 'card_reload_requests',
     referenceId: reloadRequest.id,
-    description: `Card reload requested from USDT wallet — ${formatUsdt(requiredUsdt)} (pending admin review)`,
+    description: isStandard
+      ? `Standard Card reload from Bitnob wallet — ${formatBitnobUsdt(requiredUsdt)} (pending)`
+      : `Instant Card reload from Master Wallet — ${formatUsdt(requiredUsdt)} (pending)`,
     createdBy: 'user',
-    metadata: { pricing, paid_from_wallet: true, wallet: 'usdt', pending: true },
+    metadata: {
+      pricing,
+      paid_from_wallet: true,
+      wallet: fundingWallet,
+      ledger,
+      pending: true,
+      provider: provider || 'kripicard',
+    },
   });
 
   const updatedUser = await User.findById(userId);
@@ -402,7 +389,10 @@ async function reloadCardFromUsdtWallet(userId, { cardId, amountUsdt }) {
     reload_request_id: reloadRequest.id,
     pricing,
     wallet_debit_usdt: requiredUsdt,
+    wallet_type: fundingWallet,
+    ledger,
     balance_usdt: Number(updatedUser.balance_usdt ?? 0),
+    balance_bitnob_usdt: Number(updatedUser.balance_bitnob_usdt ?? 0),
     message: RELOAD_PENDING_MESSAGE,
   };
 }
