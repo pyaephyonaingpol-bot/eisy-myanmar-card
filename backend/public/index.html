@@ -1334,13 +1334,9 @@
             </section>
 
             <div class="grid-2">
-              <section class="panel">
-                <h2 data-i18n="apply_new_card">Apply for New Card</h2>
-                <p class="hint" style="margin-bottom:0.85rem" data-i18n="cards_apply_split_hint">Issuance is split into dedicated pages so Instant and Standard wallets never mix.</p>
-                <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
-                  <button type="button" class="btn btn-primary btn-sm" data-goto="instant-card" data-i18n="nav_instant_card">Instant Card</button>
-                  <button type="button" class="btn btn-secondary btn-sm" data-goto="standard-card" data-i18n="nav_standard_card">Standard Card</button>
-                </div>
+              <section class="panel card-apply-panel">
+                <!-- Noon toggle mounts InstantCardView + StandardCardView as independent components -->
+                <div id="cardProviderSwitchShell" data-card-switch-shell></div>
                 <details style="margin-top:1rem" class="hint">
                   <summary>Demo: self-issue card (dev only)</summary>
                   <form id="issueCardForm" class="form" style="margin-top:0.75rem">
@@ -1391,105 +1387,29 @@
             </section>
           </section>
 
-          <!-- ══ PAGE: Instant Card (Non-KYC / Kripicard / Master Wallet) ══ -->
+          <!-- ══ PAGE: Instant Card (mounts InstantCardView only) ══ -->
           <section id="pageInstantCard" class="app-page" data-page="instant-card">
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="nav_instant_card">Instant Card</h2>
-                <p class="page-desc" data-i18n="instant_card_page_desc">No KYC. Fund via Master Wallet USDT (TRC20), then issue through Kripicard. Isolated from Standard Card / Bitnob.</p>
+                <p class="page-desc" data-i18n="instant_card_page_desc">No KYC. Fund via Master Wallet USDT (TRC20), then issue Instant Card. Isolated from Standard Card.</p>
               </div>
             </div>
-            <section class="panel" id="instantCardApplyPanel" data-card-page="instant">
-              <h2 data-i18n="apply_instant_card">Instant Card (No KYC)</h2>
-              <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_instant_card_hint">No KYC required. Pay from Master Wallet USDT (TRC20 crypto deposit).</p>
-              <div class="wallet-pay-hint ok" id="instantWalletBalanceHint" style="margin-bottom:0.75rem">
-                <span data-i18n="master_wallet_balance_label">Master Wallet</span>:
-                <strong id="instantMasterBalance">—</strong>
-              </div>
-              <p class="hint" style="margin-bottom:0.75rem">
-                <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="top_up_master_wallet">Top up Master Wallet</button>
-              </p>
-              <form id="kripicardRequestForm" class="form">
-                <div class="field"><label for="kripicardHolderName" data-i18n="name_on_card">Name on Card</label>
-                  <input id="kripicardHolderName" type="text" minlength="2" maxlength="50" autocomplete="name" placeholder="Cardholder name" required />
-                </div>
-                <div class="field"><label for="kripicardBinSelect" data-i18n="card_bin">Card BIN</label>
-                  <select id="kripicardBinSelect" required>
-                    <option value="">Loading BINs…</option>
-                  </select>
-                </div>
-                <div class="field"><label for="kripicardInitialLoad" data-i18n="initial_card_load">Initial Card Load Amount (USD)</label>
-                  <input id="kripicardInitialLoad" type="number" step="0.01" min="10" placeholder="10.00" required />
-                  <small id="kripicardMinDepositHint" class="hint" data-i18n="min_initial_deposit">Minimum initial deposit: $10.00</small>
-                </div>
-                <div class="field">
-                  <label data-i18n="pay_from">Pay From</label>
-                  <p class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_master_wallet_issuance">Master Wallet USDT (1 USDT ≈ 1 USD — Instant Card only)</p>
-                </div>
-                <div id="kripicardPricingBreakdown" class="pricing-breakdown">
-                  <div class="pricing-row"><span data-i18n="initial_card_load_row">Initial Card Load</span><strong id="kpbInitialLoad">$0.00</strong></div>
-                  <div class="pricing-row"><span data-i18n="card_issuance_fee">+ Card Issuance Fee</span><strong id="kpbIssuanceFee">$0.00</strong></div>
-                  <div class="pricing-row"><span data-i18n="card_funding_fee">+ Funding Fee</span><strong id="kpbFundingFee">$0.00</strong></div>
-                  <div class="pricing-row"><span data-i18n="card_processing_fee">+ Processing Fee</span><strong id="kpbProcessingFee">$1.50</strong></div>
-                  <div class="pricing-row pricing-total"><span data-i18n="total_usd_required">= Total USD Required</span><strong id="kpbTotalUsd">$0.00</strong></div>
-                  <div class="pricing-row pricing-usdt"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="kpbTotalUsdt">$0.00 USDT</strong></div>
-                </div>
-                <button type="submit" class="btn btn-primary" id="btnRequestKripicard" data-i18n="submit_instant_card">Issue Instant Card</button>
-              </form>
-              <div id="kripicardRequestReceipt" class="pricing-receipt hidden"></div>
+            <section class="panel">
+              <div id="instantCardPageHost" data-card-view-host="instant-page"></div>
             </section>
           </section>
 
-          <!-- ══ PAGE: Standard Card (KYC / Bitnob wallet) ══ -->
+          <!-- ══ PAGE: Standard Card (mounts StandardCardView only via cards Noon switch) ══ -->
           <section id="pageStandardCard" class="app-page" data-page="standard-card">
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="nav_standard_card">Standard Card</h2>
-                <p class="page-desc" data-i18n="standard_card_page_desc">KYC verified only. Deposit USDT to your Bitnob address, then issue a Standard Card. Isolated from Instant Card / Master Wallet.</p>
+                <p class="page-desc" data-i18n="standard_card_page_desc">KYC verified only. Deposit USDT to your Standard Card address, then issue. Isolated from Instant Card / Master Wallet.</p>
               </div>
             </div>
-            <section class="panel" id="standardCardApplyPanel" data-card-page="standard">
-              <h2 data-i18n="apply_standard_card">Standard Card (Verified)</h2>
-              <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_standard_card_hint">Requires verified KYC. Pay from your Standard Card wallet (Bitnob deposit address — separate from Master Wallet).</p>
-              <div id="bitnobKycGate" class="wallet-pay-hint err hidden" data-i18n="standard_kyc_required">Complete KYC verification before applying for a Standard Card. Without KYC, use Instant Card instead.</div>
-              <div id="standardWalletPanel" class="standard-wallet-panel" style="margin-bottom:0.85rem">
-                <div class="wallet-pay-hint ok" style="margin-bottom:0.5rem">
-                  <span data-i18n="standard_wallet_balance_label">Standard Card wallet</span>:
-                  <strong id="standardBitnobBalance">—</strong>
-                </div>
-                <div class="field" style="margin-bottom:0.5rem">
-                  <label data-i18n="standard_deposit_address_label">Deposit address</label>
-                  <input id="standardDepositAddress" type="text" readonly value="" placeholder="Loading…" />
-                  <small class="hint" id="standardDepositChainHint"></small>
-                </div>
-                <button type="button" class="btn btn-secondary btn-sm" id="btnRefreshStandardDeposit" data-i18n="refresh_standard_deposit">Refresh deposit address</button>
-              </div>
-              <form id="cardRequestForm" class="form">
-                <div class="field"><label for="cardHolderNameInput" data-i18n="name_on_card">Name on Card</label>
-                  <input id="cardHolderNameInput" type="text" minlength="2" maxlength="50" autocomplete="name" placeholder="Cardholder name" required />
-                </div>
-                <div class="field"><label for="cardInitialLoad" data-i18n="initial_card_load">Initial Card Load Amount (USD)</label>
-                  <input id="cardInitialLoad" type="number" step="0.01" min="10" placeholder="10.00" required />
-                  <small id="cardMinDepositHint" class="hint" data-i18n="min_initial_deposit">Minimum initial deposit: $10.00</small>
-                </div>
-                <div class="field">
-                  <label data-i18n="pay_from">Pay From</label>
-                  <p id="cardPayFromUsdt" class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_standard_wallet_issuance">Standard Card wallet (Bitnob deposits — not Master Wallet)</p>
-                  <input type="hidden" id="cardPaymentMethod" value="wallet_bitnob_usdt" />
-                </div>
-                <p id="cardWalletHint" class="wallet-pay-hint ok hidden"></p>
-                <p id="cardWalletError" class="wallet-pay-hint err hidden"></p>
-                <div id="cardPricingBreakdown" class="pricing-breakdown">
-                  <div class="pricing-row"><span data-i18n="initial_card_load_row">Initial Card Load</span><strong id="pbInitialLoad">$0.00</strong></div>
-                  <div class="pricing-row"><span data-i18n="card_issuance_fee">+ Card Issuance Fee</span><strong id="pbIssuanceFee">$0.00</strong></div>
-                  <div class="pricing-row"><span data-i18n="card_funding_fee">+ Funding Fee</span><strong id="pbFundingFee">$0.00</strong></div>
-                  <div class="pricing-row pricing-total"><span data-i18n="total_usd_required">= Total USD Required</span><strong id="pbTotalUsd">$0.00</strong></div>
-                  <div class="pricing-row pricing-usdt" id="pbUsdtRow"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="pbTotalUsdt">$0.00 USDT</strong></div>
-                  <p id="pbRateLabel" class="hint pricing-rate" data-i18n="usdt_parity_rate">1 USDT ≈ 1 USD</p>
-                </div>
-                <button type="submit" class="btn btn-primary" id="btnRequestCard" data-i18n="submit_standard_card">Issue Standard Card</button>
-              </form>
-              <div id="cardRequestReceipt" class="pricing-receipt hidden"></div>
+            <section class="panel">
+              <div id="standardCardPageHost" data-card-view-host="standard-page"></div>
             </section>
           </section>
 
@@ -1889,7 +1809,9 @@
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
   <script defer src="/src/services/usdtWalletApi.js?v=20260909walletPerf"></script>
   <script defer src="/src/services/withdrawalApi.js?v=20260817m2"></script>
-  <script defer src="/src/services/cardsApi.js?v=20260831cardmodal"></script>
+  <script defer src="/src/services/cardsApi.js?v=20260928cardViews"></script>
+  <script defer src="/src/services/instantCardApi.js?v=20260928cardViews"></script>
+  <script defer src="/src/services/standardCardApi.js?v=20260928cardViews"></script>
   <script defer src="/src/services/accountApi.js?v=20260823profile"></script>
   <script defer src="/src/services/p2pApi.js?v=20260819p2p"></script>
   <script defer src="/src/services/index.js?v=20260817m2"></script>
@@ -1901,11 +1823,14 @@
   <script defer src="/src/components/depositFeePreview.js?v=20260817m2"></script>
   <script defer src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
-  <script defer src="/src/components/index.js?v=20260817m2"></script>
+  <script defer src="/src/components/instantCardView.js?v=20260928cardViews"></script>
+  <script defer src="/src/components/standardCardView.js?v=20260928cardViews"></script>
+  <script defer src="/src/components/cardProviderSwitch.js?v=20260928cardViews"></script>
+  <script defer src="/src/components/index.js?v=20260928cardViews"></script>
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20260914scanPayDual"></script>
+  <script defer src="/dashboard.js?v=20260928cardViews"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

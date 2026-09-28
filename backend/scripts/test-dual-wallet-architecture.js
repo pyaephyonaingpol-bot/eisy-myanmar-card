@@ -98,21 +98,33 @@ function testRoutesExposeDualWallets() {
 }
 
 function testUiLabelsAndDepositPanels() {
-  section('UI has dedicated Instant/Standard pages + dual deposit panels');
+  section('UI has Noon switch + isolated Instant/Standard component markup');
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
   assert.ok(html.includes('data-page="instant-card"'));
   assert.ok(html.includes('data-page="standard-card"'));
-  assert.ok(html.includes('standardDepositAddress'));
-  assert.ok(html.includes('instantMasterBalance'));
-  assert.ok(html.includes('pay_master_wallet_issuance'));
-  assert.ok(html.includes('pay_standard_wallet_issuance'));
-  assert.ok(!html.includes('cardProviderSwitch'));
+  assert.ok(html.includes('cardProviderSwitchShell'));
+  assert.ok(html.includes('instantCardView.js'));
+  assert.ok(html.includes('standardCardView.js'));
+
+  const instantView = fs.readFileSync(
+    path.join(ROOT, 'backend/public/src/components/instantCardView.js'),
+    'utf8'
+  );
+  const standardView = fs.readFileSync(
+    path.join(ROOT, 'backend/public/src/components/standardCardView.js'),
+    'utf8'
+  );
+  assert.ok(instantView.includes('instantMasterBalance'));
+  assert.ok(instantView.includes('pay_master_wallet_issuance'));
+  assert.ok(standardView.includes('standardDepositAddress'));
+  assert.ok(standardView.includes('pay_standard_wallet_issuance'));
+  assert.ok(standardView.includes("wallet_type: 'bitnob_usdt'") || standardView.includes('bitnob_usdt'));
 
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('loadCardFundingWallets'));
   assert.ok(dash.includes('loadStandardDepositAddress'));
-  assert.ok(dash.includes('/api/user/card/request-standard'));
-  assert.ok(dash.includes('wallet_type: \'bitnob_usdt\''));
+  assert.ok(dash.includes('mountCardProviderUi'));
+  assert.ok(dash.includes('setCardProviderTab'));
   console.log('ok');
 }
 
