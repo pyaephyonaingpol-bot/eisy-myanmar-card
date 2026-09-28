@@ -219,6 +219,11 @@ router.get('/auth/status', async (_req, res) => {
         is_super_admin: Boolean(envAdmin.is_super_admin),
         user_id: envAdmin.user?.id || null,
         email: envAdmin.user?.email || null,
+        warning: (!envAdmin.env_admin_email_configured || !envAdmin.env_admin_password_configured)
+          ? 'ADMIN_EMAIL / ADMIN_PASSWORD unset on this server — boot/login cannot auto-sync the operator password. Set both on Vercel, or POST /api/admin/auth/ensure-env-admin with X-Admin-Key and email/password overrides.'
+          : (!envAdmin.mapped
+            ? 'ADMIN_EMAIL is set but not mapped to an admin_role in the active database.'
+            : null),
       },
       supabase_browser: (() => {
         try {

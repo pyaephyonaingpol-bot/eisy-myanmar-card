@@ -34,6 +34,15 @@ async function ensureLocal() {
 async function ensureRemote(baseUrl) {
   const key = String(process.env.ADMIN_API_KEY || '').trim();
   if (!key) throw new Error('ADMIN_API_KEY required for --remote');
+  const email = String(process.env.ADMIN_EMAIL || '').trim();
+  const password = String(process.env.ADMIN_PASSWORD || '');
+  const name = String(process.env.ADMIN_NAME || '').trim();
+  // Pass local env credentials as body overrides so remote heal works even when
+  // the deployment (e.g. Vercel) does not have ADMIN_EMAIL / ADMIN_PASSWORD set.
+  const body = {};
+  if (email) body.email = email;
+  if (password) body.password = password;
+  if (name) body.name = name;
   const url = `${String(baseUrl).replace(/\/$/, '')}/api/admin/auth/ensure-env-admin`;
   const res = await fetch(url, {
     method: 'POST',
@@ -41,7 +50,7 @@ async function ensureRemote(baseUrl) {
       'Content-Type': 'application/json',
       'X-Admin-Key': key,
     },
-    body: '{}',
+    body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
   console.log('[ensure-env-admin] remote status=', res.status);

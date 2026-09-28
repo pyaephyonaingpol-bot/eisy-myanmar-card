@@ -87,18 +87,49 @@ async function assertAdminCredentials(user, password) {
   throw new Error('Admin password is not set. Ask a Super Admin to set one, or use the default test PIN 123456 once.');
 }
 
+/**
+ * When login password fails but the request matches ADMIN_EMAIL / ADMIN_PASSWORD,
+ * re-sync the env super-admin row (heals Turso drift) and return the fresh user.
+ * Returns null when env credentials are unset or do not match the attempt.
+ */
+async function maybeHealEnvAdminCredentials(normalizedEmail, password) {
+  const fromEnv = readEnvAdminCredentials();
+  if (!fromEnv.email || !fromEnv.password) return null;
+  if (fromEnv.email !== normalizedEmail) return null;
+  if (String(password) !== String(fromEnv.password)) return null;
+
+  const ensured = await ensureEnvSuperAdmin({ source: 'login-heal' });
+  if (!ensured.ok || ensured.skipped) return null;
+  return User.findByEmail(normalizedEmail);
+}
+
 async function loginAdmin({ email, password, ipAddress, deviceName, devicePlatform }) {
   const normalized = normalizeEmail(email);
   if (!normalized || !password) {
     throw new Error('Email and password are required');
   }
 
-  const user = await User.findByEmail(normalized);
+  let user = await User.findByEmail(normalized);
   if (!user) {
-    throw new Error('Invalid email or password');
+    // Missing row for the configured env admin — create/promote then retry lookup.
+    const healed = await maybeHealEnvAdminCredentials(normalized, password);
+    if (!healed) {
+      throw new Error('Invalid email or password');
+    }
+    user = healed;
   }
 
-  await assertAdminCredentials(user, password);
+  try {
+    await assertAdminCredentials(user, password);
+  } catch (err) {
+    if (!/Invalid email or password/i.test(err.message || '')) {
+      throw err;
+    }
+    const healed = await maybeHealEnvAdminCredentials(normalized, password);
+    if (!healed) throw err;
+    user = healed;
+    await assertAdminCredentials(user, password);
+  }
 
   const [{ sessionToken, session }] = await Promise.all([
     createSession({

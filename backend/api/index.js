@@ -44,6 +44,28 @@ async function bootstrap() {
   ready = (async () => {
     await initDb();
     await ensureDemoUser();
+
+    // Align ADMIN_EMAIL / ADMIN_PASSWORD with Turso on every cold start.
+    // Local `start()` already does this; Vercel previously skipped it, so
+    // production admin password hashes could drift after deploys.
+    try {
+      const { ensureEnvSuperAdmin } = require('../src/services/adminAuthService');
+      const ensured = await ensureEnvSuperAdmin({ source: 'vercel-bootstrap' });
+      if (ensured.skipped) {
+        console.log('[vercel] env super-admin ensure skipped:', ensured.reason);
+      } else {
+        console.log(
+          '[vercel] env super-admin ensured:',
+          ensured.user?.email,
+          `created=${ensured.created}`,
+          `promoted=${ensured.promoted}`,
+          `password_synced=${ensured.password_synced}`
+        );
+      }
+    } catch (err) {
+      console.warn('[vercel] env super-admin ensure failed:', err.message);
+    }
+
     // Best-effort: heal incomplete user_wallets mirrors on cold start so the
     // admin list source-of-truth is fully dual-written without an admin click.
     try {
@@ -72,6 +94,8 @@ async function bootstrap() {
       hasBinanceKey: Boolean(process.env.BINANCE_API_KEY || process.env.BINANCE_PAY_API_KEY),
       hasBinanceSecret: Boolean(process.env.BINANCE_SECRET_KEY || process.env.BINANCE_PAY_API_SECRET),
       hasMerchantId: Boolean(process.env.BINANCE_MERCHANT_ID || process.env.BINANCE_PAY_MERCHANT_ID),
+      hasAdminEmail: Boolean(String(process.env.ADMIN_EMAIL || '').trim()),
+      hasAdminPassword: Boolean(String(process.env.ADMIN_PASSWORD || '').trim()),
     });
   })().catch((err) => {
     ready = null;
