@@ -130,6 +130,7 @@ const Dashboard = {
    * Enterprise-style portal isolation: remove the other flow's pages/nav from the DOM
    * and replace the Instant↔Standard switch with a link to the other portal URL.
    * Standard portal also strips P2P, Master USDT wallet chrome, and Instant-only modals.
+   * Hub (/) is a clean gateway — portal selector only, no wallet/card widgets.
    */
   applyPortalIsolation() {
     const portal = this.getPortal();
@@ -138,9 +139,9 @@ const Dashboard = {
     if (portal) this.rememberPortal(portal);
 
     if (!portal) {
+      this.applyHubGateway();
       this.renderPortalHubChooser();
       this.renderPortalHeaderNav();
-      this.syncCardsApplyCtas();
       return portal;
     }
 
@@ -221,6 +222,57 @@ const Dashboard = {
   },
 
   /**
+   * Hub (/) is a gateway only: Instant vs Standard selector.
+   * Strip wallet overview, activity, cards CTAs, and sidebar app nav so nothing
+   * loads until the user enters /instant or /standard.
+   */
+  applyHubGateway() {
+    const home = document.querySelector('.app-page[data-page="home"]');
+    if (home) {
+      [...home.children].forEach((child) => {
+        if (child.id === 'portalHubChooser') return;
+        child.remove();
+      });
+      home.classList.add('is-active', 'portal-hub-home');
+    }
+
+    // Remove app pages — hub must not expose Instant/Standard tools in-place.
+    document.querySelectorAll('.app-page[data-page]:not([data-page="home"])').forEach((el) => {
+      el.remove();
+    });
+
+    // Sidebar page nav is for portals, not the gateway.
+    document.querySelectorAll('.sidebar-nav .nav-item[data-page]').forEach((el) => {
+      el.remove();
+    });
+
+    document.querySelectorAll('[data-page-title]:not([data-page-title="home"])').forEach((el) => {
+      el.remove();
+    });
+
+    const brandTitle = document.querySelector('.sidebar-brand-title');
+    if (brandTitle) brandTitle.textContent = 'Eisy Myanmar';
+    const brandSub = document.querySelector('.sidebar-brand-sub');
+    if (brandSub) brandSub.textContent = 'Choose Instant or Standard';
+
+    const heading = document.querySelector('.header .page-heading');
+    if (heading) {
+      heading.textContent = 'Choose your portal';
+      heading.removeAttribute('data-i18n');
+    }
+    const subtitle = document.querySelector('.header .subtitle');
+    if (subtitle) {
+      subtitle.textContent = 'Enter Instant or Standard to open wallets and cards';
+      subtitle.removeAttribute('data-i18n');
+    }
+    document.title = 'Eisy Myanmar — Choose portal';
+  },
+
+  isHubGateway() {
+    return !(this._portal || this.getPortal());
+  },
+
+  /**
    * Header links between dedicated portals — never an in-app Instant↔Standard toggle.
    */
   renderPortalHeaderNav() {
@@ -267,11 +319,14 @@ const Dashboard = {
     // Only on hub (/) — offer Instant vs Standard portals after login.
     if (this.getPortal()) return;
     const home = document.querySelector('.app-page[data-page="home"]');
-    if (!home || $('portalHubChooser')) return;
-
-    const box = document.createElement('section');
-    box.id = 'portalHubChooser';
-    box.className = 'panel portal-hub-chooser';
+    if (!home) return;
+    let box = $('portalHubChooser');
+    if (!box) {
+      box = document.createElement('section');
+      box.id = 'portalHubChooser';
+      box.className = 'panel portal-hub-chooser';
+      home.appendChild(box);
+    }
     box.innerHTML = `
       <h2 data-i18n="portal_hub_heading">Choose your portal</h2>
       <p class="hint" data-i18n="portal_hub_hint">Instant and Standard are separate apps with their own wallets and cards.</p>
@@ -285,7 +340,6 @@ const Dashboard = {
           <span data-i18n="portal_hub_standard_desc">Bitnob wallet · Standard Card (Verified KYC)</span>
         </a>
       </div>`;
-    home.insertBefore(box, home.firstChild);
     if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(box);
   },
 
@@ -5791,6 +5845,20 @@ const Dashboard = {
       this.endHydration();
       if (window.location.hash && !window.location.hash.startsWith('#admin')) {
         history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+      return;
+    }
+
+    // Hub (/) gateway: show Instant vs Standard selector only — do not load wallets/cards.
+    if (this.isHubGateway()) {
+      this.applyHubGateway();
+      this.renderPortalHubChooser();
+      this.renderPortalHeaderNav();
+      this.initNavigationIfNeeded();
+      this.applySessionUserToUI();
+      this.endHydration();
+      if (typeof AppNav !== 'undefined') {
+        AppNav.navigate('home', { pushHash: true, replace: true });
       }
       return;
     }

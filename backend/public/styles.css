@@ -5036,6 +5036,30 @@ html[data-app-mode="standard"] [data-mode-shell="instant"] {
   margin-bottom: 1rem;
 }
 
+html[data-eisy-portal="hub"] .sidebar-nav .nav-item[data-page] {
+  display: none !important;
+}
+
+html[data-eisy-portal="hub"] .app-page[data-page="home"] > :not(#portalHubChooser) {
+  display: none !important;
+}
+
+html[data-eisy-portal="hub"] .app-page[data-page]:not([data-page="home"]) {
+  display: none !important;
+}
+
+html[data-eisy-portal="hub"] .portal-hub-home {
+  min-height: min(60vh, 520px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+html[data-eisy-portal="hub"] .portal-hub-chooser {
+  width: min(640px, 100%);
+  margin: 0 auto;
+}
+
 .portal-hub-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
