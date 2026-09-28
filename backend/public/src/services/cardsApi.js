@@ -1,42 +1,42 @@
 /**
  * Cards / reload / pricing API (user SPA).
- * Instant (Kripicard) and Standard (Bitnob) clients stay on separate endpoints.
+ * Instant and Standard clients live in dedicated service modules;
+ * this barrel keeps shared list/reload helpers and re-exports both.
  */
 (function (root) {
   'use strict';
 
   root.EisyServices = root.EisyServices || {};
   const api = () => root.EisyServices.api;
+  const instant = () => root.EisyServices.instantCard;
+  const standard = () => root.EisyServices.standardCard;
 
   root.EisyServices.cards = {
     list() {
       return api().request('GET', '/api/user/cards');
     },
-    /** Standard Card (Bitnob / KYC) pricing */
+    /** @deprecated use EisyServices.standardCard.getPricing */
     getPricing() {
-      return api().request('GET', '/api/user/card/pricing');
+      return standard().getPricing();
     },
-    /** Instant Card (Kripicard / Master Wallet) pricing */
+    /** @deprecated use EisyServices.instantCard.getPricing */
     getKripicardPricing() {
-      return api().request('GET', '/api/user/card/pricing-kripicard');
+      return instant().getPricing();
     },
     getBins() {
-      return api().request('GET', '/api/user/card/bins');
+      return instant().getBins();
     },
-    /** Standard Card issue */
     requestCard(body) {
-      return api().request('POST', '/api/user/card/request-standard', body, { sensitive: true });
+      return standard().requestCard(body);
     },
-    /** Instant Card issue */
     requestKripicard(body) {
-      return api().request('POST', '/api/user/card/request-instant', body, { sensitive: true });
+      return instant().requestCard(body);
     },
     getCardFundingWallets() {
-      return api().request('GET', '/api/user/wallets/card-funding');
+      return standard().getCardFundingWallets();
     },
     getStandardDepositAddress(refresh = false) {
-      const q = refresh ? '?refresh=1' : '';
-      return api().request('GET', `/api/user/wallets/standard/deposit-address${q}`);
+      return standard().getDepositAddress(refresh);
     },
     reload(body) {
       return api().request('POST', '/api/user/card/reload', body, { sensitive: true });

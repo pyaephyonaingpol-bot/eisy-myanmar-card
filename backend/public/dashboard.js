@@ -374,6 +374,7 @@ const Dashboard = {
           forceRefresh: force || hasPending || !this._isFresh('cards'),
         });
         this.loadReloadHistory({ force });
+        this.mountCardProviderUi('switch');
       }
       if (page === 'instant-card') {
         this.enterInstantCardPage({ force });
@@ -5381,187 +5382,8 @@ const Dashboard = {
   },
 
   bindDashboardForms() {
-    this.bindCardProviderTabs();
-
-    const cardInitialLoad = $('cardInitialLoad');
-    if (cardInitialLoad) {
-      cardInitialLoad.addEventListener('input', () => this.updateCardPricingBreakdown());
-    }
-
-    const kripicardInitialLoad = $('kripicardInitialLoad');
-    if (kripicardInitialLoad) {
-      kripicardInitialLoad.addEventListener('input', () => this.updateKripicardPricingBreakdown());
-    }
-
-    const cardRequestForm = $('cardRequestForm');
-    if (cardRequestForm) {
-      cardRequestForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        try {
-          if (!this.isKycVerified()) {
-            this.toast(
-              typeof t === 'function' ? t('standard_kyc_required') : 'Complete KYC before applying for a Standard Card.',
-              'error'
-            );
-            if (typeof AppNav !== 'undefined') AppNav.navigate('instant-card', { pushHash: true });
-            return;
-          }
-          const initialLoad = parseFloat($('cardInitialLoad').value);
-          const nameOnCard = ($('cardHolderNameInput')?.value || $('holderName')?.value || '').trim();
-          const required = this.cardPricing?.total_usdt ?? this.cardPricing?.total_usd_required ?? 0;
-
-          if (!nameOnCard || nameOnCard.length < 2) {
-            this.toast(typeof t === 'function' ? t('name_on_card_required') : 'Enter the name on card (min 2 characters)', 'error');
-            return;
-          }
-          if (this.cardPricing && this.cardPricing.bitnob_customer_ready === false) {
-            this.toast(
-              typeof t === 'function'
-                ? t('bitnob_customer_required')
-                : 'Complete Card KYC first so your verified card profile is ready, then try again.',
-              'error'
-            );
-            return;
-          }
-          if (Number(this.walletBitnobUsdt ?? 0) < required) {
-            this.toast(
-              `Insufficient Standard Card wallet. Need ${this.formatUsdt(required)}. Deposit to your Standard Card address first.`,
-              'error'
-            );
-            this.loadStandardDepositAddress({ force: true }).catch(() => {});
-            return;
-          }
-
-          const body = {
-            name_on_card: nameOnCard,
-            card_holder_name: nameOnCard,
-            initial_load_usd: initialLoad,
-            pay_from_wallet: true,
-            wallet_type: 'bitnob_usdt',
-          };
-
-          const data = await Auth.api('POST', '/api/user/card/request-standard', body, { sensitive: true });
-
-          const debited = data.wallet?.usdt_formatted
-            || this.formatUsdt(data.wallet?.debited_usdt);
-          this.toast(data.message || (data.issued ? t('card_issued_ok') : t('card_request_submitted')), 'ok');
-          this.log(data.issued
-            ? (typeof t === 'function' ? t('card_issued_log', { amount: debited }) : `Card issued — ${debited}`)
-            : t('card_request_submitted_log', { amount: debited }), 'ok');
-
-          const receipt = $('cardRequestReceipt');
-          if (receipt) {
-            receipt.classList.remove('hidden');
-            receipt.innerHTML = `
-              <p class="wallet-pay-hint ok" style="margin:0">
-                ${data.issued
-                  ? (typeof t === 'function' ? t('card_issued_ok') : 'Your virtual card is ready.')
-                  : t('card_request_pending_msg')}
-                ${debited ? `<br><small>${t('card_request_deducted', { amount: debited })}</small>` : ''}
-              </p>`;
-          }
-
-          const holder = nameOnCard;
-          $('cardRequestForm')?.reset();
-          this.populateCardPaymentMethodOptions();
-          if ($('cardHolderNameInput') && holder) $('cardHolderNameInput').value = holder;
-          this.updateCardPricingBreakdown();
-          this.loadWallet();
-          this.loadUsdtWalletPage(true);
-          this.loadCardFundingWallets({ force: true }).catch(() => {});
-          this.loadAllCards({ forceRefresh: true });
-          this.loadDepositHistory();
-          if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
-        } catch (err) {
-          if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
-          if (
-            err.code === 'INSUFFICIENT_USDT_BALANCE'
-            || err.code === 'INSUFFICIENT_BITNOB_BALANCE'
-            || err.code === 'USDT_ONLY_CARD_ISSUANCE'
-            || err.code === 'BITNOB_WALLET_ONLY_CARD_ISSUANCE'
-            || err.code === 'BITNOB_CUSTOMER_REQUIRED'
-            || err.code === 'KYC_REQUIRED_FOR_BITNOB'
-          ) {
-            this.toast(err.message, 'error');
-            if (err.code === 'INSUFFICIENT_BITNOB_BALANCE' || err.code === 'BITNOB_WALLET_ONLY_CARD_ISSUANCE') {
-              this.loadStandardDepositAddress({ force: true }).catch(() => {});
-            }
-            if (err.code === 'INSUFFICIENT_USDT_BALANCE' && typeof AppNav !== 'undefined') {
-              this.openUsdtTopUpModal();
-            }
-            if (err.code === 'KYC_REQUIRED_FOR_BITNOB' && typeof AppNav !== 'undefined') {
-              AppNav.navigate('instant-card', { pushHash: true });
-            }
-            return;
-          }
-          this.toast(err.message || 'Card request failed', 'error');
-          this.log(err.message, 'error');
-        }
-      });
-    }
-
-    const kripicardForm = $('kripicardRequestForm');
-    if (kripicardForm) {
-      kripicardForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        try {
-          const initialLoad = parseFloat($('kripicardInitialLoad').value);
-          const nameOnCard = ($('kripicardHolderName')?.value || '').trim();
-          const bin = ($('kripicardBinSelect')?.value || '').trim();
-          const required = this.kripicardPricing?.sample_pricing?.total_charge_usdt
-            || this._estimateKripicardTotal(initialLoad);
-
-          if (!nameOnCard || nameOnCard.length < 2) {
-            this.toast(typeof t === 'function' ? t('name_on_card_required') : 'Enter the name on card (min 2 characters)', 'error');
-            return;
-          }
-          if (!bin) {
-            this.toast(typeof t === 'function' ? t('select_card_bin') : 'Select a card BIN', 'error');
-            return;
-          }
-          if (Number(this.walletUsdt ?? 0) < required) {
-            this.toast(`Insufficient USDT wallet. Need ${this.formatUsdt(required)}. Top up via crypto deposit first.`, 'error');
-            this.openUsdtTopUpModal();
-            return;
-          }
-
-          const data = await Auth.api('POST', '/api/user/card/request-instant', {
-            name_on_card: nameOnCard,
-            card_holder_name: nameOnCard,
-            initial_load_usd: initialLoad,
-            bin,
-            wallet_type: 'usdt',
-          }, { sensitive: true });
-
-          const debited = data.wallet?.usdt_formatted
-            || this.formatUsdt(data.wallet?.debited_usdt);
-          this.toast(data.message || (typeof t === 'function' ? t('card_issued_ok') : 'Card issued'), 'ok');
-
-          const receipt = $('kripicardRequestReceipt');
-          if (receipt) {
-            receipt.classList.remove('hidden');
-            receipt.innerHTML = `
-              <p class="wallet-pay-hint ok" style="margin:0">
-                Instant Card issued.
-                ${debited ? `<br><small>Debited ${debited}</small>` : ''}
-              </p>`;
-          }
-
-          $('kripicardRequestForm')?.reset();
-          if ($('kripicardHolderName') && nameOnCard) $('kripicardHolderName').value = nameOnCard;
-          this.loadKripicardBins().catch(() => {});
-          this.updateKripicardPricingBreakdown();
-          this.loadWallet();
-          this.loadUsdtWalletPage(true);
-          this.loadAllCards({ forceRefresh: true });
-          if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
-        } catch (err) {
-          if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
-          this.toast(err.message || 'Instant card request failed', 'error');
-          if (err.code === 'INSUFFICIENT_USDT_BALANCE') this.openUsdtTopUpModal();
-        }
-      });
-    }
+    // Instant / Standard apply UI lives in dedicated component files + Noon switch.
+    this.mountCardProviderUi('switch');
 
     $('issueCardForm').onsubmit = async (e) => {
       e.preventDefault();
@@ -5731,48 +5553,133 @@ const Dashboard = {
   },
 
   bindCardProviderTabs() {
-    // Dedicated Instant / Standard pages — no shared toggle.
-    $('btnRefreshStandardDeposit')?.addEventListener('click', () => {
-      this.loadStandardDepositAddress({ force: true }).catch(() => {});
+    this.mountCardProviderUi('switch');
+  },
+
+  clearCardViewHosts() {
+    ['cardProviderSwitchShell', 'instantCardPageHost', 'standardCardPageHost'].forEach((id) => {
+      const el = $(id);
+      if (el) el.innerHTML = '';
     });
+  },
+
+  buildCardViewContexts() {
+    const self = this;
+    const shared = {
+      t: typeof t === 'function' ? t : undefined,
+      toast: (msg, type) => self.toast(msg, type),
+      formatUsdt: (n) => self.formatUsdt(n),
+      openPinUnlock: () => self.openPinUnlockModal(),
+      openUsdtTopUp: () => self.openUsdtTopUpModal(),
+      userName: self.user?.name || Auth.user?.name || '',
+      isKycVerified: () => self.isKycVerified(),
+    };
+
+    const instantCtx = {
+      ...shared,
+      pricing: self.kripicardPricing,
+      getMasterBalance: () => Number(self.walletUsdt ?? self.cardFundingWallets?.instant?.balance_usdt ?? 0),
+      onIssued: () => {
+        self.loadWallet();
+        self.loadUsdtWalletPage?.(true);
+        self.loadAllCards({ forceRefresh: true });
+        if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
+      },
+    };
+
+    const standardCtx = {
+      ...shared,
+      pricing: self.cardPricing,
+      getBitnobBalance: () => Number(self.walletBitnobUsdt ?? self.cardFundingWallets?.standard?.balance_usdt ?? 0),
+      setBitnobBalance: (n) => { self.walletBitnobUsdt = Number(n) || 0; },
+      onPricingLoaded: (data) => {
+        self.cardPricing = data;
+        self.depositFees = data.deposit_fees || self.depositFees;
+        self.updateHomeRateSummary?.();
+      },
+      onNeedInstant: () => {
+        if (typeof AppNav !== 'undefined') AppNav.navigate('instant-card', { pushHash: true });
+        else self.setCardProviderTab('kripicard');
+      },
+      onIssued: () => {
+        self.loadWallet();
+        self.loadUsdtWalletPage?.(true);
+        self.loadCardFundingWallets({ force: true }).catch(() => {});
+        self.loadAllCards({ forceRefresh: true });
+        self.loadDepositHistory?.();
+        if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
+      },
+    };
+
+    return {
+      ...shared,
+      instantCtx,
+      standardCtx,
+      initialProvider: self.isKycVerified() ? 'bitnob' : 'kripicard',
+    };
+  },
+
+  /**
+   * mode: 'switch' | 'instant' | 'standard'
+   * Renders independent InstantCardView / StandardCardView component files.
+   */
+  mountCardProviderUi(mode = 'switch') {
+    const comps = (typeof EisyComponents !== 'undefined') ? EisyComponents : null;
+    if (!comps?.instantCardView || !comps?.standardCardView || !comps?.cardProviderSwitch) {
+      console.warn('[Dashboard] card view components not loaded');
+      return;
+    }
+
+    this.clearCardViewHosts();
+    const ctx = this.buildCardViewContexts();
+
+    if (mode === 'instant') {
+      comps.instantCardView.mount($('instantCardPageHost'), { replace: true });
+      comps.instantCardView.bind(ctx.instantCtx);
+      comps.instantCardView.activate(ctx.instantCtx);
+      return;
+    }
+
+    if (mode === 'standard') {
+      comps.standardCardView.mount($('standardCardPageHost'), { replace: true });
+      comps.standardCardView.bind(ctx.standardCtx);
+      comps.standardCardView.activate(ctx.standardCtx);
+      return;
+    }
+
+    // Default: Noon toggle on My Cards hosts both independent components.
+    comps.cardProviderSwitch.mountInto($('cardProviderSwitchShell'), ctx);
+  },
+
+  setCardProviderTab(provider) {
+    const switcher = EisyComponents?.cardProviderSwitch;
+    if (!switcher) return;
+    if (!$('cardProviderSwitch')) {
+      this.mountCardProviderUi('switch');
+    }
+    const ctx = this.buildCardViewContexts();
+    switcher.setActive(provider, ctx);
   },
 
   enterInstantCardPage({ force = false } = {}) {
     this.loadWallet({ force: false }).catch(() => {});
-    this.loadKripicardPricing().catch(() => {});
-    this.loadKripicardBins().catch(() => {});
-    this.renderInstantWalletBalance();
+    this.mountCardProviderUi('instant');
   },
 
   enterStandardCardPage({ force = false } = {}) {
-    this.syncStandardCardPageGate();
-    this.loadCardPricing().catch(() => {});
-    this.loadCardFundingWallets({ force }).catch(() => {});
-    if (this.isKycVerified()) {
-      this.loadStandardDepositAddress({ force }).catch(() => {});
-    }
+    this.mountCardProviderUi('standard');
   },
 
   syncStandardCardPageGate() {
-    const gate = $('bitnobKycGate');
-    const form = $('cardRequestForm');
-    const btn = $('btnRequestCard');
-    const panel = $('standardWalletPanel');
-    const verified = this.isKycVerified();
-    if (gate) gate.classList.toggle('hidden', verified);
-    if (panel) panel.classList.toggle('hidden', !verified);
-    if (form) {
-      form.querySelectorAll('input,button,select').forEach((el) => {
-        if (el.id === 'cardPaymentMethod') return;
-        el.disabled = !verified;
-      });
-    }
-    if (btn) btn.disabled = !verified;
+    EisyComponents?.standardCardView?.syncKycGate(this.buildCardViewContexts().standardCtx);
   },
 
   async loadCardFundingWallets({ force = false } = {}) {
     try {
-      const data = await Auth.api('GET', '/api/user/wallets/card-funding');
+      const svc = EisyServices?.standardCard;
+      const data = svc
+        ? await svc.getCardFundingWallets()
+        : await Auth.api('GET', '/api/user/wallets/card-funding');
       this.cardFundingWallets = data;
       this.walletBitnobUsdt = Number(data?.standard?.balance_usdt ?? 0);
       this.renderInstantWalletBalance();
@@ -5786,134 +5693,39 @@ const Dashboard = {
   },
 
   renderInstantWalletBalance() {
-    const el = $('instantMasterBalance');
-    if (!el) return;
-    const bal = this.walletUsdt ?? this.cardFundingWallets?.instant?.balance_usdt ?? 0;
-    el.textContent = this.formatUsdt ? this.formatUsdt(bal) : `$ ${Number(bal).toFixed(2)} USDT`;
+    const ctx = this.buildCardViewContexts().instantCtx;
+    EisyComponents?.instantCardView?.renderMasterBalance(ctx);
   },
 
   renderStandardWalletBalance() {
-    const el = $('standardBitnobBalance');
-    if (!el) return;
-    const bal = this.walletBitnobUsdt ?? this.cardFundingWallets?.standard?.balance_usdt ?? 0;
-    el.textContent = this.formatUsdt ? this.formatUsdt(bal) : `$ ${Number(bal).toFixed(2)} USDT`;
+    const ctx = this.buildCardViewContexts().standardCtx;
+    EisyComponents?.standardCardView?.renderWalletBalance(ctx);
   },
 
   async loadStandardDepositAddress({ force = false } = {}) {
-    const input = $('standardDepositAddress');
-    const chainHint = $('standardDepositChainHint');
-    const panel = $('standardWalletPanel');
-    if (!this.isKycVerified()) {
-      if (panel) panel.classList.add('hidden');
-      return null;
-    }
-    if (panel) panel.classList.remove('hidden');
-    if (input && !force && input.value) return { address: input.value };
-    try {
-      if (input) input.value = 'Loading…';
-      const data = await Auth.api(
-        'GET',
-        `/api/user/wallets/standard/deposit-address${force ? '?refresh=1' : ''}`
-      );
-      if (input) input.value = data.address || '';
-      if (chainHint) {
-        chainHint.textContent = data.chain
-          ? `Network: ${String(data.chain).toUpperCase()} · Standard Card deposits only`
-          : 'Standard Card deposits only (not Master Wallet)';
-      }
-      this.standardDeposit = data;
-      return data;
-    } catch (err) {
-      if (input) input.value = '';
-      if (chainHint) chainHint.textContent = err.message || 'Deposit address unavailable';
-      console.warn('[standard deposit address]', err.message);
-      return null;
-    }
+    const ctx = this.buildCardViewContexts().standardCtx;
+    return EisyComponents?.standardCardView?.loadDepositAddress(ctx, { force });
   },
 
   async loadKripicardBins() {
-    const select = $('kripicardBinSelect');
-    if (!select || !Auth.isLoggedIn()) return;
-    try {
-      const data = await Auth.api('GET', '/api/user/card/bins');
-      const bins = Array.isArray(data.bins) ? data.bins : [];
-      const details = Array.isArray(data.details) ? data.details : [];
-      const labelFor = (bin) => {
-        const d = details.find((x) => String(x.bin) === String(bin));
-        if (d?.label) return d.label;
-        if (d?.brand) return `${String(d.brand).toUpperCase()} ${bin}`;
-        return String(bin);
-      };
-      select.innerHTML = '';
-      if (!bins.length) {
-        select.innerHTML = '<option value="">No BINs available</option>';
-        return;
-      }
-      bins.forEach((bin) => {
-        const opt = document.createElement('option');
-        opt.value = bin;
-        opt.textContent = labelFor(bin);
-        if (bin === data.default_bin) opt.selected = true;
-        select.appendChild(opt);
-      });
-    } catch (err) {
-      console.warn('[kripicard bins]', err.message);
-      select.innerHTML = '<option value="441357">US Visa 441357 (fallback)</option>';
-    }
+    return EisyComponents?.instantCardView?.loadBins();
   },
 
   async loadKripicardPricing() {
-    if (!Auth.isLoggedIn()) return;
-    try {
-      const data = await Auth.api('GET', '/api/user/card/pricing-kripicard');
-      this.kripicardPricing = data;
-      const min = data.minimum_initial_deposit_usd ?? 10;
-      const input = $('kripicardInitialLoad');
-      if (input) {
-        input.min = min;
-        input.placeholder = Number(min).toFixed(2);
-        if (!input.value) input.value = Number(min).toFixed(2);
-      }
-      const hint = $('kripicardMinDepositHint');
-      if (hint) hint.textContent = `Minimum initial deposit: $${Number(min).toFixed(2)}`;
-      const nameInput = $('kripicardHolderName');
-      if (nameInput && !nameInput.value && this.user?.name) {
-        nameInput.value = this.user.name;
-      }
-      this.updateKripicardPricingBreakdown();
-    } catch (err) {
-      console.warn('[kripicard pricing]', err.message);
-    }
+    const ctx = this.buildCardViewContexts().instantCtx;
+    const data = await EisyComponents?.instantCardView?.loadPricing(ctx);
+    if (data) this.kripicardPricing = data;
+    return data;
   },
 
   _estimateKripicardTotal(initialLoad) {
-    const p = this.kripicardPricing || {};
-    const load = Number(initialLoad) || 0;
-    const issuance = Number(p.card_issuance_fee_usd) || 0;
-    const pct = Number(p.card_funding_fee_percent) || 0;
-    const funding = Math.round((load * pct) / 100 * 100) / 100;
-    const processing = Number(p.card_processing_fee_usd);
-    const proc = Number.isFinite(processing) ? processing : 1.5;
-    return Math.round((load + issuance + funding + proc) * 100) / 100;
+    return EisyComponents?.instantCardView?.estimateTotal(this.kripicardPricing, initialLoad) || 0;
   },
 
   updateKripicardPricingBreakdown() {
-    const p = this.kripicardPricing;
-    if (!p) return;
-    const initial = parseFloat($('kripicardInitialLoad')?.value) || 0;
-    const issuance = Number(p.card_issuance_fee_usd) || 0;
-    const pct = Number(p.card_funding_fee_percent) || 0;
-    const funding = Math.round((initial * pct) / 100 * 100) / 100;
-    const processing = Number(p.card_processing_fee_usd);
-    const proc = Number.isFinite(processing) ? processing : 1.5;
-    const total = Math.round((initial + issuance + funding + proc) * 100) / 100;
-    const set = (id, text) => { const el = $(id); if (el) el.textContent = text; };
-    set('kpbInitialLoad', `$${initial.toFixed(2)}`);
-    set('kpbIssuanceFee', `$${issuance.toFixed(2)}`);
-    set('kpbFundingFee', `$${funding.toFixed(2)}`);
-    set('kpbProcessingFee', `$${proc.toFixed(2)}`);
-    set('kpbTotalUsd', `$${total.toFixed(2)}`);
-    set('kpbTotalUsdt', `$${total.toFixed(2)} USDT`);
+    const ctx = this.buildCardViewContexts().instantCtx;
+    ctx.pricing = this.kripicardPricing;
+    EisyComponents?.instantCardView?.updatePricingBreakdown(ctx);
   },
 
   async loadCardPricing() {

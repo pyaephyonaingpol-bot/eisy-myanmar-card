@@ -75,22 +75,34 @@ function testRoutesWired() {
 }
 
 function testUiSplit() {
-  section('dashboard UI has dedicated Instant + Standard pages');
+  section('dashboard UI uses Noon switch + dedicated Instant/Standard components');
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
-  assert.ok(html.includes('kripicardRequestForm'));
-  assert.ok(html.includes('cardRequestForm'));
+  assert.ok(html.includes('cardProviderSwitchShell'));
+  assert.ok(html.includes('instantCardView.js'));
+  assert.ok(html.includes('standardCardView.js'));
+  assert.ok(html.includes('cardProviderSwitch.js'));
   assert.ok(html.includes('data-page="instant-card"'));
   assert.ok(html.includes('data-page="standard-card"'));
-  assert.ok(html.includes('kripicardBinSelect'));
-  assert.ok(!html.includes('cardProviderSwitch'));
-  assert.ok(!html.includes('card-provider-switch-footer'));
+
+  const instantView = fs.readFileSync(
+    path.join(ROOT, 'backend/public/src/components/instantCardView.js'),
+    'utf8'
+  );
+  const standardView = fs.readFileSync(
+    path.join(ROOT, 'backend/public/src/components/standardCardView.js'),
+    'utf8'
+  );
+  assert.ok(instantView.includes('kripicardRequestForm'));
+  assert.ok(instantView.includes('kripicardBinSelect'));
+  assert.ok(!/bitnob/i.test(instantView));
+  assert.ok(standardView.includes('cardRequestForm'));
+  assert.ok(!/kripicard/i.test(standardView));
 
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
-  assert.ok(dash.includes('enterInstantCardPage'));
-  assert.ok(dash.includes('enterStandardCardPage'));
-  assert.ok(dash.includes('/api/user/card/request-instant') || dash.includes('/api/user/card/request-kripicard'));
-  assert.ok(dash.includes('/api/user/card/request-standard'));
-  assert.ok(!dash.includes('setCardProviderTab'));
+  assert.ok(dash.includes('mountCardProviderUi'));
+  assert.ok(dash.includes('setCardProviderTab'));
+  assert.ok(dash.includes('instantCardView'));
+  assert.ok(dash.includes('standardCardView'));
   console.log('ok');
 }
 
