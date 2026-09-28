@@ -58,6 +58,7 @@
     "test:login-auth-perf": "node scripts/test-login-auth-perf.js",
     "test:acctinfo-guard": "node scripts/test-acctinfo-guard.js",
     "test:dashboard-profile-page": "node scripts/test-dashboard-profile-page.js",
+    "test:sidebar-nav-cleanup": "node scripts/test-sidebar-nav-cleanup.js",
     "test:card-detail-modal": "node scripts/test-card-detail-modal.js",
     "test:card-remove": "node scripts/test-card-remove.js",
     "test:card-issuance-profit-markup": "node scripts/test-card-issuance-profit-markup.js",
