@@ -53,6 +53,26 @@ function testDashboardLocksPortal() {
   assert.ok(dash.includes('portal-switch-link'));
   assert.ok(dash.includes('.remove()'));
   assert.ok(dash.includes("window.location.href = '/instant'") || dash.includes('`/${mode}`'));
+  assert.ok(dash.includes('standardPortalBlockedPages'));
+  assert.ok(dash.includes('isStandardPortalBlockedPage'));
+  assert.ok(dash.includes("data-instant-only"));
+  assert.ok(dash.includes("'p2p'"));
+  assert.ok(dash.includes('p2pBuyModal'));
+  assert.ok(dash.includes('usdtTopUpModal'));
+  console.log('ok');
+}
+
+function testStandardPortalStripsInstantModules() {
+  section('Standard portal HTML marks Instant-only modules for removal');
+  const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
+  assert.ok(html.includes('data-instant-only'));
+  assert.ok(/data-page="p2p"[^>]*data-instant-only|data-instant-only[^>]*data-page="p2p"/.test(html));
+  assert.ok(/data-page="usdt-wallet"[^>]*data-instant-only|data-instant-only[^>]*data-page="usdt-wallet"/.test(html));
+  assert.ok(/data-page="deposits"[^>]*data-instant-only|data-instant-only[^>]*data-page="deposits"/.test(html));
+  assert.ok(html.includes('id="p2pBuyModal"') && html.includes('data-instant-only'));
+  assert.ok(html.includes('id="usdtTopUpModal"'));
+  assert.ok(html.includes('id="settingsKycHint"'));
+  assert.ok(!/Required to post P2P ads and trade on the marketplace/.test(html));
   console.log('ok');
 }
 
@@ -77,6 +97,7 @@ function main() {
   testServerRoutesPortalPages();
   testPortalHtmlGenerator();
   testDashboardLocksPortal();
+  testStandardPortalStripsInstantModules();
   testViewsStayIsolated();
   console.log('\nPortal route checks passed.');
 }

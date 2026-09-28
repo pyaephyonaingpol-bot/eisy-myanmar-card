@@ -19,9 +19,10 @@ Reusable UI helpers for the vanilla SPA. Attached to `window.EisyComponents`.
 
 Dedicated URLs (enterprise-style split):
 
-- `/instant` → Instant portal (Master USDT Wallet + Kripicard only)
-- `/standard` → Standard portal (Bitnob wallet + KYC only)
+- `/instant` → Instant portal (Master USDT Wallet + Kripicard + P2P only)
+- `/standard` → Standard portal (Bitnob wallet + KYC + Standard Card only — no P2P / master USDT)
 - `/` hub → portal chooser after login; optional in-app Noon switch on My Cards
 
 Generated shells: `instant.html` / `standard.html` via `npm run write-portal-html`.
 Each portal removes the other flow's pages from the DOM so wallets never overlap.
+On `/standard`, Instant-only modules marked `data-instant-only` (P2P, Master USDT top-up/withdraw/Scan Pay, deposits history) are removed entirely.

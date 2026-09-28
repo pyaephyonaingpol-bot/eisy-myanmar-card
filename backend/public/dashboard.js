@@ -111,9 +111,25 @@ const Dashboard = {
     }
   },
 
+  /** Instant-only pages blocked on the Standard (Bitnob) portal. */
+  standardPortalBlockedPages() {
+    return new Set([
+      'instant-card',
+      'instant',
+      'usdt-wallet',
+      'p2p',
+      'deposits',
+    ]);
+  },
+
+  isStandardPortalBlockedPage(page) {
+    return this._portal === 'standard' && this.standardPortalBlockedPages().has(page);
+  },
+
   /**
    * Enterprise-style portal isolation: remove the other flow's pages/nav from the DOM
    * and replace the Instant↔Standard switch with a link to the other portal URL.
+   * Standard portal also strips P2P, Master USDT wallet chrome, and Instant-only modals.
    */
   applyPortalIsolation() {
     const portal = this.getPortal();
@@ -129,15 +145,55 @@ const Dashboard = {
     // Strip opposite portal chrome so pages never overlap in this document.
     if (portal === 'instant') {
       document.querySelectorAll(
-        '[data-mode-nav="standard"], [data-mode-shell="standard"], [data-page="standard-card"]'
+        '[data-mode-nav="standard"], [data-mode-shell="standard"], [data-page="standard-card"], [data-standard-only]'
       ).forEach((el) => el.remove());
       $('standardAppPageHost')?.closest('.app-page')?.remove();
     } else {
+      // Standard = Bitnob wallet + Standard Card + KYC only.
+      // Remove Instant shells, Master USDT wallet, P2P Express, and Instant deposit history.
       document.querySelectorAll(
-        '[data-mode-nav="instant"], [data-mode-shell="instant"], [data-page="instant-card"], [data-page="usdt-wallet"]'
+        [
+          '[data-mode-nav="instant"]',
+          '[data-mode-shell="instant"]',
+          '[data-page="instant-card"]',
+          '[data-page="usdt-wallet"]',
+          '[data-page="p2p"]',
+          '[data-page="deposits"]',
+          '[data-instant-only]',
+        ].join(', ')
       ).forEach((el) => el.remove());
       $('instantAppPageHost')?.closest('.app-page')?.remove();
-      $('pageUsdtWallet')?.remove();
+      [
+        'pageUsdtWallet',
+        'pageP2p',
+        'pageDeposits',
+        'usdtTopUpModal',
+        'withdrawUsdtModal',
+        'withdrawMmkModal',
+        'sellUsdtMmkModal',
+        'scanPayModal',
+        'p2pBuyModal',
+        'p2pSellModal',
+        'p2pPostAdModal',
+        'p2pReleaseConfirmModal',
+        'p2pSellerDisputeModal',
+      ].forEach((id) => $(id)?.remove());
+
+      // Retarget Instant-only deep links still present on shared home/settings chrome.
+      document.querySelectorAll('[data-goto="deposits"], [data-goto="p2p"], [data-goto="usdt-wallet"], [data-goto="instant-card"]').forEach((el) => {
+        if (el.dataset.goto === 'deposits') {
+          el.dataset.goto = 'cards';
+          if (el.hasAttribute('data-i18n')) el.removeAttribute('data-i18n');
+          el.textContent = el.textContent?.includes('History') ? 'View My Cards' : el.textContent;
+        } else {
+          el.remove();
+        }
+      });
+
+      const kycHint = $('settingsKycHint');
+      if (kycHint) {
+        kycHint.textContent = 'Required for Standard Card and Bitnob wallet (verified banking / KYC).';
+      }
     }
 
     // Header: portal switch link instead of in-app mode pill.
@@ -337,7 +393,7 @@ const Dashboard = {
         if (!target || typeof AppNav === 'undefined') return;
         // Portal lock: never navigate to the other flow's pages.
         if (this._portal === 'instant' && (target === 'standard-card' || target === 'standard')) return;
-        if (this._portal === 'standard' && (target === 'instant-card' || target === 'usdt-wallet' || target === 'instant')) return;
+        if (this.isStandardPortalBlockedPage(target)) return;
         const opts = { pushHash: true };
         if (btn.dataset.depositTab) opts.depositTab = btn.dataset.depositTab;
         if (btn.dataset.p2pTab) opts.p2pTab = btn.dataset.p2pTab;
@@ -461,6 +517,12 @@ const Dashboard = {
   },
 
   onPageChange(page, opts = {}) {
+    if (this.isStandardPortalBlockedPage(page)) {
+      if (typeof AppNav !== 'undefined') {
+        AppNav.navigate(this.portalDefaultPage(), { pushHash: true });
+      }
+      return;
+    }
     const force = Boolean(opts.forceReload);
     this.setPageLoading(page, true);
     try {
@@ -1130,6 +1192,10 @@ const Dashboard = {
   },
 
   openUsdtTopUpModal() {
+    if (this._portal === 'standard') {
+      this.toast('Master USDT top-up is only available in the Instant portal.', 'error');
+      return;
+    }
     if (!Auth.isLoggedIn()) {
       this.toast('Sign in to top up your USDT wallet', 'error');
       return;
@@ -2039,6 +2105,10 @@ const Dashboard = {
   SELL_USDT_BANK_METHODS: ['KPay', 'KBZ Bank', 'CB Pay', 'CB Bank', 'AYA Pay', 'AYA Bank', 'WavePay'],
 
   openSellUsdtMmkModal() {
+    if (this._portal === 'standard') {
+      this.toast('Sell USDT / Convert to MMK is only available in the Instant portal.', 'error');
+      return;
+    }
     $('sellUsdtMmkForm')?.classList.remove('hidden');
     $('sellUsdtSuccessBox')?.classList.add('hidden');
     if ($('sellUsdtOutput')) $('sellUsdtOutput').textContent = '';
@@ -6657,6 +6727,10 @@ const Dashboard = {
 
   /* ─── Scan Pay (QR → confirm → atomic USDT debit) ─── */
   openScanPayModal() {
+    if (this._portal === 'standard') {
+      this.toast('Scan Pay uses the Master USDT wallet — open the Instant portal.', 'error');
+      return;
+    }
     const modal = $('scanPayModal');
     if (!modal) return;
     this._scanPayState = {
@@ -7034,6 +7108,10 @@ const Dashboard = {
   },
 
   openWithdrawModal() {
+    if (this._portal === 'standard') {
+      this.toast('Master USDT withdrawals are only available in the Instant portal.', 'error');
+      return;
+    }
     $('withdrawUsdtForm')?.classList.remove('hidden');
     $('withdrawSuccessBox')?.classList.add('hidden');
     if ($('withdrawOutput')) $('withdrawOutput').textContent = '';
@@ -7124,6 +7202,10 @@ const Dashboard = {
   },
 
   openWithdrawMmkModal() {
+    if (this._portal === 'standard') {
+      this.toast('MMK wallet withdrawals are only available in the Instant portal.', 'error');
+      return;
+    }
     $('withdrawMmkForm')?.classList.remove('hidden');
     $('withdrawMmkSuccessBox')?.classList.add('hidden');
     if ($('withdrawMmkBankName')) $('withdrawMmkBankName').value = '';
