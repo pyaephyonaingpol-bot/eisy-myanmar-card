@@ -640,7 +640,14 @@
     syncPageHeading(page) {
       const titleEl = document.querySelector(`[data-page-title="${page}"]`);
       const heading = document.querySelector('.header .page-heading');
-      if (titleEl && heading) {
+      if (!heading) return;
+      if (page === 'cards') {
+        const pipeline = this._pipeline || this.getPipeline();
+        heading.textContent = pipeline === 'standard' ? 'Standard Cards' : (pipeline === 'instant' ? 'Instant Cards' : 'Cards');
+        heading.removeAttribute('data-i18n');
+        return;
+      }
+      if (titleEl) {
         heading.textContent = titleEl.textContent.trim();
         heading.removeAttribute('data-i18n');
       }
