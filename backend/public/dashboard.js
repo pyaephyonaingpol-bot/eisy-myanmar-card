@@ -5578,7 +5578,13 @@ const Dashboard = {
     const instantCtx = {
       ...shared,
       pricing: self.kripicardPricing,
+      /** Internal USDT Wallet available balance (platform balance_usdt). */
+      getUsdtWalletBalance: () => Number(self.walletUsdt ?? self.cardFundingWallets?.instant?.balance_usdt ?? 0),
       getMasterBalance: () => Number(self.walletUsdt ?? self.cardFundingWallets?.instant?.balance_usdt ?? 0),
+      refreshUsdtWallet: async () => {
+        await self.loadWallet({ force: false });
+        return self.walletUsdt;
+      },
       onIssued: () => {
         self.loadWallet();
         self.loadUsdtWalletPage?.(true);
@@ -5694,7 +5700,8 @@ const Dashboard = {
 
   renderInstantWalletBalance() {
     const ctx = this.buildCardViewContexts().instantCtx;
-    EisyComponents?.instantCardView?.renderMasterBalance(ctx);
+    EisyComponents?.instantCardView?.renderUsdtWalletBalance?.(ctx)
+      || EisyComponents?.instantCardView?.renderMasterBalance?.(ctx);
   },
 
   renderStandardWalletBalance() {

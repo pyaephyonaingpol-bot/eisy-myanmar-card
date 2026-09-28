@@ -1,6 +1,7 @@
 /**
- * Instant Card view — Non-KYC / Master Wallet / Kripicard only.
- * Mounts its own markup. Must never reference KYC-provider wallet APIs.
+ * Instant Card view — Non-KYC page.
+ * Uses internal USDT Wallet (platform balance_usdt) and issues via Kripicard only.
+ * Independent markup + handlers — never shares DOM with Standard Card.
  */
 (function (root) {
   'use strict';
@@ -9,19 +10,20 @@
 
   const FLOW = 'instant';
   const PROVIDER = 'kripicard';
+  const WALLET = 'usdt';
 
   const TEMPLATE = `
-<div id="instantCardApplyPanel" class="card-provider-panel is-active" data-card-page="instant" data-provider="kripicard" role="tabpanel" aria-labelledby="tabInstantCard">
+<div id="instantCardApplyPanel" class="card-provider-panel is-active card-flow-page" data-card-page="instant" data-provider="kripicard" data-wallet="usdt" role="tabpanel" aria-labelledby="tabInstantCard">
   <h2 data-i18n="apply_instant_card">Instant Card (No KYC)</h2>
-  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_instant_card_hint">No KYC required. Pay from Master Wallet USDT (TRC20 crypto deposit).</p>
+  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_instant_card_hint">No KYC required. Pay from your internal USDT Wallet (TRC20 crypto deposit), then issue Instant Card.</p>
   <div class="wallet-pay-hint ok" id="instantWalletBalanceHint" style="margin-bottom:0.75rem">
-    <span data-i18n="master_wallet_balance_label">Master Wallet</span>:
-    <strong id="instantMasterBalance">—</strong>
+    <span data-i18n="instant_usdt_wallet_balance_label">USDT Wallet</span>:
+    <strong id="instantUsdtBalance">—</strong>
   </div>
   <p class="hint" style="margin-bottom:0.75rem">
-    <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="top_up_master_wallet">Top up Master Wallet</button>
+    <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="top_up_usdt_wallet">Top up USDT Wallet</button>
   </p>
-  <form id="kripicardRequestForm" class="form">
+  <form id="kripicardRequestForm" class="form" data-card-flow="instant" data-wallet="usdt">
     <div class="field"><label for="kripicardHolderName" data-i18n="name_on_card">Name on Card</label>
       <input id="kripicardHolderName" type="text" minlength="2" maxlength="50" autocomplete="name" placeholder="Cardholder name" required />
     </div>
@@ -36,7 +38,7 @@
     </div>
     <div class="field">
       <label data-i18n="pay_from">Pay From</label>
-      <p class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_master_wallet_issuance">Master Wallet USDT (1 USDT ≈ 1 USD — Instant Card only)</p>
+      <p class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_usdt_wallet_issuance">USDT Wallet (1 USDT ≈ 1 USD — Instant Card only)</p>
     </div>
     <div id="kripicardPricingBreakdown" class="pricing-breakdown">
       <div class="pricing-row"><span data-i18n="initial_card_load_row">Initial Card Load</span><strong id="kpbInitialLoad">$0.00</strong></div>
@@ -93,12 +95,18 @@
     setText('kpbTotalUsdt', `$${total.toFixed(2)} USDT`);
   }
 
-  function renderMasterBalance(ctx) {
-    const el = $('instantMasterBalance');
+  /** Render internal USDT Wallet available balance (e.g. $40.00). */
+  function renderUsdtWalletBalance(ctx) {
+    const el = $('instantUsdtBalance') || $('instantMasterBalance');
     if (!el) return;
-    const bal = Number(ctx.getMasterBalance?.() ?? 0);
+    const bal = Number(ctx.getUsdtWalletBalance?.() ?? ctx.getMasterBalance?.() ?? 0);
     const format = ctx.formatUsdt || ((n) => `$ ${Number(n).toFixed(2)} USDT`);
     el.textContent = format(bal);
+  }
+
+  // Alias kept for dashboard callers during transition.
+  function renderMasterBalance(ctx) {
+    renderUsdtWalletBalance(ctx);
   }
 
   async function loadBins() {
@@ -160,21 +168,24 @@
     }
   }
 
-  function setVisible(visible) {
-    const panel = $('instantCardApplyPanel');
-    if (!panel) return;
-    panel.classList.toggle('is-active', visible);
-    panel.hidden = !visible;
-    panel.classList.toggle('hidden', !visible);
-  }
-
   function mount(host, { replace = true } = {}) {
     if (!host) return null;
     if (replace) host.innerHTML = TEMPLATE;
     else if (!host.querySelector('#kripicardRequestForm')) {
       host.insertAdjacentHTML('beforeend', TEMPLATE);
     }
+    if (typeof root.I18n !== 'undefined' && typeof root.I18n.apply === 'function') {
+      root.I18n.apply(host);
+    }
     return $('instantCardApplyPanel');
+  }
+
+  function unmount(host) {
+    const panel = $('instantCardApplyPanel');
+    if (panel) panel.remove();
+    if (host && host.querySelector?.('#kripicardRequestForm')) {
+      host.innerHTML = '';
+    }
   }
 
   function bind(ctx = {}) {
@@ -194,7 +205,7 @@
         const bin = ($('kripicardBinSelect')?.value || '').trim();
         const required = ctx.pricing?.sample_pricing?.total_charge_usdt
           || estimateTotal(ctx.pricing, initialLoad);
-        const masterBal = Number(ctx.getMasterBalance?.() ?? 0);
+        const usdtBal = Number(ctx.getUsdtWalletBalance?.() ?? ctx.getMasterBalance?.() ?? 0);
         const t = ctx.t;
         const toast = ctx.toast || (() => {});
         const formatUsdt = ctx.formatUsdt || ((n) => `$${Number(n).toFixed(2)} USDT`);
@@ -207,8 +218,8 @@
           toast(typeof t === 'function' ? t('select_card_bin') : 'Select a card BIN', 'error');
           return;
         }
-        if (masterBal < required) {
-          toast(`Insufficient Master Wallet. Need ${formatUsdt(required)}. Top up via crypto deposit first.`, 'error');
+        if (usdtBal < required) {
+          toast(`Insufficient USDT Wallet. Need ${formatUsdt(required)}. Top up via crypto deposit first.`, 'error');
           ctx.openUsdtTopUp?.();
           return;
         }
@@ -229,7 +240,7 @@
           receipt.classList.remove('hidden');
           receipt.innerHTML = `
             <p class="wallet-pay-hint ok" style="margin:0">
-              Instant Card issued.
+              Instant Card issued from USDT Wallet.
               ${debited ? `<br><small>Debited ${debited}</small>` : ''}
             </p>`;
         }
@@ -248,28 +259,38 @@
   }
 
   async function activate(ctx = {}) {
-    setVisible(true);
-    renderMasterBalance(ctx);
+    const panel = $('instantCardApplyPanel');
+    if (panel) {
+      panel.classList.add('is-active');
+      panel.hidden = false;
+      panel.classList.remove('hidden');
+    }
+    if (typeof ctx.refreshUsdtWallet === 'function') {
+      await ctx.refreshUsdtWallet().catch(() => {});
+    }
+    renderUsdtWalletBalance(ctx);
     await Promise.all([
       loadPricing(ctx),
       loadBins(),
     ]);
-    renderMasterBalance(ctx);
+    renderUsdtWalletBalance(ctx);
   }
 
   function deactivate() {
-    setVisible(false);
+    unmount();
   }
 
   root.EisyComponents.instantCardView = {
     FLOW,
     PROVIDER,
+    WALLET,
     TEMPLATE,
     mount,
+    unmount,
     bind,
     activate,
     deactivate,
-    setVisible,
+    renderUsdtWalletBalance,
     renderMasterBalance,
     updatePricingBreakdown,
     loadPricing,
