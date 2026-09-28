@@ -1,6 +1,7 @@
 /**
- * Standard Card view — KYC / Bitnob direct wallet + issuance only.
- * Mounts its own markup. Must never call Non-KYC Instant / Master Wallet issue APIs.
+ * Standard Card view — KYC / Verified page.
+ * Uses Bitnob direct wallet (deposit address + balance_bitnob_usdt) only.
+ * Independent markup + handlers — never shares DOM with Instant Card.
  */
 (function (root) {
   'use strict';
@@ -9,25 +10,26 @@
 
   const FLOW = 'standard';
   const PROVIDER = 'bitnob';
+  const WALLET = 'bitnob_usdt';
 
   const TEMPLATE = `
-<div id="standardCardApplyPanel" class="card-provider-panel" data-card-page="standard" data-provider="bitnob" role="tabpanel" aria-labelledby="tabStandardCard" hidden>
+<div id="standardCardApplyPanel" class="card-provider-panel is-active card-flow-page" data-card-page="standard" data-provider="bitnob" data-wallet="bitnob_usdt" role="tabpanel" aria-labelledby="tabStandardCard">
   <h2 data-i18n="apply_standard_card">Standard Card (Verified)</h2>
-  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_standard_card_hint">Requires verified KYC. Pay from your Standard Card wallet (Bitnob deposit address — separate from Master Wallet).</p>
+  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_standard_card_hint">Requires verified KYC. Pay from your Bitnob Standard Card wallet (deposit address — separate from USDT Wallet).</p>
   <div id="bitnobKycGate" class="wallet-pay-hint err hidden" data-i18n="standard_kyc_required">Complete KYC verification before applying for a Standard Card. Without KYC, use Instant Card instead.</div>
   <div id="standardWalletPanel" class="standard-wallet-panel" style="margin-bottom:0.85rem">
     <div class="wallet-pay-hint ok" style="margin-bottom:0.5rem">
-      <span data-i18n="standard_wallet_balance_label">Standard Card wallet</span>:
+      <span data-i18n="standard_wallet_balance_label">Bitnob / Standard Card wallet</span>:
       <strong id="standardBitnobBalance">—</strong>
     </div>
     <div class="field" style="margin-bottom:0.5rem">
-      <label data-i18n="standard_deposit_address_label">Deposit address</label>
+      <label data-i18n="standard_deposit_address_label">Bitnob deposit address</label>
       <input id="standardDepositAddress" type="text" readonly value="" placeholder="Loading…" />
       <small class="hint" id="standardDepositChainHint"></small>
     </div>
     <button type="button" class="btn btn-secondary btn-sm" id="btnRefreshStandardDeposit" data-i18n="refresh_standard_deposit">Refresh deposit address</button>
   </div>
-  <form id="cardRequestForm" class="form">
+  <form id="cardRequestForm" class="form" data-card-flow="standard" data-wallet="bitnob_usdt">
     <div class="field"><label for="cardHolderNameInput" data-i18n="name_on_card">Name on Card</label>
       <input id="cardHolderNameInput" type="text" minlength="2" maxlength="50" autocomplete="name" placeholder="Cardholder name" required />
     </div>
@@ -37,7 +39,7 @@
     </div>
     <div class="field">
       <label data-i18n="pay_from">Pay From</label>
-      <p id="cardPayFromUsdt" class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_standard_wallet_issuance">Standard Card wallet (Bitnob deposits — not Master Wallet)</p>
+      <p id="cardPayFromUsdt" class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_standard_wallet_issuance">Bitnob Standard Card wallet (not USDT Wallet)</p>
       <input type="hidden" id="cardPaymentMethod" value="wallet_bitnob_usdt" />
     </div>
     <p id="cardWalletHint" class="wallet-pay-hint ok hidden"></p>
@@ -178,8 +180,8 @@
       if (input) input.value = data.address || '';
       if (chainHint) {
         chainHint.textContent = data.chain
-          ? `Network: ${String(data.chain).toUpperCase()} · Standard Card deposits only`
-          : 'Standard Card deposits only (not Master Wallet)';
+          ? `Network: ${String(data.chain).toUpperCase()} · Bitnob Standard Card deposits only`
+          : 'Bitnob Standard Card deposits only (not USDT Wallet)';
       }
       ctx.deposit = data;
       return data;
@@ -208,21 +210,24 @@
     }
   }
 
-  function setVisible(visible) {
-    const panel = $('standardCardApplyPanel') || $('bitnobApplyPanel');
-    if (!panel) return;
-    panel.classList.toggle('is-active', visible);
-    panel.hidden = !visible;
-    panel.classList.toggle('hidden', !visible);
-  }
-
   function mount(host, { replace = true } = {}) {
     if (!host) return null;
     if (replace) host.innerHTML = TEMPLATE;
     else if (!host.querySelector('#cardRequestForm')) {
       host.insertAdjacentHTML('beforeend', TEMPLATE);
     }
+    if (typeof root.I18n !== 'undefined' && typeof root.I18n.apply === 'function') {
+      root.I18n.apply(host);
+    }
     return $('standardCardApplyPanel');
+  }
+
+  function unmount(host) {
+    const panel = $('standardCardApplyPanel');
+    if (panel) panel.remove();
+    if (host && host.querySelector?.('#cardRequestForm')) {
+      host.innerHTML = '';
+    }
   }
 
   function bind(ctx = {}) {
@@ -277,7 +282,7 @@
         }
         if (bitnobBal < required) {
           toast(
-            `Insufficient Standard Card wallet. Need ${formatUsdt(required)}. Deposit to your Standard Card address first.`,
+            `Insufficient Bitnob wallet. Need ${formatUsdt(required)}. Deposit to your Standard Card address first.`,
             'error'
           );
           loadDepositAddress(ctx, { force: true }).catch(() => {});
@@ -336,7 +341,12 @@
   }
 
   async function activate(ctx = {}) {
-    setVisible(true);
+    const panel = $('standardCardApplyPanel');
+    if (panel) {
+      panel.classList.add('is-active');
+      panel.hidden = false;
+      panel.classList.remove('hidden');
+    }
     syncKycGate(ctx);
     renderWalletBalance(ctx);
     await loadPricing(ctx);
@@ -349,18 +359,19 @@
   }
 
   function deactivate() {
-    setVisible(false);
+    unmount();
   }
 
   root.EisyComponents.standardCardView = {
     FLOW,
     PROVIDER,
+    WALLET,
     TEMPLATE,
     mount,
+    unmount,
     bind,
     activate,
     deactivate,
-    setVisible,
     syncKycGate,
     renderWalletBalance,
     updatePricingBreakdown,
