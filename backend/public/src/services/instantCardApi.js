@@ -1,6 +1,6 @@
 /**
  * Instant Card (Non-KYC) API — Master Wallet + Kripicard only.
- * Does not call KYC-provider / Standard Card endpoints.
+ * Does not call KYC-provider / Business Card endpoints.
  */
 (function (root) {
   'use strict';

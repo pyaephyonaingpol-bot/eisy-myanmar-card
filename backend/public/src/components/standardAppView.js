@@ -1,5 +1,5 @@
 /**
- * Standard App View — Bitnob direct wallet + verification + Standard Card only.
+ * Business App View — Bitnob direct wallet + verification + Business Card only.
  * Shows Bitnob balance, KYC verification status, Bitnob deposit address, Bitnob actions.
  * Must never import or render Instant / Master USDT wallet UI or APIs.
  */
@@ -14,8 +14,8 @@
   const TEMPLATE = `
 <div id="standardAppView" class="app-mode-view" data-app-mode="standard" data-provider="bitnob" data-wallet="bitnob_usdt">
   <section class="panel app-mode-wallet-panel">
-    <h2 data-i18n="standard_app_wallet_heading">Bitnob Wallet (Standard)</h2>
-    <p class="hint" data-i18n="standard_app_wallet_desc">Verified KYC only. Deposit USDT to your Bitnob address, then issue a Standard Card.</p>
+    <h2 data-i18n="standard_app_wallet_heading">Bitnob Wallet (Business)</h2>
+    <p class="hint" data-i18n="standard_app_wallet_desc">Verified KYC only. Deposit USDT to your Bitnob address, then issue a Business Card.</p>
 
     <div id="standardAppVerifyStatus" class="wallet-pay-hint" style="margin-bottom:0.75rem" data-verify-status>
       <span data-i18n="standard_verify_label">Verification</span>:
@@ -23,7 +23,7 @@
     </div>
 
     <div id="standardAppKycGate" class="wallet-pay-hint err hidden" data-i18n="standard_kyc_required">
-      Complete KYC verification before using Standard Card / Bitnob wallet.
+      Complete KYC verification before using Business Card / Bitnob wallet.
     </div>
 
     <div id="standardAppWalletBody" class="standard-app-wallet-body">
@@ -124,7 +124,7 @@
       if (hint) {
         hint.textContent = data.chain
           ? `Network: ${String(data.chain).toUpperCase()} · Bitnob deposits only`
-          : 'Bitnob Standard deposits only';
+          : 'Bitnob Business deposits only';
       }
       ctx.deposit = data;
       return data;

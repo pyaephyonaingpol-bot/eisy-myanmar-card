@@ -1,6 +1,6 @@
 /**
- * My Cards must not nest Instant↔Standard toggles —
- * pipelines are separated only at /instant and /standard routes.
+ * My Cards must not nest Instant↔Business toggles —
+ * pipelines are separated only at /instant and /business routes.
  */
 'use strict';
 
@@ -22,14 +22,15 @@ function testMyCardsHasNoNestedSwitcher() {
   assert.ok(html.includes('data-portal-cta="standard"'));
   assert.ok(!html.includes('id="appModeSwitcherShell"'), 'My Cards must not host appModeSwitcherShell');
   assert.ok(!html.includes('id="cardProviderSwitchShell"'), 'My Cards must not host cardProviderSwitchShell');
-  // Page still has dedicated Instant/Standard page hosts elsewhere
+  // Page still has dedicated Instant/Business page hosts elsewhere
   assert.ok(html.includes('id="instantAppPageHost"'));
   assert.ok(html.includes('id="standardAppPageHost"'));
+  assert.ok(html.includes('href="/business"') || html.includes("href='/business'"));
   console.log('ok');
 }
 
 function testDashboardNeverMountsSwitcherOnCards() {
-  section('dashboard does not mount nested Instant↔Standard switch on My Cards');
+  section('dashboard does not mount nested Instant↔Business switch on My Cards');
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('syncCardsApplyCtas'));
   assert.ok(dash.includes('renderPortalHeaderNav'));
@@ -38,7 +39,11 @@ function testDashboardNeverMountsSwitcherOnCards() {
   assert.ok(!dash.includes('mountInto($(\'appModeSwitcherShell\')'));
   assert.ok(!dash.includes('appModeSwitcher.mountInto'));
   assert.ok(!dash.includes('appModeSwitcher.mountCompact'));
-  assert.ok(dash.includes("window.location.href = `/${mode}`") || dash.includes("window.location.href = '/'+mode"));
+  assert.ok(
+    dash.includes('portalHref')
+      || dash.includes("window.location.href = `/${mode}`")
+      || dash.includes("window.location.href = '/'+mode")
+  );
   // setAppMode should route to portals on hub
   assert.ok(dash.includes('Route-level separation') || dash.includes('dedicated portal'));
   console.log('ok');
@@ -50,7 +55,7 @@ function testPortalHeaderIsLinksNotToggle() {
   assert.ok(dash.includes('portal-switch-link'));
   assert.ok(dash.includes('renderPortalHeaderNav'));
   assert.ok(dash.includes("href=\"/instant\""));
-  assert.ok(dash.includes("href=\"/standard\""));
+  assert.ok(dash.includes("href=\"/business\"") || dash.includes("href='/business'"));
   console.log('ok');
 }
 

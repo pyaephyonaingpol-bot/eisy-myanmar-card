@@ -4918,7 +4918,7 @@ html.doc-scroll .auth-screen {
   }
 }
 
-/* ── Compact Instant ↔ Standard app-mode switch ── */
+/* ── Compact Instant ↔ Business app-mode switch ── */
 .app-mode-switch-header {
   display: flex;
   align-items: center;

@@ -1,6 +1,6 @@
 /**
- * Compact Instant ↔ Standard app-mode switcher.
- * Exclusively mounts InstantAppView or StandardAppView (full independent pages).
+ * Compact Instant ↔ Business app-mode switcher.
+ * Exclusively mounts InstantAppView or BusinessAppView (full independent pages).
  * Zero shared wallet/card DOM between modes.
  *
  * Multiple switch pills (header + My Cards shell) share one mode; every pill is bound.
@@ -21,7 +21,7 @@
     <span class="app-mode-tab-sub" data-i18n="pill_no_kyc">No KYC</span>
   </button>
   <button type="button" class="app-mode-tab" role="tab" aria-selected="false" data-app-mode="standard">
-    <span class="app-mode-tab-title" data-i18n="pill_standard_card">Standard</span>
+    <span class="app-mode-tab-title" data-i18n="pill_standard_card">Business</span>
     <span class="app-mode-tab-sub" data-i18n="pill_verified">Verified</span>
   </button>
 </div>`.trim();
@@ -95,7 +95,7 @@
         desc.textContent = 'Instant mode: USDT Wallet + Instant Card (No KYC).';
       } else {
         desc.setAttribute('data-i18n', 'card_flow_desc_standard');
-        desc.textContent = 'Standard mode: Bitnob wallet + Standard Card (Verified).';
+        desc.textContent = 'Business mode: Bitnob wallet + Business Card (Verified).';
       }
       if (typeof root.I18n !== 'undefined' && root.I18n.apply) {
         root.I18n.apply(desc.parentElement || document);
@@ -196,7 +196,7 @@
     });
   }
 
-  /** Bind click/keyboard handlers on every Instant↔Standard pill currently in the DOM. */
+  /** Bind click/keyboard handlers on every Instant↔Business pill currently in the DOM. */
   function bindAllTracks(ctx = {}) {
     _boundCtx = { ...(_boundCtx || {}), ...ctx };
     allSwitches().forEach((track) => bindTrack(track, _boundCtx));

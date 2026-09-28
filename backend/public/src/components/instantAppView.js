@@ -1,7 +1,7 @@
 /**
  * Instant App View — Master USDT Wallet + Instant Card only.
  * Shows Master USDT balance, TRC20 deposit address, and Instant Card actions.
- * Must never import or render Standard Card wallet UI or APIs.
+ * Must never import or render Business Card wallet UI or APIs.
  */
 (function (root) {
   'use strict';

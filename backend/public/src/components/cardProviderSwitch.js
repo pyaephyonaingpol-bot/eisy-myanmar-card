@@ -1,5 +1,5 @@
 /**
- * Noon-style Instant ↔ Standard pill switch.
+ * Noon-style Instant ↔ Business pill switch.
  * Mounts exactly ONE independent view at a time into a single host —
  * like swapping full HTML pages. No overlapping wallet DOM or handlers.
  */
@@ -38,7 +38,7 @@
       data-card-provider="bitnob"
       id="tabStandardCard"
     >
-      <span class="card-provider-tab-title" data-i18n="pill_standard_card">Standard Card</span>
+      <span class="card-provider-tab-title" data-i18n="pill_standard_card">Business Card</span>
       <span class="card-provider-tab-sub" data-i18n="pill_verified">Verified</span>
     </button>
   </div>
@@ -62,7 +62,7 @@
       <span class="card-provider-tab-sub" data-i18n="pill_no_kyc">No KYC</span>
     </button>
     <button type="button" class="card-provider-tab" data-card-provider="bitnob" tabindex="-1">
-      <span class="card-provider-tab-title" data-i18n="pill_standard_card">Standard Card</span>
+      <span class="card-provider-tab-title" data-i18n="pill_standard_card">Business Card</span>
       <span class="card-provider-tab-sub" data-i18n="pill_verified">Verified</span>
     </button>
   </div>
@@ -110,7 +110,7 @@
         desc.textContent = 'Instant Card uses your internal USDT Wallet and issues via Instant (No KYC).';
       } else {
         desc.setAttribute('data-i18n', 'card_flow_desc_standard');
-        desc.textContent = 'Standard Card uses your Bitnob wallet deposit address and requires verified KYC.';
+        desc.textContent = 'Business Card uses your Bitnob wallet deposit address and requires verified KYC.';
       }
       if (typeof root.I18n !== 'undefined' && typeof root.I18n.apply === 'function') {
         root.I18n.apply(desc.parentElement || document);
@@ -137,7 +137,7 @@
 
   /**
    * Exclusive mount: destroy whatever is in the active host, then mount
-   * only Instant OR only Standard — never both.
+   * only Instant OR only Business — never both.
    */
   async function setActive(provider, ctx = {}) {
     const which = normalizeProvider(provider);

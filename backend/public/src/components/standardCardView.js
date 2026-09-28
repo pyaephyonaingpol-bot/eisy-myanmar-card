@@ -1,5 +1,5 @@
 /**
- * Standard Card view — KYC / Verified page.
+ * Business Card view — KYC / Verified page.
  * Uses Bitnob direct wallet (deposit address + balance_bitnob_usdt) only.
  * Independent markup + handlers — never shares DOM with Instant Card.
  */
@@ -14,9 +14,9 @@
 
   const TEMPLATE = `
 <div id="standardCardApplyPanel" class="card-provider-panel is-active card-flow-page" data-card-page="standard" data-provider="bitnob" data-wallet="bitnob_usdt" role="tabpanel" aria-labelledby="tabStandardCard">
-  <h2 data-i18n="apply_standard_card">Standard Card (Verified)</h2>
-  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_standard_card_hint">Requires verified KYC. Pay from your Bitnob Standard Card wallet (deposit address — separate from USDT Wallet).</p>
-  <div id="bitnobKycGate" class="wallet-pay-hint err hidden" data-i18n="standard_kyc_required">Complete KYC verification before applying for a Standard Card. Without KYC, use Instant Card instead.</div>
+  <h2 data-i18n="apply_standard_card">Business Card (Verified)</h2>
+  <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_standard_card_hint">Requires verified KYC. Pay from your Bitnob Business Card wallet (deposit address — separate from USDT Wallet).</p>
+  <div id="bitnobKycGate" class="wallet-pay-hint err hidden" data-i18n="standard_kyc_required">Complete KYC verification before applying for a Business Card. Without KYC, use Instant Card instead.</div>
   <div id="bitnobCardKycPanel" class="wallet-pay-hint hidden" style="margin-bottom:0.75rem">
     <div style="margin-bottom:0.35rem">
       <span data-i18n="bitnob_card_kyc_label">Bitnob Card KYC</span>:
@@ -27,7 +27,7 @@
   </div>
   <div id="standardWalletPanel" class="standard-wallet-panel" style="margin-bottom:0.85rem">
     <div class="wallet-pay-hint ok" style="margin-bottom:0.5rem">
-      <span data-i18n="standard_wallet_balance_label">Bitnob / Standard Card wallet</span>:
+      <span data-i18n="standard_wallet_balance_label">Bitnob / Business Card wallet</span>:
       <strong id="standardBitnobBalance">—</strong>
     </div>
     <div class="field" style="margin-bottom:0.5rem">
@@ -47,7 +47,7 @@
     </div>
     <div class="field">
       <label data-i18n="pay_from">Pay From</label>
-      <p id="cardPayFromUsdt" class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_standard_wallet_issuance">Bitnob Standard Card wallet (not USDT Wallet)</p>
+      <p id="cardPayFromUsdt" class="wallet-pay-hint ok" style="margin:0" data-i18n="pay_standard_wallet_issuance">Bitnob Business Card wallet (not USDT Wallet)</p>
       <input type="hidden" id="cardPaymentMethod" value="wallet_bitnob_usdt" />
     </div>
     <p id="cardWalletHint" class="wallet-pay-hint ok hidden"></p>
@@ -61,7 +61,7 @@
       <div class="pricing-row pricing-usdt" id="pbUsdtRow"><span data-i18n="total_payable_usdt">Total Payable (USDT)</span><strong id="pbTotalUsdt">$0.00 USDT</strong></div>
       <p id="pbRateLabel" class="hint pricing-rate" data-i18n="usdt_parity_rate">1 USDT ≈ 1 USD</p>
     </div>
-    <button type="submit" class="btn btn-primary" id="btnRequestCard" data-i18n="submit_standard_card">Issue Standard Card</button>
+    <button type="submit" class="btn btn-primary" id="btnRequestCard" data-i18n="submit_standard_card">Issue Business Card</button>
   </form>
   <div id="cardRequestReceipt" class="pricing-receipt hidden"></div>
 </div>`.trim();
@@ -130,7 +130,7 @@
       if (ready) {
         hint.textContent = typeof ctx.t === 'function'
           ? ctx.t('bitnob_kyc_ready_hint')
-          : 'Your Bitnob card profile is ready. Deposit USDT, then issue a Standard Card.';
+          : 'Your Bitnob card profile is ready. Deposit USDT, then issue a Business Card.';
       } else if (reason) {
         hint.textContent = reason;
       } else {
@@ -307,8 +307,8 @@
       if (input) input.value = data.address || '';
       if (chainHint) {
         chainHint.textContent = data.chain
-          ? `Network: ${String(data.chain).toUpperCase()} · Bitnob Standard Card deposits only`
-          : 'Bitnob Standard Card deposits only (not USDT Wallet)';
+          ? `Network: ${String(data.chain).toUpperCase()} · Bitnob Business Card deposits only`
+          : 'Bitnob Business Card deposits only (not USDT Wallet)';
       }
       ctx.deposit = data;
       return data;
@@ -403,7 +403,7 @@
       try {
         if (!ctx.isKycVerified?.()) {
           toast(
-            typeof t === 'function' ? t('standard_kyc_required') : 'Complete KYC before applying for a Standard Card.',
+            typeof t === 'function' ? t('standard_kyc_required') : 'Complete KYC before applying for a Business Card.',
             'error'
           );
           ctx.onNeedInstant?.();
@@ -431,7 +431,7 @@
         }
         if (bitnobBal < required) {
           toast(
-            `Insufficient Bitnob wallet. Need ${formatUsdt(required)}. Deposit to your Standard Card address first.`,
+            `Insufficient Bitnob wallet. Need ${formatUsdt(required)}. Deposit to your Business Card address first.`,
             'error'
           );
           loadDepositAddress(ctx, { force: true }).catch(() => {});

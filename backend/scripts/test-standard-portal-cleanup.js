@@ -1,5 +1,5 @@
 /**
- * Standard portal must expose Bitnob + KYC + Standard Card only —
+ * Business portal must expose Bitnob + KYC + Business Card only —
  * no P2P Express, Master USDT wallet, Scan Pay, or Instant deposit chrome.
  */
 'use strict';
@@ -15,7 +15,7 @@ function section(title) {
 }
 
 function testIsolationSource() {
-  section('dashboard Standard cleanup source guards');
+  section('dashboard Business cleanup source guards');
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('standardPortalBlockedPages'));
   assert.ok(dash.includes('isStandardPortalBlockedPage'));
@@ -29,13 +29,13 @@ function testIsolationSource() {
   assert.ok(dash.includes("'pageDeposits'"));
   assert.ok(
     dash.includes("Master USDT top-up is only available in the Instant portal")
-      || dash.includes('_portal === \'standard\'')
+      || dash.includes("_portal === 'standard'")
   );
   console.log('ok');
 }
 
 function testHtmlMarksInstantOnly() {
-  section('index.html marks Instant-only modules for Standard removal');
+  section('index.html marks Instant-only modules for Business removal');
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
 
   assert.ok(/data-page="p2p"[^>]*data-instant-only|data-instant-only[^>]*data-page="p2p"/.test(html));
@@ -64,7 +64,7 @@ function testHtmlMarksInstantOnly() {
   assert.ok(html.includes('id="standardAppPageHost"'));
   assert.ok(html.includes('id="settingsKycHint"'));
   assert.ok(!/Required to post P2P ads and trade on the marketplace/.test(html));
-  assert.ok(/Standard Card \/ Bitnob wallet|Bitnob wallet \(verified/.test(html));
+  assert.ok(/Business Card \/ Bitnob wallet|Standard Card \/ Bitnob wallet|Bitnob wallet \(verified/.test(html));
   console.log('ok');
 }
 
@@ -84,7 +84,7 @@ function testStandardAppViewStaysBitnobOnly() {
 }
 
 function testBlockedPagesList() {
-  section('Standard portal blocked page list covers Instant modules');
+  section('Business portal blocked page list covers Instant modules');
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   const match = dash.match(/standardPortalBlockedPages\(\)\s*\{[\s\S]*?return new Set\(\[([\s\S]*?)\]\)/);
   assert.ok(match, 'standardPortalBlockedPages Set must exist');
@@ -100,7 +100,7 @@ function main() {
   testHtmlMarksInstantOnly();
   testStandardAppViewStaysBitnobOnly();
   testBlockedPagesList();
-  console.log('\nStandard portal cleanup checks passed.');
+  console.log('\nBusiness portal cleanup checks passed.');
 }
 
 main();

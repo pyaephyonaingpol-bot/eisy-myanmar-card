@@ -1,5 +1,5 @@
 /**
- * Dedicated Instant (/instant) and Standard (/standard) portal routes.
+ * Dedicated Instant (/instant) and Business (/business, alias /standard) portal routes.
  */
 'use strict';
 
@@ -14,12 +14,14 @@ function section(title) {
 }
 
 function testServerRoutesPortalPages() {
-  section('Express serves /instant and /standard portal pages');
+  section('Express serves /instant and /business portal pages');
   const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
   assert.ok(indexJs.includes("'/instant'") || indexJs.includes('"/instant"'));
+  assert.ok(indexJs.includes("'/business'") || indexJs.includes('"/business"'));
   assert.ok(indexJs.includes("'/standard'") || indexJs.includes('"/standard"'));
   assert.ok(indexJs.includes('sendPortalApp') || indexJs.includes('__EISY_PORTAL__'));
   assert.ok(indexJs.includes('instant.html') || indexJs.includes("portal === 'instant'"));
+  assert.ok(indexJs.includes("'Business'") || indexJs.includes('"Business"'));
   console.log('ok');
 }
 
@@ -28,6 +30,7 @@ function testPortalHtmlGenerator() {
   const writer = fs.readFileSync(path.join(ROOT, 'backend/scripts/write-portal-html.js'), 'utf8');
   assert.ok(writer.includes("writePortal('instant'"));
   assert.ok(writer.includes("writePortal('standard'"));
+  assert.ok(writer.includes("'Business'") || writer.includes('"Business"'));
   // Ensure generated files exist for static/Vercel copy
   require(path.join(ROOT, 'backend/scripts/write-portal-html.js'));
   assert.ok(fs.existsSync(path.join(ROOT, 'backend/public/instant.html')));
@@ -40,6 +43,8 @@ function testPortalHtmlGenerator() {
   assert.ok(standard.includes('data-eisy-portal="standard"'));
   assert.ok(instant.includes('instantAppView.js'));
   assert.ok(standard.includes('standardAppView.js'));
+  assert.ok(standard.includes('Eisy Myanmar — Business'));
+  assert.ok(standard.includes('href="/business"') || standard.includes("href='/business'"));
   console.log('ok');
 }
 
@@ -52,22 +57,28 @@ function testDashboardLocksPortal() {
   assert.ok(dash.includes('renderPortalHubChooser'));
   assert.ok(dash.includes('portal-switch-link'));
   assert.ok(dash.includes('.remove()'));
-  assert.ok(dash.includes("window.location.href = '/instant'") || dash.includes('`/${mode}`'));
+  assert.ok(dash.includes("window.location.href = '/instant'") || dash.includes('portalHref'));
   assert.ok(dash.includes('applyHubGateway'));
   assert.ok(dash.includes('isHubGateway'));
   assert.ok(dash.includes('portal-hub-home'));
-  assert.ok(dash.includes('Choose Instant or Standard') || dash.includes('Choose your portal'));
+  assert.ok(
+    dash.includes('Choose Instant or Business')
+      || dash.includes('Choose Instant or Standard')
+      || dash.includes('Choose your portal')
+  );
   assert.ok(dash.includes('standardPortalBlockedPages'));
   assert.ok(dash.includes('isStandardPortalBlockedPage'));
   assert.ok(dash.includes("data-instant-only"));
   assert.ok(dash.includes("'p2p'"));
   assert.ok(dash.includes('p2pBuyModal'));
   assert.ok(dash.includes('usdtTopUpModal'));
+  assert.ok(dash.includes("href=\"/business\"") || dash.includes("href='/business'"));
+  assert.ok(dash.includes("pathName === '/business'") || dash.includes("'/business'"));
   console.log('ok');
 }
 
 function testHubGatewayStripsAppChrome() {
-  section('hub gateway removes wallet widgets until Instant/Standard entry');
+  section('hub gateway removes wallet widgets until Instant/Business entry');
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('applyHubGateway'));
   assert.ok(/if\s*\(\s*this\.isHubGateway\(\)\s*\)/.test(dash) || dash.includes('isHubGateway()'));
@@ -81,7 +92,7 @@ function testHubGatewayStripsAppChrome() {
 }
 
 function testStandardPortalStripsInstantModules() {
-  section('Standard portal HTML marks Instant-only modules for removal');
+  section('Business portal HTML marks Instant-only modules for removal');
   const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
   assert.ok(html.includes('data-instant-only'));
   assert.ok(/data-page="p2p"[^>]*data-instant-only|data-instant-only[^>]*data-page="p2p"/.test(html));
@@ -91,11 +102,12 @@ function testStandardPortalStripsInstantModules() {
   assert.ok(html.includes('id="usdtTopUpModal"'));
   assert.ok(html.includes('id="settingsKycHint"'));
   assert.ok(!/Required to post P2P ads and trade on the marketplace/.test(html));
+  assert.ok(html.includes('href="/business"') || html.includes("href='/business'"));
   console.log('ok');
 }
 
 function testViewsStayIsolated() {
-  section('Instant/Standard app views remain provider-isolated');
+  section('Instant/Business app views remain provider-isolated');
   const instant = fs.readFileSync(
     path.join(ROOT, 'backend/public/src/components/instantAppView.js'),
     'utf8'

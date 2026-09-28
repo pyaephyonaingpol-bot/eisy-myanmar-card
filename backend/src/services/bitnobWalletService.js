@@ -98,7 +98,7 @@ async function getOrCreateStandardDepositAddress(userId, { forceRefresh = false 
   const generated = await bitnob.generateDepositAddress({
     chain: depositChain(),
     customerEmail: email || undefined,
-    label: `Eisy Standard Card u${userId}`,
+    label: `Eisy Business Card u${userId}`,
     reference,
   });
 
