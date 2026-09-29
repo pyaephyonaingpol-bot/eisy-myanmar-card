@@ -9,8 +9,72 @@ const {
 const {
   handleStripeWebhook,
 } = require('../services/stripeWebhookService');
+const {
+  handleKripicardPaymentWebhook,
+} = require('../services/kripicardPaymentCollectionService');
 
 const router = express.Router();
+
+/**
+ * Kripicard payment-collection webhooks → verify + credit Master Wallet (balance_usdt).
+ * Register: KRIPICARD_WEBHOOK_URL=https://YOUR_DOMAIN/api/webhook/kripicard/collections
+ */
+async function kripicardPaymentWebhookHandler(req, res) {
+  try {
+    const result = await handleKripicardPaymentWebhook(req);
+    console.log('[webhook/kripicard]', result.message || result.status || 'ok', {
+      credited: result.credited,
+      alreadyVerified: result.alreadyVerified,
+      ignored: result.ignored,
+      event_id: result.event_id,
+      collection_id: result.collection_id,
+    });
+    return res.status(200).json({ received: true, ...result });
+  } catch (err) {
+    const code = err.code || 'KRIPICARD_WEBHOOK_ERROR';
+    console.error('[webhook/kripicard]', err.message, code);
+
+    if (code === 'KRIPICARD_WEBHOOK_INVALID_SIGNATURE') {
+      return res.status(401).json({
+        received: false,
+        error: err.message || 'Invalid signature',
+        code,
+      });
+    }
+    if (code === 'KRIPICARD_WEBHOOK_NOT_CONFIGURED') {
+      return res.status(503).json({
+        received: false,
+        error: err.message || 'Webhook not configured',
+        code,
+      });
+    }
+    if (code === 'DEPOSIT_NOT_FOUND') {
+      // ACK so provider does not retry forever for unknown refs.
+      return res.status(200).json({
+        received: true,
+        unmatched: true,
+        error: err.message,
+        code,
+      });
+    }
+    if (code === 'KRIPICARD_AMOUNT_MISMATCH' || code === 'KRIPICARD_COLLECTION_UNPAID') {
+      return res.status(err.status || 409).json({
+        received: false,
+        error: err.message,
+        code,
+      });
+    }
+    return res.status(err.status || 500).json({
+      received: false,
+      error: err.message || 'Webhook error',
+      code,
+    });
+  }
+}
+
+router.post('/kripicard', kripicardPaymentWebhookHandler);
+router.post('/kripicard/collections', kripicardPaymentWebhookHandler);
+router.post('/kripicard/payments', kripicardPaymentWebhookHandler);
 
 /**
  * Binance Pay webhook — notify on PAY_SUCCESS and credit user wallet (net after fee).

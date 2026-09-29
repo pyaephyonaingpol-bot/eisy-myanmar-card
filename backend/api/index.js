@@ -4,7 +4,9 @@
  *
  * Compatible with:
  * - POST /api/deposit/create (Binance Pay + fee Math.max(amount*0.02, 1))
+ * - POST /api/deposit/kripicard-collection (pending Master Wallet top-up)
  * - POST /api/webhook/binance (PAY_SUCCESS → credit net USDT)
+ * - POST /api/webhook/kripicard[/collections|/payments] (paid → Master Wallet)
  */
 require('../src/lib/loadEnv');
 const { initDb, getDb } = require('../src/db');

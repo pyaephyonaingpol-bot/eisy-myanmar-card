@@ -21,7 +21,7 @@ function isKycVerified(status) {
 
 function normalizeKycLogCreatedBy(createdBy) {
   const value = String(createdBy || 'system').trim().toLowerCase();
-  if (['system', 'user', 'admin', 'listener', 'blockchain', 'binance_pay', 'test-bypass', 'tron-indexer'].includes(value)) {
+  if (['system', 'user', 'admin', 'listener', 'blockchain', 'binance_pay', 'test-bypass', 'tron-indexer', 'kripicard_collection'].includes(value)) {
     return value;
   }
   // Admin UI may pass a display name / id — map to allowed CHECK value
