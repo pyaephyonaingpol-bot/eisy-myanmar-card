@@ -1,7 +1,7 @@
 /**
  * Instant App View — Master USDT Wallet + Instant Card only.
  * Shows Master USDT balance, TRC20 deposit address, and Instant Card actions.
- * Must never import or render Business Card wallet UI or APIs.
+ * Instant portal shell (Master Wallet + Kripicard).
  */
 (function (root) {
   'use strict';

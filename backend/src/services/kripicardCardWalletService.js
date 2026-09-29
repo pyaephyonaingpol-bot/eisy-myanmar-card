@@ -2,8 +2,7 @@
  * Non-KYC Instant Card (Kripicard) purchase from the Master Wallet USDT ledger.
  *
  * Master/HD TRC-20 deposits credit users.balance_usdt. This service debits that
- * balance, then calls Kripicard createcard. Completely separate from Bitnob
- * (Standard Card / KYC) issuance and users.balance_bitnob_usdt.
+ * balance, then calls Kripicard createcard. Uses Master Wallet (users.balance_usdt) only.
  */
 const Card = require('../models/Card');
 const User = require('../models/User');
@@ -11,6 +10,8 @@ const TransactionLog = require('../models/TransactionLog');
 const {
   getCardPricingSettings,
   calculateKripicardRequestPricingUsdt,
+  calculateCardReloadPricingUsdt,
+  parseRecordMetadata,
 } = require('./settingsService');
 const { debitUsdt, creditUsdt, formatUsdt } = require('./walletService');
 const { recordPlatformUsdFee, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
@@ -24,6 +25,8 @@ const {
   finalizeCardPurchaseWallet,
 } = require('./supabaseWalletLedgerService');
 const { fetchAvailableBins } = require('../../../lib/kripicard');
+const CardReloadRequest = require('../models/CardReloadRequest');
+const { RELOAD_PENDING_MESSAGE } = require('./cardReloadApprovalService');
 
 const CARD_ISSUED_MESSAGE =
   'Card issued successfully. Your virtual card is ready to use.';
@@ -511,10 +514,101 @@ async function purchaseKripicardFromUsdtWallet(userId, {
   };
 }
 
+/**
+ * Reload an Instant Card from the Master Wallet USDT ledger.
+ * Creates a pending reload request for admin approval.
+ */
+async function reloadCardFromUsdtWallet(userId, { cardId, amountUsdt }) {
+  const user = await User.findById(userId);
+  if (!user) throw new Error('User not found');
+
+  const card = await Card.findById(cardId);
+  if (!card || card.user_id !== userId) throw new Error('Card not found');
+  if (card.status !== 'active') throw new Error('Only active cards can be reloaded');
+
+  const cardMeta = parseRecordMetadata(card.metadata);
+  const provider = String(cardMeta.provider || 'kripicard').toLowerCase();
+  if (provider === 'bitnob') {
+    const err = new Error('Legacy card provider is no longer supported for reload.');
+    err.code = 'LEGACY_CARD_RELOAD_UNSUPPORTED';
+    throw err;
+  }
+
+  const settings = await getCardPricingSettings();
+  const pricing = calculateCardReloadPricingUsdt(amountUsdt, settings);
+  const requiredUsdt = pricing.deposit_usdt;
+
+  await debitUsdt(userId, requiredUsdt, {
+    description: `Instant Card reload hold — ${formatUsdt(requiredUsdt)} (pending admin approval)`,
+    referenceType: 'cards_v2',
+    referenceId: cardId,
+    createdBy: 'user',
+    metadata: {
+      purpose: 'card_reload',
+      pricing,
+      card_id: cardId,
+      wallet: 'usdt',
+      ledger: 'master_wallet',
+      pending: true,
+      provider: provider || 'kripicard',
+    },
+  });
+
+  const reloadRequest = await CardReloadRequest.create({
+    userId,
+    cardId,
+    walletType: 'usdt',
+    amountUsdt: requiredUsdt,
+    netUsdToCard: pricing.net_usd_to_card,
+    reloadFeeUsd: pricing.reload_fee_usd,
+    grossUsd: pricing.gross_usd,
+    pricing: {
+      ...pricing,
+      ledger: 'master_wallet',
+      funding_wallet: 'usdt',
+      provider: provider || 'kripicard',
+    },
+  });
+
+  await TransactionLog.create({
+    userId,
+    type: 'deposit_request',
+    direction: 'neutral',
+    amountUsd: pricing.net_usd_to_card,
+    referenceType: 'card_reload_requests',
+    referenceId: reloadRequest.id,
+    description: `Instant Card reload from Master Wallet — ${formatUsdt(requiredUsdt)} (pending)`,
+    createdBy: 'user',
+    metadata: {
+      pricing,
+      paid_from_wallet: true,
+      wallet: 'usdt',
+      ledger: 'master_wallet',
+      pending: true,
+      provider: provider || 'kripicard',
+    },
+  });
+
+  const updatedUser = await User.findById(userId);
+
+  return {
+    pending: true,
+    reload_request: CardReloadRequest.mapForClient(reloadRequest),
+    reload_request_id: reloadRequest.id,
+    pricing,
+    wallet_debit_usdt: requiredUsdt,
+    wallet_type: 'usdt',
+    ledger: 'master_wallet',
+    balance_usdt: Number(updatedUser.balance_usdt ?? 0),
+    message: RELOAD_PENDING_MESSAGE,
+  };
+}
+
 module.exports = {
   getKripicardBinOptions,
   resolveKripicardBin,
   purchaseKripicardFromUsdtWallet,
+  reloadCardFromUsdtWallet,
   resetKripicardBinCacheForTests,
   CARD_ISSUED_MESSAGE,
 };

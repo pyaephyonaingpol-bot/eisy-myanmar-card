@@ -1,14 +1,14 @@
 -- Eisy Myanmar — legacy card_pools inventory schema (RETIRED)
--- Bitnob on-demand issuance replaces the retired card-pool model.
+-- Kripicard on-demand issuance replaces the retired card-pool model.
 -- This SQL is kept only for historical / migration reference.
--- Do not use pool sync in new code — issue via Bitnob createVirtualCard.
+-- Do not use pool sync in new code — issue via Kripicard createcard.
 --
 -- Former flows (retired):
 -- A) Pool Model: admin fetches blank cards → card_pools (available)
 --    → purchase assigns one row + inserts user_cards
 -- B) Real-time issue: provider createcard → user_cards (pool_id null)
 --
--- Current flow: USDT wallet debit → Bitnob createVirtualCard → user_cards
+-- Current flow: USDT wallet debit → Kripicard createcard → user_cards
 
 CREATE TABLE IF NOT EXISTS card_pools (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

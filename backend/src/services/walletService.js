@@ -42,7 +42,7 @@ function assertMmkDebitAllowed({ createdBy, metadata } = {}) {
   }
   if (purpose === 'card_issuance') {
     const err = new Error(
-      'MMK wallet cannot be used for card issuance. Pay with your USDT wallet for instant Bitnob card issue.'
+      'MMK wallet cannot be used for card issuance. Pay with your USDT wallet for Instant Card issue.'
     );
     err.code = 'USDT_ONLY_CARD_ISSUANCE';
     throw err;
@@ -315,22 +315,18 @@ function walletPayload(user) {
   const usdtAvailable = Number(user.balance_usdt ?? 0);
   const usdtLocked = Number(user.balance_usdt_locked ?? 0);
   const usdtTotal = Math.round((usdtAvailable + usdtLocked) * 100) / 100;
-  const bitnobUsdt = Number(user.balance_bitnob_usdt ?? 0);
   return {
     balance_mmk: mmk,
     balance_usdt: usdtAvailable,
     balance_usdt_locked: usdtLocked,
     balance_usdt_total: usdtTotal,
-    balance_bitnob_usdt: bitnobUsdt,
     currency_primary: 'MMK',
     mmk_formatted: formatMmk(mmk),
     usdt_formatted: formatUsdt(usdtAvailable),
     usdt_locked_formatted: formatUsdt(usdtLocked),
     usdt_total_formatted: formatUsdt(usdtTotal),
-    bitnob_usdt_formatted: formatUsdt(bitnobUsdt),
     ledgers: {
       master_wallet: usdtAvailable,
-      bitnob: bitnobUsdt,
     },
   };
 }

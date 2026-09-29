@@ -83,74 +83,47 @@ const Dashboard = {
     return text;
   },
 
-  /** Dedicated Instant (/instant) or Business (/business, alias /standard) portal, or hub (/). */
+  /** Dedicated Instant (/instant) portal, or hub (/). */
   getPortal() {
-    if (window.__EISY_PORTAL__ === 'instant' || window.__EISY_PORTAL__ === 'standard') {
-      return window.__EISY_PORTAL__;
-    }
+    if (window.__EISY_PORTAL__ === 'instant') return 'instant';
     const pathName = String(window.location.pathname || '/').replace(/\/+$/, '') || '/';
     if (pathName === '/instant' || pathName.endsWith('/instant.html')) return 'instant';
-    if (
-      pathName === '/business'
-      || pathName === '/standard'
-      || pathName.endsWith('/business.html')
-      || pathName.endsWith('/standard.html')
-    ) {
-      return 'standard';
-    }
     return null;
   },
 
-  /** Public URL for a portal id (`standard` → `/business`). */
   portalHref(portal) {
-    if (portal === 'standard') return '/business';
     if (portal === 'instant') return '/instant';
     return '/';
   },
 
   rememberPortal(portal) {
     try {
-      if (portal === 'instant' || portal === 'standard') {
-        localStorage.setItem('eisy_last_portal', portal);
-      }
+      if (portal === 'instant') localStorage.setItem('eisy_last_portal', portal);
     } catch (_) { /* ignore */ }
   },
 
   readLastPortal() {
     try {
-      const v = localStorage.getItem('eisy_last_portal');
-      return (v === 'instant' || v === 'standard') ? v : null;
+      return localStorage.getItem('eisy_last_portal') === 'instant' ? 'instant' : null;
     } catch (_) {
       return null;
     }
   },
 
-  /** Instant-only pages blocked on the Business (Bitnob) portal. */
-  standardPortalBlockedPages() {
-    return new Set([
-      'instant-card',
-      'instant',
-      'usdt-wallet',
-      'p2p',
-      'deposits',
-    ]);
-  },
-
-  isStandardPortalBlockedPage(page) {
-    return this._portal === 'standard' && this.standardPortalBlockedPages().has(page);
-  },
-
   /**
-   * Enterprise-style portal isolation: remove the other flow's pages/nav from the DOM
-   * and replace the Instant↔Business switch with a link to the other portal URL.
-   * Business portal also strips P2P, Master USDT wallet chrome, and Instant-only modals.
-   * Hub (/) is a clean gateway — portal selector only, no wallet/card widgets.
+   * Portal isolation: strip legacy Business/Standard chrome and lock to Instant/Kripicard.
+   * Hub (/) is a gateway with Instant entry only.
    */
   applyPortalIsolation() {
     const portal = this.getPortal();
     this._portal = portal;
     document.documentElement.setAttribute('data-eisy-portal', portal || 'hub');
     if (portal) this.rememberPortal(portal);
+
+    document.querySelectorAll(
+      '[data-mode-nav="standard"], [data-mode-shell="standard"], [data-page="standard-card"], [data-standard-only], [data-portal-cta="standard"]'
+    ).forEach((el) => el.remove());
+    $('standardAppPageHost')?.closest('.app-page')?.remove();
 
     if (!portal) {
       this.applyHubGateway();
@@ -159,86 +132,19 @@ const Dashboard = {
       return portal;
     }
 
-    // Strip opposite portal chrome so pages never overlap in this document.
-    if (portal === 'instant') {
-      document.querySelectorAll(
-        '[data-mode-nav="standard"], [data-mode-shell="standard"], [data-page="standard-card"], [data-standard-only], [data-portal-cta="standard"]'
-      ).forEach((el) => el.remove());
-      $('standardAppPageHost')?.closest('.app-page')?.remove();
-    } else {
-      // Business = Bitnob wallet + Business Card + KYC only.
-      // Remove Instant shells, Master USDT wallet, P2P Express, and Instant deposit history.
-      document.querySelectorAll(
-        [
-          '[data-mode-nav="instant"]',
-          '[data-mode-shell="instant"]',
-          '[data-page="instant-card"]',
-          '[data-page="usdt-wallet"]',
-          '[data-page="p2p"]',
-          '[data-page="deposits"]',
-          '[data-instant-only]',
-          '[data-portal-cta="instant"]',
-        ].join(', ')
-      ).forEach((el) => el.remove());
-      $('instantAppPageHost')?.closest('.app-page')?.remove();
-      [
-        'pageUsdtWallet',
-        'pageP2p',
-        'pageDeposits',
-        'usdtTopUpModal',
-        'withdrawUsdtModal',
-        'withdrawMmkModal',
-        'sellUsdtMmkModal',
-        'scanPayModal',
-        'p2pBuyModal',
-        'p2pSellModal',
-        'p2pPostAdModal',
-        'p2pReleaseConfirmModal',
-        'p2pSellerDisputeModal',
-      ].forEach((id) => $(id)?.remove());
-
-      // Retarget Instant-only deep links still present on shared home/settings chrome.
-      document.querySelectorAll('[data-goto="deposits"], [data-goto="p2p"], [data-goto="usdt-wallet"], [data-goto="instant-card"]').forEach((el) => {
-        if (el.dataset.goto === 'deposits') {
-          el.dataset.goto = 'cards';
-          if (el.hasAttribute('data-i18n')) el.removeAttribute('data-i18n');
-          el.textContent = el.textContent?.includes('History') ? 'View My Cards' : el.textContent;
-        } else {
-          el.remove();
-        }
-      });
-
-      const kycHint = $('settingsKycHint');
-      if (kycHint) {
-        kycHint.textContent = 'Required for Business Card and Bitnob wallet (verified banking / KYC).';
-      }
-    }
-
     this.renderPortalHeaderNav();
     this.syncCardsApplyCtas();
 
-    // Sidebar brand badge
     const brandTitle = document.querySelector('.sidebar-brand-title');
-    if (brandTitle) {
-      brandTitle.textContent = portal === 'instant'
-        ? 'Eisy · Instant'
-        : 'Eisy · Business';
-    }
-
-    document.title = portal === 'instant'
-      ? 'Eisy Myanmar — Instant'
-      : 'Eisy Myanmar — Business';
-
-    // Hide hub-only chooser if present
+    if (brandTitle) brandTitle.textContent = 'Eisy · Instant';
+    document.title = 'Eisy Myanmar — Instant';
     $('portalHubChooser')?.remove();
 
     return portal;
   },
 
   /**
-   * Hub (/) is a gateway only: Instant vs Business selector.
-   * Strip wallet overview, activity, cards CTAs, and sidebar app nav so nothing
-   * loads until the user enters /instant or /business.
+   * Hub (/) gateway: Instant CTA only — wallets/cards load on /instant.
    */
   applyHubGateway() {
     const home = document.querySelector('.app-page[data-page="home"]');
@@ -250,12 +156,10 @@ const Dashboard = {
       home.classList.add('is-active', 'portal-hub-home');
     }
 
-    // Remove app pages — hub must not expose Instant/Business tools in-place.
     document.querySelectorAll('.app-page[data-page]:not([data-page="home"])').forEach((el) => {
       el.remove();
     });
 
-    // Sidebar page nav is for portals, not the gateway.
     document.querySelectorAll('.sidebar-nav .nav-item[data-page]').forEach((el) => {
       el.remove();
     });
@@ -267,70 +171,48 @@ const Dashboard = {
     const brandTitle = document.querySelector('.sidebar-brand-title');
     if (brandTitle) brandTitle.textContent = 'Eisy Myanmar';
     const brandSub = document.querySelector('.sidebar-brand-sub');
-    if (brandSub) brandSub.textContent = 'Choose Instant or Business';
+    if (brandSub) brandSub.textContent = 'Instant · Kripicard · Master Wallet';
 
     const heading = document.querySelector('.header .page-heading');
     if (heading) {
-      heading.textContent = 'Choose your portal';
+      heading.textContent = 'Open Instant portal';
       heading.removeAttribute('data-i18n');
     }
     const subtitle = document.querySelector('.header .subtitle');
     if (subtitle) {
-      subtitle.textContent = 'Enter Instant or Business to open wallets and cards';
+      subtitle.textContent = 'Master USDT Wallet, TRC20 deposits, and Instant Card';
       subtitle.removeAttribute('data-i18n');
     }
-    document.title = 'Eisy Myanmar — Choose portal';
+    document.title = 'Eisy Myanmar — Instant';
   },
 
   isHubGateway() {
     return !(this._portal || this.getPortal());
   },
 
-  /**
-   * Header links between dedicated portals — never an in-app Instant↔Business toggle.
-   */
   renderPortalHeaderNav() {
     const header = $('appModeSwitchHeader');
     if (!header) return;
     const portal = this._portal || this.getPortal();
-    if (portal === 'instant' || portal === 'standard') {
-      const other = portal === 'instant' ? 'standard' : 'instant';
-      const otherLabel = other === 'instant' ? 'Instant portal' : 'Business portal';
-      header.innerHTML = `
-        <a class="btn btn-secondary btn-sm portal-switch-link" href="${this.portalHref(other)}" data-portal-switch="${other}">
-          ${portal === 'instant' ? `${otherLabel} →` : `← ${otherLabel}`}
-        </a>`;
-      header.setAttribute('aria-label', 'Switch portal');
+    if (portal === 'instant') {
+      header.innerHTML = '<a class="btn btn-secondary btn-sm portal-switch-link" href="/">← Hub</a>';
+      header.setAttribute('aria-label', 'Back to hub');
       return;
     }
-    header.innerHTML = `
-      <a class="btn btn-secondary btn-sm portal-switch-link" href="/instant" data-portal-switch="instant">Instant</a>
-      <a class="btn btn-secondary btn-sm portal-switch-link" href="/business" data-portal-switch="standard">Business</a>`;
-    header.setAttribute('aria-label', 'Choose portal');
+    header.innerHTML = '<a class="btn btn-primary btn-sm portal-switch-link" href="/instant" data-portal-switch="instant">Open Instant →</a>';
+    header.setAttribute('aria-label', 'Open Instant portal');
   },
 
-  /**
-   * My Cards apply CTAs point at dedicated portal routes — no nested mode switcher.
-   */
   syncCardsApplyCtas() {
-    const portal = this._portal || this.getPortal();
+    document.querySelector('[data-portal-cta="standard"]')?.remove();
     const instantCta = document.querySelector('[data-portal-cta="instant"]');
-    const standardCta = document.querySelector('[data-portal-cta="standard"]');
-    if (portal === 'instant') {
-      standardCta?.remove();
-      if (instantCta) {
-        instantCta.setAttribute('href', '#instant-card');
-      }
-    } else if (portal === 'standard') {
-      instantCta?.remove();
-      if (standardCta) {
-        standardCta.setAttribute('href', '#standard-card');
-      }
+    const portal = this._portal || this.getPortal();
+    if (instantCta) {
+      instantCta.setAttribute('href', portal === 'instant' ? '#instant-card' : '/instant');
     }
   },
 
   renderPortalHubChooser() {
-    // Only on hub (/) — offer Instant vs Business portals after login.
     if (this.getPortal()) return;
     const home = document.querySelector('.app-page[data-page="home"]');
     if (!home) return;
@@ -342,16 +224,12 @@ const Dashboard = {
       home.appendChild(box);
     }
     box.innerHTML = `
-      <h2 data-i18n="portal_hub_heading">Choose your portal</h2>
-      <p class="hint" data-i18n="portal_hub_hint">Instant and Business are separate apps with their own wallets and cards.</p>
+      <h2 data-i18n="portal_hub_heading">Open Instant portal</h2>
+      <p class="hint" data-i18n="portal_hub_hint">Master USDT Wallet, TRC20 deposits, and Instant Card (Kripicard).</p>
       <div class="portal-hub-grid">
         <a class="portal-hub-card" href="/instant">
           <strong data-i18n="portal_hub_instant_title">Instant</strong>
           <span data-i18n="portal_hub_instant_desc">Master USDT Wallet · Instant Card (No KYC)</span>
-        </a>
-        <a class="portal-hub-card" href="/business">
-          <strong data-i18n="portal_hub_standard_title">Business</strong>
-          <span data-i18n="portal_hub_standard_desc">Bitnob wallet · Business Card (Verified KYC)</span>
         </a>
       </div>`;
     if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(box);
@@ -360,7 +238,6 @@ const Dashboard = {
   portalDefaultPage() {
     const portal = this._portal || this.getPortal();
     if (portal === 'instant') return 'instant-card';
-    if (portal === 'standard') return 'standard-card';
     return 'home';
   },
 
@@ -496,9 +373,7 @@ const Dashboard = {
       btn.addEventListener('click', () => {
         const target = btn.dataset.goto;
         if (!target || typeof AppNav === 'undefined') return;
-        // Portal lock: never navigate to the other flow's pages.
-        if (this._portal === 'instant' && (target === 'standard-card' || target === 'standard')) return;
-        if (this.isStandardPortalBlockedPage(target)) return;
+        if (target === 'standard-card' || target === 'standard') return;
         const opts = { pushHash: true };
         if (btn.dataset.depositTab) opts.depositTab = btn.dataset.depositTab;
         if (btn.dataset.p2pTab) opts.p2pTab = btn.dataset.p2pTab;
@@ -622,7 +497,7 @@ const Dashboard = {
   },
 
   onPageChange(page, opts = {}) {
-    if (this.isStandardPortalBlockedPage(page)) {
+    if (page === 'standard-card' || page === 'standard') {
       if (typeof AppNav !== 'undefined') {
         AppNav.navigate(this.portalDefaultPage(), { pushHash: true });
       }
@@ -665,17 +540,11 @@ const Dashboard = {
           forceRefresh: force || hasPending || !this._isFresh('cards'),
         });
         this.loadReloadHistory({ force });
-        // My Cards never nests Instant↔Business toggles — apply via dedicated routes.
         this.syncCardsApplyCtas();
         this.renderPortalHeaderNav();
       }
       if (page === 'instant-card') {
-        if (this._portal === 'standard') return;
         this.enterInstantCardPage({ force });
-      }
-      if (page === 'standard-card') {
-        if (this._portal === 'instant') return;
-        this.enterStandardCardPage({ force });
       }
       if (page === 'home') {
         this.updateHomeRateSummary();
@@ -952,20 +821,8 @@ const Dashboard = {
     if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = label;
   },
 
-  setHomeBitnobBalanceDisplay(text) {
-    const label = text == null || text === '' ? '—' : String(text);
-    if ($('sumBalanceBitnob')) $('sumBalanceBitnob').textContent = label;
-  },
-
   syncModeScopedHomeWallets() {
-    const mode = this._appMode
-      || EisyComponents?.appModeSwitcher?.getActiveMode?.()
-      || 'instant';
-    if (mode === 'standard') {
-      this.setHomeBitnobBalanceDisplay(
-        this.walletBitnobUsdt != null ? this.formatUsdt(this.walletBitnobUsdt) : '—'
-      );
-    } else if (this.walletUsdt != null) {
+    if (this.walletUsdt != null) {
       this.setHomeWalletBalanceDisplay(this.formatUsdt(this.walletUsdt));
     }
   },
@@ -1060,13 +917,9 @@ const Dashboard = {
     const p = this.cardPricing;
     const required = p?.total_usdt ?? p?.total_usd_required;
     if (!required) return;
-    // Business Card form uses Bitnob ledger — never compare against Master USDT.
-    const inStandard = Boolean($('standardCardApplyPanel') || $('standardAppView'));
-    const available = inStandard
-      ? Number(this.walletBitnobUsdt ?? this.cardFundingWallets?.standard?.balance_usdt ?? 0)
-      : Number(this.walletUsdt ?? 0);
-    const okKey = inStandard ? 'card_wallet_ok_bitnob' : 'card_wallet_ok_usdt';
-    const errKey = inStandard ? 'card_wallet_err_bitnob' : 'card_wallet_err_usdt';
+    const available = Number(this.walletUsdt ?? 0);
+    const okKey = 'card_wallet_ok_usdt';
+    const errKey = 'card_wallet_err_usdt';
     if (available >= required) {
       this.setWalletHint('cardWalletHint', 'cardWalletError', {
         ok: true,
@@ -1296,10 +1149,6 @@ const Dashboard = {
   },
 
   openUsdtTopUpModal() {
-    if (this._portal === 'standard') {
-      this.toast('Master USDT top-up is only available in the Instant portal.', 'error');
-      return;
-    }
     if (!Auth.isLoggedIn()) {
       this.toast('Sign in to top up your USDT wallet', 'error');
       return;
@@ -1991,17 +1840,8 @@ const Dashboard = {
   },
 
   populateCardPaymentMethodOptions() {
-    // Business Card form pays from Bitnob wallet only — never overwrite with Master USDT.
     const hidden = $('cardPaymentMethod');
     const label = $('cardPayFromUsdt');
-    const inStandard = Boolean($('standardCardApplyPanel') || $('standardAppView'));
-    if (inStandard) {
-      if (hidden) hidden.value = 'wallet_bitnob_usdt';
-      if (label && typeof t === 'function') {
-        label.textContent = t('pay_standard_wallet_issuance');
-      }
-      return;
-    }
     if (hidden) hidden.value = 'wallet_usdt';
     if (label && typeof t === 'function') {
       label.textContent = t('pay_usdt_wallet_issuance');
@@ -2209,10 +2049,6 @@ const Dashboard = {
   SELL_USDT_BANK_METHODS: ['KPay', 'KBZ Bank', 'CB Pay', 'CB Bank', 'AYA Pay', 'AYA Bank', 'WavePay'],
 
   openSellUsdtMmkModal() {
-    if (this._portal === 'standard') {
-      this.toast('Sell USDT / Convert to MMK is only available in the Instant portal.', 'error');
-      return;
-    }
     $('sellUsdtMmkForm')?.classList.remove('hidden');
     $('sellUsdtSuccessBox')?.classList.add('hidden');
     if ($('sellUsdtOutput')) $('sellUsdtOutput').textContent = '';
@@ -2424,10 +2260,6 @@ const Dashboard = {
       if (Auth.user) {
         Auth.user.kyc_status = data.kyc_status;
         Auth.user.is_kyc_verified = data.is_verified;
-        if (data.bitnob_kyc) {
-          Auth.user.bitnob_kyc = data.bitnob_kyc;
-          this._bitnobKyc = data.bitnob_kyc;
-        }
       }
       this.updateKycSettingsUI();
       return data;
@@ -2457,18 +2289,14 @@ const Dashboard = {
     const intro = $('kycModalIntro');
     if (intro) {
       if (status === 'VERIFIED') {
-        const bitnob = this._kycStatus?.bitnob_kyc || this._bitnobKyc || Auth.user?.bitnob_kyc;
-        const ready = Boolean(bitnob?.can_issue_standard_card || bitnob?.customer_ready);
-        intro.textContent = ready
-          ? 'Your identity is verified and Bitnob Card KYC is ready for Business Cards.'
-          : 'Your identity is verified. Bitnob Card KYC will finish before Business Card issuance.';
+        intro.textContent = 'Your identity is verified. You can use P2P trading and verified banking features.';
       } else if (status === 'PENDING_REVIEW') {
         intro.textContent = 'Your submission is under review. You will be notified once approved.';
       } else if (status === 'REJECTED') {
         const reason = this._kycStatus?.latest_submission?.rejection_reason;
         intro.textContent = reason ? `Previous submission rejected: ${reason}. Please resubmit.` : 'Please resubmit your documents.';
       } else {
-        intro.textContent = 'Submit your identity documents to unlock Business Cards (Bitnob) and verified banking features.';
+        intro.textContent = 'Submit your identity documents to unlock P2P trading and verified banking features.';
       }
     }
   },
@@ -2733,7 +2561,7 @@ const Dashboard = {
       return;
     }
     if (!$('kycDateOfBirth')?.value) {
-      if ($('kycFormError')) $('kycFormError').textContent = 'Date of birth is required for Bitnob Card KYC.';
+      if ($('kycFormError')) $('kycFormError').textContent = 'Date of birth is required for KYC verification.';
       return;
     }
     if (
@@ -2743,7 +2571,7 @@ const Dashboard = {
       || !$('kycAddressPostal')?.value?.trim()
     ) {
       if ($('kycFormError')) {
-        $('kycFormError').textContent = 'Address (street, city, state/region, postal code) is required for Bitnob Card KYC.';
+        $('kycFormError').textContent = 'Address (street, city, state/region, postal code) is required for KYC verification.';
       }
       return;
     }
@@ -5751,11 +5579,10 @@ const Dashboard = {
   },
 
   bindDashboardForms() {
-    // Portal header links + My Cards CTAs (no nested Instant↔Business toggle).
     this.renderPortalHeaderNav();
     this.syncCardsApplyCtas();
-    if (this._portal === 'instant' || this._portal === 'standard') {
-      this.mountAppModeUi(this._portal);
+    if (this._portal === 'instant') {
+      this.mountAppModeUi();
     }
 
     $('issueCardForm') && ($('issueCardForm').onsubmit = async (e) => {
@@ -5863,7 +5690,7 @@ const Dashboard = {
       return;
     }
 
-    // Hub (/) gateway: show Instant vs Business selector only — do not load wallets/cards.
+    // Hub (/) gateway: show Instant entry only — do not load wallets/cards.
     if (this.isHubGateway()) {
       this.applyHubGateway();
       this.renderPortalHubChooser();
@@ -5950,20 +5777,16 @@ const Dashboard = {
   bindCardProviderTabs() {
     this.renderPortalHeaderNav();
     this.syncCardsApplyCtas();
-    if (this._portal === 'instant' || this._portal === 'standard') {
-      this.mountAppModeUi(this._portal);
+    if (this._portal === 'instant') {
+      this.mountAppModeUi();
     }
   },
 
   clearCardViewHosts() {
     [
       'cardsApplyCta',
-      'appModeSwitcherShell',
-      'cardProviderSwitchShell',
       'instantAppPageHost',
-      'standardAppPageHost',
       'instantCardPageHost',
-      'standardCardPageHost',
       'appModeSwitchHeader',
     ].forEach((id) => {
       const el = $(id);
@@ -6026,89 +5849,16 @@ const Dashboard = {
       },
     };
 
-    const standardCtx = {
-      ...shared,
-      pricing: self.cardPricing,
-      bitnobKyc: self._bitnobKyc || self._kycStatus?.bitnob_kyc || Auth.user?.bitnob_kyc || null,
-      isBitnobCustomerReady: () => {
-        const kyc = self._bitnobKyc || self._kycStatus?.bitnob_kyc || Auth.user?.bitnob_kyc || self.cardPricing || {};
-        if (kyc.can_issue_standard_card != null) return Boolean(kyc.can_issue_standard_card);
-        if (kyc.customer_ready != null) return Boolean(kyc.customer_ready);
-        if (kyc.bitnob_customer_ready != null) return Boolean(kyc.bitnob_customer_ready);
-        return false;
-      },
-      onBitnobKycLoaded: (data) => {
-        self._bitnobKyc = data;
-        if (Auth.user) Auth.user.bitnob_kyc = data;
-        if (self._kycStatus) self._kycStatus.bitnob_kyc = data;
-        EisyComponents?.standardAppView?.syncKyc?.(self.buildCardViewContexts().standardCtx);
-        EisyComponents?.standardCardView?.syncKycGate?.(self.buildCardViewContexts().standardCtx);
-      },
-      getBitnobBalance: () => Number(self.walletBitnobUsdt ?? self.cardFundingWallets?.standard?.balance_usdt ?? 0),
-      setBitnobBalance: (n) => {
-        self.walletBitnobUsdt = Number(n) || 0;
-        self.setHomeBitnobBalanceDisplay(self.formatUsdt(self.walletBitnobUsdt));
-        EisyComponents?.standardAppView?.renderBalance?.(self.buildCardViewContexts().standardCtx);
-      },
-      onPricingLoaded: (data) => {
-        self.cardPricing = data;
-        self.depositFees = data.deposit_fees || self.depositFees;
-        if (data.bitnob_customer_ready != null || data.bitnob_kyc_status != null) {
-          self._bitnobKyc = {
-            ...(self._bitnobKyc || {}),
-            customer_ready: data.bitnob_customer_ready,
-            bitnob_customer_ready: data.bitnob_customer_ready,
-            bitnob_kyc_status: data.bitnob_kyc_status,
-            bitnob_kyc_reason: data.bitnob_kyc_reason,
-            can_issue_standard_card: data.bitnob_eligible,
-            customer_id: data.bitnob_customer_id,
-          };
-        }
-        self.updateHomeRateSummary?.();
-      },
-      onNeedInstant: () => {
-        if (self._portal === 'standard') {
-          window.location.href = '/instant';
-          return;
-        }
-        self.setAppMode('instant');
-        if (typeof AppNav !== 'undefined') AppNav.navigate('instant-card', { pushHash: true });
-      },
-      onIssued: () => {
-        self.loadWallet();
-        self.loadCardFundingWallets({ force: true }).catch(() => {});
-        self.loadAllCards({ forceRefresh: true });
-        self.loadDepositHistory?.();
-        if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
-      },
-    };
-
     return {
       ...shared,
       instantCtx,
-      standardCtx,
-      initialProvider: self.isKycVerified() ? 'bitnob' : 'kripicard',
-      initialMode: self.isKycVerified() ? 'standard' : (EisyComponents?.appModeSwitcher?.readStoredMode?.() || 'instant'),
-      onModeChange: (mode) => {
-        self._appMode = mode;
-        EisyComponents?.appModeSwitcher?.syncSwitchUi?.(mode);
-        self.syncModeScopedHomeWallets?.();
-        if (mode === 'standard') {
-          self.loadCardFundingWallets({ force: false }).catch(() => {});
-        }
-      },
     };
   },
 
-  /**
-   * mode: 'instant' | 'standard'
-   * Mounts exclusive InstantAppView / BusinessAppView on dedicated page hosts only.
-   * Never mounts an Instant↔Business toggle inside My Cards.
-   */
-  mountAppModeUi(mode = 'instant') {
+  mountAppModeUi() {
     const comps = (typeof EisyComponents !== 'undefined') ? EisyComponents : null;
-    if (!comps?.instantAppView || !comps?.standardAppView) {
-      return this.mountCardProviderUi(mode);
+    if (!comps?.instantAppView) {
+      return this.mountCardProviderUi();
     }
 
     this.clearCardViewHosts();
@@ -6116,124 +5866,39 @@ const Dashboard = {
     this.renderPortalHeaderNav();
     this.syncCardsApplyCtas();
 
-    const locked = this._portal;
-    const effective = locked || (mode === 'standard' ? 'standard' : 'instant');
-
-    if (effective === 'instant') {
-      if (!$('instantAppPageHost')) return;
-      comps.instantAppView.mount($('instantAppPageHost'), { replace: true });
-      comps.instantAppView.bind(ctx.instantCtx);
-      comps.instantAppView.activate(ctx.instantCtx);
-      document.documentElement.setAttribute('data-app-mode', 'instant');
-      return;
-    }
-
-    if (effective === 'standard') {
-      if (!$('standardAppPageHost')) return;
-      comps.standardAppView.mount($('standardAppPageHost'), { replace: true });
-      comps.standardAppView.bind(ctx.standardCtx);
-      comps.standardAppView.activate(ctx.standardCtx);
-      document.documentElement.setAttribute('data-app-mode', 'standard');
-    }
+    if (!$('instantAppPageHost')) return;
+    comps.instantAppView.mount($('instantAppPageHost'), { replace: true });
+    comps.instantAppView.bind(ctx.instantCtx);
+    comps.instantAppView.activate(ctx.instantCtx);
+    document.documentElement.setAttribute('data-app-mode', 'instant');
   },
 
-  /** @deprecated legacy card-only mount — prefer mountAppModeUi / portal routes */
-  mountCardProviderUi(mode = 'instant') {
+  mountCardProviderUi() {
     const comps = (typeof EisyComponents !== 'undefined') ? EisyComponents : null;
-    if (comps?.instantAppView && comps?.standardAppView) {
-      return this.mountAppModeUi(mode);
-    }
-    if (!comps?.instantCardView || !comps?.standardCardView) {
-      console.warn('[Dashboard] card view components not loaded');
+    if (comps?.instantAppView) return this.mountAppModeUi();
+    if (!comps?.instantCardView) {
+      console.warn('[Dashboard] instant card view not loaded');
       return;
     }
 
     this.clearCardViewHosts();
     const ctx = this.buildCardViewContexts();
-    const effective = this._portal || (mode === 'standard' ? 'standard' : 'instant');
-
-    if (effective === 'instant') {
-      const host = $('instantCardPageHost') || $('instantAppPageHost');
-      if (!host) return;
-      comps.instantCardView.mount(host, { replace: true });
-      comps.instantCardView.bind(ctx.instantCtx);
-      comps.instantCardView.activate(ctx.instantCtx);
-      return;
-    }
-
-    if (effective === 'standard') {
-      const host = $('standardCardPageHost') || $('standardAppPageHost');
-      if (!host) return;
-      comps.standardCardView.mount(host, { replace: true });
-      comps.standardCardView.bind(ctx.standardCtx);
-      comps.standardCardView.activate(ctx.standardCtx);
-    }
-  },
-
-  setAppMode(mode) {
-    // Route-level separation: Instant/Business always live on dedicated portal URLs.
-    if (mode === 'instant' || mode === 'standard') {
-      if (this._portal === mode) {
-        this.mountAppModeUi(mode);
-        return;
-      }
-      window.location.href = this.portalHref(mode);
-    }
-  },
-
-  setCardProviderTab(provider) {
-    const mode = (provider === 'bitnob' || provider === 'standard') ? 'standard' : 'instant';
-    this.setAppMode(mode);
+    const host = $('instantCardPageHost') || $('instantAppPageHost');
+    if (!host) return;
+    comps.instantCardView.mount(host, { replace: true });
+    comps.instantCardView.bind(ctx.instantCtx);
+    comps.instantCardView.activate(ctx.instantCtx);
   },
 
   enterInstantCardPage({ force = false } = {}) {
     this.loadWallet({ force: false }).catch(() => {});
-    this.mountAppModeUi('instant');
-  },
-
-  enterStandardCardPage({ force = false } = {}) {
-    this.mountAppModeUi('standard');
-  },
-
-  syncStandardCardPageGate() {
-    EisyComponents?.standardCardView?.syncKycGate(this.buildCardViewContexts().standardCtx);
-  },
-
-  async loadCardFundingWallets({ force = false } = {}) {
-    try {
-      const svc = EisyServices?.standardCard;
-      const data = svc
-        ? await svc.getCardFundingWallets()
-        : await Auth.api('GET', '/api/user/wallets/card-funding');
-      this.cardFundingWallets = data;
-      this.walletBitnobUsdt = Number(data?.standard?.balance_usdt ?? 0);
-      this.setHomeBitnobBalanceDisplay(this.formatUsdt(this.walletBitnobUsdt));
-      this.renderInstantWalletBalance();
-      this.renderStandardWalletBalance();
-      EisyComponents?.instantAppView?.renderBalance?.(this.buildCardViewContexts().instantCtx);
-      EisyComponents?.standardAppView?.renderBalance?.(this.buildCardViewContexts().standardCtx);
-      return data;
-    } catch (err) {
-      console.warn('[card-funding wallets]', err.message);
-      if (force) throw err;
-      return null;
-    }
+    this.mountAppModeUi();
   },
 
   renderInstantWalletBalance() {
     const ctx = this.buildCardViewContexts().instantCtx;
     EisyComponents?.instantCardView?.renderUsdtWalletBalance?.(ctx)
       || EisyComponents?.instantCardView?.renderMasterBalance?.(ctx);
-  },
-
-  renderStandardWalletBalance() {
-    const ctx = this.buildCardViewContexts().standardCtx;
-    EisyComponents?.standardCardView?.renderWalletBalance(ctx);
-  },
-
-  async loadStandardDepositAddress({ force = false } = {}) {
-    const ctx = this.buildCardViewContexts().standardCtx;
-    return EisyComponents?.standardCardView?.loadDepositAddress(ctx, { force });
   },
 
   async loadKripicardBins() {
@@ -6284,23 +5949,6 @@ const Dashboard = {
       if (nameInput && !nameInput.value && this.user?.name) {
         nameInput.value = this.user.name;
       }
-      if (data.is_kyc_verified === false || data.requires_kyc) {
-        const gate = $('bitnobKycGate');
-        if (gate && !this.isKycVerified()) gate.classList.remove('hidden');
-      }
-      if (data.bitnob_customer_ready != null || data.bitnob_kyc_status != null) {
-        this._bitnobKyc = {
-          ...(this._bitnobKyc || {}),
-          customer_ready: data.bitnob_customer_ready,
-          bitnob_customer_ready: data.bitnob_customer_ready,
-          bitnob_kyc_status: data.bitnob_kyc_status,
-          bitnob_kyc_reason: data.bitnob_kyc_reason,
-          can_issue_standard_card: data.bitnob_eligible,
-          customer_id: data.bitnob_customer_id,
-        };
-        EisyComponents?.standardCardView?.syncKycGate?.(this.buildCardViewContexts().standardCtx);
-        EisyComponents?.standardAppView?.syncKyc?.(this.buildCardViewContexts().standardCtx);
-      }
       this.updateCardPricingBreakdown();
       this.updateHomeRateSummary();
       this.renderRatesPage();
@@ -6332,11 +5980,11 @@ const Dashboard = {
     if (!p) return;
 
     const initial = parseFloat($('cardInitialLoad')?.value) || 0;
-    const bitnobCreate = Number(p.bitnob_create_fee_usd);
-    const createFee = Number.isFinite(bitnobCreate) && bitnobCreate >= 0 ? bitnobCreate : 2;
+    const providerCreate = Number(p.kripicard_create_fee_usd);
+    const createFee = Number.isFinite(providerCreate) && providerCreate >= 0 ? providerCreate : 2;
     const platformIssuance = Number(p.card_issuance_fee_usd) || 0;
     const issuanceFee = Math.round((createFee + platformIssuance) * 100) / 100;
-    const schedule = p.bitnob_fee_schedule || {};
+    const schedule = p.kripicard_fee_schedule || {};
     const threshold = Number(schedule.fund_fee_threshold_usd) || 100;
     const flatFund = Number(schedule.fund_fee_flat_usd);
     const pctFund = Number(schedule.fund_fee_percent);
@@ -6370,8 +6018,8 @@ const Dashboard = {
     this.cardPricing = {
       ...(this.cardPricing || {}),
       initial_load_usd: initial,
-      bitnob_create_fee_usd: createFee,
-      bitnob_funding_fee_usd: fundingFee,
+      kripicard_create_fee_usd: createFee,
+      kripicard_funding_fee_usd: fundingFee,
       platform_issuance_fee_usd: platformIssuance,
       issuance_fee_usd: issuanceFee,
       funding_fee_usd: fundingFee,
@@ -6877,10 +6525,6 @@ const Dashboard = {
 
   /* ─── Scan Pay (QR → confirm → atomic USDT debit) ─── */
   openScanPayModal() {
-    if (this._portal === 'standard') {
-      this.toast('Scan Pay uses the Master USDT wallet — open the Instant portal.', 'error');
-      return;
-    }
     const modal = $('scanPayModal');
     if (!modal) return;
     this._scanPayState = {
@@ -7258,10 +6902,6 @@ const Dashboard = {
   },
 
   openWithdrawModal() {
-    if (this._portal === 'standard') {
-      this.toast('Master USDT withdrawals are only available in the Instant portal.', 'error');
-      return;
-    }
     $('withdrawUsdtForm')?.classList.remove('hidden');
     $('withdrawSuccessBox')?.classList.add('hidden');
     if ($('withdrawOutput')) $('withdrawOutput').textContent = '';
@@ -7352,10 +6992,6 @@ const Dashboard = {
   },
 
   openWithdrawMmkModal() {
-    if (this._portal === 'standard') {
-      this.toast('MMK wallet withdrawals are only available in the Instant portal.', 'error');
-      return;
-    }
     $('withdrawMmkForm')?.classList.remove('hidden');
     $('withdrawMmkSuccessBox')?.classList.add('hidden');
     if ($('withdrawMmkBankName')) $('withdrawMmkBankName').value = '';

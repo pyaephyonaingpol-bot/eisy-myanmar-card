@@ -9,11 +9,6 @@ const {
   resolveCardFundingFeeUsd,
   roundUsd,
 } = require('../constants/cardIssuanceFees');
-const {
-  BITNOB_CARD_CREATE_FEE_USD,
-  resolveBitnobFundingFeeUsd,
-  getBitnobFeeSchedule,
-} = require('../constants/bitnobFees');
 
 const DEFAULTS = {
   card_issuance_fee_usd: '5.00',
@@ -787,68 +782,66 @@ function resolveCardReloadFeeUsd(topUpUsd, settings = {}) {
   return getCardReloadFeeBreakdown().reload_fee_usd;
 }
 
-function calculateCardRequestPricingUsdt(initialLoadUsd, settings) {
-  const initial = parseFloat(initialLoadUsd);
-  const platformIssuanceFee = parseFloat(settings.card_issuance_fee_usd);
-  const min = parseFloat(settings.minimum_initial_deposit_usd);
+function calculateCardReloadPricingUsdt(topUpUsdt, settings) {
+  const topUp = parseFloat(topUpUsdt);
+  const minTopUp = settings.minimum_usdt_reload ?? settings.minimum_initial_deposit_usd ?? 5;
 
-  if (!Number.isFinite(initial) || initial <= 0) {
-    throw new Error('Initial card load amount must be a positive number');
+  if (!Number.isFinite(topUp) || topUp <= 0) {
+    throw new Error('Top-up amount must be a positive number');
   }
-  if (!Number.isFinite(min) || initial < min) {
-    throw new Error(`Minimum initial deposit is $${Number(min || 0).toFixed(2)} USD`);
+  if (topUp < minTopUp) {
+    throw new Error(`Minimum USDT top-up is $${minTopUp.toFixed(2)}`);
   }
 
-  const providerLoadUsd = roundUsd(initial);
-  // Bitnob provider pass-through fees (debited from user USDT wallet).
-  const bitnobCreateFeeUsd = roundUsd(BITNOB_CARD_CREATE_FEE_USD);
-  const bitnobFundingFeeUsd = resolveBitnobFundingFeeUsd(providerLoadUsd);
-  // Optional platform markup from admin settings (on top of Bitnob fees).
-  const platformIssuanceFeeUsd = roundUsd(
-    Number.isFinite(platformIssuanceFee) && platformIssuanceFee >= 0 ? platformIssuanceFee : 0
+  const topUpUsd = roundUsd(topUp);
+  const reloadFeePercent = parseFloat(settings.card_reload_fee_percent);
+  let platformReloadFeeUsd = 0;
+  if (Number.isFinite(reloadFeePercent) && reloadFeePercent > 0) {
+    platformReloadFeeUsd = roundUsd(topUpUsd * reloadFeePercent / 100);
+  } else {
+    const configuredReloadFee = Number.isFinite(parseFloat(settings.card_reload_fee_usd))
+      ? parseFloat(settings.card_reload_fee_usd)
+      : null;
+    platformReloadFeeUsd = roundUsd(
+      configuredReloadFee != null && configuredReloadFee >= 0
+        ? Math.max(0, configuredReloadFee)
+        : getCardReloadFeeBreakdown().reload_fee_usd
+    );
+  }
+
+  const providerCostUsd = roundUsd(
+    Number.isFinite(parseFloat(settings.card_reload_provider_cost_usd))
+      ? parseFloat(settings.card_reload_provider_cost_usd)
+      : getCardReloadFeeBreakdown().provider_cost_usd
   );
-  const processingFeeUsd = roundUsd(CARD_PROCESSING_FEE_USD);
-
-  const providerFeesUsd = roundUsd(bitnobCreateFeeUsd + bitnobFundingFeeUsd);
-  const platformMarkupUsd = roundUsd(platformIssuanceFeeUsd + processingFeeUsd);
-  // Legacy field names kept for UI/receipts:
-  // issuance_fee_usd = Bitnob create + platform issuance markup
-  // funding_fee_usd = Bitnob funding fee schedule
-  const issuanceFeeUsd = roundUsd(bitnobCreateFeeUsd + platformIssuanceFeeUsd);
-  const fundingFeeUsd = bitnobFundingFeeUsd;
-  const totalUsd = roundUsd(providerLoadUsd + providerFeesUsd + platformMarkupUsd);
-  const totalUsdt = totalUsd;
-  const schedule = getBitnobFeeSchedule();
+  const reloadFeeUsd = platformReloadFeeUsd;
+  const totalWalletUsdt = roundUsd(topUpUsd + reloadFeeUsd);
+  const netProfitUsd = roundUsd(Math.max(0, reloadFeeUsd - providerCostUsd));
 
   return {
-    initial_load_usd: providerLoadUsd,
-    provider_load_usd: providerLoadUsd,
-    bitnob_create_fee_usd: bitnobCreateFeeUsd,
-    bitnob_funding_fee_usd: bitnobFundingFeeUsd,
-    provider_fees_usd: providerFeesUsd,
-    platform_issuance_fee_usd: platformIssuanceFeeUsd,
-    issuance_fee_usd: issuanceFeeUsd,
-    funding_fee_percent: providerLoadUsd >= schedule.fund_fee_threshold_usd
-      ? schedule.fund_fee_percent
-      : 0,
-    funding_fee_usd: fundingFeeUsd,
-    funding_fee_rule: schedule.fund_fee_rule,
-    processing_fee_usd: processingFeeUsd,
-    platform_markup_usd: platformMarkupUsd,
-    total_usd_required: totalUsd,
-    total_usdt: totalUsdt,
-    total_charge_usdt: totalUsdt,
+    top_up_usdt: topUpUsd,
+    top_up_usd: topUpUsd,
+    deposit_usdt: totalWalletUsdt,
+    total_wallet_usd: totalWalletUsdt,
+    total_wallet_usdt: totalWalletUsdt,
+    net_usd_to_card: topUpUsd,
+    platform_reload_markup_usd: platformReloadFeeUsd,
+    reload_fee_usd: reloadFeeUsd,
+    reload_fee_percent: Number.isFinite(reloadFeePercent) && reloadFeePercent > 0
+      ? reloadFeePercent
+      : null,
+    provider_cost_usd: providerCostUsd,
+    net_profit_usd: netProfitUsd,
+    gross_usd: topUpUsd,
     payment_currency: 'USDT',
     payment_wallet: 'usdt',
     mmk_wallet_allowed: false,
     exchange_rate_applied: false,
-    provider: 'bitnob',
-    bitnob_fee_schedule: schedule,
+    provider: 'kripicard',
     note:
-      '1 USDT ≈ 1 USD — USDT wallet only. Debit covers card load + Bitnob create ($'
-      + `${bitnobCreateFeeUsd.toFixed(2)}) + Bitnob funding ($${bitnobFundingFeeUsd.toFixed(2)})`
-      + (platformMarkupUsd > 0 ? ` + platform fees ($${platformMarkupUsd.toFixed(2)})` : '')
-      + '. Only card load is sent to Bitnob; fees stay on-platform to cover provider costs.',
+      '1 USDT ≈ 1 USD — Master Wallet only. Debit covers card top-up + platform reload fee'
+      + (reloadFeeUsd > 0 ? ` ($${reloadFeeUsd.toFixed(2)})` : '')
+      + '.',
   };
 }
 
@@ -904,64 +897,6 @@ function calculateKripicardRequestPricingUsdt(initialLoadUsd, settings) {
   };
 }
 
-function calculateCardReloadPricingUsdt(topUpUsdt, settings) {
-  const topUp = parseFloat(topUpUsdt);
-  const minTopUp = settings.minimum_usdt_reload ?? settings.minimum_initial_deposit_usd ?? 5;
-
-  if (!Number.isFinite(topUp) || topUp <= 0) {
-    throw new Error('Top-up amount must be a positive number');
-  }
-  if (topUp < minTopUp) {
-    throw new Error(`Minimum USDT top-up is $${minTopUp.toFixed(2)}`);
-  }
-
-  const topUpUsd = roundUsd(topUp);
-  const bitnobFundingFeeUsd = resolveBitnobFundingFeeUsd(topUpUsd);
-  // Platform markup on reload (admin setting), on top of Bitnob funding fee.
-  const configuredReloadFee = Number.isFinite(parseFloat(settings.card_reload_fee_usd))
-    ? parseFloat(settings.card_reload_fee_usd)
-    : null;
-  const platformMarkupUsd = roundUsd(
-    configuredReloadFee != null && configuredReloadFee >= 0
-      ? Math.max(0, configuredReloadFee)
-      : getCardReloadFeeBreakdown().net_profit_usd
-  );
-  const reloadFeeUsd = roundUsd(bitnobFundingFeeUsd + platformMarkupUsd);
-  const totalWalletUsdt = roundUsd(topUpUsd + reloadFeeUsd);
-  const schedule = getBitnobFeeSchedule();
-
-  return {
-    top_up_usdt: topUpUsd,
-    top_up_usd: topUpUsd,
-    deposit_usdt: totalWalletUsdt,
-    total_wallet_usd: totalWalletUsdt,
-    total_wallet_usdt: totalWalletUsdt,
-    net_usd_to_card: topUpUsd,
-    bitnob_funding_fee_usd: bitnobFundingFeeUsd,
-    funding_fee_usd: bitnobFundingFeeUsd,
-    funding_fee_rule: schedule.fund_fee_rule,
-    platform_reload_markup_usd: platformMarkupUsd,
-    reload_fee_usd: reloadFeeUsd,
-    reload_fee_percent: Number.isFinite(parseFloat(settings.card_reload_fee_percent))
-      ? parseFloat(settings.card_reload_fee_percent)
-      : null,
-    provider_cost_usd: bitnobFundingFeeUsd,
-    net_profit_usd: platformMarkupUsd,
-    gross_usd: topUpUsd,
-    payment_currency: 'USDT',
-    payment_wallet: 'usdt',
-    mmk_wallet_allowed: false,
-    exchange_rate_applied: false,
-    provider: 'bitnob',
-    bitnob_fee_schedule: schedule,
-    note:
-      '1 USDT ≈ 1 USD — USDT wallet only. Debit covers card top-up + Bitnob funding fee'
-      + ` ($${bitnobFundingFeeUsd.toFixed(2)})`
-      + (platformMarkupUsd > 0 ? ` + platform markup ($${platformMarkupUsd.toFixed(2)})` : '')
-      + '.',
-  };
-}
-
 function parseRecordMetadata(raw) {
   if (!raw) return {};
   if (typeof raw === 'object') return raw;
@@ -975,9 +910,6 @@ function parseRecordMetadata(raw) {
 module.exports = {
   DEFAULTS,
   CARD_PROCESSING_FEE_USD,
-  BITNOB_CARD_CREATE_FEE_USD,
-  getBitnobFeeSchedule,
-  resolveBitnobFundingFeeUsd,
   getSetting,
   setSetting,
   getAllSettings,
@@ -988,7 +920,6 @@ module.exports = {
   buildRateSnapshot,
   listExchangeRateHistory,
   updateSettings,
-  calculateCardRequestPricingUsdt,
   calculateKripicardRequestPricingUsdt,
   calculateCardReloadPricingUsdt,
   getUsdtDepositSettings,

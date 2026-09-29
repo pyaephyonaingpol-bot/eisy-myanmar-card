@@ -7,24 +7,18 @@
   const LEGACY_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.ADMIN_KEY_LEGACY) || 'eisy_admin_key';
   const PIPELINE_STORAGE_KEY = 'eisy_last_admin_pipeline';
 
-  /** Instant vs Business admin page segregation (matches user portals). */
+  /** Instant admin pages (Kripicard + Master Wallet / TRON). */
   const INSTANT_ADMIN_PAGES = new Set([
     'overview',
     'deposits',
     'mmk-withdrawals',
     'cards',
+    'kyc-requests',
     'users',
     'transactions',
     'revenue',
     'support',
     'settings',
-    'admins',
-  ]);
-  const STANDARD_ADMIN_PAGES = new Set([
-    'cards',
-    'kyc-requests',
-    'users',
-    'support',
     'admins',
   ]);
 
@@ -47,36 +41,28 @@
     _pipeline: null,
     _pipelineIsolated: false,
 
-    /** Dedicated Instant (/admin/instant) or Business (/admin/business, alias /admin/standard) pipeline, or hub (/admin). */
+    /** Dedicated Instant (/admin/instant) pipeline, or hub (/admin). */
     getPipeline() {
-      if (window.__EISY_ADMIN_PIPELINE__ === 'instant' || window.__EISY_ADMIN_PIPELINE__ === 'standard') {
-        return window.__EISY_ADMIN_PIPELINE__;
-      }
+      if (window.__EISY_ADMIN_PIPELINE__ === 'instant') return 'instant';
       const path = String(location.pathname || '');
       if (/\/admin\/instant\/?$/.test(path)) return 'instant';
-      if (/\/admin\/(?:business|standard)\/?$/.test(path)) return 'standard';
       return null;
     },
 
-    /** Public URL for an admin pipeline id (`standard` → `/admin/business`). */
     pipelineHref(pipeline) {
-      if (pipeline === 'standard') return '/admin/business';
       if (pipeline === 'instant') return '/admin/instant';
       return '/admin';
     },
 
     rememberPipeline(pipeline) {
       try {
-        if (pipeline === 'instant' || pipeline === 'standard') {
-          localStorage.setItem(PIPELINE_STORAGE_KEY, pipeline);
-        }
+        if (pipeline === 'instant') localStorage.setItem(PIPELINE_STORAGE_KEY, pipeline);
       } catch (_) { /* ignore */ }
     },
 
     lastPipeline() {
       try {
-        const v = localStorage.getItem(PIPELINE_STORAGE_KEY);
-        return v === 'instant' || v === 'standard' ? v : null;
+        return localStorage.getItem(PIPELINE_STORAGE_KEY) === 'instant' ? 'instant' : null;
       } catch (_) {
         return null;
       }
@@ -84,30 +70,25 @@
 
     pagesForPipeline(pipeline) {
       if (pipeline === 'instant') return INSTANT_ADMIN_PAGES;
-      if (pipeline === 'standard') return STANDARD_ADMIN_PAGES;
       return null;
     },
 
     pipelineDefaultPage(pipeline) {
-      if (pipeline === 'standard') {
-        if (this.pages?.includes('kyc-requests')) return 'kyc-requests';
-        if (this.pages?.includes('cards')) return 'cards';
-        return this.pages?.[0] || 'cards';
-      }
       if (this.pages?.includes('overview')) return 'overview';
       if (this.pages?.includes('deposits')) return 'deposits';
       return this.pages?.[0] || 'deposits';
     },
 
     /**
-     * Strip the opposite Instant/Business admin chrome so management tools
-     * never overlap in this document. Hub (/admin) shows a pipeline chooser.
+     * Lock admin UI to Instant pipeline. Hub (/admin) shows Instant entry only.
      */
     applyPipelineIsolation() {
       const pipeline = this.getPipeline();
       this._pipeline = pipeline;
       document.documentElement.setAttribute('data-admin-pipeline', pipeline || 'hub');
       if (pipeline) this.rememberPipeline(pipeline);
+
+      document.querySelectorAll('[data-admin-pipeline="standard"]').forEach((el) => el.remove());
 
       if (!pipeline) {
         this.renderPipelineHubChooser();
@@ -117,107 +98,72 @@
 
       if (this._pipelineIsolated) {
         this.renderPipelineSwitcher();
-        this.applyPipelineCopy(pipeline);
+        this.applyPipelineCopy();
         return pipeline;
       }
       this._pipelineIsolated = true;
 
-      if (pipeline === 'instant') {
-        document.querySelectorAll('[data-admin-pipeline="standard"]').forEach((el) => el.remove());
-      } else {
-        document.querySelectorAll('[data-admin-pipeline="instant"]').forEach((el) => el.remove());
-      }
-      // Hub chooser is only for /admin
       $('adminPipelineHub')?.remove();
 
       const loginTitle = $('adminLoginTitle');
-      if (loginTitle) {
-        loginTitle.textContent = pipeline === 'instant' ? 'Instant Admin' : 'Business Admin';
-      }
+      if (loginTitle) loginTitle.textContent = 'Instant Admin';
       const loginSub = $('adminLoginSubtitle');
       if (loginSub) {
-        loginSub.textContent = pipeline === 'instant'
-          ? 'USDT wallets · TRC20 · Instant Card · P2P · MMK'
-          : 'Bitnob wallets · Business Card · KYC';
+        loginSub.textContent = 'USDT wallets · TRC20 · Instant Card · P2P · MMK';
       }
 
       this.renderPipelineSwitcher();
-      this.applyPipelineCopy(pipeline);
+      this.applyPipelineCopy();
 
       const brandTitle = document.querySelector('.sidebar-brand-title');
-      if (brandTitle) {
-        brandTitle.textContent = pipeline === 'instant' ? 'Instant Admin' : 'Business Admin';
-      }
+      if (brandTitle) brandTitle.textContent = 'Instant Admin';
       const brandSub = document.querySelector('.sidebar-brand-sub');
-      if (brandSub) {
-        brandSub.textContent = pipeline === 'instant'
-          ? 'USDT · TRC20 · Instant Card · P2P · MMK'
-          : 'Bitnob · Business Card · KYC';
-      }
-      document.title = pipeline === 'instant'
-        ? 'Eisy Myanmar — Instant Admin'
-        : 'Eisy Myanmar — Business Admin';
+      if (brandSub) brandSub.textContent = 'USDT · TRC20 · Instant Card · P2P · MMK';
+      document.title = 'Eisy Myanmar — Instant Admin';
 
       const userApp = $('adminUserAppLink');
-      if (userApp) {
-        userApp.setAttribute('href', pipeline === 'instant' ? '/instant' : '/business');
-      }
+      if (userApp) userApp.setAttribute('href', '/instant');
 
       return pipeline;
     },
 
-    applyPipelineCopy(pipeline) {
+    applyPipelineCopy() {
       const cardsLabel = document.querySelector('[data-admin-cards-label]');
       if (cardsLabel) {
-        cardsLabel.textContent = pipeline === 'instant' ? 'Instant Cards' : 'Business Cards';
+        cardsLabel.textContent = 'Instant Cards';
         cardsLabel.removeAttribute('data-i18n');
       }
       const cardsHeading = $('adminCardsHeading');
       if (cardsHeading) {
-        cardsHeading.textContent = pipeline === 'instant'
-          ? 'Instant Card Management'
-          : 'Business Card Management';
+        cardsHeading.textContent = 'Instant Card Management';
         cardsHeading.removeAttribute('data-i18n');
       }
       const cardsHint = $('adminCardsHint');
       if (cardsHint) {
-        cardsHint.textContent = pipeline === 'instant'
-          ? 'Internal USDT wallet · Kripicard / Instant Card issuance and reloads.'
-          : 'Bitnob wallet · Business Card issuance after KYC verification.';
+        cardsHint.textContent = 'Internal USDT wallet · Kripicard / Instant Card issuance and reloads.';
         cardsHint.removeAttribute('data-i18n');
       }
       const usersHeading = $('adminUsersHeading');
       if (usersHeading) {
-        usersHeading.textContent = pipeline === 'instant'
-          ? 'Users & Internal USDT Wallets'
-          : 'Users & Business / Bitnob Access';
+        usersHeading.textContent = 'Users & Internal USDT Wallets';
       }
       const usersHint = $('adminUsersHint');
       if (usersHint) {
-        usersHint.textContent = pipeline === 'instant'
-          ? 'Manage internal USDT wallet balances used for Instant Card, P2P, and TRC20 flows.'
-          : 'Review users for Business Card eligibility. KYC status gates Bitnob wallet and Business Card issuance.';
+        usersHint.textContent = 'Manage internal USDT wallet balances used for Instant Card, P2P, and TRC20 flows.';
       }
       const pageTitle = document.querySelector('[data-page-title="cards"]');
-      if (pageTitle) {
-        pageTitle.textContent = pipeline === 'instant' ? 'Instant Cards' : 'Business Cards';
-      }
+      if (pageTitle) pageTitle.textContent = 'Instant Cards';
     },
 
     renderPipelineSwitcher() {
       const host = $('adminPipelineSwitcher');
       if (!host) return;
       const pipeline = this._pipeline || this.getPipeline();
-      if (pipeline === 'instant' || pipeline === 'standard') {
-        const other = pipeline === 'instant' ? 'standard' : 'instant';
-        const otherLabel = other === 'instant' ? 'Instant Admin' : 'Business Admin';
-        host.innerHTML = `<a class="btn btn-secondary btn-sm portal-switch-link" href="${this.pipelineHref(other)}" data-admin-pipeline-switch="${other}">${otherLabel} →</a>`;
+      if (pipeline === 'instant') {
+        host.innerHTML = '<a class="btn btn-secondary btn-sm portal-switch-link" href="/admin">← Admin hub</a>';
         return;
       }
-      host.innerHTML = [
-        '<a class="btn btn-secondary btn-sm portal-switch-link" href="/admin/instant" data-admin-pipeline-switch="instant">Instant</a>',
-        '<a class="btn btn-secondary btn-sm portal-switch-link" href="/admin/business" data-admin-pipeline-switch="standard">Business</a>',
-      ].join(' ');
+      host.innerHTML = '<a class="btn btn-primary btn-sm portal-switch-link" href="/admin/instant">Open Instant Admin →</a>';
     },
 
     renderPipelineHubChooser() {
@@ -225,22 +171,18 @@
       if (!box) return;
       box.classList.remove('hidden');
       box.innerHTML = `
-        <h2 style="margin:0 0 0.5rem">Choose admin pipeline</h2>
-        <p class="hint" style="margin:0 0 1rem">Instant and Business tools are isolated — pick the management surface that matches the user portal.</p>
+        <h2 style="margin:0 0 0.5rem">Instant Admin</h2>
+        <p class="hint" style="margin:0 0 1rem">Manage Master USDT wallets, TRC20 deposits, Instant Card (Kripicard), P2P, and MMK withdrawals.</p>
         <div class="portal-hub-grid">
           <a class="portal-hub-card" href="/admin/instant">
-            <strong>Instant Admin</strong>
-            <span>Internal USDT wallets, TRC20 deposits, Instant Card, P2P, MMK withdrawals</span>
-          </a>
-          <a class="portal-hub-card" href="/admin/business">
-            <strong>Business Admin</strong>
-            <span>Bitnob wallets, Business Card issuance, and user KYC verifications</span>
+            <strong>Open Instant Admin</strong>
+            <span>Internal USDT wallets, TRC20 deposits, Instant Card, P2P, MMK withdrawals, KYC</span>
           </a>
         </div>
       `;
     },
 
-    /** Filter RBAC pages to the active Instant/Business pipeline. */
+    /** Filter RBAC pages to the active Instant pipeline. */
     filterPagesForPipeline(pages) {
       const pipeline = this._pipeline || this.getPipeline();
       const allowed = this.pagesForPipeline(pipeline);
@@ -314,12 +256,11 @@
         app.classList.remove('hidden');
         app.style.display = '';
       }
-      // Hub (/admin): show Instant vs Business chooser instead of mixed tools.
+      // Hub (/admin): show Instant admin entry only.
       const pipeline = this._pipeline || this.getPipeline();
       if (!pipeline) {
         this.renderPipelineHubChooser();
         this.renderPipelineSwitcher();
-        // Hide sidebar nav sections on hub — chooser is the only entry.
         document.querySelectorAll('.admin-sidebar-nav .nav-item[data-page]').forEach((el) => {
           el.style.display = 'none';
         });
@@ -328,9 +269,9 @@
           el.style.display = 'none';
         });
         const heading = document.querySelector('.header .page-heading');
-        if (heading) heading.textContent = 'Admin pipelines';
+        if (heading) heading.textContent = 'Instant Admin';
         const subtitle = document.querySelector('.header .subtitle');
-        if (subtitle) subtitle.textContent = 'Choose Instant or Business management';
+        if (subtitle) subtitle.textContent = 'Open Instant Admin to manage wallets, cards, and KYC';
       }
     },
 
@@ -650,7 +591,7 @@
       if (!heading) return;
       if (page === 'cards') {
         const pipeline = this._pipeline || this.getPipeline();
-        heading.textContent = pipeline === 'standard' ? 'Business Cards' : (pipeline === 'instant' ? 'Instant Cards' : 'Cards');
+        heading.textContent = pipeline === 'instant' ? 'Instant Cards' : 'Cards';
         heading.removeAttribute('data-i18n');
         return;
       }

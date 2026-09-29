@@ -896,7 +896,7 @@
         <h3 id="kycModalTitle">KYC Verification</h3>
         <button type="button" id="kycModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" id="kycModalIntro" style="margin-bottom:1rem">Submit your identity documents to unlock Business Cards (Bitnob) and verified banking features.</p>
+      <p class="hint" id="kycModalIntro" style="margin-bottom:1rem">Submit your identity documents to unlock P2P trading and verified banking features.</p>
       <form id="kycForm" class="form">
         <div class="field"><label for="kycFullName">Full Name (as on ID)</label><input id="kycFullName" required placeholder="Legal full name" autocomplete="name" /></div>
         <div class="field"><label for="kycIdType">ID Type</label>
@@ -905,7 +905,7 @@
         <div class="field"><label for="kycIdNumber">ID Number</label><input id="kycIdNumber" required placeholder="NRC or Passport number" autocomplete="off" /></div>
         <div class="field"><label for="kycDateOfBirth">Date of Birth</label>
           <input id="kycDateOfBirth" type="date" required autocomplete="bday" />
-          <small class="hint">Required for Bitnob Card KYC / Business Card issuance</small>
+          <small class="hint">Required for identity verification and P2P trading</small>
         </div>
         <div class="field"><label for="kycAddressLine1">Street Address</label>
           <input id="kycAddressLine1" required placeholder="House / street" autocomplete="address-line1" />
@@ -1171,10 +1171,6 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
             <span data-i18n="nav_instant_card">Instant Card</span>
           </button>
-          <button type="button" class="nav-item" data-page="standard-card" data-mode-nav="standard">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            <span data-i18n="nav_standard_card">Business Card</span>
-          </button>
           <button type="button" class="nav-item" data-page="deposits" data-instant-only>
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             <span data-i18n="nav_deposits">Deposit &amp; History</span>
@@ -1271,7 +1267,6 @@
           <span class="hidden" data-page-title="home" data-i18n="nav_dashboard">Dashboard</span>
           <span class="hidden" data-page-title="cards" data-i18n="nav_my_cards">My Cards</span>
           <span class="hidden" data-page-title="instant-card" data-i18n="nav_instant_card">Instant Card</span>
-          <span class="hidden" data-page-title="standard-card" data-i18n="nav_standard_card">Business Card</span>
           <span class="hidden" data-page-title="deposits" data-instant-only data-i18n="deposits_page_title">Deposit &amp; Reload History</span>
           <span class="hidden" data-page-title="usdt-wallet" data-instant-only data-i18n="usdt_wallet_page_title">USDT Wallet</span>
           <span class="hidden" data-page-title="p2p" data-instant-only data-i18n="nav_p2p">P2P Express</span>
@@ -1300,19 +1295,6 @@
                     </div>
                   </div>
                 </div>
-                <!-- Business mode: Bitnob direct wallet only -->
-                <div class="wallet-hero-card bitnob hidden" id="walletHeroBitnob" data-mode-shell="standard">
-                  <div class="wallet-hero-label" data-i18n="header_bitnob_wallet">Bitnob Wallet</div>
-                  <div class="wallet-hero-value" id="sumBalanceBitnob">—</div>
-                  <p class="wallet-hero-hint" data-i18n="bitnob_wallet_hint">Bitnob deposit address · Business Card funding only (KYC required)</p>
-                  <div class="wallet-hero-actions" role="group" aria-label="Bitnob wallet actions">
-                    <span class="wallet-actions-label" data-i18n="wallet_actions_label">Wallet actions</span>
-                    <div class="wallet-hero-actions-row">
-                      <button type="button" class="btn btn-primary btn-sm" data-goto="standard-card" data-i18n="nav_standard_card">Business Card</button>
-                      <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="nav_my_cards">My Cards</button>
-                    </div>
-                  </div>
-                </div>
               </div>
             </section>
 
@@ -1324,15 +1306,6 @@
                 <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="nav_my_cards">My Cards</button>
               </div>
             </section>
-            <section class="panel home-card-purchase hidden" data-mode-shell="standard">
-              <h2 data-i18n="home_card_purchase_heading_standard">Get Business Card</h2>
-              <p class="hint" data-i18n="home_card_purchase_hint_standard">Bitnob wallet · Business Card (Verified KYC).</p>
-              <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
-                <button type="button" class="btn btn-primary btn-sm" data-goto="standard-card" data-i18n="nav_standard_card">Business Card</button>
-                <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="nav_my_cards">My Cards</button>
-              </div>
-            </section>
-
             <section class="panel">
               <h2 data-i18n="todays_exchange_rate">Today's Exchange Rate</h2>
               <p id="homeRateSummary" class="hint" data-i18n="loading">Loading rate…</p>
@@ -1379,13 +1352,11 @@
 
             <div class="grid-2">
               <section class="panel card-apply-panel">
-                <!-- Route-level Instant / Business only — no nested mode toggle on My Cards -->
                 <div id="cardsApplyCta" class="cards-apply-cta">
                   <h2 data-i18n="cards_apply_heading">Get a new card</h2>
-                  <p class="hint" data-i18n="cards_apply_hint">Instant and Business are separate portals with their own wallets and cards.</p>
+                  <p class="hint" data-i18n="cards_apply_hint">Issue Instant Card from your Master USDT Wallet (TRC20).</p>
                   <div class="action-row cards-apply-cta-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
                     <a class="btn btn-primary btn-sm" href="/instant" data-portal-cta="instant" data-i18n="nav_instant_card">Instant Card</a>
-                    <a class="btn btn-secondary btn-sm" href="/business" data-portal-cta="standard" data-i18n="nav_standard_card">Business Card</a>
                   </div>
                 </div>
                 <details style="margin-top:1rem" class="hint" data-instant-only>
@@ -1443,21 +1414,10 @@
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="nav_instant_card">Instant Card</h2>
-                <p class="page-desc" data-i18n="instant_card_page_desc">No KYC. Fund via USDT Wallet (TRC20), then issue Instant Card. Isolated from Business / Bitnob.</p>
+                <p class="page-desc" data-i18n="instant_card_page_desc">No KYC. Fund via Master USDT Wallet (TRC20), then issue Instant Card through Kripicard.</p>
               </div>
             </div>
             <div id="instantAppPageHost" data-app-view-host="instant"></div>
-          </section>
-
-          <!-- ══ PAGE: Business (full StandardAppView — Bitnob wallet + card) ══ -->
-          <section id="pageStandardCard" class="app-page" data-page="standard-card">
-            <div class="page-header">
-              <div>
-                <h2 class="page-heading" data-i18n="nav_standard_card">Business Card</h2>
-                <p class="page-desc" data-i18n="standard_card_page_desc">KYC verified only. Bitnob wallet deposit + Business Card. Isolated from Instant / USDT Wallet issuance.</p>
-              </div>
-            </div>
-            <div id="standardAppPageHost" data-app-view-host="standard"></div>
           </section>
 
           <!-- ══ PAGE: USDT Wallet (Instant / Master USDT only) ══ -->
@@ -1799,7 +1759,7 @@
               <div class="settings-card">
                 <h3>KYC Verification</h3>
                 <p id="settingsKycStatus">Identity status: —</p>
-                <p class="hint" id="settingsKycHint" style="margin-top:0.35rem">Required for Business Card / Bitnob wallet and verified banking features.</p>
+                <p class="hint" id="settingsKycHint" style="margin-top:0.35rem" data-i18n="kyc_hint">Required for P2P trading and verified banking features.</p>
                 <button id="btnOpenKycModal" class="btn btn-primary btn-sm" style="margin-top:0.5rem">Complete KYC</button>
               </div>
               <div class="settings-card">
@@ -1857,7 +1817,6 @@
   <script defer src="/src/services/withdrawalApi.js?v=20260817m2"></script>
   <script defer src="/src/services/cardsApi.js?v=20260928cardViews"></script>
   <script defer src="/src/services/instantCardApi.js?v=20260928cardViews"></script>
-  <script defer src="/src/services/standardCardApi.js?v=20260928bitnobKyc"></script>
   <script defer src="/src/services/accountApi.js?v=20260823profile"></script>
   <script defer src="/src/services/p2pApi.js?v=20260819p2p"></script>
   <script defer src="/src/services/index.js?v=20260817m2"></script>
@@ -1870,11 +1829,7 @@
   <script defer src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
   <script defer src="/src/components/instantCardView.js?v=20260928appModes"></script>
-  <script defer src="/src/components/standardCardView.js?v=20260928bitnobKyc"></script>
   <script defer src="/src/components/instantAppView.js?v=20260928wallets"></script>
-  <script defer src="/src/components/standardAppView.js?v=20260928bitnobKyc"></script>
-  <script defer src="/src/components/appModeSwitcher.js?v=20260928wallets"></script>
-  <script defer src="/src/components/cardProviderSwitch.js?v=20260928appModes"></script>
   <script defer src="/src/components/index.js?v=20260928appModes"></script>
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>

@@ -16,8 +16,7 @@ const { overlayWalletPayloadFromSupabase } = require('../services/supabaseWallet
 const { ensureSupabaseUserWalletInBackground } = require('../services/supabaseSyncService');
 const {
   reloadCardFromUsdtWallet,
-} = require('../services/cardWalletService');
-const { syncBitnobCardFromProvider } = require('../services/bitnobCardWebhookService');
+} = require('../services/kripicardCardWalletService');
 const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
   isPendingCardRecord,
@@ -55,9 +54,9 @@ function mapCardForClient(c) {
     request_status: metadata.request_status || (pending ? 'pending_approval' : 'approved'),
     is_primary: Boolean(c.is_primary),
     balance_usd: metadata.balance_usd ?? null,
-    provider: metadata.provider || null,
+    provider: metadata.provider === 'bitnob' ? 'legacy' : (metadata.provider || null),
     card_flow: metadata.card_flow
-      || (metadata.provider === 'bitnob' ? 'standard' : metadata.provider === 'kripicard' ? 'instant' : null),
+      || (metadata.provider === 'kripicard' ? 'instant' : null),
     funding_wallet: metadata.wallet_type || metadata.payment_method || null,
     created_at: c.created_at,
     activated_at: metadata.activated_at || c.activated_at || null,
@@ -78,37 +77,20 @@ function respondCardPurchaseError(res, err, logTag) {
       available_usdt: err.available_usdt,
     });
   }
-  if (code === 'INSUFFICIENT_BITNOB_BALANCE') {
-    return res.status(400).json({
-      error: message,
-      code,
-      required_usdt: err.required_usdt,
-      available_usdt: err.available_usdt,
-      ledger: 'bitnob',
-      deposit_path: 'bitnob_address',
-    });
-  }
   if (
     code === 'USDT_ONLY_CARD_ISSUANCE'
-    || code === 'BITNOB_WALLET_ONLY_CARD_ISSUANCE'
-    || code === 'BITNOB_CUSTOMER_REQUIRED'
-    || code === 'KYC_REQUIRED_FOR_BITNOB'
     || code === 'INVALID_NAME_ON_CARD'
     || code === 'INVALID_AMOUNT'
     || code === 'INVALID_BIN'
-    || code === 'BITNOB_NOT_CONFIGURED'
     || code === 'KRIPICARD_NOT_CONFIGURED'
     || code === 'SUPABASE_NOT_CONFIGURED'
   ) {
     const status = (
-      code === 'BITNOB_NOT_CONFIGURED'
-      || code === 'KRIPICARD_NOT_CONFIGURED'
+      code === 'KRIPICARD_NOT_CONFIGURED'
       || code === 'SUPABASE_NOT_CONFIGURED'
     )
       ? 503
-      : code === 'KYC_REQUIRED_FOR_BITNOB'
-        ? 403
-        : 400;
+      : 400;
     return res.status(status).json({
       error: message,
       code,
@@ -116,13 +98,7 @@ function respondCardPurchaseError(res, err, logTag) {
     });
   }
   if (
-    code === 'BITNOB_HTTP_ERROR'
-    || code === 'BITNOB_API_ERROR'
-    || code === 'BITNOB_TIMEOUT'
-    || code === 'BITNOB_BAD_RESPONSE'
-    || code === 'BITNOB_MISSING_CARD_ID'
-    || code === 'BITNOB_NETWORK_ERROR'
-    || code === 'KRIPICARD_HTTP_ERROR'
+    code === 'KRIPICARD_HTTP_ERROR'
     || code === 'KRIPICARD_API_ERROR'
     || code === 'KRIPICARD_TIMEOUT'
   ) {
@@ -159,16 +135,13 @@ function respondCardPurchaseError(res, err, logTag) {
 }
 
 function buildCardPurchaseSuccessPayload(result) {
-  const walletType = result.wallet_type || 'usdt';
-  const ledger = result.ledger
-    || (walletType === 'bitnob_usdt' ? 'bitnob' : 'master_wallet');
   return {
     success: true,
     paid_from_wallet: true,
     pending: Boolean(result.pending),
     issued: Boolean(result.issued),
-    wallet_type: walletType,
-    ledger,
+    wallet_type: result.wallet_type || 'usdt',
+    ledger: 'master_wallet',
     message: result.message,
     card: mapCardForClient(result.card),
     card_request_id: result.card?.id,
@@ -176,17 +149,12 @@ function buildCardPurchaseSuccessPayload(result) {
     bin: result.bin || null,
     pricing_breakdown: {
       ...result.pricing,
-      payment_method: ledger === 'bitnob' ? 'Standard Card wallet' : 'Master Wallet',
+      payment_method: 'Master Wallet',
     },
     wallet: {
       debited_usdt: result.wallet_debit_usdt,
       balance_usdt: result.balance_usdt,
-      balance_bitnob_usdt: result.balance_bitnob_usdt ?? null,
-      usdt_formatted: formatUsdt(
-        ledger === 'bitnob'
-          ? (result.balance_bitnob_usdt ?? result.wallet_debit_usdt)
-          : result.balance_usdt
-      ),
+      usdt_formatted: formatUsdt(result.balance_usdt ?? result.wallet_debit_usdt),
     },
   };
 }
@@ -288,43 +256,6 @@ router.post('/cards/:id/remove', requireAuth, requireSensitive, async (req, res)
   } catch (err) {
     console.error('[user/cards/remove]', err);
     res.status(500).json({ error: err.message || 'Failed to remove card' });
-  }
-});
-
-/**
- * Poll Bitnob for the latest card status/balance and merge into local cards_v2.
- * Safety net when create/fund webhooks are delayed or missed.
- */
-router.post('/cards/:id/sync', requireAuth, requireSensitive, async (req, res) => {
-  try {
-    const cardId = parseInt(req.params.id, 10);
-    if (!Number.isFinite(cardId) || cardId <= 0) {
-      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
-    }
-
-    const result = await syncBitnobCardFromProvider(cardId, { userId: req.user.id });
-    res.json({
-      success: true,
-      message: 'Card synced from Bitnob',
-      card: mapCardForClient(result.card),
-      provider_card: {
-        card_id: result.provider_card?.card_id,
-        status: result.provider_card?.status,
-        created_status: result.provider_card?.created_status,
-        masked_pan: result.provider_card?.masked_pan,
-        balance_usd: result.provider_card?.balance_usd,
-      },
-    });
-  } catch (err) {
-    const code = err.code || 'BITNOB_SYNC_FAILED';
-    const status =
-      code === 'CARD_NOT_FOUND' ? 404
-        : code === 'NOT_BITNOB_CARD' || code === 'BITNOB_CARD_ID_REQUIRED' ? 400
-          : code === 'BITNOB_NOT_CONFIGURED' ? 503
-            : code === 'BITNOB_HTTP_ERROR' || code === 'BITNOB_TIMEOUT' ? 502
-              : 500;
-    console.error('[user/cards/sync]', err.message, code);
-    res.status(status).json({ error: err.message || 'Sync failed', code });
   }
 });
 
@@ -483,17 +414,12 @@ router.get('/card', requireAuth, requireSensitive, async (req, res) => {
   }
 });
 
-// Dedicated Instant Card (Kripicard / Master Wallet) + Standard Card (Bitnob) routers.
+// Instant Card (Kripicard / Master Wallet) routes.
 const instantCardRoutes = require('./instantCard').attachHelpers({
   respondCardPurchaseError,
   buildCardPurchaseSuccessPayload,
 });
-const standardCardRoutes = require('./standardCard').attachHelpers({
-  respondCardPurchaseError,
-  buildCardPurchaseSuccessPayload,
-});
 router.use(instantCardRoutes);
-router.use(standardCardRoutes);
 
 router.post('/card/reload', requireAuth, requireSensitive, async (req, res) => {
   try {

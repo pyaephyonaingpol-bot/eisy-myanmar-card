@@ -96,7 +96,7 @@ async function debitUsdtForCardPurchase(userId, {
   const loadUsd = providerLoadUsd != null ? roundUsdt(providerLoadUsd) : null;
 
   // RPC arg name p_kripicard_cost is historical (Supabase function signature);
-  // value is the Bitnob card-load amount (provider_load_usd).
+  // value is the provider card-load amount (provider_load_usd).
   const { data, error } = await sb.rpc('debit_usdt_for_card_purchase', {
     p_user_id: String(userId),
     p_total_amount: amount,
@@ -132,7 +132,7 @@ async function debitUsdtForCardPurchase(userId, {
 }
 
 /**
- * Complete pending debit after Bitnob succeeds, or refund on provider failure.
+ * Complete pending debit after provider succeeds, or refund on provider failure.
  */
 async function finalizeCardPurchaseWallet(journalId, {
   outcome,

@@ -7,11 +7,11 @@
 --
 -- Flow (application layer):
 --   1. debit_usdt_for_card_purchase  — balance check + deduct + pending log (single txn)
---   2. Bitnob API issue              — external call after RPC succeeds
+--   2. Kripicard API issue           — external call after RPC succeeds
 --   3. finalize_card_purchase_wallet — completed OR refunded (compensating credit)
 --
 -- Note: RPC arg p_kripicard_cost is a legacy parameter name; it stores the
--- provider card-load amount (provider_load_usd / Bitnob fund). Do not rename
+-- provider card-load amount (provider_load_usd). Do not rename
 -- without migrating the live Supabase function signature.
 
 CREATE TABLE IF NOT EXISTS wallet_transactions (
@@ -63,7 +63,7 @@ CREATE TRIGGER trg_wallet_transactions_updated_at
   EXECUTE PROCEDURE set_wallet_transaction_updated_at();
 
 -- Atomically verify balance, deduct total charge, and insert pending debit log.
--- p_kripicard_cost: legacy RPC param name = provider card-load USD (Bitnob).
+-- p_kripicard_cost: legacy RPC param name = provider card-load USD.
 CREATE OR REPLACE FUNCTION debit_usdt_for_card_purchase(
   p_user_id TEXT,
   p_total_amount NUMERIC,
@@ -175,7 +175,7 @@ BEGIN
     'card_purchase',
     COALESCE(p_description, format('Card purchase debit %s USDT', v_amount)),
     COALESCE(p_metadata, '{}'::jsonb) || jsonb_build_object(
-      -- Legacy key name; value is provider_load_usd (Bitnob card load)
+      -- Legacy key name; value is provider_load_usd (card load)
       'kripicard_cost_usd', p_kripicard_cost,
       'provider_load_usd', p_kripicard_cost,
       'platform_markup_usd', p_platform_markup,
@@ -215,7 +215,7 @@ EXCEPTION
 END;
 $$;
 
--- Mark purchase debit completed after Bitnob succeeds, or refund on provider failure.
+-- Mark purchase debit completed after provider succeeds, or refund on provider failure.
 CREATE OR REPLACE FUNCTION finalize_card_purchase_wallet(
   p_journal_id TEXT,
   p_outcome TEXT,
