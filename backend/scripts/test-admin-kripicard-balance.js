@@ -42,27 +42,36 @@ function testAuthStrategyMatchesProvider() {
   assert.ok(src.includes("body: { api_key: apiKey }"));
   assert.ok(src.includes("authMode = 'get_query_api_key'"));
   assert.ok(src.includes("authMode = 'post_body_api_key'"));
-  assert.ok(src.includes('KRIPICARD_BALANCE_MOCK_USD'));
+  assert.ok(src.includes('kripicard_live') || src.includes("source: 'kripicard_live'"));
+  assert.ok(src.includes('KRIPICARD_BALANCE_MOCK_USD is set but ignored') || src.includes('mock mode disabled') || src.includes('Always calls production'));
+  assert.ok(!/source:\s*'kripicard_mock'/.test(src), 'mock short-circuit must be removed');
   assert.ok(src.includes('[kripicard/balance]'));
-  assert.ok(src.includes('KRIPICARD_UNAUTHORIZED') || src.includes("status === 401"));
+  assert.ok(src.includes('KRIPICARD_UNAUTHORIZED') || src.includes('status === 401'));
   console.log('ok');
 }
 
-async function testMockMode() {
-  section('KRIPICARD_BALANCE_MOCK_USD short-circuits live call');
+async function testMockModeDisabled() {
+  section('KRIPICARD_BALANCE_MOCK_USD no longer short-circuits live call');
   const prev = process.env.KRIPICARD_BALANCE_MOCK_USD;
+  const prevKey = process.env.KRIPICARD_API_KEY;
   process.env.KRIPICARD_BALANCE_MOCK_USD = '1284.5';
+  delete process.env.KRIPICARD_API_KEY;
   try {
-    // Fresh require is not needed — function reads env at call time.
     delete require.cache[require.resolve(path.join(ROOT, 'lib/kripicard.js'))];
     const lib = require(path.join(ROOT, 'lib/kripicard.js'));
-    const info = await lib.fetchAccountBalance();
-    assert.equal(info.balance_usd, 1284.5);
-    assert.equal(info.source, 'kripicard_mock');
-    assert.equal(info.currency, 'USD');
+    let threw = null;
+    try {
+      await lib.fetchAccountBalance();
+    } catch (err) {
+      threw = err;
+    }
+    assert.ok(threw, 'must attempt live path and fail without API key');
+    assert.equal(threw.code, 'KRIPICARD_NOT_CONFIGURED');
   } finally {
     if (prev == null) delete process.env.KRIPICARD_BALANCE_MOCK_USD;
     else process.env.KRIPICARD_BALANCE_MOCK_USD = prev;
+    if (prevKey == null) delete process.env.KRIPICARD_API_KEY;
+    else process.env.KRIPICARD_API_KEY = prevKey;
     delete require.cache[require.resolve(path.join(ROOT, 'lib/kripicard.js'))];
   }
   console.log('ok');
@@ -114,7 +123,7 @@ function testGeneratedShells() {
 async function main() {
   testLibBalanceHelper();
   testAuthStrategyMatchesProvider();
-  await testMockMode();
+  await testMockModeDisabled();
   testAdminRoute();
   testAdminUiWidget();
   testGeneratedShells();

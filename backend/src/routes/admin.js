@@ -1922,9 +1922,8 @@ router.get('/master-wallet-balance', requirePermission('master_wallet'), async (
 
 /**
  * GET /api/admin/kripicard-balance
- * Live Instant Card provider float (USD) from Kripicard.
- * Set KRIPICARD_BALANCE_MOCK_USD for local/UI testing without a live key.
- * Provider failures (401/403/500) are logged with a truncated body preview.
+ * Live Instant Card provider float (USD) from Kripicard production.
+ * Requires KRIPICARD_API_KEY. Provider failures (401/403/500) are logged with a truncated body preview.
  */
 router.get('/kripicard-balance', requirePermission('cards'), async (_req, res) => {
   try {
@@ -1935,7 +1934,7 @@ router.get('/kripicard-balance', requirePermission('cards'), async (_req, res) =
       balance: {
         balance_usd: Number(info.balance_usd) || 0,
         currency: info.currency || 'USD',
-        source: info.source || 'kripicard',
+        source: info.source || 'kripicard_live',
         auth_mode: info.auth_mode || null,
         checked_at: info.checked_at || new Date().toISOString(),
       },
@@ -1962,7 +1961,7 @@ router.get('/kripicard-balance', requirePermission('cards'), async (_req, res) =
       })
     );
     let status = 502;
-    if (code === 'KRIPICARD_NOT_CONFIGURED' || code === 'KRIPICARD_BALANCE_MOCK_INVALID') {
+    if (code === 'KRIPICARD_NOT_CONFIGURED') {
       status = 503;
     } else if (code === 'KRIPICARD_TIMEOUT') {
       status = 504;
@@ -1988,9 +1987,10 @@ router.get('/kripicard-balance', requirePermission('cards'), async (_req, res) =
         ? {
             debug: {
               hint:
-                'Kripicard appapi requires api_key via query (GET) or JSON body (POST); '
+                'Live Kripicard balance requires KRIPICARD_API_KEY. '
+                + 'appapi auth uses api_key via query (GET) or JSON body (POST); '
                 + 'Bearer/X-API-Key headers alone are rejected. '
-                + 'Set KRIPICARD_BALANCE_MOCK_USD for offline UI tests, or KRIPICARD_BALANCE_DEBUG=1 for details.',
+                + 'Set KRIPICARD_BALANCE_DEBUG=1 for details.',
               body_preview: (() => {
                 try {
                   if (err.body == null) return null;
