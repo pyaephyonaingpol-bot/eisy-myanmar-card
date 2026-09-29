@@ -111,19 +111,13 @@ const Dashboard = {
   },
 
   /**
-   * Portal isolation: strip legacy Business/Standard chrome and lock to Instant/Kripicard.
-   * Hub (/) is a gateway with Instant entry only.
+   * Portal isolation: Instant / Kripicard only. Hub (/) is Instant entry.
    */
   applyPortalIsolation() {
     const portal = this.getPortal();
     this._portal = portal;
     document.documentElement.setAttribute('data-eisy-portal', portal || 'hub');
     if (portal) this.rememberPortal(portal);
-
-    document.querySelectorAll(
-      '[data-mode-nav="standard"], [data-mode-shell="standard"], [data-page="standard-card"], [data-standard-only], [data-portal-cta="standard"]'
-    ).forEach((el) => el.remove());
-    $('standardAppPageHost')?.closest('.app-page')?.remove();
 
     if (!portal) {
       this.applyHubGateway();
@@ -191,7 +185,7 @@ const Dashboard = {
   },
 
   renderPortalHeaderNav() {
-    const header = $('appModeSwitchHeader');
+    const header = $('portalNavHeader');
     if (!header) return;
     const portal = this._portal || this.getPortal();
     if (portal === 'instant') {
@@ -204,7 +198,6 @@ const Dashboard = {
   },
 
   syncCardsApplyCtas() {
-    document.querySelector('[data-portal-cta="standard"]')?.remove();
     const instantCta = document.querySelector('[data-portal-cta="instant"]');
     const portal = this._portal || this.getPortal();
     if (instantCta) {
@@ -373,7 +366,6 @@ const Dashboard = {
       btn.addEventListener('click', () => {
         const target = btn.dataset.goto;
         if (!target || typeof AppNav === 'undefined') return;
-        if (target === 'standard-card' || target === 'standard') return;
         const opts = { pushHash: true };
         if (btn.dataset.depositTab) opts.depositTab = btn.dataset.depositTab;
         if (btn.dataset.p2pTab) opts.p2pTab = btn.dataset.p2pTab;
@@ -497,12 +489,6 @@ const Dashboard = {
   },
 
   onPageChange(page, opts = {}) {
-    if (page === 'standard-card' || page === 'standard') {
-      if (typeof AppNav !== 'undefined') {
-        AppNav.navigate(this.portalDefaultPage(), { pushHash: true });
-      }
-      return;
-    }
     const force = Boolean(opts.forceReload);
     this.setPageLoading(page, true);
     try {
@@ -5582,7 +5568,7 @@ const Dashboard = {
     this.renderPortalHeaderNav();
     this.syncCardsApplyCtas();
     if (this._portal === 'instant') {
-      this.mountAppModeUi();
+      this.mountInstantAppUi();
     }
 
     $('issueCardForm') && ($('issueCardForm').onsubmit = async (e) => {
@@ -5774,11 +5760,11 @@ const Dashboard = {
     }
   },
 
-  bindCardProviderTabs() {
+  bindInstantCardUi() {
     this.renderPortalHeaderNav();
     this.syncCardsApplyCtas();
     if (this._portal === 'instant') {
-      this.mountAppModeUi();
+      this.mountInstantAppUi();
     }
   },
 
@@ -5787,12 +5773,11 @@ const Dashboard = {
       'cardsApplyCta',
       'instantAppPageHost',
       'instantCardPageHost',
-      'appModeSwitchHeader',
     ].forEach((id) => {
       const el = $(id);
       if (!el) return;
-      // Keep My Cards CTA + header mount nodes; clear exclusive content hosts only.
-      if (id === 'appModeSwitchHeader' || id === 'cardsApplyCta') return;
+      // Keep My Cards CTA mount; clear exclusive Instant content hosts only.
+      if (id === 'cardsApplyCta') return;
       if (id.includes('Shell') || id.includes('Host')) el.innerHTML = '';
     });
   },
@@ -5855,10 +5840,10 @@ const Dashboard = {
     };
   },
 
-  mountAppModeUi() {
+  mountInstantAppUi() {
     const comps = (typeof EisyComponents !== 'undefined') ? EisyComponents : null;
     if (!comps?.instantAppView) {
-      return this.mountCardProviderUi();
+      return this.mountInstantCardFallbackUi();
     }
 
     this.clearCardViewHosts();
@@ -5873,9 +5858,9 @@ const Dashboard = {
     document.documentElement.setAttribute('data-app-mode', 'instant');
   },
 
-  mountCardProviderUi() {
+  mountInstantCardFallbackUi() {
     const comps = (typeof EisyComponents !== 'undefined') ? EisyComponents : null;
-    if (comps?.instantAppView) return this.mountAppModeUi();
+    if (comps?.instantAppView) return this.mountInstantAppUi();
     if (!comps?.instantCardView) {
       console.warn('[Dashboard] instant card view not loaded');
       return;
@@ -5892,7 +5877,7 @@ const Dashboard = {
 
   enterInstantCardPage({ force = false } = {}) {
     this.loadWallet({ force: false }).catch(() => {});
-    this.mountAppModeUi();
+    this.mountInstantAppUi();
   },
 
   renderInstantWalletBalance() {

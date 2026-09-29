@@ -528,9 +528,9 @@ async function reloadCardFromUsdtWallet(userId, { cardId, amountUsdt }) {
 
   const cardMeta = parseRecordMetadata(card.metadata);
   const provider = String(cardMeta.provider || 'kripicard').toLowerCase();
-  if (provider === 'bitnob') {
-    const err = new Error('Legacy card provider is no longer supported for reload.');
-    err.code = 'LEGACY_CARD_RELOAD_UNSUPPORTED';
+  if (provider !== 'kripicard') {
+    const err = new Error('This card cannot be reloaded (unsupported provider).');
+    err.code = 'UNSUPPORTED_CARD_RELOAD';
     throw err;
   }
 
