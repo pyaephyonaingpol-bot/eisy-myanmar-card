@@ -2,10 +2,10 @@ const express = require('express');
 const crypto = require('crypto');
 const { requireAuth, requireSensitive } = require('../middleware/auth');
 const {
-  createTronOrder,
-  findTronOrderByOrderId,
-  verifyPendingTronOrders,
-} = require('../services/tronOrderService');
+  createKripicardCryptoDeposit,
+  findOrderByOrderId,
+  pollPendingKripicardDeposits,
+} = require('../services/kripicardDepositService');
 
 const router = express.Router();
 
@@ -18,7 +18,7 @@ function timingSafeEqualString(a, b) {
 
 /**
  * POST /api/tron/orders/check/pending
- * Manual / cron trigger for TronGrid verification (same as background poll).
+ * Poll Kripicard deposit status for pending Master Wallet top-ups.
  */
 router.post('/check/pending', async (req, res) => {
   const expected = String(process.env.DEPOSIT_LISTENER_SECRET || '').trim();
@@ -30,13 +30,13 @@ router.post('/check/pending', async (req, res) => {
 
   if (expected && provided && timingSafeEqualString(provided, expected)) {
     try {
-      const result = await verifyPendingTronOrders();
-      return res.json({ success: true, ...result });
+      const result = await pollPendingKripicardDeposits();
+      return res.json({ success: true, provider: 'kripicard', ...result });
     } catch (err) {
       console.error('[tron/orders/check]', err.message);
       return res.status(500).json({
         success: false,
-        error: err.message || 'TRON order verification failed',
+        error: err.message || 'Kripicard deposit verification failed',
         code: err.code,
       });
     }
@@ -51,24 +51,36 @@ router.post('/check/pending', async (req, res) => {
 
 /**
  * POST /api/tron/orders
- * Create a TRON USDT (TRC20) deposit order in Supabase.
- * Body: { amount_usdt | amount }
+ * Create a Kripicard crypto deposit (unique pay-to address + exact amount).
+ * Kept under /api/tron/orders for Instant portal compatibility.
+ * Body: { amount_usdt | amount, network?, order_id? }
  */
 router.post('/', requireAuth, requireSensitive, async (req, res) => {
   try {
-    const result = await createTronOrder(req.user.id, req.body || {});
+    const body = req.body || {};
+    const result = await createKripicardCryptoDeposit(req.user.id, {
+      amount_usdt: body.amount_usdt ?? body.amount,
+      network: body.network || body.kripicard_network || 'tron',
+      currency: body.currency || 'USDT',
+      order_id: body.order_id || null,
+    });
     return res.status(201).json({
       success: true,
       ...result,
     });
   } catch (err) {
     console.error('[tron/orders POST]', err.message, err.code || '');
-    const status = err.code === 'SUPABASE_NOT_CONFIGURED'
+    const status = err.code === 'KRIPICARD_NOT_CONFIGURED'
       ? 503
-      : (['TRON_ORDER_INVALID_AMOUNT', 'TRON_ORDER_AMOUNT_TOO_LOW'].includes(err.code) ? 400 : 500);
+      : ([
+        'KRIPICARD_DEPOSIT_INVALID_AMOUNT',
+        'KRIPICARD_DEPOSIT_AMOUNT_TOO_LOW',
+        'KRIPICARD_API_ERROR',
+        'INVALID_AMOUNT',
+      ].includes(err.code) ? 400 : 500);
     return res.status(status).json({
       success: false,
-      error: err.message || 'Failed to create TRON order',
+      error: err.message || 'Failed to create Kripicard deposit',
       code: err.code,
     });
   }
@@ -76,11 +88,11 @@ router.post('/', requireAuth, requireSensitive, async (req, res) => {
 
 /**
  * GET /api/tron/orders/:orderId
- * Fetch order status for frontend polling.
+ * Fetch order status (polls Kripicard deposits/status when still pending).
  */
 router.get('/:orderId', requireAuth, async (req, res) => {
   try {
-    const order = await findTronOrderByOrderId(req.params.orderId);
+    const order = await findOrderByOrderId(req.params.orderId);
     if (!order) {
       return res.status(404).json({
         success: false,
@@ -95,7 +107,7 @@ router.get('/:orderId', requireAuth, async (req, res) => {
         code: 'TRON_ORDER_FORBIDDEN',
       });
     }
-    return res.json({ success: true, order });
+    return res.json({ success: true, order, provider: 'kripicard' });
   } catch (err) {
     console.error('[tron/orders GET]', err.message);
     return res.status(500).json({

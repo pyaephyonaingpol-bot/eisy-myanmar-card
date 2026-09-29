@@ -10,7 +10,6 @@ const {
 const { uploadDepositScreenshot, persistDepositUpload, saveDepositScreenshotFromBase64 } = require('../middleware/upload');
 const DepositRequest = require('../models/DepositRequest');
 const {
-  createUsdtDepositRequest,
   submitAndAutoVerifyUsdtDeposit,
 } = require('../services/depositService');
 const {
@@ -20,10 +19,10 @@ const {
 const { enrichDeposit } = require('../services/depositEnrichment');
 const { walletPayload } = require('../services/walletService');
 const { getUsdtDepositSettings } = require('../services/settingsService');
-const { createBinancePayDeposit } = require('../services/binanceDepositService');
 const {
-  createKripicardCollectionDeposit,
-} = require('../services/kripicardPaymentCollectionService');
+  createKripicardCryptoDeposit,
+  fetchDepositNetworks,
+} = require('../services/kripicardDepositService');
 const { listPaymentMethods } = require('../services/depositPaymentMethodService');
 const { getMasterWalletAddress } = require('../services/tronMasterWalletService');
 
@@ -73,84 +72,81 @@ function requireListenerOrAdmin(req, res, next) {
 
 /**
  * POST /api/deposit/create
- * Create a Binance Pay checkout order with 2% fee (min $1).
- * Body: { amount_usdt | amount, currency?, terminalType?, returnUrl?, cancelUrl? }
- *
- * Optional provider: "kripicard" | "kripicard_collection" creates a pending
- * Master Wallet top-up awaiting Kripicard payment-collection webhook credit.
+ * Kripicard Deposit API — unique crypto pay-to address + exact amount.
+ * Body: { amount_usdt | amount, network?, currency?, order_id? }
  */
 router.post('/create', requireAuth, requireSensitive, async (req, res) => {
   try {
     const body = req.body || {};
-    const provider = String(body.provider || body.payment_provider || body.channel || '')
-      .trim()
-      .toLowerCase();
-
-    if (provider === 'kripicard' || provider === 'kripicard_collection') {
-      const result = await createKripicardCollectionDeposit(req.user.id, body);
-      return res.status(201).json({
-        success: true,
-        provider: 'kripicard_collection',
-        ledger: 'master_wallet',
-        message: result.message,
-        deposit: result.deposit,
-        fee_breakdown: result.fee_breakdown,
-        merchant_reference: result.merchant_reference,
-        collection_id: result.collection_id,
-        webhook_url: result.webhook_url,
-      });
-    }
-
-    const result = await createBinancePayDeposit(req.user.id, body);
+    const result = await createKripicardCryptoDeposit(req.user.id, {
+      amount_usdt: body.amount_usdt ?? body.amount,
+      network: body.network || body.kripicard_network || 'tron',
+      currency: body.currency || 'USDT',
+      order_id: body.order_id || null,
+    });
     return res.status(201).json({
       success: true,
-      provider: 'binance_pay',
-      message: result.message,
-      deposit: result.deposit,
-      fee_breakdown: result.fee_breakdown,
-      fee_rule: 'Math.max(amount * 0.02, 1)',
-      binance: result.binance,
-      checkout_url: result.binance?.checkout_url || null,
-      qrcode_link: result.binance?.qrcode_link || null,
+      ...result,
     });
   } catch (err) {
     console.error('[deposit/create]', err.message, err.code || '');
-    const status = err.code === 'BINANCE_PAY_NOT_CONFIGURED'
+    const status = err.code === 'KRIPICARD_NOT_CONFIGURED'
       ? 503
-      : (err.code === 'PAYMENT_FEE_EXCEEDS_AMOUNT' ? 400 : 400);
+      : ([
+        'KRIPICARD_DEPOSIT_INVALID_AMOUNT',
+        'KRIPICARD_DEPOSIT_AMOUNT_TOO_LOW',
+        'KRIPICARD_API_ERROR',
+        'INVALID_AMOUNT',
+      ].includes(err.code) ? 400 : 400);
     return res.status(status).json({
       success: false,
-      error: err.message || 'Failed to create deposit',
+      error: err.message || 'Failed to create Kripicard deposit',
       code: err.code,
-      binance: err.binance || undefined,
+    });
+  }
+});
+
+/**
+ * GET /api/deposit/kripicard-networks
+ * Live networks from Kripicard Deposit API.
+ */
+router.get('/kripicard-networks', requireAuth, async (req, res) => {
+  try {
+    const currency = String(req.query.currency || 'USDT').toUpperCase();
+    const result = await fetchDepositNetworks({ currency });
+    return res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[deposit/kripicard-networks]', err.message);
+    return res.status(err.code === 'KRIPICARD_NOT_CONFIGURED' ? 503 : 502).json({
+      success: false,
+      error: err.message || 'Failed to load deposit networks',
+      code: err.code,
     });
   }
 });
 
 /**
  * POST /api/deposit/kripicard-collection
- * Explicit Master Wallet top-up via Kripicard payment collection webhook.
- * Body: { amount_usdt | amount, collection_id?, merchant_reference? }
+ * Alias → Kripicard crypto Deposit API (legacy collection route name retained).
  */
 router.post('/kripicard-collection', requireAuth, requireSensitive, async (req, res) => {
   try {
-    const result = await createKripicardCollectionDeposit(req.user.id, req.body || {});
+    const body = req.body || {};
+    const result = await createKripicardCryptoDeposit(req.user.id, {
+      amount_usdt: body.amount_usdt ?? body.amount,
+      network: body.network || 'tron',
+      currency: body.currency || 'USDT',
+      order_id: body.order_id || body.merchant_reference || null,
+    });
     return res.status(201).json({
       success: true,
-      provider: 'kripicard_collection',
-      ledger: 'master_wallet',
-      message: result.message,
-      deposit: result.deposit,
-      fee_breakdown: result.fee_breakdown,
-      merchant_reference: result.merchant_reference,
-      collection_id: result.collection_id,
-      webhook_url: result.webhook_url,
+      ...result,
     });
   } catch (err) {
     console.error('[deposit/kripicard-collection]', err.message, err.code || '');
-    return res.status(err.code === 'PAYMENT_FEE_EXCEEDS_AMOUNT' ? 400 : 400).json({
+    return res.status(400).json({
       success: false,
-      error: err.message || 'Failed to create Kripicard collection deposit',
+      error: err.message || 'Failed to create Kripicard deposit',
       code: err.code,
     });
   }
@@ -158,19 +154,18 @@ router.post('/kripicard-collection', requireAuth, requireSensitive, async (req, 
 
 router.post('/request', requireAuth, requireSensitive, async (req, res) => {
   try {
-    const userId = req.user.id;
     const depositType = (req.body.deposit_type || 'usdt').toLowerCase();
 
     if (depositType === 'mmk' || req.body.amount_mmk != null) {
       return res.status(400).json({
         success: false,
-        error: 'MMK bank deposits are no longer supported. Top up via USDT (TRC20) only.',
+        error: 'MMK bank deposits are no longer supported. Top up via USDT crypto deposit only.',
         code: 'USDT_ONLY_DEPOSIT',
       });
     }
 
     const amountUsdt = parseFloat(req.body.amount_usdt ?? req.body.amount);
-    const network = req.body.network || 'TRC20';
+    const network = req.body.network || 'tron';
     const depositChannel = (req.body.deposit_channel || 'platform_direct').toLowerCase();
 
     if (!amountUsdt || amountUsdt <= 0) {
@@ -183,28 +178,38 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
       });
     }
 
-    const { deposit, depositAddress, network: net, fee_breakdown } = await createUsdtDepositRequest(userId, {
+    const result = await createKripicardCryptoDeposit(req.user.id, {
       amount_usdt: amountUsdt,
       network,
-      metadata: { deposit_channel: 'platform_direct', ...(req.body.metadata || {}) },
+      currency: req.body.currency || 'USDT',
+      order_id: req.body.order_id || null,
     });
+
+    const payNet = result.payment?.kripicard_network || result.payment?.network || network;
+    const depositAddress = result.payment?.deposit_address || result.order?.deposit_address;
 
     return res.json({
       success: true,
-      message: 'USDT Deposit Request Submitted!',
-      deposit: enrichDeposit(deposit),
+      message: result.message || 'USDT Deposit Request Submitted!',
+      provider: 'kripicard',
+      ledger: 'master_wallet',
+      deposit: result.deposit,
+      order: result.order,
       deposit_type: 'usdt',
-      deposit_channel: 'platform_direct',
-      fee_breakdown,
+      deposit_channel: 'kripicard_deposit',
+      fee_breakdown: result.fee_breakdown,
       payment_instructions: {
-        message: `Send exactly ${amountUsdt.toFixed(2)} USDT via ${net} to the platform address below`,
-        ref_code: deposit.ref_code,
-        network: net,
+        message: `Send exactly ${Number(result.payment?.amount_usdt || amountUsdt).toFixed(2)} USDT via ${payNet} to the address below`,
+        ref_code: result.deposit?.ref_code || result.order?.ref_code,
+        order_id: result.order?.order_id,
+        kripicard_deposit_id: result.payment?.kripicard_deposit_id,
+        network: payNet,
         deposit_address: depositAddress,
-        fee_usdt: fee_breakdown?.fee_usdt,
-        net_usdt: fee_breakdown?.net_usdt,
-        fee_label: fee_breakdown?.fee_label,
-        note: `Service fee is max(2%, $1). Net credit ≈ $${Number(fee_breakdown?.net_usdt || 0).toFixed(2)} USDT after approval.`,
+        fee_usdt: result.fee_breakdown?.fee_usdt,
+        net_usdt: result.fee_breakdown?.net_usdt,
+        fee_label: result.fee_breakdown?.fee_label,
+        expires_at: result.payment?.expires_at,
+        note: `Kripicard fee applied at gateway. Net credit ≈ $${Number(result.fee_breakdown?.net_usdt || 0).toFixed(2)} USDT after on-chain confirmation.`,
       },
     });
   } catch (err) {
@@ -221,10 +226,11 @@ router.post('/request', requireAuth, requireSensitive, async (req, res) => {
     if (
       msg.includes('Minimum')
       || msg.includes('Positive')
-      || msg.includes('network must be')
+      || msg.includes('network')
       || msg.includes('Invalid')
       || msg.includes('not available')
-      || msg.includes('No active bank')
+      || err.code === 'KRIPICARD_DEPOSIT_AMOUNT_TOO_LOW'
+      || err.code === 'KRIPICARD_API_ERROR'
       || err.code === 'SQLITE_CONSTRAINT'
     ) {
       return res.status(400).json({

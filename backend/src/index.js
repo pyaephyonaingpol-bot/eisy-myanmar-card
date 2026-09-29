@@ -523,8 +523,16 @@ async function start() {
   }, 60 * 1000);
   expiryInterval.unref?.();
 
-  const { startTronOrderPoller } = require('./services/tronOrderService');
-  startTronOrderPoller();
+  // Legacy TronGrid HD-address poller disabled — deposits use Kripicard Deposit API.
+  if (String(process.env.TRON_ORDER_POLL_ENABLED || 'false').toLowerCase() === 'true') {
+    const { startTronOrderPoller } = require('./services/tronOrderService');
+    startTronOrderPoller();
+  } else {
+    console.log('[tron/orders] TronGrid poll disabled (Kripicard Deposit API is primary)');
+  }
+
+  const { startKripicardDepositPoller } = require('./services/kripicardDepositService');
+  startKripicardDepositPoller();
 
   await new Promise((resolve, reject) => {
     server = app.listen(PORT, '0.0.0.0', () => {
