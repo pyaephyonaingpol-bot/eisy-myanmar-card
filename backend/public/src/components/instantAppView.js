@@ -1,7 +1,7 @@
 /**
  * Instant App View — Master USDT Wallet + Instant Card only.
- * Shows Master USDT balance, TRC20 deposit address, and Instant Card actions.
- * Instant portal shell (Master Wallet + Kripicard).
+ * Deposits: Kripicard Deposit API (unique pay_address / pay_amount / network).
+ * Withdrawals: legacy TRON master wallet (not Kripicard).
  */
 (function (root) {
   'use strict';
@@ -15,22 +15,22 @@
 <div id="instantAppView" class="app-mode-view" data-app-mode="instant" data-provider="kripicard" data-wallet="usdt">
   <section class="panel app-mode-wallet-panel">
     <h2 data-i18n="instant_app_wallet_heading">Master USDT Wallet (Instant)</h2>
-    <p class="hint" data-i18n="instant_app_wallet_desc">Internal Master USDT balance. Deposit via TRC20, then issue Instant Card (No KYC).</p>
+    <p class="hint" data-i18n="instant_app_wallet_desc">Internal Master USDT balance. Top up via Kripicard (unique pay address), then issue Instant Card (No KYC). Withdrawals use the legacy TRON master wallet.</p>
     <div class="wallet-pay-hint ok" style="margin-bottom:0.75rem">
       <span data-i18n="instant_usdt_wallet_balance_label">Master USDT Wallet</span>:
       <strong id="instantAppUsdtBalance">—</strong>
     </div>
-    <div class="field" style="margin-bottom:0.5rem">
-      <label data-i18n="instant_trc20_deposit_label">TRC20 deposit address</label>
-      <input id="instantAppTrc20Address" type="text" readonly value="" placeholder="Loading…" />
-      <small class="hint" id="instantAppTrc20Hint" data-i18n="instant_trc20_deposit_hint">USDT (TRC20) · Master Wallet deposits only — funds Instant Card</small>
+    <div class="field" style="margin-bottom:0.5rem" data-deposit-provider="kripicard">
+      <label data-i18n="instant_kripicard_deposit_label">Kripicard deposit</label>
+      <p class="hint" id="instantAppDepositHint" data-i18n="instant_kripicard_deposit_hint" style="margin:0.35rem 0 0">
+        Each top-up issues a unique pay address, exact amount, and network (e.g. Tron). Min $20 USDT.
+      </p>
     </div>
     <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
-      <button type="button" class="btn btn-secondary btn-sm" id="btnInstantAppCopyTrc20" data-i18n="btn_copy">Copy</button>
-      <button type="button" class="btn btn-secondary btn-sm" id="btnInstantAppRefreshDeposit" data-i18n="refresh_instant_deposit">Refresh address</button>
       <button type="button" class="btn btn-primary btn-sm" data-open-usdt-topup data-i18n="top_up_usdt_wallet">Top up Master Wallet</button>
-      <button type="button" class="btn btn-secondary btn-sm" id="btnInstantAppWithdraw" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="btnInstantAppWithdraw" data-i18n="btn_withdraw_usdt" data-payout-system="legacy-tron-master-wallet">Withdraw USDT</button>
     </div>
+    <p class="hint" style="margin-top:0.65rem" data-i18n="instant_withdraw_legacy_hint">Withdrawals payout from our legacy TRON master wallet (TRC20 automated) — not via Kripicard.</p>
   </section>
 
   <section class="panel app-mode-card-panel">
@@ -46,10 +46,6 @@
     return root.EisyComponents && root.EisyComponents.instantCardView;
   }
 
-  function usdtApi() {
-    return root.EisyServices && root.EisyServices.usdtWallet;
-  }
-
   function renderBalance(ctx) {
     const el = $('instantAppUsdtBalance');
     if (!el) return;
@@ -58,69 +54,19 @@
     el.textContent = format(bal);
   }
 
-  function pickTrc20(addresses) {
-    const list = Array.isArray(addresses) ? addresses : [];
-    return list.find((row) => {
-      const net = String(row.network || row.network_label || '').toUpperCase();
-      return net.includes('TRC20') || net.includes('TRON');
-    }) || list[0] || null;
-  }
-
-  async function loadTrc20Deposit(ctx, { force = false } = {}) {
-    const input = $('instantAppTrc20Address');
-    const hint = $('instantAppTrc20Hint');
-    const svc = usdtApi();
-    if (!svc) {
-      if (input) input.value = '';
-      if (hint) hint.textContent = 'Deposit service unavailable';
-      return null;
+  /** @deprecated Static HD TRC20 addresses retired — use Top up (Kripicard). */
+  async function loadTrc20Deposit(ctx) {
+    const hint = $('instantAppDepositHint');
+    if (hint && !hint.dataset.i18nKeep) {
+      hint.textContent = typeof ctx.t === 'function'
+        ? (ctx.t('instant_kripicard_deposit_hint') || hint.textContent)
+        : hint.textContent;
     }
-    try {
-      if (input) input.placeholder = 'Loading…';
-      if (force && typeof ctx.refreshUsdtWallet === 'function') {
-        await ctx.refreshUsdtWallet().catch(() => {});
-      }
-      let addresses = ctx.getMasterDepositAddresses?.() || null;
-      if (!addresses || force) {
-        const data = await svc.getOverview();
-        addresses = data?.deposit_addresses || [];
-        ctx.setMasterDepositAddresses?.(addresses);
-        if (typeof ctx.setUsdtBalanceFromOverview === 'function') {
-          ctx.setUsdtBalanceFromOverview(data);
-        }
-      }
-      const row = pickTrc20(addresses);
-      if (input) {
-        input.value = row?.address || '';
-        input.placeholder = row?.address ? '' : 'No address yet';
-      }
-      if (hint) {
-        if (row?.address) {
-          const net = row.network_label || row.network || 'TRC20';
-          hint.textContent = row.deposit_reference
-            ? `${net} · Ref ${row.deposit_reference} · Master Wallet only`
-            : `${net} · Master Wallet deposits only — Instant Card`;
-        } else {
-          hint.textContent = 'No TRC20 address yet — use Top up to provision';
-        }
-      }
-      ctx.trc20Deposit = row;
-      return row;
-    } catch (err) {
-      if (input) {
-        input.value = '';
-        input.placeholder = err.code === 'SENSITIVE_AUTH_REQUIRED'
-          ? 'Unlock PIN to view address'
-          : 'Unavailable';
-      }
-      if (hint) {
-        hint.textContent = err.code === 'SENSITIVE_AUTH_REQUIRED'
-          ? 'Unlock with PIN to load your Master TRC20 deposit address'
-          : (err.message || 'Deposit address unavailable');
-      }
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED') ctx.openPinUnlock?.();
-      return null;
+    if (typeof ctx.refreshUsdtWallet === 'function') {
+      await ctx.refreshUsdtWallet().catch(() => {});
+      renderBalance(ctx);
     }
+    return null;
   }
 
   function mount(host, { replace = true } = {}) {
@@ -159,21 +105,7 @@
     $('btnInstantAppWithdraw')?.addEventListener('click', () => {
       ctx.openUsdtWithdraw?.();
     });
-
-    $('btnInstantAppCopyTrc20')?.addEventListener('click', async () => {
-      const val = $('instantAppTrc20Address')?.value || '';
-      if (!val || val === 'Loading…') return;
-      try {
-        await navigator.clipboard.writeText(val);
-        ctx.toast?.(typeof ctx.t === 'function' ? ctx.t('copied') : 'Copied', 'ok');
-      } catch (_) {
-        ctx.toast?.('Copy failed', 'error');
-      }
-    });
-
-    $('btnInstantAppRefreshDeposit')?.addEventListener('click', () => {
-      loadTrc20Deposit(ctx, { force: true }).catch(() => {});
-    });
+    // Top-up CTAs use [data-open-usdt-topup] — bound globally by Dashboard.bindUsdtTopUpModal.
 
     const cardHost = $('instantAppCardHost');
     const card = cardView();
@@ -189,7 +121,7 @@
       await ctx.refreshUsdtWallet().catch(() => {});
     }
     renderBalance(ctx);
-    await loadTrc20Deposit(ctx, { force: false });
+    await loadTrc20Deposit(ctx);
     const card = cardView();
     if (card) {
       await card.activate(ctx);
