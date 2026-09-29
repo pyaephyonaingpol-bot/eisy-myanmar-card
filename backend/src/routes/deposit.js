@@ -21,6 +21,9 @@ const { enrichDeposit } = require('../services/depositEnrichment');
 const { walletPayload } = require('../services/walletService');
 const { getUsdtDepositSettings } = require('../services/settingsService');
 const { createBinancePayDeposit } = require('../services/binanceDepositService');
+const {
+  createKripicardCollectionDeposit,
+} = require('../services/kripicardPaymentCollectionService');
 const { listPaymentMethods } = require('../services/depositPaymentMethodService');
 const { getMasterWalletAddress } = require('../services/tronMasterWalletService');
 
@@ -72,10 +75,33 @@ function requireListenerOrAdmin(req, res, next) {
  * POST /api/deposit/create
  * Create a Binance Pay checkout order with 2% fee (min $1).
  * Body: { amount_usdt | amount, currency?, terminalType?, returnUrl?, cancelUrl? }
+ *
+ * Optional provider: "kripicard" | "kripicard_collection" creates a pending
+ * Master Wallet top-up awaiting Kripicard payment-collection webhook credit.
  */
 router.post('/create', requireAuth, requireSensitive, async (req, res) => {
   try {
-    const result = await createBinancePayDeposit(req.user.id, req.body || {});
+    const body = req.body || {};
+    const provider = String(body.provider || body.payment_provider || body.channel || '')
+      .trim()
+      .toLowerCase();
+
+    if (provider === 'kripicard' || provider === 'kripicard_collection') {
+      const result = await createKripicardCollectionDeposit(req.user.id, body);
+      return res.status(201).json({
+        success: true,
+        provider: 'kripicard_collection',
+        ledger: 'master_wallet',
+        message: result.message,
+        deposit: result.deposit,
+        fee_breakdown: result.fee_breakdown,
+        merchant_reference: result.merchant_reference,
+        collection_id: result.collection_id,
+        webhook_url: result.webhook_url,
+      });
+    }
+
+    const result = await createBinancePayDeposit(req.user.id, body);
     return res.status(201).json({
       success: true,
       provider: 'binance_pay',
@@ -94,9 +120,38 @@ router.post('/create', requireAuth, requireSensitive, async (req, res) => {
       : (err.code === 'PAYMENT_FEE_EXCEEDS_AMOUNT' ? 400 : 400);
     return res.status(status).json({
       success: false,
-      error: err.message || 'Failed to create Binance Pay deposit',
+      error: err.message || 'Failed to create deposit',
       code: err.code,
       binance: err.binance || undefined,
+    });
+  }
+});
+
+/**
+ * POST /api/deposit/kripicard-collection
+ * Explicit Master Wallet top-up via Kripicard payment collection webhook.
+ * Body: { amount_usdt | amount, collection_id?, merchant_reference? }
+ */
+router.post('/kripicard-collection', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    const result = await createKripicardCollectionDeposit(req.user.id, req.body || {});
+    return res.status(201).json({
+      success: true,
+      provider: 'kripicard_collection',
+      ledger: 'master_wallet',
+      message: result.message,
+      deposit: result.deposit,
+      fee_breakdown: result.fee_breakdown,
+      merchant_reference: result.merchant_reference,
+      collection_id: result.collection_id,
+      webhook_url: result.webhook_url,
+    });
+  } catch (err) {
+    console.error('[deposit/kripicard-collection]', err.message, err.code || '');
+    return res.status(err.code === 'PAYMENT_FEE_EXCEEDS_AMOUNT' ? 400 : 400).json({
+      success: false,
+      error: err.message || 'Failed to create Kripicard collection deposit',
+      code: err.code,
     });
   }
 });
