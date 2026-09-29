@@ -34,8 +34,8 @@ async function main() {
   assert.ok(webhook.includes("router.post('/kripicard/collections'"), 'webhook /kripicard/collections');
   assert.ok(webhook.includes("router.post('/kripicard/payments'"), 'webhook /kripicard/payments');
   assert.ok(webhook.includes('handleKripicardPaymentWebhook'), 'webhook uses collection handler');
-  assert.ok(deposit.includes('createKripicardCollectionDeposit'), 'deposit route creates collections');
-  assert.ok(deposit.includes("/kripicard-collection'"), 'explicit deposit route');
+  assert.ok(deposit.includes('createKripicardCryptoDeposit'), 'deposit route uses Kripicard Deposit API');
+  assert.ok(deposit.includes("/kripicard-collection'"), 'legacy collection alias retained');
   assert.ok(service.includes('creditDepositAndVerify'), 'credits via deposit verify');
   assert.ok(service.includes("ledger: 'master_wallet'"), 'master wallet ledger tag');
   assert.ok(service.includes('verifyKripicardWebhookSignature'), 'signature verify');

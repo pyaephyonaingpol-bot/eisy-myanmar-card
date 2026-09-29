@@ -15,9 +15,17 @@
       return api().request('GET', '/api/deposit/payment-methods');
     },
     createBinancePay(body) {
+      // Legacy name — backend now creates a Kripicard Deposit API pay-to address.
       return api().request('POST', '/api/deposit/create', body, { sensitive: true });
     },
+    createKripicardDeposit(body) {
+      return api().request('POST', '/api/deposit/create', body, { sensitive: true });
+    },
+    getKripicardNetworks(currency = 'USDT') {
+      return api().request('GET', `/api/deposit/kripicard-networks?currency=${encodeURIComponent(currency)}`);
+    },
     createTronOrder(body) {
+      // Compat path → Kripicard Deposit API (unique address + exact amount).
       return api().request('POST', '/api/tron/orders', body, { sensitive: true });
     },
     getTronOrder(orderId) {

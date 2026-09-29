@@ -80,7 +80,8 @@
     "test:user-app-perf": "node scripts/test-user-app-perf-guards.js",
     "test:admin-mmk-tx-schema-drift": "node scripts/test-admin-mmk-tx-schema-drift.js",
     "test:payment-gateway-cleanup": "node scripts/test-payment-gateway-cleanup.js",
-    "test:kripicard-payment-collections": "node scripts/test-kripicard-payment-collections.js"
+    "test:kripicard-payment-collections": "node scripts/test-kripicard-payment-collections.js",
+    "test:kripicard-deposits": "node scripts/test-kripicard-deposits.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
