@@ -1,5 +1,5 @@
 /**
- * Admin Kripicard live balance widget + API route.
+ * Admin Kripicard live balance widget + API route + auth/parsing guards.
  * Run: node backend/scripts/test-admin-kripicard-balance.js
  */
 'use strict';
@@ -27,7 +27,53 @@ function testLibBalanceHelper() {
   assert.equal(lib.pickUsdBalance({ balance_usd: 42.5 }), 42.5);
   assert.equal(lib.pickUsdBalance({ data: { available_balance: '19.00' } }), 19);
   assert.equal(lib.pickUsdBalance({ account: { wallet: { usd: 7 } } }), 7);
+  assert.equal(lib.pickUsdBalance({ data: { account_balance: '3.5' } }), 3.5);
+  assert.equal(lib.pickUsdBalance(undefined), null);
+  assert.equal(lib.pickUsdBalance(null), null);
   assert.equal(lib.pickUsdBalance({}), null);
+  assert.equal(lib.pickUsdBalance({ cards: [{ balance: 9 }] }), null);
+  console.log('ok');
+}
+
+function testAuthStrategyMatchesProvider() {
+  section('balance fetch uses api_key query/body (not headers alone)');
+  const src = read('lib/kripicard.js');
+  assert.ok(src.includes("url.searchParams.set('api_key', apiKey)"));
+  assert.ok(src.includes("body: { api_key: apiKey }"));
+  assert.ok(src.includes("authMode = 'get_query_api_key'"));
+  assert.ok(src.includes("authMode = 'post_body_api_key'"));
+  assert.ok(src.includes('kripicard_live') || src.includes("source: 'kripicard_live'"));
+  assert.ok(src.includes('KRIPICARD_BALANCE_MOCK_USD is set but ignored') || src.includes('mock mode disabled') || src.includes('Always calls production'));
+  assert.ok(!/source:\s*'kripicard_mock'/.test(src), 'mock short-circuit must be removed');
+  assert.ok(src.includes('[kripicard/balance]'));
+  assert.ok(src.includes('KRIPICARD_UNAUTHORIZED') || src.includes('status === 401'));
+  console.log('ok');
+}
+
+async function testMockModeDisabled() {
+  section('KRIPICARD_BALANCE_MOCK_USD no longer short-circuits live call');
+  const prev = process.env.KRIPICARD_BALANCE_MOCK_USD;
+  const prevKey = process.env.KRIPICARD_API_KEY;
+  process.env.KRIPICARD_BALANCE_MOCK_USD = '1284.5';
+  delete process.env.KRIPICARD_API_KEY;
+  try {
+    delete require.cache[require.resolve(path.join(ROOT, 'lib/kripicard.js'))];
+    const lib = require(path.join(ROOT, 'lib/kripicard.js'));
+    let threw = null;
+    try {
+      await lib.fetchAccountBalance();
+    } catch (err) {
+      threw = err;
+    }
+    assert.ok(threw, 'must attempt live path and fail without API key');
+    assert.equal(threw.code, 'KRIPICARD_NOT_CONFIGURED');
+  } finally {
+    if (prev == null) delete process.env.KRIPICARD_BALANCE_MOCK_USD;
+    else process.env.KRIPICARD_BALANCE_MOCK_USD = prev;
+    if (prevKey == null) delete process.env.KRIPICARD_API_KEY;
+    else process.env.KRIPICARD_API_KEY = prevKey;
+    delete require.cache[require.resolve(path.join(ROOT, 'lib/kripicard.js'))];
+  }
   console.log('ok');
 }
 
@@ -37,7 +83,10 @@ function testAdminRoute() {
   assert.ok(admin.includes("router.get('/kripicard-balance'"));
   assert.ok(admin.includes("requirePermission('cards')"));
   assert.ok(admin.includes('fetchAccountBalance'));
-  assert.ok(!/bitnob/i.test(admin.match(/kripicard-balance[\s\S]{0,800}/)?.[0] || ''));
+  assert.ok(admin.includes('provider_status'));
+  assert.ok(admin.includes('body_preview'));
+  assert.ok(admin.includes('KRIPICARD_BALANCE_DEBUG') || admin.includes('debug'));
+  assert.ok(!/bitnob/i.test(admin.match(/kripicard-balance[\s\S]{0,1200}/)?.[0] || ''));
   console.log('ok');
 }
 
@@ -71,12 +120,17 @@ function testGeneratedShells() {
   console.log('ok');
 }
 
-function main() {
+async function main() {
   testLibBalanceHelper();
+  testAuthStrategyMatchesProvider();
+  await testMockModeDisabled();
   testAdminRoute();
   testAdminUiWidget();
   testGeneratedShells();
   console.log('\nAdmin Kripicard balance checks passed.');
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

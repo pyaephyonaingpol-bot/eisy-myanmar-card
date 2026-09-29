@@ -1922,7 +1922,8 @@ router.get('/master-wallet-balance', requirePermission('master_wallet'), async (
 
 /**
  * GET /api/admin/kripicard-balance
- * Live Instant Card provider float (USD) from Kripicard.
+ * Live Instant Card provider float (USD) from Kripicard production.
+ * Requires KRIPICARD_API_KEY. Provider failures (401/403/500) are logged with a truncated body preview.
  */
 router.get('/kripicard-balance', requirePermission('cards'), async (_req, res) => {
   try {
@@ -1933,22 +1934,76 @@ router.get('/kripicard-balance', requirePermission('cards'), async (_req, res) =
       balance: {
         balance_usd: Number(info.balance_usd) || 0,
         currency: info.currency || 'USD',
-        source: info.source || 'kripicard',
+        source: info.source || 'kripicard_live',
+        auth_mode: info.auth_mode || null,
         checked_at: info.checked_at || new Date().toISOString(),
       },
     });
   } catch (err) {
-    console.error('[admin/kripicard-balance]', err.code || '', err.message);
     const code = err.code || '';
+    const providerStatus = Number(err.status) || null;
+    console.error(
+      '[admin/kripicard-balance]',
+      JSON.stringify({
+        code: code || null,
+        status: providerStatus,
+        message: err.message || 'Failed to query Kripicard balance',
+        body_preview: (() => {
+          try {
+            if (err.body == null) return null;
+            return typeof err.body === 'string'
+              ? err.body.slice(0, 400)
+              : JSON.stringify(err.body).slice(0, 400);
+          } catch (_) {
+            return null;
+          }
+        })(),
+      })
+    );
     let status = 502;
-    if (code === 'KRIPICARD_NOT_CONFIGURED') status = 503;
-    else if (code === 'KRIPICARD_TIMEOUT') status = 504;
-    else if (code === 'KRIPICARD_BALANCE_PARSE') status = 502;
-    else if (err.status >= 400 && err.status < 600) status = err.status;
+    if (code === 'KRIPICARD_NOT_CONFIGURED') {
+      status = 503;
+    } else if (code === 'KRIPICARD_TIMEOUT') {
+      status = 504;
+    } else if (code === 'KRIPICARD_UNAUTHORIZED' || providerStatus === 401) {
+      status = 502;
+    } else if (code === 'KRIPICARD_FORBIDDEN' || providerStatus === 403) {
+      status = 502;
+    } else if (code === 'KRIPICARD_SERVER_ERROR' || providerStatus === 500) {
+      status = 502;
+    } else if (code === 'KRIPICARD_BALANCE_PARSE') {
+      status = 502;
+    } else if (providerStatus >= 400 && providerStatus < 600) {
+      status = 502;
+    }
+    const debug = String(process.env.KRIPICARD_BALANCE_DEBUG || '').trim() === '1'
+      || String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
     res.status(status).json({
       success: false,
       error: err.message || 'Failed to query Kripicard balance',
       code: code || undefined,
+      provider_status: providerStatus || undefined,
+      ...(debug
+        ? {
+            debug: {
+              hint:
+                'Live Kripicard balance requires KRIPICARD_API_KEY. '
+                + 'appapi auth uses api_key via query (GET) or JSON body (POST); '
+                + 'Bearer/X-API-Key headers alone are rejected. '
+                + 'Set KRIPICARD_BALANCE_DEBUG=1 for details.',
+              body_preview: (() => {
+                try {
+                  if (err.body == null) return null;
+                  return typeof err.body === 'string'
+                    ? err.body.slice(0, 300)
+                    : JSON.stringify(err.body).slice(0, 300);
+                } catch (_) {
+                  return null;
+                }
+              })(),
+            },
+          }
+        : {}),
     });
   }
 });
