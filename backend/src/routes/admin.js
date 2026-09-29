@@ -1973,6 +1973,8 @@ router.get('/kripicard-balance', requirePermission('cards'), async (_req, res) =
       status = 502;
     } else if (code === 'KRIPICARD_BALANCE_PARSE') {
       status = 502;
+    } else if (code === 'KRIPICARD_ROUTE_NOT_FOUND' || providerStatus === 404) {
+      status = 502;
     } else if (providerStatus >= 400 && providerStatus < 600) {
       status = 502;
     }
@@ -1987,10 +1989,13 @@ router.get('/kripicard-balance', requirePermission('cards'), async (_req, res) =
         ? {
             debug: {
               hint:
-                'Live Kripicard balance requires KRIPICARD_API_KEY. '
-                + 'appapi auth uses api_key via query (GET) or JSON body (POST); '
-                + 'Bearer/X-API-Key headers alone are rejected. '
-                + 'Set KRIPICARD_BALANCE_DEBUG=1 for details.',
+                code === 'KRIPICARD_ROUTE_NOT_FOUND' || providerStatus === 404
+                  ? 'KRIPICARD_API_KEY is configured, but the balance URL returned 404 Route not found on appapi. '
+                    + 'Override KRIPICARD_BALANCE_URL once Kripicard provides the merchant float endpoint.'
+                  : 'Live Kripicard balance requires KRIPICARD_API_KEY. '
+                    + 'appapi auth uses api_key via query (GET) or JSON body (POST); '
+                    + 'Bearer/X-API-Key headers alone are rejected. '
+                    + 'Set KRIPICARD_BALANCE_DEBUG=1 for details.',
               body_preview: (() => {
                 try {
                   if (err.body == null) return null;
