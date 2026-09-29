@@ -1,5 +1,5 @@
 /**
- * Instant admin pipeline (Kripicard). Legacy Business admin redirects to Instant.
+ * Instant admin pipeline (Kripicard). Legacy /admin/business redirects to Instant.
  * Run: npm run test:admin-pipelines
  */
 'use strict';
@@ -15,7 +15,7 @@ function section(title) {
 }
 
 function testServerRoutes() {
-  section('Express serves /admin/instant; legacy Business admin redirects');
+  section('Express serves /admin/instant; legacy /admin/business redirects');
   const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
   assert.ok(indexJs.includes('sendAdminPipeline') || indexJs.includes('__EISY_ADMIN_PIPELINE__'));
   assert.ok(indexJs.includes("'/admin/instant'") || indexJs.includes('"/admin/instant"'));

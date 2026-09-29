@@ -88,8 +88,7 @@
       document.documentElement.setAttribute('data-admin-pipeline', pipeline || 'hub');
       if (pipeline) this.rememberPipeline(pipeline);
 
-      document.querySelectorAll('[data-admin-pipeline="standard"]').forEach((el) => el.remove());
-
+      // Instant admin only — no secondary pipeline chrome.
       if (!pipeline) {
         this.renderPipelineHubChooser();
         this.renderPipelineSwitcher();

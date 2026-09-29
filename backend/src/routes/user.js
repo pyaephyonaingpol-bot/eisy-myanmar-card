@@ -54,7 +54,7 @@ function mapCardForClient(c) {
     request_status: metadata.request_status || (pending ? 'pending_approval' : 'approved'),
     is_primary: Boolean(c.is_primary),
     balance_usd: metadata.balance_usd ?? null,
-    provider: metadata.provider === 'bitnob' ? 'legacy' : (metadata.provider || null),
+    provider: metadata.provider === 'kripicard' ? 'kripicard' : (metadata.provider ? 'legacy' : null),
     card_flow: metadata.card_flow
       || (metadata.provider === 'kripicard' ? 'instant' : null),
     funding_wallet: metadata.wallet_type || metadata.payment_method || null,

@@ -13,7 +13,7 @@
   const WALLET = 'usdt';
 
   const TEMPLATE = `
-<div id="instantCardApplyPanel" class="card-provider-panel is-active card-flow-page" data-card-page="instant" data-provider="kripicard" data-wallet="usdt" role="tabpanel" aria-labelledby="tabInstantCard">
+<div id="instantCardApplyPanel" class="card-flow-panel is-active card-flow-page" data-card-page="instant" data-provider="kripicard" data-wallet="usdt" role="tabpanel" aria-labelledby="tabInstantCard">
   <h2 data-i18n="apply_instant_card">Instant Card (No KYC)</h2>
   <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_instant_card_hint">No KYC required. Pay from your internal USDT Wallet (TRC20 crypto deposit), then issue Instant Card.</p>
   <div class="wallet-pay-hint ok" id="instantWalletBalanceHint" style="margin-bottom:0.75rem">

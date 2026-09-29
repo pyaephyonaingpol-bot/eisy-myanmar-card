@@ -309,7 +309,7 @@ const Card = {
     return db.get(`
       SELECT * FROM ${this.TABLE}
       WHERE json_extract(metadata, '$.provider_card_id') = ?
-         OR json_extract(metadata, '$.bitnob_card_id') = ?
+         OR json_extract(metadata, '$.card_id') = ?
       ORDER BY updated_at DESC, id DESC
       LIMIT 1
     `, id, id);

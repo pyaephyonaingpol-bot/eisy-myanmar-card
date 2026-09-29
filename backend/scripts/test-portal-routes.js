@@ -15,7 +15,7 @@ function section(title) {
 }
 
 function testServerRoutesPortalPages() {
-  section('Express serves /instant; legacy Business routes redirect');
+  section('Express serves /instant; legacy /business routes redirect');
   const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
   assert.ok(indexJs.includes("'/instant'") || indexJs.includes('"/instant"'));
   assert.ok(indexJs.includes('sendPortalApp') || indexJs.includes('__EISY_PORTAL__'));
@@ -44,7 +44,7 @@ function testPortalHtmlGenerator() {
 }
 
 function testDashboardInstantOnly() {
-  section('dashboard Instant-only (no Business hub chooser)');
+  section('dashboard Instant-only (Instant-only hub)');
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('/instant'));
   assert.ok(!/balance_bitnob|bitnob_customer|standardAppBitnob/i.test(dash));
