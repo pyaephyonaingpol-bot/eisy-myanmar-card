@@ -1921,6 +1921,39 @@ router.get('/master-wallet-balance', requirePermission('master_wallet'), async (
 });
 
 /**
+ * GET /api/admin/kripicard-balance
+ * Live Instant Card provider float (USD) from Kripicard.
+ */
+router.get('/kripicard-balance', requirePermission('cards'), async (_req, res) => {
+  try {
+    const { fetchAccountBalance } = require('../../../lib/kripicard');
+    const info = await fetchAccountBalance();
+    res.json({
+      success: true,
+      balance: {
+        balance_usd: Number(info.balance_usd) || 0,
+        currency: info.currency || 'USD',
+        source: info.source || 'kripicard',
+        checked_at: info.checked_at || new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    console.error('[admin/kripicard-balance]', err.code || '', err.message);
+    const code = err.code || '';
+    let status = 502;
+    if (code === 'KRIPICARD_NOT_CONFIGURED') status = 503;
+    else if (code === 'KRIPICARD_TIMEOUT') status = 504;
+    else if (code === 'KRIPICARD_BALANCE_PARSE') status = 502;
+    else if (err.status >= 400 && err.status < 600) status = err.status;
+    res.status(status).json({
+      success: false,
+      error: err.message || 'Failed to query Kripicard balance',
+      code: code || undefined,
+    });
+  }
+});
+
+/**
  * POST /api/admin/sweep-deposits
  * Manual-only TRON HD deposit sweep (no cron).
  * Body: { dry_run?: boolean, user_id?: number, force_gas?: boolean, limit?: number }

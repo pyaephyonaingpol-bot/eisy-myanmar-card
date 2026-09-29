@@ -706,6 +706,7 @@
 
     loadOverview() {
       if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
+      if (this.hasPermission('cards')) this.checkKripicardBalance();
       if (this.hasPermission('withdrawal_rates_read')) this.loadWithdrawalRates();
     },
 
@@ -783,6 +784,9 @@
       });
       document.querySelectorAll('[data-master-wallet-refresh]').forEach((btn) => {
         btn.addEventListener('click', () => this.checkMasterWalletBalance({ force: true }));
+      });
+      document.querySelectorAll('[data-kripicard-balance-refresh]').forEach((btn) => {
+        btn.addEventListener('click', () => this.checkKripicardBalance({ force: true }));
       });
       document.querySelectorAll('[data-tron-deposit-sweep]').forEach((btn) => {
         btn.addEventListener('click', () => this.runTronDepositSweep({ triggerBtn: btn }));
@@ -1431,6 +1435,9 @@
       if (pageOk('admins') && this.hasPermission('manage_admins')) tasks.push(this.loadAdmins());
       if (pageOk('overview') && (this.hasPermission('overview') || this.hasPermission('master_wallet'))) {
         tasks.push(this.checkMasterWalletBalance());
+      }
+      if (pageOk('overview') && this.hasPermission('cards')) {
+        tasks.push(this.checkKripicardBalance());
       }
       if (pageOk('overview') && this.hasPermission('withdrawal_rates_read')) {
         tasks.push(this.loadWithdrawalRates());
@@ -3086,6 +3093,116 @@
       })();
 
       return this._masterWalletBalanceInFlight;
+    },
+
+    renderKripicardBalance(balance) {
+      const el = $('kripicardBalanceStatus');
+      if (!el) return;
+      const usd = Number(balance?.balance_usd);
+      const checked = balance?.checked_at
+        ? new Date(balance.checked_at).toLocaleString()
+        : new Date().toLocaleString();
+      const display = Number.isFinite(usd)
+        ? usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '—';
+      el.innerHTML =
+        '<div class="sa-balance-row">' +
+          '<div class="sa-balance">' +
+            '<span class="sa-balance-label">Kripicard balance (USD)</span>' +
+            '<div class="sa-balance-value usdt">$ ' + this.esc(display) + '</div>' +
+            '<div class="sa-balance-meta">Live Instant Card provider float</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="sa-wallet-footer">Updated ' + this.esc(checked) + '</div>';
+
+      const alertEl = $('kripicardBalanceAlert');
+      if (alertEl) {
+        alertEl.classList.add('hidden');
+        alertEl.textContent = '';
+      }
+    },
+
+    async checkKripicardBalance(opts = {}) {
+      if (!this.hasPermission('cards') && !opts.force) return;
+      const statusEl = $('kripicardBalanceStatus');
+      if (!statusEl) return;
+
+      if (this._kripicardBalanceInFlight) {
+        return this._kripicardBalanceInFlight;
+      }
+
+      const buttons = Array.from(document.querySelectorAll('[data-kripicard-balance-refresh], #btnRefreshKripicardBalance'));
+      const prev = buttons.map((b) => ({
+        html: b.innerHTML,
+        disabled: b.disabled,
+      }));
+      buttons.forEach((b) => {
+        b.disabled = true;
+        b.classList.add('is-busy');
+        b.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>Refreshing…</span>';
+      });
+      statusEl.innerHTML =
+        '<p class="sa-balance-loading hint">' +
+          '<span class="btn-spinner" aria-hidden="true"></span>' +
+          '<span>Fetching Kripicard balance…</span>' +
+        '</p>';
+      const alertEl = $('kripicardBalanceAlert');
+      if (alertEl) {
+        alertEl.classList.add('hidden');
+        alertEl.textContent = '';
+      }
+
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const CLIENT_TIMEOUT_MS = 20000;
+      const timer = controller
+        ? setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS)
+        : null;
+
+      this._kripicardBalanceInFlight = (async () => {
+        try {
+          const res = await fetch('/api/admin/kripicard-balance', {
+            method: 'GET',
+            headers: this.headers(),
+            signal: controller ? controller.signal : undefined,
+          });
+          let data = {};
+          try {
+            data = await res.json();
+          } catch (_) {
+            data = {};
+          }
+          if (res.status === 401) {
+            this.clearSession();
+            this.showLogin();
+            throw new Error(data.error || 'Admin session expired — please sign in again');
+          }
+          if (!res.ok) {
+            throw new Error(data.error || res.statusText || ('HTTP ' + res.status));
+          }
+          this.renderKripicardBalance(data.balance || {});
+          if (opts.force) this.showAdminToast('Kripicard balance updated', 'ok');
+        } catch (err) {
+          const raw = err.name === 'AbortError'
+            ? 'Kripicard balance request timed out — check KRIPICARD_API_KEY / KRIPICARD_BALANCE_URL'
+            : (err.message || 'Failed to load Kripicard balance');
+          const msg = this.esc(raw);
+          statusEl.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' + msg + '</p>';
+          if (alertEl) {
+            alertEl.classList.remove('hidden');
+            alertEl.innerHTML = '<strong>Could not load Kripicard balance</strong> — ' + msg;
+          }
+        } finally {
+          if (timer) clearTimeout(timer);
+          buttons.forEach((b, i) => {
+            b.disabled = prev[i].disabled;
+            b.classList.remove('is-busy');
+            b.innerHTML = prev[i].html;
+          });
+          this._kripicardBalanceInFlight = null;
+        }
+      })();
+
+      return this._kripicardBalanceInFlight;
     },
 
     setTronSweepStatus(message, { error = false } = {}) {
