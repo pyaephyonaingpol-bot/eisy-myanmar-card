@@ -12,17 +12,47 @@ const {
 const {
   handleKripicardPaymentWebhook,
 } = require('../services/kripicardPaymentCollectionService');
+const {
+  handleKripicardDepositWebhook,
+} = require('../services/kripicardDepositService');
 
 const router = express.Router();
 
 /**
- * Kripicard payment-collection webhooks → verify + credit Master Wallet (balance_usdt).
- * Register: KRIPICARD_WEBHOOK_URL=https://YOUR_DOMAIN/api/webhook/kripicard/collections
+ * Kripicard Deposit API + payment-collection webhooks.
+ * Prefer deposit.completed → Master Wallet credit via Deposit API.
+ * Register: KRIPICARD_WEBHOOK_URL=https://YOUR_DOMAIN/api/webhook/kripicard
  */
-async function kripicardPaymentWebhookHandler(req, res) {
+async function kripicardWebhookHandler(req, res) {
   try {
-    const result = await handleKripicardPaymentWebhook(req);
-    console.log('[webhook/kripicard]', result.message || result.status || 'ok', {
+    const body = req.body || {};
+    const eventType = String(
+      body.type || body.event || body.event_type || ''
+    ).trim().toLowerCase();
+    const data = body.data && typeof body.data === 'object' ? body.data : body;
+    const looksLikeDeposit = eventType.includes('deposit')
+      || Boolean(data.pay_address || data.payAddress)
+      || Boolean(data.deposit_id || data.kripicard_deposit_id)
+      || (data.network && data.pay_amount);
+
+    const result = looksLikeDeposit
+      ? await handleKripicardDepositWebhook(req)
+      : await handleKripicardPaymentWebhook(req);
+
+    // If payment-collection handler ignored a deposit-shaped event, try deposit path.
+    if (result?.ignored && result.reason === 'not_deposit_event' && !looksLikeDeposit) {
+      /* already payment path */
+    } else if (result?.ignored && !looksLikeDeposit && eventType.includes('deposit')) {
+      const depositResult = await handleKripicardDepositWebhook(req);
+      console.log('[webhook/kripicard]', depositResult.message || depositResult.reason || 'ok', {
+        credited: depositResult.credited,
+        alreadyVerified: depositResult.alreadyVerified,
+        ignored: depositResult.ignored,
+      });
+      return res.status(200).json({ received: true, ...depositResult });
+    }
+
+    console.log('[webhook/kripicard]', result.message || result.reason || result.status || 'ok', {
       credited: result.credited,
       alreadyVerified: result.alreadyVerified,
       ignored: result.ignored,
@@ -49,7 +79,6 @@ async function kripicardPaymentWebhookHandler(req, res) {
       });
     }
     if (code === 'DEPOSIT_NOT_FOUND') {
-      // ACK so provider does not retry forever for unknown refs.
       return res.status(200).json({
         received: true,
         unmatched: true,
@@ -72,13 +101,15 @@ async function kripicardPaymentWebhookHandler(req, res) {
   }
 }
 
-router.post('/kripicard', kripicardPaymentWebhookHandler);
-router.post('/kripicard/collections', kripicardPaymentWebhookHandler);
-router.post('/kripicard/payments', kripicardPaymentWebhookHandler);
+router.post('/kripicard', kripicardWebhookHandler);
+router.post('/kripicard/collections', kripicardWebhookHandler);
+router.post('/kripicard/payments', kripicardWebhookHandler);
+router.post('/kripicard/deposits', kripicardWebhookHandler);
 
 /**
  * Binance Pay webhook — notify on PAY_SUCCESS and credit user wallet (net after fee).
  * Responds with Binance-required { returnCode: "SUCCESS" }.
+ * @deprecated Prefer Kripicard Deposit API for new deposits.
  */
 router.post('/binance', async (req, res) => {
   try {

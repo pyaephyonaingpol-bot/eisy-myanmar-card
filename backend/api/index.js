@@ -3,10 +3,10 @@
  * Root vercel.json rewrites all traffic here when the Git project root is the monorepo.
  *
  * Compatible with:
- * - POST /api/deposit/create (Binance Pay + fee Math.max(amount*0.02, 1))
- * - POST /api/deposit/kripicard-collection (pending Master Wallet top-up)
- * - POST /api/webhook/binance (PAY_SUCCESS → credit net USDT)
- * - POST /api/webhook/kripicard[/collections|/payments] (paid → Master Wallet)
+ * - POST /api/deposit/create (Kripicard Deposit API — unique pay address)
+ * - POST /api/deposit/request (same Kripicard Deposit API)
+ * - POST /api/tron/orders (compat → Kripicard Deposit API)
+ * - POST /api/webhook/kripicard[/deposits|/collections|/payments] (deposit.completed → Master Wallet)
  */
 require('../src/lib/loadEnv');
 const { initDb, getDb } = require('../src/db');
