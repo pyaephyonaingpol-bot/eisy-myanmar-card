@@ -199,6 +199,17 @@
       line-height: 1.1;
       color: #f8fafc;
     }
+    .sa-balance-loading {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      margin: 0;
+      color: #94a3b8;
+    }
+    .sa-balance-loading .btn-spinner {
+      width: 1rem;
+      height: 1rem;
+    }
 
     .mmk-wd-summary {
       display: grid;
@@ -688,6 +699,25 @@
               Manual sweep moves USDT from user HD deposit addresses to the master wallet when balance ≥ <strong id="masterWalletSweepMinLabel">25</strong> USDT.
             </p>
             <div id="masterWalletSweepStatus" class="hint" style="margin:0.5rem 0 0" aria-live="polite"></div>
+          </div>
+
+          <div class="sa-card" id="overviewKripicardBalanceCard" data-admin-perm="cards" data-admin-pipeline="instant">
+            <div class="sa-card-header">
+              <div>
+                <p class="sa-card-eyebrow">Instant Card</p>
+                <h2 class="sa-card-title">Kripicard balance</h2>
+                <p class="sa-card-sub">Live provider float used to issue Instant Cards (USD)</p>
+              </div>
+              <div class="sa-card-actions">
+                <button type="button" id="btnRefreshKripicardBalance" class="btn btn-secondary btn-sm" data-kripicard-balance-refresh>
+                  Refresh
+                </button>
+              </div>
+            </div>
+            <div id="kripicardBalanceAlert" class="sa-alert hidden" role="alert" aria-live="assertive"></div>
+            <div id="kripicardBalanceStatus" aria-live="polite">
+              <p class="hint" style="margin:0">Loading Kripicard balance…</p>
+            </div>
           </div>
 
           <div class="sa-card" id="overviewRatesCard" data-admin-perm="withdrawal_rates_read">
@@ -1429,6 +1459,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20260817m2"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20260928adminPipelines" defer></script>
+  <script src="/admin.js?v=20260929kripicardBalance" defer></script>
 </body>
 </html>

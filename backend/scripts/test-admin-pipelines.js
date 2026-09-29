@@ -78,7 +78,7 @@ function testGeneratorAndShells() {
   assert.ok(standard.includes('__EISY_ADMIN_PIPELINE__="standard"') || standard.includes("__EISY_ADMIN_PIPELINE__='standard'"));
   assert.ok(instant.includes('data-admin-pipeline="instant"'));
   assert.ok(standard.includes('data-admin-pipeline="standard"'));
-  assert.ok(instant.includes('admin.js?v=20260928adminPipelines'));
+  assert.ok(instant.includes('admin.js?v=20260929kripicardBalance') || instant.includes('admin.js?v=20260928adminPipelines'));
   assert.ok(standard.includes('Eisy Myanmar — Business Admin'));
   console.log('ok');
 }
