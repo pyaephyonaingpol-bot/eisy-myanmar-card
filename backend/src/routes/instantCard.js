@@ -1,6 +1,6 @@
 /**
  * Instant Card (Non-KYC) routes — Kripicard + Master Wallet only.
- * Mounted under /api/user. Do not import Bitnob issuance here.
+ * Mounted under /api/user. Instant / Kripicard issuance only.
  */
 const express = require('express');
 const { requireAuth, requireSensitive } = require('../middleware/auth');
@@ -61,7 +61,7 @@ function attachHelpers({ respondCardPurchaseError, buildCardPurchaseSuccessPaylo
         ledger: 'master_wallet',
         card_issuance_rate: '1 USDT ≈ 1 USD',
         deposit_path: 'master_wallet_trc20',
-        deposit_hint: 'Top up Master Wallet via TRC20 crypto deposit before issuing Instant Card. Separate from Standard Card (Bitnob) wallet.',
+        deposit_hint: 'Top up Master Wallet via TRC20 crypto deposit before issuing Instant Card.',
         sample_pricing: sample,
         auto_issue: true,
       });

@@ -55,16 +55,16 @@ function testIndexHtml() {
 }
 
 function testPortalShells() {
-  section('instant/standard portals mirror sidebar cleanup');
-  for (const portal of ['instant.html', 'standard.html']) {
-    const html = fs.readFileSync(path.join(ROOT, 'public', portal), 'utf8');
-    const nav = sidebarNav(html);
-    const menu = accountMenu(html);
-    assert.ok(!/data-page="profile"/.test(nav), `${portal}: no sidebar Profile`);
-    assert.ok(!/data-page="settings"/.test(nav), `${portal}: no sidebar Settings`);
-    assert.ok(/data-goto="profile"/.test(menu), `${portal}: account menu Profile`);
-    assert.ok(/data-goto="settings"/.test(menu), `${portal}: account menu Settings`);
-  }
+  section('instant portal mirrors sidebar cleanup');
+  const portal = 'instant.html';
+  const html = fs.readFileSync(path.join(ROOT, 'public', portal), 'utf8');
+  const nav = sidebarNav(html);
+  const menu = accountMenu(html);
+  assert.ok(!/data-page="profile"/.test(nav), `${portal}: no sidebar Profile`);
+  assert.ok(!/data-page="settings"/.test(nav), `${portal}: no sidebar Settings`);
+  assert.ok(/data-goto="profile"/.test(menu), `${portal}: account menu Profile`);
+  assert.ok(/data-goto="settings"/.test(menu), `${portal}: account menu Settings`);
+  assert.ok(!fs.existsSync(path.join(ROOT, 'public', 'standard.html')), 'standard portal removed');
   console.log('ok');
 }
 

@@ -603,7 +603,7 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             <span data-i18n="nav_admin_support">Support</span>
           </button>
-          <button type="button" class="nav-item" data-page="kyc-requests" data-admin-perm="kyc" data-admin-pipeline="standard">
+          <button type="button" class="nav-item" data-page="kyc-requests" data-admin-perm="kyc" data-admin-pipeline="instant">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             <span data-i18n="nav_admin_kyc">KYC Requests</span>
           </button>
@@ -664,7 +664,7 @@
           <span class="hidden" data-page-title="transactions" data-admin-pipeline="instant" data-i18n="nav_admin_transactions">Transactions</span>
           <span class="hidden" data-page-title="revenue" data-admin-pipeline="instant" data-i18n="nav_admin_revenue">Revenue &amp; Profit</span>
           <span class="hidden" data-page-title="support" data-admin-pipeline="shared" data-i18n="nav_admin_support">Support</span>
-          <span class="hidden" data-page-title="kyc-requests" data-admin-pipeline="standard" data-i18n="nav_admin_kyc">KYC Requests</span>
+          <span class="hidden" data-page-title="kyc-requests" data-admin-pipeline="instant" data-i18n="nav_admin_kyc">KYC Requests</span>
           <span class="hidden" data-page-title="settings" data-admin-pipeline="instant" data-i18n="nav_admin_settings">Rates &amp; Fees</span>
           <span class="hidden" data-page-title="admins" data-admin-pipeline="shared">Admins</span>
 
@@ -877,10 +877,6 @@
         <pre class="output hidden" id="issueCardAdminOut" aria-hidden="true"></pre>
         </div>
 
-        <p class="hint" id="adminStandardCardNote" data-admin-pipeline="standard" style="margin-top:1rem;margin-bottom:0.65rem">
-          Business Card issuance runs through Bitnob after KYC approval. Review pending requests and issued Bitnob cards here; use <strong>KYC Requests</strong> to verify users first.
-        </p>
-
         <h3 style="margin-top:1.5rem;font-size:1rem" data-i18n="issued_cards_status">Issued Cards — Status Control</h3>
         <p class="hint" style="margin-bottom:0.65rem" data-i18n="issued_cards_hint">Update lifecycle status for issued virtual cards. Optional reason is shown to the user when suspended or frozen.</p>
         <div id="issuedCardsTable" class="data-table-wrap"><p class="hint" data-i18n="loading_issued_cards">Loading issued cards…</p></div>
@@ -1076,9 +1072,9 @@
         </div>
       </section>
 
-      <section id="tabKycRequests" class="panel app-page" data-page="kyc-requests" data-admin-pipeline="standard">
+      <section id="tabKycRequests" class="panel app-page" data-page="kyc-requests" data-admin-pipeline="instant">
         <h2>KYC Verification Requests</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Review user identity documents for Business Card / Bitnob wallet access.</p>
+        <p class="hint" style="margin-bottom:0.75rem">Review user identity documents for P2P trading and verified banking features.</p>
         <div class="p2p-market-toolbar" style="margin-bottom:1rem">
           <label for="kycStatusFilter">Status</label>
           <select id="kycStatusFilter" class="p2p-network-select">
@@ -1149,7 +1145,7 @@
                 <h3 id="pricingBlockCardIssueTitle" class="pricing-block-title">
                   <span class="pricing-block-num">2</span>Card Issue Fee / Rate
                 </h3>
-                <p class="pricing-block-desc">Platform markup fee charged when issuing a new virtual card (kept as platform earnings; not sent to Bitnob).</p>
+                <p class="pricing-block-desc">Platform markup fee charged when issuing a new virtual card (kept as platform earnings).</p>
               </div>
               <div class="sa-rates-form">
                 <div class="field">

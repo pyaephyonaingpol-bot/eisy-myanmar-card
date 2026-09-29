@@ -51,8 +51,6 @@ const {
   getCardBalance,
 } = require('../services/cardBalanceService');
 const { approvePendingCardRequest } = require('../services/cardApprovalService');
-const { isSupabaseAdminEnabled } = require('../services/cardIssueService');
-const { getCardDetails } = require('../services/bitnobService');
 const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
   releaseP2pBuyOrder,
@@ -779,77 +777,23 @@ router.post('/deposits/:id/review', requirePermission('deposits'), async (req, r
   }
 });
 
-/**
- * Look up a Bitnob virtual card by provider card id.
- * Replaces the retired card-pool sync endpoint (Bitnob on-demand lookup).
- */
-router.post('/fetch-cards', requirePermission('cards'), async (req, res) => {
-  try {
-    if (!isSupabaseAdminEnabled()) {
-      return res.status(503).json({
-        error: 'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.',
-        code: 'SUPABASE_NOT_CONFIGURED',
-      });
-    }
-    if (!String(process.env.BITNOB_CLIENT_ID || '').trim()
-      || !String(process.env.BITNOB_CLIENT_SECRET || process.env.BITNOB_SECRET_KEY || '').trim()) {
-      return res.status(503).json({
-        error: 'Bitnob API credentials are not configured',
-        code: 'BITNOB_NOT_CONFIGURED',
-      });
-    }
-
-    const cardId = String(req.body?.card_id || req.body?.cardId || '').trim();
-    if (!cardId) {
-      return res.status(400).json({
-        error: 'card_id is required. Pool sync has been removed; use Bitnob on-demand issuance.',
-        code: 'BITNOB_CARD_ID_REQUIRED',
-      });
-    }
-
-    const result = await getCardDetails(cardId);
-    res.json({
-      success: true,
-      message: 'Bitnob card details retrieved',
-      provider: 'bitnob',
-      card: result.card,
-    });
-  } catch (err) {
-    console.error('[admin/fetch-cards]', err);
-    const code = err.code || 'INTERNAL_ERROR';
-    const status =
-      code === 'BITNOB_NOT_CONFIGURED' || code === 'SUPABASE_NOT_CONFIGURED'
-        ? 503
-        : code === 'BITNOB_HTTP_ERROR' || code === 'BITNOB_TIMEOUT' || code === 'BITNOB_BAD_RESPONSE'
-          ? 502
-          : code === 'BITNOB_CARD_ID_REQUIRED'
-            ? 400
-            : 500;
-    res.status(status).json({
-      error: err.message || 'Failed to fetch card',
-      code,
-      provider_status: err.status || undefined,
-    });
-  }
-});
-
 router.get('/card-pool', requirePermission('cards'), async (_req, res) => {
   res.status(410).json({
-    error: 'Card pool model retired. Virtual cards are issued on-demand via Bitnob.',
-    code: 'BITNOB_ON_DEMAND_ONLY',
-    provider: 'bitnob',
+    error: 'Card pool model retired. Virtual cards are issued on-demand via Kripicard Instant Card.',
+    code: 'KRIPICARD_ON_DEMAND_ONLY',
+    provider: 'kripicard',
   });
 });
 
 /**
- * Admin-assisted Bitnob issue is handled via user purchase flow.
+ * Admin-assisted card issue is handled via user purchase flow.
  * Pool assignment is retired.
  */
 router.post('/cards/assign-from-pool', requirePermission('cards'), async (_req, res) => {
   res.status(410).json({
-    error: 'Pool assignment retired. Use Bitnob on-demand card issuance (USDT wallet).',
-    code: 'BITNOB_ON_DEMAND_ONLY',
-    provider: 'bitnob',
+    error: 'Pool assignment retired. Use on-demand Instant Card issuance (Master Wallet USDT).',
+    code: 'KRIPICARD_ON_DEMAND_ONLY',
+    provider: 'kripicard',
   });
 });
 

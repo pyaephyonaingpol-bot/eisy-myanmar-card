@@ -83,19 +83,11 @@ async function getKycStatusForUser(userId) {
   if (!user) return null;
   const latest = await KycSubmission.findLatestByUserId(userId);
   const status = normalizeKycStatus(user.kyc_status);
-  let bitnob = null;
-  try {
-    const { getBitnobKycPublicStatus } = require('./bitnobKycService');
-    bitnob = getBitnobKycPublicStatus(user);
-  } catch (_) {
-    bitnob = null;
-  }
   return {
     kyc_status: status,
     is_verified: isKycVerified(status),
     can_submit: status === 'UNVERIFIED' || status === 'REJECTED',
     latest_submission: latest ? KycSubmission.mapForClient(latest, { user }) : null,
-    bitnob_kyc: bitnob,
   };
 }
 
@@ -157,10 +149,10 @@ async function submitKyc(userId, {
   }
   if (!idNumber) throw new Error('ID number is required');
   if (!dob || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
-    throw new Error('Date of birth is required (YYYY-MM-DD) for Standard Card / Bitnob KYC');
+    throw new Error('Date of birth is required (YYYY-MM-DD)');
   }
   if (!address_line1?.trim() || !address_city?.trim() || !address_state?.trim() || !address_postal?.trim()) {
-    throw new Error('Address (street, city, state/region, postal code) is required for Bitnob Card KYC');
+    throw new Error('Address (street, city, state/region, postal code) is required for KYC');
   }
   if (!front_photo_path || !back_photo_path || !selfie_photo_path) {
     throw new Error('Front photo, back photo, and selfie with ID are all required');
@@ -247,42 +239,10 @@ async function approveKyc(submissionId, { reviewedBy = 'admin', adminNote } = {}
     metadata: { admin_note: adminNote || null, legacy_type: 'kyc_approved' },
   });
 
-  // Push identity to Bitnob Card KYC so Standard Card issuance gets a customer_id.
-  let bitnobKyc = null;
-  try {
-    const { submitBitnobCardKycForUser } = require('./bitnobKycService');
-    bitnobKyc = await submitBitnobCardKycForUser(submission.user_id, {
-      submissionId,
-      force: true,
-    });
-    await logKycActivity({
-      userId: submission.user_id,
-      type: 'kyc_verified',
-      referenceId: submissionId,
-      description: `Bitnob Card KYC ${bitnobKyc.normalized_status || 'submitted'}`,
-      createdBy: reviewedBy,
-      metadata: {
-        bitnob_customer_id: bitnobKyc.customer_id || null,
-        bitnob_kyc_status: bitnobKyc.normalized_status || null,
-        provider: 'bitnob',
-      },
-    });
-  } catch (err) {
-    console.warn('[kyc] Bitnob Card KYC submit after approve failed:', err.message, err.code || '');
-    bitnobKyc = {
-      error: err.message,
-      code: err.code || 'BITNOB_KYC_SUBMIT_FAILED',
-      message: 'Platform KYC approved — Bitnob Card KYC will retry when the user opens Standard Card',
-    };
-  }
-
   const user = await User.findById(submission.user_id);
   return {
     submission: KycSubmission.mapForClient(updated, { user }),
-    bitnob_kyc: bitnobKyc,
-    message: bitnobKyc?.already_ready
-      ? 'KYC approved — Bitnob Card KYC ready for Standard Card issuance'
-      : 'KYC approved — Bitnob Card KYC submitted (or queued) for Standard Cards',
+    message: 'KYC approved — identity verified',
   };
 }
 

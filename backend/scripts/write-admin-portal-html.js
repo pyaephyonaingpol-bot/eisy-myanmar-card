@@ -1,7 +1,6 @@
 /**
- * Generate dedicated Instant / Business admin HTML shells from admin.html.
- * Serves isolated /admin/instant and /admin/business management pipelines.
- * Internal pipeline id remains `standard` (Bitnob business-card pipeline).
+ * Generate dedicated Instant admin HTML shell from admin.html.
+ * Serves isolated /admin/instant management pipeline.
  */
 'use strict';
 
@@ -36,4 +35,3 @@ function writeAdminPipeline(pipeline, label) {
 }
 
 writeAdminPipeline('instant', 'Instant Admin');
-writeAdminPipeline('standard', 'Business Admin');

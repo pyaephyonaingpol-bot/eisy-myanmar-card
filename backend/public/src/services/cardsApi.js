@@ -1,7 +1,6 @@
 /**
  * Cards / reload / pricing API (user SPA).
- * Instant and Business clients live in dedicated service modules;
- * this barrel keeps shared list/reload helpers and re-exports both.
+ * Instant / Kripicard only — Master Wallet funded.
  */
 (function (root) {
   'use strict';
@@ -9,17 +8,14 @@
   root.EisyServices = root.EisyServices || {};
   const api = () => root.EisyServices.api;
   const instant = () => root.EisyServices.instantCard;
-  const standard = () => root.EisyServices.standardCard;
 
   root.EisyServices.cards = {
     list() {
       return api().request('GET', '/api/user/cards');
     },
-    /** @deprecated use EisyServices.standardCard.getPricing */
     getPricing() {
-      return standard().getPricing();
+      return instant().getPricing();
     },
-    /** @deprecated use EisyServices.instantCard.getPricing */
     getKripicardPricing() {
       return instant().getPricing();
     },
@@ -27,16 +23,10 @@
       return instant().getBins();
     },
     requestCard(body) {
-      return standard().requestCard(body);
+      return instant().requestCard(body);
     },
     requestKripicard(body) {
       return instant().requestCard(body);
-    },
-    getCardFundingWallets() {
-      return standard().getCardFundingWallets();
-    },
-    getStandardDepositAddress(refresh = false) {
-      return standard().getDepositAddress(refresh);
     },
     reload(body) {
       return api().request('POST', '/api/user/card/reload', body, { sensitive: true });

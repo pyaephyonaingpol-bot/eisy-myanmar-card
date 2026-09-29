@@ -139,8 +139,6 @@ const KycSubmission = {
       occupation: row.occupation || null,
       employment_status: row.employment_status || null,
       account_purpose: row.account_purpose || null,
-      bitnob_customer_id: row.bitnob_customer_id || null,
-      bitnob_kyc_status: row.bitnob_kyc_status || null,
       status: row.status,
       rejection_reason: row.rejection_reason || null,
       reviewed_by: row.reviewed_by || null,

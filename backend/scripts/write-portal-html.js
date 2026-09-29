@@ -1,7 +1,6 @@
 /**
- * Generate dedicated Instant / Business portal HTML shells from index.html.
- * Keeps a single source of truth while serving isolated /instant and /business pages.
- * Internal portal id remains `standard` (Bitnob business-card pipeline).
+ * Generate dedicated Instant portal HTML shell from index.html.
+ * Keeps a single source of truth while serving isolated /instant pages.
  */
 'use strict';
 
@@ -33,4 +32,3 @@ function writePortal(portal, label) {
 }
 
 writePortal('instant', 'Instant');
-writePortal('standard', 'Business');

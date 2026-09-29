@@ -73,7 +73,7 @@ function sendPortalApp(res, portal) {
     return res.status(500).send(`Dashboard missing. Expected: ${INDEX_HTML}`);
   }
   let html = fs.readFileSync(INDEX_HTML, 'utf8');
-  const label = portal === 'instant' ? 'Instant' : 'Business';
+  const label = 'Instant';
   const inject = `<script>window.__EISY_PORTAL__=${JSON.stringify(portal)};</script>`;
   html = html.replace(/<head([^>]*)>/i, (m) => `${m}\n  ${inject}`);
   html = html.replace(/<html([^>]*)>/i, (m, attrs = '') => (
@@ -102,9 +102,9 @@ app.get(['/instant', '/instant.html'], (_req, res) => {
   sendPortalApp(res, 'instant');
 });
 
-// Business portal (Bitnob) — /business preferred; /standard kept as alias.
+// Legacy Business/Standard portal URLs → Instant (Kripicard + Master Wallet only).
 app.get(['/business', '/business.html', '/standard', '/standard.html'], (_req, res) => {
-  sendPortalApp(res, 'standard');
+  res.redirect(302, '/instant');
 });
 
 app.get('/terms', (_req, res) => {
@@ -149,7 +149,7 @@ function sendAdminPipeline(res, pipeline) {
     return res.status(500).send(`Admin missing. Expected: ${adminHtml}`);
   }
   let html = fs.readFileSync(adminHtml, 'utf8');
-  const label = pipeline === 'instant' ? 'Instant Admin' : 'Business Admin';
+  const label = 'Instant Admin';
   const inject = `<script>window.__EISY_ADMIN_PIPELINE__=${JSON.stringify(pipeline)};</script>`;
   if (!html.includes('__EISY_ADMIN_PIPELINE__')) {
     html = html.replace(/<head([^>]*)>/i, (m) => `${m}\n  ${inject}`);
@@ -177,9 +177,9 @@ app.get(['/admin/instant', '/admin/instant.html'], (_req, res) => {
   sendAdminPipeline(res, 'instant');
 });
 
-// Business Admin — /admin/business preferred; /admin/standard kept as alias.
+// Legacy Business/Standard admin URLs → Instant admin.
 app.get(['/admin/business', '/admin/business.html', '/admin/standard', '/admin/standard.html'], (_req, res) => {
-  sendAdminPipeline(res, 'standard');
+  res.redirect(302, '/admin/instant');
 });
 
 app.use(express.static(PUBLIC_DIR, {

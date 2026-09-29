@@ -4774,10 +4774,6 @@ html.doc-scroll .auth-screen {
   z-index: 0;
 }
 
-.card-provider-switch[data-active="bitnob"] .card-provider-switch-thumb {
-  transform: translateX(100%);
-}
-
 .card-provider-switch .card-provider-tab {
   position: relative;
   z-index: 1;
@@ -4971,10 +4967,6 @@ html.doc-scroll .auth-screen {
   z-index: 0;
 }
 
-.app-mode-switch[data-active="standard"] .app-mode-switch-thumb {
-  transform: translateX(100%);
-}
-
 .app-mode-switch .app-mode-tab {
   position: relative;
   z-index: 1;
@@ -5023,13 +5015,6 @@ html.doc-scroll .auth-screen {
 
 .app-mode-view .app-mode-card-panel {
   margin: 0;
-}
-
-html[data-app-mode="instant"] [data-mode-nav="standard"],
-html[data-app-mode="instant"] [data-mode-shell="standard"],
-html[data-app-mode="standard"] [data-mode-nav="instant"],
-html[data-app-mode="standard"] [data-mode-shell="instant"] {
-  display: none !important;
 }
 
 .portal-hub-chooser {
@@ -5114,19 +5099,12 @@ html[data-admin-pipeline="hub"] .admin-sidebar-nav .nav-item[data-page] {
   display: none !important;
 }
 
-html[data-admin-pipeline="instant"] .sidebar-brand-title,
-html[data-admin-pipeline="standard"] .sidebar-brand-title {
+html[data-admin-pipeline="instant"] .sidebar-brand-title {
   letter-spacing: 0.01em;
 }
 
-html[data-eisy-portal="instant"] .app-mode-switch-header .app-mode-switch,
-html[data-eisy-portal="standard"] .app-mode-switch-header .app-mode-switch {
+html[data-eisy-portal="instant"] .app-mode-switch-header .app-mode-switch {
   display: none !important;
-}
-
-.wallet-hero-card.bitnob {
-  background: linear-gradient(135deg, rgba(14, 116, 144, 0.35), rgba(15, 23, 42, 0.9));
-  border: 1px solid rgba(34, 211, 238, 0.25);
 }
 
 @media (max-width: 720px) {

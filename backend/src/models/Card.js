@@ -300,7 +300,7 @@ const Card = {
   },
 
   /**
-   * Find a local cards_v2 row by Bitnob (or other) provider card id stored in metadata.
+   * Find a local cards_v2 row by provider card id stored in metadata.
    */
   async findByProviderCardId(providerCardId) {
     const id = String(providerCardId || '').trim();
