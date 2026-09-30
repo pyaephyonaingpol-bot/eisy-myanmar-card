@@ -38,12 +38,13 @@ const {
 const { createUsdtWithdrawalRequest } = require('../src/services/withdrawalService');
 const { openP2pBuyDispute, resolveDispute } = require('../src/services/p2pDisputeService');
 
-async function createTestUser(email, name, phone) {
+async function createTestUser(email, name, phone, { mmkBalance = 50000 } = {}) {
   const db = getDb();
   const existing = await db.get('SELECT * FROM users WHERE email = ?', email);
   if (existing) {
     await db.run(
-      `UPDATE users SET balance_usdt = 0, balance_usdt_locked = 0, kyc_status = 'VERIFIED', auth_status = 'active' WHERE id = ?`,
+      `UPDATE users SET balance_usdt = 0, balance_usdt_locked = 0, balance_mmk = ?, kyc_status = 'VERIFIED', auth_status = 'active' WHERE id = ?`,
+      mmkBalance,
       existing.id
     );
     return User.findById(existing.id);
@@ -55,10 +56,17 @@ async function createTestUser(email, name, phone) {
     pinHash: 'hash123',
   });
   await db.run(
-    `UPDATE users SET kyc_status = 'VERIFIED', auth_status = 'active' WHERE id = ?`,
+    `UPDATE users SET kyc_status = 'VERIFIED', auth_status = 'active', balance_mmk = ? WHERE id = ?`,
+    mmkBalance,
     u.id
   );
   return User.findById(u.id);
+}
+
+async function getMmkBalance(userId) {
+  const db = getDb();
+  const row = await db.get('SELECT balance_mmk FROM users WHERE id = ?', userId);
+  return Number(row?.balance_mmk || 0);
 }
 
 async function runTests() {
@@ -67,8 +75,13 @@ async function runTests() {
   const db = getDb();
 
   console.log('[test-p2p-true-escrow] Setting up test users Seller A and Buyer B...');
-  const sellerA = await createTestUser('seller_a_test@eisy.local', 'Seller A', '09111111111');
-  const buyerB = await createTestUser('buyer_b_test@eisy.local', 'Buyer B', '09222222222');
+  const sellerA = await createTestUser('seller_a_test@eisy.local', 'Seller A', '09111111111', { mmkBalance: 75000 });
+  const buyerB = await createTestUser('buyer_b_test@eisy.local', 'Buyer B', '09222222222', { mmkBalance: 120000 });
+  const sellerMmkStart = await getMmkBalance(sellerA.id);
+  const buyerMmkStart = await getMmkBalance(buyerB.id);
+  assert.strictEqual(sellerMmkStart, 75000, 'Seller MMK seed');
+  assert.strictEqual(buyerMmkStart, 120000, 'Buyer MMK seed');
+  console.log('    ✓ MMK wallet seeded (isolated from P2P escrow — external MMK only)');
 
   // 1. Fund Seller A with 100 USDT available
   console.log('[1] Funding Seller A with 100 USDT...');
@@ -161,7 +174,7 @@ async function runTests() {
   const initialBuyerAvail = buyerBal.available_usdt;
   const withdrawResult = await createUsdtWithdrawalRequest(buyerB.id, {
     network: 'TRC20',
-    wallet_address: 'TYDzsYUEpvnYmQk4zGP9sWWcTEd3GLGV2n',
+    wallet_address: 'TNTU3x2BLuJg3MQCnk6hne43NpgphMK2NJ',
     amount_usdt: 10,
     payout_method: 'crypto',
   });
@@ -272,6 +285,31 @@ async function runTests() {
   });
   assert.ok(resolveResult.order, 'Order resolved');
   assert.strictEqual(resolveResult.order.status, 'completed_by_admin', 'Order status should be completed_by_admin');
+
+  // 10. MMK wallet ledger must remain untouched by P2P escrow / buy-sell flows
+  console.log('[10] Verifying MMK wallet ledger isolation from P2P escrow...');
+  assert.strictEqual(await getMmkBalance(sellerA.id), sellerMmkStart, 'Seller MMK wallet unchanged after P2P');
+  assert.strictEqual(await getMmkBalance(buyerB.id), buyerMmkStart, 'Buyer MMK wallet unchanged after P2P');
+
+  // Route-level guard: internal MMK wallet cannot pay for P2P buys
+  const p2pRoute = require('fs').readFileSync(
+    require('path').join(__dirname, '../src/routes/p2p.js'),
+    'utf8'
+  );
+  assert.ok(p2pRoute.includes('use_mmk_wallet'), 'P2P buy route rejects MMK wallet payment');
+  assert.ok(p2pRoute.includes('internal MMK wallet is not used'), 'P2P buy documents external MMK only');
+
+  const { assertMmkDebitAllowed } = require('../src/services/walletService');
+  assert.throws(
+    () => assertMmkDebitAllowed({ createdBy: 'user', metadata: { purpose: 'p2p_buy' } }),
+    (err) => err.code === 'MMK_WALLET_RESTRICTED',
+    'MMK ledger rejects P2P debit purpose'
+  );
+  assert.doesNotThrow(
+    () => assertMmkDebitAllowed({ createdBy: 'user', metadata: { purpose: 'mmk_bank_withdrawal' } }),
+    'MMK ledger still allows bank withdrawals'
+  );
+  console.log('    ✓ MMK wallet ledger isolated; P2P uses external MMK + USDT escrow only');
 
   console.log('\n========================================');
   console.log('🎉 ALL TRUE P2P ESCROW TESTS PASSED! 🎉');
