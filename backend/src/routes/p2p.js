@@ -152,6 +152,7 @@ router.post('/orders/:orderType/:id/dispute', requireAuth, uploadP2pAttachment.s
       txRef: req.body.tx_ref || req.body.txRef,
     };
 
+    let order;
     let mappedOrder;
     if (orderType === 'buy') {
       order = await openP2pBuyDispute(orderId, req.user.id, payload);
