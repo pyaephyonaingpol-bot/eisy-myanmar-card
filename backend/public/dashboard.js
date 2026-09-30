@@ -518,11 +518,26 @@ const Dashboard = {
       const countryPlaceholder = category.id === 'gift_cards' || category.id === 'esim' ? 'US' : 'MM';
       const totalCount = data.count != null ? Number(data.count) : null;
       const shownCount = products.length;
-      const countHint = totalCount != null
-        ? (shownCount !== totalCount
+      const expectedTotal = data.expected_total != null ? Number(data.expected_total) : null;
+      const sourceLabel = data.source === 'live'
+        ? 'Live from Kripicard'
+        : (data.source === 'live-disk' ? 'Cached live catalog' : 'Catalog');
+      let countHint = '';
+      if (totalCount != null) {
+        countHint = shownCount !== totalCount
           ? ` · ${shownCount} shown · ${totalCount} total`
-          : ` · ${totalCount} services`)
-        : (shownCount ? ` · ${shownCount} services` : '');
+          : ` · ${totalCount} services`;
+      } else if (shownCount) {
+        countHint = ` · ${shownCount} services`;
+      }
+      if (
+        expectedTotal
+        && totalCount != null
+        && totalCount < expectedTotal
+        && (data.source === 'fallback' || data.sync_incomplete)
+      ) {
+        countHint += ` · expected ~${expectedTotal}`;
+      }
       toolbar.innerHTML = `
         <div class="hub-filter-selects">
           <label class="field hub-filter-select">
@@ -568,7 +583,7 @@ const Dashboard = {
         </div>
         <div class="hub-catalog-meta">
           <span class="portal-hub-fee-chip" data-i18n="hub_processing_fee_chip">+$1.00 fee</span>
-          <span class="hint">${data.source === 'live' ? 'Live from Kripicard' : 'Catalog'}${countHint}</span>
+          <span class="hint">${sourceLabel}${countHint}</span>
         </div>
         ${data.message ? `<p class="hint hub-catalog-message">${this.escapeHtml?.(data.message) || data.message}</p>` : ''}`;
       if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(toolbar);

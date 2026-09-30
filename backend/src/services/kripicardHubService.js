@@ -9,6 +9,8 @@
 'use strict';
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { getDb } = require('../db');
 const {
   KRIPICARD_HUB_CATEGORIES,
@@ -28,6 +30,8 @@ const {
   buildFilterMeta,
   normalizeServiceProduct,
   slugKey,
+  SMM_EXPECTED_TOTAL,
+  clearMainCatalogCache,
 } = require('../../../lib/kripicardHubApi');
 
 /** Short-lived product cache so purchase can resolve live product_ids. */
@@ -44,6 +48,64 @@ const CATALOG_CACHE_TTL_MS = Math.max(
 );
 const catalogCache = new Map(); // key -> { expires, catalog }
 const catalogInflight = new Map(); // key -> Promise
+
+/**
+ * Durable on-disk cache for the full Social Media catalog (~5k services).
+ * Survives process restarts so Hub does not fall back to the 12-row starter
+ * list between live syncs.
+ */
+const SMM_DISK_CACHE_PATH = process.env.KRIPICARD_HUB_SMM_DISK_CACHE
+  || path.join(__dirname, '../../data/kripicard-smm-catalog.json');
+const SMM_DISK_CACHE_TTL_MS = Math.max(
+  0,
+  Number(process.env.KRIPICARD_HUB_SMM_DISK_CACHE_MS) || 6 * 60 * 60 * 1000
+);
+const SMM_DISK_MIN_PRODUCTS = Math.max(
+  50,
+  Number(process.env.KRIPICARD_HUB_SMM_DISK_MIN) || 500
+);
+
+function readSmmDiskCache() {
+  try {
+    if (!fs.existsSync(SMM_DISK_CACHE_PATH)) return null;
+    const raw = JSON.parse(fs.readFileSync(SMM_DISK_CACHE_PATH, 'utf8'));
+    if (!raw || !Array.isArray(raw.products) || raw.products.length < SMM_DISK_MIN_PRODUCTS) {
+      return null;
+    }
+    if (SMM_DISK_CACHE_TTL_MS > 0 && Number(raw.saved_at) > 0) {
+      if (Date.now() - Number(raw.saved_at) > SMM_DISK_CACHE_TTL_MS) return null;
+    }
+    return raw;
+  } catch (err) {
+    console.warn('[kripicardHub] SMM disk cache read failed:', err.message);
+    return null;
+  }
+}
+
+function writeSmmDiskCache(catalog) {
+  try {
+    const products = Array.isArray(catalog?.products) ? catalog.products : [];
+    if (products.length < SMM_DISK_MIN_PRODUCTS) return false;
+    const dir = path.dirname(SMM_DISK_CACHE_PATH);
+    fs.mkdirSync(dir, { recursive: true });
+    const payload = {
+      saved_at: Date.now(),
+      count: products.length,
+      platforms: catalog.platforms || [],
+      subcategories: catalog.subcategories || [],
+      products,
+      source: 'live-disk',
+      reported_total: catalog.reported_total || catalog.count || products.length,
+    };
+    const tmp = `${SMM_DISK_CACHE_PATH}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(payload));
+    fs.renameSync(tmp, SMM_DISK_CACHE_PATH);
+    return true;
+  } catch (err) {
+    console.warn('[kripicardHub] SMM disk cache write failed:', err.message);
+    return false;
+  }
+}
 
 /** Categories that can reuse one eager full catalog for chip/search filtering. */
 const EAGER_FILTER_CATEGORIES = new Set([
@@ -150,12 +212,17 @@ function fallbackCatalog(category, filters = {}) {
     ));
   }
 
+  const apiConfigured = isApiConfigured() && process.env.KRIPICARD_HUB_FORCE_FALLBACK !== '1';
   return {
     source: 'fallback',
     enabled: true,
     count: rawProducts.length,
     requires_input: null,
-    message: null,
+    message: apiConfigured
+      ? `Live Kripicard sync unavailable — showing starter catalog (${rawProducts.length} services). Full catalog is ~${SMM_EXPECTED_TOTAL} services.`
+      : `KRIPICARD_API_KEY is not configured — showing starter catalog (${rawProducts.length} services). Set the key to sync all ~${SMM_EXPECTED_TOTAL} Social Media services.`,
+    api_configured: Boolean(apiConfigured),
+    expected_total: category.id === 'social_media' ? SMM_EXPECTED_TOTAL : null,
     ...meta,
   };
 }
@@ -200,23 +267,68 @@ function asArrayProducts(value) {
 async function fetchDecoratedCatalog(category, filters = {}) {
   let catalog;
   let liveError = null;
+  const apiReady = isApiConfigured() && process.env.KRIPICARD_HUB_FORCE_FALLBACK !== '1';
 
-  if (isApiConfigured() && process.env.KRIPICARD_HUB_FORCE_FALLBACK !== '1') {
+  if (apiReady) {
     try {
       catalog = await fetchLiveHubCatalog(category.id, filters);
+      // Persist a complete Social Media haul so restarts keep the full list.
+      if (category.id === 'social_media' && catalog?.source === 'live') {
+        writeSmmDiskCache(catalog);
+      }
     } catch (err) {
       liveError = err;
       console.warn(
-        '[kripicardHub] live catalog failed, using fallback:',
+        '[kripicardHub] live catalog failed, trying disk/fallback:',
         category.id,
         err.code || '',
         err.message
       );
-      catalog = fallbackCatalog(category, filters);
-      catalog.live_error = {
-        code: err.code || 'KRIPICARD_HUB_LIVE_FAILED',
-        message: err.message,
+      if (category.id === 'social_media') {
+        const disk = readSmmDiskCache();
+        if (disk) {
+          catalog = {
+            ...buildFilterMeta(disk.products, filters),
+            source: 'live-disk',
+            enabled: true,
+            count: disk.products.length,
+            platforms: disk.platforms || [],
+            message: `Serving cached live catalog (${disk.products.length} services). Live refresh failed: ${err.message}`,
+            reported_total: disk.reported_total,
+            cache: 'disk',
+          };
+        }
+      }
+      if (!catalog) {
+        catalog = fallbackCatalog(category, filters);
+        catalog.live_error = {
+          code: err.code || 'KRIPICARD_HUB_LIVE_FAILED',
+          message: err.message,
+        };
+      } else {
+        catalog.live_error = {
+          code: err.code || 'KRIPICARD_HUB_LIVE_FAILED',
+          message: err.message,
+        };
+      }
+    }
+  } else if (category.id === 'social_media') {
+    // No API key — prefer a previously synced full disk catalog over the 12-row starter.
+    const disk = readSmmDiskCache();
+    if (disk) {
+      catalog = {
+        ...buildFilterMeta(disk.products, filters),
+        source: 'live-disk',
+        enabled: true,
+        count: disk.products.length,
+        platforms: disk.platforms || [],
+        message: `Serving cached live catalog (${disk.products.length} services). Set KRIPICARD_API_KEY to refresh from Kripicard (~${SMM_EXPECTED_TOTAL}).`,
+        reported_total: disk.reported_total,
+        cache: 'disk',
+        api_configured: false,
       };
+    } else {
+      catalog = fallbackCatalog(category, filters);
     }
   } else {
     catalog = fallbackCatalog(category, filters);
@@ -248,6 +360,11 @@ async function fetchDecoratedCatalog(category, filters = {}) {
     } : null),
     products,
     cache: catalog.cache || 'miss',
+    api_configured: catalog.api_configured != null ? catalog.api_configured : apiReady,
+    expected_total: category.id === 'social_media' ? SMM_EXPECTED_TOTAL : null,
+    reported_total: catalog.reported_total || null,
+    pages_fetched: catalog.pages_fetched || null,
+    sync_incomplete: catalog.sync_incomplete || false,
   };
 }
 
@@ -277,7 +394,10 @@ async function loadCatalog(categoryId, filters = {}) {
         // Never cache the local starter fallback — it is intentionally tiny
         // (~one row per platform) and would make Hub look permanently truncated.
         const productCount = Array.isArray(catalog.products) ? catalog.products.length : 0;
-        if (catalog.source !== 'fallback' && productCount > 0) {
+        const cacheable = catalog.source === 'live'
+          || catalog.source === 'live-disk'
+          || (catalog.source !== 'fallback' && productCount >= SMM_DISK_MIN_PRODUCTS);
+        if (cacheable && productCount > 0) {
           catalogCache.set(key, {
             expires: Date.now() + CATALOG_CACHE_TTL_MS,
             catalog,
@@ -334,6 +454,26 @@ function clearCatalogCaches() {
   catalogCache.clear();
   catalogInflight.clear();
   productCache.clear();
+  try { clearMainCatalogCache(); } catch (_) { /* ignore */ }
+}
+
+function getSmmSyncStatus() {
+  const disk = readSmmDiskCache();
+  const memKey = baseCatalogCacheKey('social_media', {});
+  const mem = catalogCache.get(memKey);
+  const memCount = mem?.catalog?.products?.length || 0;
+  const diskCount = disk?.products?.length || 0;
+  const have = Math.max(memCount, diskCount);
+  return {
+    api_configured: isApiConfigured() && process.env.KRIPICARD_HUB_FORCE_FALLBACK !== '1',
+    expected_total: SMM_EXPECTED_TOTAL,
+    memory_count: memCount,
+    disk_count: diskCount,
+    best_count: have,
+    complete: have >= SMM_EXPECTED_TOTAL,
+    disk_path: SMM_DISK_CACHE_PATH,
+    disk_saved_at: disk?.saved_at || null,
+  };
 }
 
 /** @deprecated sync helper — prefer catalogForCategoryAsync */
@@ -600,6 +740,7 @@ module.exports = {
   catalogForCategoryAsync,
   preloadAllCategoryCatalogs,
   clearCatalogCaches,
+  getSmmSyncStatus,
   quotePurchase,
   purchaseHubProduct,
   listPurchasesForUser,
@@ -607,4 +748,6 @@ module.exports = {
   ALL_KEY,
   CATALOG_CACHE_TTL_MS,
   EAGER_FILTER_CATEGORIES,
+  SMM_DISK_CACHE_PATH,
+  SMM_EXPECTED_TOTAL,
 };
