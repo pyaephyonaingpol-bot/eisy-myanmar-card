@@ -1128,9 +1128,9 @@
               deposit_service_fee_mode: 'max_percent_or_min',
               deposit_service_fee_percent: parseFloat($('settingDepositFeePercent')?.value || '2'),
               deposit_service_fee_minimum_usdt: parseFloat($('settingDepositFeeMinUsdt')?.value || '1'),
-              withdrawal_service_fee_mode: 'max_percent_or_min',
-              withdrawal_service_fee_percent: parseFloat($('settingWithdrawFeePercent')?.value || '2'),
-              withdrawal_service_fee_minimum_usdt: parseFloat($('settingWithdrawFeeMinUsdt')?.value || '1'),
+              withdrawal_service_fee_mode: 'percent',
+              withdrawal_service_fee_percent: parseFloat($('settingWithdrawFeePercent')?.value || '4'),
+              withdrawal_service_fee_minimum_usdt: parseFloat($('settingWithdrawFeeMinUsdt')?.value || '0'),
               minimum_usdt_withdrawal: parseFloat($('settingMinUsdtWithdrawal')?.value || '10'),
               minimum_mmk_withdrawal: parseFloat($('settingMinMmkWithdrawal')?.value || '10000'),
               updated_by: this.user?.email || this.user?.name || 'admin',
@@ -3617,10 +3617,10 @@
           $('settingDepositFeeMinUsdt').value = p.deposit_service_fee_minimum_usdt ?? p.payment_service_fee_minimum_usdt ?? 1;
         }
         if ($('settingWithdrawFeePercent')) {
-          $('settingWithdrawFeePercent').value = p.withdrawal_service_fee_percent ?? p.payment_service_fee_percent ?? 2;
+          $('settingWithdrawFeePercent').value = p.withdrawal_service_fee_percent ?? p.payment_service_fee_percent ?? 4;
         }
         if ($('settingWithdrawFeeMinUsdt')) {
-          $('settingWithdrawFeeMinUsdt').value = p.withdrawal_service_fee_minimum_usdt ?? 1;
+          $('settingWithdrawFeeMinUsdt').value = p.withdrawal_service_fee_minimum_usdt ?? 0;
         }
         if ($('settingMinUsdtWithdrawal')) {
           $('settingMinUsdtWithdrawal').value = p.minimum_usdt_withdrawal ?? 10;

@@ -1,7 +1,7 @@
 /**
  * Instant App View — Master USDT Wallet + Instant Card only.
  * Deposits: Kripicard Deposit API (unique pay_address / pay_amount / network).
- * Withdrawals: legacy TRON master wallet (not Kripicard).
+ * Withdrawals: Kripicard payout with 4% markup · processed within 48 hours.
  */
 (function (root) {
   'use strict';
@@ -15,7 +15,7 @@
 <div id="instantAppView" class="app-mode-view" data-app-mode="instant" data-provider="kripicard" data-wallet="usdt">
   <section class="panel app-mode-wallet-panel">
     <h2 data-i18n="instant_app_wallet_heading">Master USDT Wallet (Instant)</h2>
-    <p class="hint" data-i18n="instant_app_wallet_desc">Internal Master USDT balance. Top up via Kripicard (unique pay address), then issue Instant Card (No KYC). Withdrawals use the legacy TRON master wallet.</p>
+    <p class="hint" data-i18n="instant_app_wallet_desc">Internal Master USDT balance. Top up via Kripicard (unique pay address), then issue Instant Card (No KYC). Withdrawals are paid via Kripicard within 48 hours.</p>
     <div class="wallet-pay-hint ok" style="margin-bottom:0.75rem">
       <span data-i18n="instant_usdt_wallet_balance_label">Master USDT Wallet</span>:
       <strong id="instantAppUsdtBalance">—</strong>
@@ -28,9 +28,9 @@
     </div>
     <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
       <button type="button" class="btn btn-primary btn-sm" data-open-usdt-topup data-i18n="top_up_usdt_wallet">Top up Master Wallet</button>
-      <button type="button" class="btn btn-secondary btn-sm" id="btnInstantAppWithdraw" data-i18n="btn_withdraw_usdt" data-payout-system="legacy-tron-master-wallet">Withdraw USDT</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="btnInstantAppWithdraw" data-i18n="btn_withdraw_usdt" data-payout-system="kripicard">Withdraw USDT</button>
     </div>
-    <p class="hint" style="margin-top:0.65rem" data-i18n="instant_withdraw_legacy_hint">Withdrawals payout from our legacy TRON master wallet (TRC20 automated) — not via Kripicard.</p>
+    <p class="hint" style="margin-top:0.65rem" data-i18n="instant_withdraw_legacy_hint">Withdrawals are paid via Kripicard within 48 hours (4% markup: 3% network + 1% platform).</p>
   </section>
 
   <section class="panel app-mode-card-panel">
