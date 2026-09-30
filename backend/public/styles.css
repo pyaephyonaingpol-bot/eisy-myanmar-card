@@ -1426,6 +1426,28 @@ a.btn { text-decoration: none; }
 .summary-item .card-status-pill { display: inline-block; font-size: 0.62rem; }
 .card-pending-notice { margin-top: 1rem; padding: 1rem; border-radius: var(--radius-md); background: var(--warning-bg); border: 1px solid var(--warning-border); color: #fde68a; font-size: 0.875rem; min-height: 3.75rem; }
 .card-pending-notice.hidden { display: none; }
+.card-maintenance-notice {
+  margin: 0 0 0.85rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  color: #fde68a;
+  font-size: 0.875rem;
+}
+.card-maintenance-notice.hidden { display: none; }
+.card-maintenance-notice strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.95rem;
+  color: #fef3c7;
+}
+.card-maintenance-notice p { margin: 0; line-height: 1.45; }
+.card-maintenance-notice .card-maintenance-retry { margin-top: 0.45rem; opacity: 0.9; }
+#kripicardRequestForm.is-maintenance #btnRequestKripicard {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .card-txn-panel { margin-top: 1.5rem; padding: 1.5rem; border-radius: var(--radius-md); background: rgba(15,23,42,0.5); border: 1px solid var(--border-subtle); }
 .card-txn-panel.hidden { display: none; }
 .card-txn-panel h3 { margin-bottom: 1rem; }

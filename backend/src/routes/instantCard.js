@@ -14,15 +14,31 @@ const {
   purchaseKripicardFromUsdtWallet,
   getKripicardBinOptions,
 } = require('../services/kripicardCardWalletService');
+const {
+  cardIssuanceAvailability,
+  assertCardIssuanceNotPaused,
+} = require('../../../lib/kripicardCardMaintenance');
 const { assertKripicardOnlyProvider } = require('../services/kripicardOnlyGateways');
 
 const router = express.Router();
+
+function providerErrorFromBinOptions(options) {
+  if (!options?.error) return null;
+  const err = new Error(options.error.message || 'BIN fetch failed');
+  err.code = options.error.code || 'KRIPICARD_BINS_FETCH_FAILED';
+  err.status = options.error.status || options.error.provider_status || null;
+  err.providerCode = options.error.provider_code || options.error.providerCode || null;
+  return err;
+}
 
 function attachHelpers({ respondCardPurchaseError, buildCardPurchaseSuccessPayload }) {
   router.get('/card/bins', requireAuth, async (req, res) => {
     try {
       const settings = await getCardPricingSettings();
       const options = await getKripicardBinOptions({ pricingSettings: settings });
+      const issuance = cardIssuanceAvailability({
+        providerError: providerErrorFromBinOptions(options),
+      });
       res.json({
         provider: 'kripicard',
         card_flow: 'instant',
@@ -33,9 +49,27 @@ function attachHelpers({ respondCardPurchaseError, buildCardPurchaseSuccessPaylo
         details: options.details || options.catalog || [],
         source: options.source,
         error: options.error || null,
+        issuance,
+        available: issuance.available,
+        maintenance: issuance.maintenance,
+        retryable: issuance.retryable,
+        retry_after_seconds: issuance.retry_after_seconds,
+        message: issuance.message,
+        code: issuance.code,
       });
     } catch (err) {
       console.error('[user/card/bins]', err);
+      const issuance = cardIssuanceAvailability({ providerError: err });
+      if (issuance.maintenance) {
+        return res.status(503).json({
+          error: issuance.message,
+          ...issuance,
+          provider: 'kripicard',
+          card_flow: 'instant',
+          bins: [],
+          details: [],
+        });
+      }
       res.status(500).json({ error: err.message || 'Failed to load BINs', code: err.code });
     }
   });
@@ -49,6 +83,7 @@ function attachHelpers({ respondCardPurchaseError, buildCardPurchaseSuccessPaylo
         sample = calculateKripicardRequestPricingUsdt(sampleLoad, settings);
       } catch (_) { /* ignore */ }
       const kripicardConfigured = Boolean(String(process.env.KRIPICARD_API_KEY || '').trim());
+      const issuance = cardIssuanceAvailability();
       res.json({
         provider: 'kripicard',
         card_flow: 'instant',
@@ -66,6 +101,13 @@ function attachHelpers({ respondCardPurchaseError, buildCardPurchaseSuccessPaylo
         deposit_hint: 'Top up Master Wallet via TRC20 crypto deposit before issuing Instant Card.',
         sample_pricing: sample,
         auto_issue: true,
+        issuance,
+        available: issuance.available,
+        maintenance: issuance.maintenance,
+        retryable: issuance.retryable,
+        retry_after_seconds: issuance.retry_after_seconds,
+        message: issuance.message,
+        code: issuance.code,
       });
     } catch (err) {
       console.error('[user/card/pricing-kripicard]', err);
@@ -84,6 +126,8 @@ function attachHelpers({ respondCardPurchaseError, buildCardPurchaseSuccessPaylo
           provider: 'kripicard',
         });
       }
+
+      assertCardIssuanceNotPaused();
 
       const user = await User.findById(req.user.id);
       const walletType = String(req.body.wallet_type || 'usdt').toLowerCase();

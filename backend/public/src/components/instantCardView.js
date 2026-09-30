@@ -12,10 +12,23 @@
   const PROVIDER = 'kripicard';
   const WALLET = 'usdt';
 
+  const DEFAULT_MAINTENANCE_POLL_MS = 60_000;
+  const MIN_MAINTENANCE_POLL_MS = 15_000;
+  const MAX_MAINTENANCE_POLL_MS = 3600_000;
+
+  let maintenancePollTimer = null;
+  let maintenanceActive = false;
+  let lastMaintenanceToastAt = 0;
+
   const TEMPLATE = `
 <div id="instantCardApplyPanel" class="card-flow-panel is-active card-flow-page" data-card-page="instant" data-provider="kripicard" data-wallet="usdt" role="tabpanel" aria-labelledby="tabInstantCard">
   <h2 data-i18n="apply_instant_card">Instant Card (No KYC)</h2>
   <p class="hint" style="margin-bottom:0.75rem" data-i18n="apply_instant_card_hint">No KYC required. Pay from your internal USDT Wallet (TRC20 crypto deposit), then issue Instant Card.</p>
+  <div id="kripicardMaintenanceBanner" class="card-maintenance-notice hidden" role="status" aria-live="polite">
+    <strong data-i18n="card_maintenance_title">Card issuing temporarily unavailable</strong>
+    <p id="kripicardMaintenanceMessage">Kripicard is performing maintenance. We’ll retry automatically when service is restored. Your wallet will not be charged until issuing works again.</p>
+    <p class="card-maintenance-retry hint" id="kripicardMaintenanceRetryHint"></p>
+  </div>
   <div class="wallet-pay-hint ok" id="instantWalletBalanceHint" style="margin-bottom:0.75rem">
     <span data-i18n="instant_usdt_wallet_balance_label">USDT Wallet</span>:
     <strong id="instantUsdtBalance">—</strong>
@@ -66,6 +79,176 @@
     if (el) el.textContent = text;
   }
 
+  function isMaintenancePayload(data) {
+    if (!data) return false;
+    if (data.maintenance === true || data.issuance?.maintenance === true) return true;
+    const code = String(data.code || data.issuance?.code || '').toUpperCase();
+    return code === 'CARD_PROVIDER_MAINTENANCE' || code === 'CARD_ISSUANCE_PAUSED';
+  }
+
+  function retryAfterMs(data) {
+    const sec = Number(
+      data?.retry_after_seconds
+      ?? data?.issuance?.retry_after_seconds
+      ?? data?.response?.retry_after_seconds
+    );
+    if (Number.isFinite(sec) && sec > 0) {
+      return Math.min(MAX_MAINTENANCE_POLL_MS, Math.max(MIN_MAINTENANCE_POLL_MS, Math.floor(sec * 1000)));
+    }
+    return DEFAULT_MAINTENANCE_POLL_MS;
+  }
+
+  function stopMaintenancePoll() {
+    if (maintenancePollTimer != null) {
+      clearTimeout(maintenancePollTimer);
+      maintenancePollTimer = null;
+    }
+  }
+
+  function setFormIssuanceEnabled(enabled) {
+    const form = $('kripicardRequestForm');
+    const btn = $('btnRequestKripicard');
+    if (btn) {
+      btn.disabled = !enabled;
+      btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+    }
+    if (form) {
+      form.classList.toggle('is-maintenance', !enabled);
+      form.querySelectorAll('input, select, button').forEach((el) => {
+        if (el.id === 'btnRequestKripicard') return;
+        // Keep top-up path usable; only disable issuance fields when paused.
+        if (el.tagName === 'BUTTON') return;
+        el.disabled = !enabled;
+      });
+    }
+  }
+
+  function showMaintenanceBanner(payload, { toast } = {}) {
+    const banner = $('kripicardMaintenanceBanner');
+    const msgEl = $('kripicardMaintenanceMessage');
+    const retryEl = $('kripicardMaintenanceRetryHint');
+    const message = payload?.message
+      || payload?.error
+      || payload?.issuance?.message
+      || 'Card issuing is temporarily unavailable while Kripicard performs maintenance. Please try again shortly.';
+    const retrySec = Math.round(retryAfterMs(payload) / 1000);
+    if (msgEl) msgEl.textContent = message;
+    if (retryEl) {
+      retryEl.textContent = `Checking again automatically every ~${retrySec}s. You can keep this page open.`;
+    }
+    if (banner) banner.classList.remove('hidden');
+    setFormIssuanceEnabled(false);
+    maintenanceActive = true;
+    if (typeof toast === 'function') {
+      const now = Date.now();
+      if (now - lastMaintenanceToastAt > 20_000) {
+        lastMaintenanceToastAt = now;
+        toast(message, 'error');
+      }
+    }
+  }
+
+  function clearMaintenanceBanner({ toast, restored } = {}) {
+    const banner = $('kripicardMaintenanceBanner');
+    if (banner) banner.classList.add('hidden');
+    setFormIssuanceEnabled(true);
+    const wasActive = maintenanceActive;
+    maintenanceActive = false;
+    stopMaintenancePoll();
+    if (restored && wasActive && typeof toast === 'function') {
+      toast('Card issuing is available again. You can submit your Instant Card request.', 'ok');
+    }
+  }
+
+  function scheduleMaintenancePoll(ctx, delayMs) {
+    stopMaintenancePoll();
+    const wait = Math.min(
+      MAX_MAINTENANCE_POLL_MS,
+      Math.max(MIN_MAINTENANCE_POLL_MS, Number(delayMs) || DEFAULT_MAINTENANCE_POLL_MS)
+    );
+    maintenancePollTimer = setTimeout(() => {
+      pollIssuanceAvailability(ctx).catch(() => {});
+    }, wait);
+  }
+
+  async function pollIssuanceAvailability(ctx = {}) {
+    const svc = api();
+    if (!svc) return false;
+    try {
+      const settled = await Promise.allSettled([svc.getPricing(), svc.getBins()]);
+      const pricing = settled[0].status === 'fulfilled'
+        ? settled[0].value
+        : (settled[0].reason?.response || null);
+      const bins = settled[1].status === 'fulfilled'
+        ? settled[1].value
+        : (settled[1].reason?.response || null);
+
+      if (pricing && pricing.card_issuance_fee_usd != null) {
+        ctx.pricing = pricing;
+        updatePricingBreakdown(ctx);
+      }
+
+      const maintenancePayload = [bins, pricing].find((p) => isMaintenancePayload(p));
+      if (maintenancePayload) {
+        showMaintenanceBanner(maintenancePayload, { toast: ctx.toast });
+        scheduleMaintenancePoll(ctx, retryAfterMs(maintenancePayload));
+        return false;
+      }
+
+      // Require a successful bins response before clearing downtime — pricing alone
+      // does not prove the card provider is issuing again.
+      if (settled[1].status === 'fulfilled' && bins && bins.maintenance !== true) {
+        clearMaintenanceBanner({ toast: ctx.toast, restored: true });
+        return true;
+      }
+
+      if (maintenanceActive) {
+        scheduleMaintenancePoll(ctx, DEFAULT_MAINTENANCE_POLL_MS);
+      }
+      return !maintenanceActive;
+    } catch (err) {
+      if (isMaintenancePayload(err.response) || isMaintenancePayload(err)) {
+        showMaintenanceBanner(err.response || err, { toast: ctx.toast });
+        scheduleMaintenancePoll(ctx, retryAfterMs(err.response || err));
+        return false;
+      }
+      if (maintenanceActive) {
+        scheduleMaintenancePoll(ctx, DEFAULT_MAINTENANCE_POLL_MS);
+      }
+      return !maintenanceActive;
+    }
+  }
+
+  function applyIssuanceStateFromPayload(data, ctx = {}, { allowClear = false } = {}) {
+    if (isMaintenancePayload(data)) {
+      showMaintenanceBanner(data, { toast: ctx.toast });
+      scheduleMaintenancePoll(ctx, retryAfterMs(data));
+      return false;
+    }
+    if (allowClear) {
+      if (maintenanceActive) {
+        clearMaintenanceBanner({ toast: ctx.toast, restored: true });
+      } else {
+        clearMaintenanceBanner();
+      }
+    }
+    return true;
+  }
+
+  function handlePurchaseMaintenanceError(err, ctx = {}) {
+    const payload = err?.response || err;
+    if (
+      err?.code === 'CARD_PROVIDER_MAINTENANCE'
+      || err?.code === 'CARD_ISSUANCE_PAUSED'
+      || isMaintenancePayload(payload)
+    ) {
+      showMaintenanceBanner(payload, { toast: ctx.toast });
+      scheduleMaintenancePoll(ctx, retryAfterMs(payload));
+      return true;
+    }
+    return false;
+  }
+
   function estimateTotal(pricing, initialLoad) {
     const p = pricing || {};
     const load = Number(initialLoad) || 0;
@@ -109,12 +292,13 @@
     renderUsdtWalletBalance(ctx);
   }
 
-  async function loadBins() {
+  async function loadBins(ctx = {}) {
     const select = $('kripicardBinSelect');
     const svc = api();
     if (!select || !svc) return;
     try {
       const data = await svc.getBins();
+      applyIssuanceStateFromPayload(data, ctx);
       const bins = Array.isArray(data.bins) ? data.bins : [];
       const details = Array.isArray(data.details) ? data.details : [];
       const labelFor = (bin) => {
@@ -137,6 +321,10 @@
       });
     } catch (err) {
       console.warn('[instantCardView bins]', err.message);
+      if (handlePurchaseMaintenanceError(err, ctx)) {
+        select.innerHTML = '<option value="">Unavailable during maintenance</option>';
+        return;
+      }
       select.innerHTML = '<option value="441357">US Visa 441357 (fallback)</option>';
     }
   }
@@ -147,6 +335,7 @@
     try {
       const data = await svc.getPricing();
       ctx.pricing = data;
+      applyIssuanceStateFromPayload(data, ctx);
       const min = data.minimum_initial_deposit_usd ?? 10;
       const input = $('kripicardInitialLoad');
       if (input) {
@@ -164,6 +353,7 @@
       return data;
     } catch (err) {
       console.warn('[instantCardView pricing]', err.message);
+      handlePurchaseMaintenanceError(err, ctx);
       return null;
     }
   }
@@ -199,6 +389,15 @@
       e.preventDefault();
       const svc = api();
       if (!svc) return;
+      const toast = ctx.toast || (() => {});
+      if (maintenanceActive) {
+        toast(
+          $('kripicardMaintenanceMessage')?.textContent
+            || 'Card issuing is temporarily unavailable. Please wait for maintenance to finish.',
+          'error'
+        );
+        return;
+      }
       try {
         const initialLoad = parseFloat($('kripicardInitialLoad').value);
         const nameOnCard = ($('kripicardHolderName')?.value || '').trim();
@@ -207,7 +406,6 @@
           || estimateTotal(ctx.pricing, initialLoad);
         const usdtBal = Number(ctx.getUsdtWalletBalance?.() ?? ctx.getMasterBalance?.() ?? 0);
         const t = ctx.t;
-        const toast = ctx.toast || (() => {});
         const formatUsdt = ctx.formatUsdt || ((n) => `$${Number(n).toFixed(2)} USDT`);
 
         if (!nameOnCard || nameOnCard.length < 2) {
@@ -247,12 +445,13 @@
 
         form.reset();
         if ($('kripicardHolderName') && nameOnCard) $('kripicardHolderName').value = nameOnCard;
-        loadBins().catch(() => {});
+        loadBins(ctx).catch(() => {});
         updatePricingBreakdown(ctx);
         ctx.onIssued?.(data);
       } catch (err) {
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') ctx.openPinUnlock?.();
-        (ctx.toast || (() => {}))(err.message || 'Instant card request failed', 'error');
+        if (handlePurchaseMaintenanceError(err, ctx)) return;
+        toast(err.message || 'Instant card request failed', 'error');
         if (err.code === 'INSUFFICIENT_USDT_BALANCE') ctx.openUsdtTopUp?.();
       }
     });
@@ -271,13 +470,26 @@
     renderUsdtWalletBalance(ctx);
     await Promise.all([
       loadPricing(ctx),
-      loadBins(),
+      loadBins(ctx),
     ]);
+    // Reconcile after parallel loads so a healthy pricing response cannot clear
+    // a maintenance signal that arrived from the bins endpoint.
+    if (!maintenanceActive) {
+      await pollIssuanceAvailability(ctx).catch(() => {});
+    }
     renderUsdtWalletBalance(ctx);
   }
 
   function deactivate() {
+    stopMaintenancePoll();
+    maintenanceActive = false;
     unmount();
+  }
+
+  function unmountWithCleanup(host) {
+    stopMaintenancePoll();
+    maintenanceActive = false;
+    unmount(host);
   }
 
   root.EisyComponents.instantCardView = {
@@ -286,7 +498,7 @@
     WALLET,
     TEMPLATE,
     mount,
-    unmount,
+    unmount: unmountWithCleanup,
     bind,
     activate,
     deactivate,
@@ -296,5 +508,7 @@
     loadPricing,
     loadBins,
     estimateTotal,
+    pollIssuanceAvailability,
+    isMaintenancePayload,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

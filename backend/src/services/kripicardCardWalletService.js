@@ -28,6 +28,10 @@ const {
   finalizeCardPurchaseWallet,
 } = require('./supabaseWalletLedgerService');
 const { fetchAvailableBins } = require('../../../lib/kripicard');
+const {
+  assertCardIssuanceNotPaused,
+  asCardMaintenanceError,
+} = require('../../../lib/kripicardCardMaintenance');
 const CardReloadRequest = require('../models/CardReloadRequest');
 const { RELOAD_PENDING_MESSAGE } = require('./cardReloadApprovalService');
 
@@ -162,7 +166,12 @@ async function getKripicardBinOptions({ forceRefresh = false, pricingSettings = 
     const value = {
       ...fallback,
       error: apiError
-        ? { code: apiError.code || 'KRIPICARD_BINS_FETCH_FAILED', message: apiError.message }
+        ? {
+          code: apiError.code || 'KRIPICARD_BINS_FETCH_FAILED',
+          message: apiError.message,
+          status: apiError.status || null,
+          provider_code: apiError.providerCode || apiError.provider_code || null,
+        }
         : null,
       fallback_reason: apiError ? 'fetch_error' : 'empty_catalog',
     };
@@ -226,6 +235,9 @@ async function purchaseKripicardFromUsdtWallet(userId, {
   bin,
   paymentRef,
 }) {
+  // Block before any wallet debit when Instant Card issuing is paused.
+  assertCardIssuanceNotPaused();
+
   const user = await User.findById(userId);
   if (!user) throw new Error('User not found');
 
@@ -390,7 +402,9 @@ async function purchaseKripicardFromUsdtWallet(userId, {
         issueErr.refund_error = tursoRefundErr.message;
       }
     }
-    throw issueErr;
+    throw asCardMaintenanceError(issueErr, {
+      refunded: issueErr.refund_failed === true ? false : true,
+    });
   }
 
   const providerCard = issued.provider_card || {};

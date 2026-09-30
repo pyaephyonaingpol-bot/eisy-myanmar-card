@@ -25,6 +25,12 @@ const {
   isCardReloadAllowed,
   isCardVisibleInUserList,
 } = require('../constants/cardStatuses');
+const {
+  isTemporaryCardProviderOutage,
+  cardProviderMaintenancePayload,
+  cardIssuancePausedPayload,
+  CARD_ISSUANCE_PAUSED,
+} = require('../../../lib/kripicardCardMaintenance');
 
 const router = express.Router();
 
@@ -74,6 +80,22 @@ function mapCardForClient(c) {
 function respondCardPurchaseError(res, err, logTag) {
   const message = String(err?.message || 'Unexpected error');
   const code = err?.code;
+
+  if (err?.maintenance === true || isTemporaryCardProviderOutage(err)) {
+    const payload = code === CARD_ISSUANCE_PAUSED
+      ? cardIssuancePausedPayload()
+      : cardProviderMaintenancePayload(err);
+    if (err.refunded != null) payload.refunded = err.refunded;
+    else if (err.refund_failed === true) payload.refunded = false;
+    else if (err.refund_failed === false) payload.refunded = true;
+    console.warn(
+      `[${logTag}] card maintenance`,
+      payload.code,
+      err?.cause_code || code || '',
+      err?.providerCode || err?.provider_code || ''
+    );
+    return res.status(503).json(payload);
+  }
 
   if (code === 'INSUFFICIENT_USDT_BALANCE') {
     return res.status(400).json({
