@@ -25,6 +25,7 @@ const {
 } = require('../services/kripicardDepositService');
 const { listPaymentMethods } = require('../services/depositPaymentMethodService');
 const { getMasterWalletAddress } = require('../services/tronMasterWalletService');
+const { assertKripicardOnlyProvider } = require('../services/kripicardOnlyGateways');
 
 const router = express.Router();
 
@@ -78,6 +79,7 @@ function requireListenerOrAdmin(req, res, next) {
 router.post('/create', requireAuth, requireSensitive, async (req, res) => {
   try {
     const body = req.body || {};
+    assertKripicardOnlyProvider(body);
     const result = await createKripicardCryptoDeposit(req.user.id, {
       amount_usdt: body.amount_usdt ?? body.amount,
       network: body.network || body.kripicard_network || 'tron',
@@ -86,10 +88,19 @@ router.post('/create', requireAuth, requireSensitive, async (req, res) => {
     });
     return res.status(201).json({
       success: true,
+      provider: 'kripicard',
       ...result,
     });
   } catch (err) {
     console.error('[deposit/create]', err.message, err.code || '');
+    if (err.code === 'BITNOB_RETIRED') {
+      return res.status(400).json({
+        success: false,
+        error: err.message,
+        code: err.code,
+        provider: 'kripicard',
+      });
+    }
     const status = err.code === 'KRIPICARD_NOT_CONFIGURED'
       ? 503
       : ([
@@ -132,6 +143,7 @@ router.get('/kripicard-networks', requireAuth, async (req, res) => {
 router.post('/kripicard-collection', requireAuth, requireSensitive, async (req, res) => {
   try {
     const body = req.body || {};
+    assertKripicardOnlyProvider(body);
     const result = await createKripicardCryptoDeposit(req.user.id, {
       amount_usdt: body.amount_usdt ?? body.amount,
       network: body.network || 'tron',
@@ -140,6 +152,7 @@ router.post('/kripicard-collection', requireAuth, requireSensitive, async (req, 
     });
     return res.status(201).json({
       success: true,
+      provider: 'kripicard',
       ...result,
     });
   } catch (err) {
@@ -148,6 +161,7 @@ router.post('/kripicard-collection', requireAuth, requireSensitive, async (req, 
       success: false,
       error: err.message || 'Failed to create Kripicard deposit',
       code: err.code,
+      provider: err.code === 'BITNOB_RETIRED' ? 'kripicard' : undefined,
     });
   }
 });

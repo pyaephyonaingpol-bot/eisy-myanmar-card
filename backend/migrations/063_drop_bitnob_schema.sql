@@ -1,4 +1,5 @@
--- Remove Bitnob dual-wallet schema (061/062 Bitnob-specific artifacts).
+-- Retire Bitnob dual-wallet / Standard Card schema (061/062 artifacts).
+-- Card creation and crypto deposits are Kripicard API only after this migration.
 -- Keeps general KYC profile columns from 062 (date_of_birth, address, occupation, etc.).
 -- SQLite supports DROP COLUMN (3.35+) but not "DROP COLUMN IF EXISTS".
 

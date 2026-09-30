@@ -3,6 +3,9 @@
  *
  * Master/HD TRC-20 deposits credit users.balance_usdt. This service debits that
  * balance, then calls Kripicard createcard. Uses Master Wallet (users.balance_usdt) only.
+ *
+ * Bitnob (Standard Card / dual-wallet) issuance is fully retired — every createcard
+ * and reload path here is Kripicard-only.
  */
 const Card = require('../models/Card');
 const User = require('../models/User');
@@ -528,6 +531,13 @@ async function reloadCardFromUsdtWallet(userId, { cardId, amountUsdt }) {
 
   const cardMeta = parseRecordMetadata(card.metadata);
   const provider = String(cardMeta.provider || 'kripicard').toLowerCase();
+  if (provider === 'bitnob' || provider === 'bitnod' || provider === 'standard') {
+    const err = new Error(
+      'Bitnob cards are no longer supported. Issue a new Instant Card through Kripicard.'
+    );
+    err.code = 'BITNOB_RETIRED';
+    throw err;
+  }
   if (provider !== 'kripicard') {
     const err = new Error('This card cannot be reloaded (unsupported provider).');
     err.code = 'UNSUPPORTED_CARD_RELOAD';
