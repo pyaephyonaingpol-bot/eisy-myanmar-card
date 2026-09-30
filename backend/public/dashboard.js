@@ -460,12 +460,15 @@ const Dashboard = {
     }
     list.innerHTML = products.map((p) => {
       const total = Number(p.total_charge_usd ?? (Number(p.price_usd) + fee));
-      const metaBits = [p.platform, p.subcategory].filter(Boolean).join(' · ');
+      const platformLabel = p.platform_name || p.platform || '';
+      const typeLabel = p.subcategory_name || p.country_name || p.subcategory || '';
+      const metaBits = [platformLabel, typeLabel].filter(Boolean).join(' · ');
+      const title = p.name || [platformLabel, typeLabel].filter(Boolean).join(' · ') || p.product_id;
       const pricingNote = p.pricing_model === 'per_1000' ? ' / 1K' : '';
       return `
       <article class="hub-service-product" data-product-id="${this.escapeAttr?.(p.product_id) || p.product_id}">
         <div class="hub-service-product-main">
-          <strong>${this.escapeHtml?.(p.name) || p.name}</strong>
+          <strong>${this.escapeHtml?.(title) || title}</strong>
           ${metaBits ? `<div class="hub-service-meta">${this.escapeHtml?.(metaBits) || metaBits}</div>` : ''}
           <p class="hint">${this.escapeHtml?.(p.description || '') || ''}</p>
           <div class="pricing-row"><span>Product${pricingNote}</span><strong>$${Number(p.price_usd).toFixed(2)}</strong></div>
