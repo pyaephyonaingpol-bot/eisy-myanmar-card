@@ -4740,29 +4740,33 @@ html[data-eisy-portal="hub"] .sidebar-nav .nav-item[data-page] {
   display: none !important;
 }
 
-html[data-eisy-portal="hub"] .app-page[data-page="home"] > :not(#portalHubChooser) {
-  display: none !important;
-}
-
 html[data-eisy-portal="hub"] .app-page[data-page]:not([data-page="home"]) {
   display: none !important;
 }
 
 html[data-eisy-portal="hub"] .portal-hub-home {
-  min-height: min(60vh, 520px);
+  min-height: min(70vh, 720px);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 1rem;
+  padding: 1rem 0 2rem;
 }
 
-html[data-eisy-portal="hub"] .portal-hub-chooser {
-  width: min(640px, 100%);
+html[data-eisy-portal="hub"] .portal-hub-chooser,
+html[data-eisy-portal="hub"] .portal-hub-service-panel {
+  width: min(960px, 100%);
   margin: 0 auto;
+}
+
+html[data-eisy-portal="hub"] .app-page[data-page="home"] > :not(#portalHubChooser):not(#portalHubServicePanel) {
+  display: none !important;
 }
 
 .portal-hub-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.85rem;
   margin-top: 0.75rem;
 }
@@ -4777,12 +4781,19 @@ html[data-eisy-portal="hub"] .portal-hub-chooser {
   background: rgba(15, 23, 42, 0.65);
   color: inherit;
   text-decoration: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
   transition: border-color 160ms ease, transform 160ms ease;
 }
 
 .portal-hub-card:hover {
   border-color: rgba(56, 189, 248, 0.55);
   transform: translateY(-1px);
+}
+
+.portal-hub-card-instant {
+  border-color: rgba(56, 189, 248, 0.35);
 }
 
 .portal-hub-card strong {
@@ -4792,6 +4803,42 @@ html[data-eisy-portal="hub"] .portal-hub-chooser {
 .portal-hub-card span {
   font-size: 0.85rem;
   color: var(--text-muted, #94a3b8);
+}
+
+.portal-hub-fee-chip {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  font-style: normal;
+  color: #7dd3fc;
+}
+
+.portal-hub-service-panel {
+  margin-top: 0.25rem;
+}
+
+.hub-service-product {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 0.85rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.2));
+}
+
+.hub-service-product:last-child {
+  border-bottom: 0;
+}
+
+.hub-service-product-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  justify-content: flex-end;
+}
+
+@media (max-width: 720px) {
+  .hub-service-product {
+    grid-template-columns: 1fr;
+  }
 }
 
 .portal-switch-link {
