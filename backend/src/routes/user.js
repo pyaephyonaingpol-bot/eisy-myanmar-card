@@ -60,9 +60,15 @@ function mapCardForClient(c) {
     request_status: metadata.request_status || (pending ? 'pending_approval' : 'approved'),
     is_primary: Boolean(c.is_primary),
     balance_usd: metadata.balance_usd ?? null,
-    provider: metadata.provider === 'kripicard' ? 'kripicard' : (metadata.provider ? 'legacy' : null),
+    // Bitnob / Standard providers are retired — never expose them to clients.
+    provider: (() => {
+      const p = String(metadata.provider || '').toLowerCase();
+      if (p === 'kripicard') return 'kripicard';
+      if (!p || p === 'bitnob' || p === 'bitnod' || p === 'standard') return null;
+      return 'legacy';
+    })(),
     card_flow: metadata.card_flow
-      || (metadata.provider === 'kripicard' ? 'instant' : null),
+      || (String(metadata.provider || '').toLowerCase() === 'kripicard' ? 'instant' : null),
     funding_wallet: metadata.wallet_type || metadata.payment_method || null,
     created_at: c.created_at,
     activated_at: metadata.activated_at || c.activated_at || null,

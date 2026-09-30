@@ -14,6 +14,7 @@
     "test:admin-kripicard-balance": "node backend/scripts/test-admin-kripicard-balance.js",
     "test:kripicard-payment-collections": "node backend/scripts/test-kripicard-payment-collections.js",
     "test:kripicard-deposits": "node backend/scripts/test-kripicard-deposits.js",
+    "test:kripicard-only-card-deposit": "node backend/scripts/test-kripicard-only-card-deposit.js",
     "test:kripicard-deposit-ui": "node backend/scripts/test-kripicard-deposit-ui.js",
     "test:kripicard-withdraw-fee": "node backend/scripts/test-kripicard-withdraw-fee.js",
     "test:tron-scanpay-disabled": "node backend/scripts/test-tron-scanpay-disabled.js",

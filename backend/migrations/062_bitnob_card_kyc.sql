@@ -1,5 +1,6 @@
--- Bitnob Card KYC profile fields for Standard pipeline.
--- Platform KYC docs feed Bitnob POST /api/cards/kyc → customer_id for card issue.
+-- HISTORICAL (retired): Bitnob Card KYC fields for the old Standard pipeline.
+-- Bitnob-specific columns are dropped in 063_drop_bitnob_schema.sql.
+-- General KYC profile columns below remain for platform KYC.
 
 ALTER TABLE users ADD COLUMN bitnob_kyc_status TEXT;
 ALTER TABLE users ADD COLUMN bitnob_kyc_reason TEXT;
