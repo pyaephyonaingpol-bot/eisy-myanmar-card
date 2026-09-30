@@ -26,8 +26,12 @@ const {
   mapMainServicesToHubCategories,
   resolveHubCategory,
   resolveCountryName,
+  resolveCountryIsoFilter,
   pickDisplayName,
   enrichDisplayLabels,
+  expandGiftCardProducts,
+  expandProxyFamilies,
+  listFromCatalogPayload,
   DEFAULT_SERVICES_PATH,
   ALL_KEY,
 } = require('../../lib/kripicardHubApi');
@@ -164,11 +168,80 @@ section('main /services payload maps into Hub categories');
   assert.ok(mapped.sms.length >= 1);
   assert.ok(mapped.social_media.length >= 2);
   assert.ok(mapped.esim.length >= 1);
-  assert.ok(mapped.gift_cards.length >= 1);
+  assert.ok(mapped.gift_cards.length >= 1, 'gift dens expand into priced products');
   assert.ok(mapped.sim_topup.length >= 1);
   assert.ok(mapped.proxies.length >= 2);
   assert.strictEqual(mapped.social_media[0].platform_key, 'instagram');
   assert.ok(['followers', 'packages'].includes(mapped.social_media[0].subcategory_key));
+  console.log('ok');
+}
+
+section('module parsers: gifts dens, eSIM packages envelope, proxies plans');
+{
+  assert.strictEqual(resolveCountryIsoFilter('United States'), 'US');
+  assert.strictEqual(resolveCountryIsoFilter('tr'), 'TR');
+
+  const giftProducts = expandGiftCardProducts([
+    {
+      product_id: 20004,
+      product_name: 'App Store & iTunes TRY',
+      brand: 'Apple',
+      country_iso: 'TR',
+      country_name: 'Turkey',
+      currency: 'TRY',
+      denominations: [10, 25, 50],
+      fixedSenderDenominations: [0.3, 0.75, 1.5],
+    },
+    {
+      product_id: 30001,
+      product_name: 'Amazon US',
+      brand: 'Amazon',
+      country_iso: 'US',
+      currency: 'USD',
+      denominations: [15, 25],
+    },
+  ]);
+  assert.ok(giftProducts.length >= 5, `expected expanded gift SKUs, got ${giftProducts.length}`);
+  assert.ok(giftProducts.every((p) => p.price_usd > 0));
+  assert.ok(giftProducts.every((p) => p.processing_fee_usd == null)); // fee applied in hub service
+  assert.ok(giftProducts.some((p) => p.name.includes('25 TRY') || p.name.includes('25 USD') || p.local_amount === 25));
+  assert.ok(giftProducts.some((p) => (p.platform || '').includes('Turkey') || (p.platform || '').includes('United')));
+
+  const esimRows = listFromCatalogPayload({
+    success: true,
+    data: {
+      packages: [{
+        packageCode: 'ESIM_US_5GB_30D',
+        country: 'United States',
+        countryCode: 'US',
+        data: '5GB',
+        duration: '30 days',
+        price: 25,
+        currency: 'USD',
+      }],
+      pagination: { page: 1, per_page: 20, total: 1 },
+    },
+  });
+  assert.strictEqual(esimRows.length, 1);
+  const esimProduct = normalizeServiceProduct({
+    ...esimRows[0],
+    product_id: esimRows[0].packageCode,
+    price_usd: esimRows[0].price,
+    platform: 'United States',
+    category: '5GB',
+  }, { categoryId: 'esim', platform: 'United States', subcategory: '5GB' });
+  assert.ok(esimProduct);
+  assert.strictEqual(esimProduct.price_usd, 25);
+  assert.ok(esimProduct.name.includes('United States') || esimProduct.platform.includes('United'));
+
+  const proxyProducts = expandProxyFamilies({
+    packages: [
+      { product_id: 'px-1', name: 'Residential 1GB', family: 'pool', price_usd: 3.5 },
+      { type: 'isp_static', label: 'ISP Static', family: 'static', min_price_usd: 5 },
+    ],
+  });
+  assert.ok(proxyProducts.length >= 2);
+  assert.ok(proxyProducts.every((p) => p.price_usd > 0));
   console.log('ok');
 }
 
@@ -270,6 +343,9 @@ section('UI hub switch surfaces filters + remaining categories');
   assert.ok(dash.includes('data-hub-platform'), 'platform filter chips');
   assert.ok(dash.includes('data-hub-subcategory'), 'subcategory filter chips');
   assert.ok(dash.includes('reloadHubServiceCatalog'), 'dynamic reload');
+  assert.ok(dash.includes("category.id === 'esim'"), 'eSIM country input routing');
+  assert.ok(dash.includes("category.id === 'gift_cards'"), 'gift card country input routing');
+  assert.ok(dash.includes("category.id === 'sim_topup'"), 'SIM top-up number/country inputs');
   assert.ok(dash.includes('+$1.00 fee') || dash.includes('hub_processing_fee_chip'), 'fee chip');
   assert.ok(dash.includes('Open Instant →') || dash.includes('data-portal-switch="instant"'), 'Instant remains in top switch');
   assert.ok(i18n.includes('hub_cat_sms_title'));
@@ -306,7 +382,20 @@ section('backend routes + live API client + fee type');
   assert.ok(api.includes("DEFAULT_SERVICES_PATH = '/services'") || api.includes("'/services'"));
   assert.ok(api.includes('fetchMainServicesCatalog'));
   assert.ok(api.includes('mapMainServicesToHubCategories'));
-  assert.ok(api.includes('/smm/services'), 'module fallback retained');
+  assert.ok(api.includes('fetchModuleCatalog'), 'module-first catalog client');
+  assert.ok(api.includes('/smm/services'), 'SMM module route');
+  assert.ok(api.includes('/sms/services'), 'SMS module route');
+  assert.ok(api.includes('/esim/packages'), 'eSIM module route');
+  assert.ok(api.includes('/gifts/packages'), 'gifts module route');
+  assert.ok(api.includes('/sim/packages'), 'SIM module route');
+  assert.ok(api.includes('/proxies/types'), 'proxies module route');
+  assert.ok(
+    api.includes('module routes first')
+      || api.includes('Module-first')
+      || api.includes('module-first'),
+    'module-first documented in client'
+  );
+  assert.ok(api.includes('expandGiftCardProducts'));
   assert.ok(fs.existsSync(path.join(__dirname, '../migrations/067_kripicard_hub_purchases.sql')));
   console.log('ok');
 }

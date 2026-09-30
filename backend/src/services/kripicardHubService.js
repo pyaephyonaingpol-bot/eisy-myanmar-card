@@ -1,10 +1,10 @@
 /**
  * Kripicard Hub catalog + purchase (flat $1 processing fee on every buy).
  *
- * Catalog prefers Kripicard's single main /api/external/services endpoint, then
- * maps the payload into Hub categories (platforms → subcategories → services).
- * Falls back to the local starter catalog when the API key is missing or the
- * provider is unreachable so the Hub remains usable offline/dev.
+ * Catalog prefers documented Kripicard module routes per Hub category
+ * (SMS / SMM / eSIM / gifts / SIM / proxies), then falls back to the aggregate
+ * /api/external/services payload. When the API key is missing or the provider
+ * is unreachable, the local starter catalog keeps the Hub usable offline/dev.
  */
 'use strict';
 
