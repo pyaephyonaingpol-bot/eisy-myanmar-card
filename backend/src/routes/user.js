@@ -313,27 +313,44 @@ router.patch('/profile', requireAuth, async (req, res) => {
 router.get('/wallet/deposit-addresses', requireAuth, async (req, res) => {
   try {
     const settings = await getUsdtDepositSettings();
+    const { isTronWalletEnabled } = require('../services/securityFlags');
     let trc20Address = settings.usdt_trc20_address;
     let trc20Source = 'shared';
-    try {
-      const { generateUserDepositAddress } = require('../services/tronWalletService');
-      const assigned = await generateUserDepositAddress(req.user.id);
-      if (assigned?.address) {
-        trc20Address = assigned.address;
-        trc20Source = assigned.source || 'hd';
+    // Per-user HD TRON addresses are retired — deposits use Kripicard pay_address.
+    if (isTronWalletEnabled()) {
+      try {
+        const { generateUserDepositAddress } = require('../services/tronWalletService');
+        const assigned = await generateUserDepositAddress(req.user.id);
+        if (assigned?.address) {
+          trc20Address = assigned.address;
+          trc20Source = assigned.source || 'hd';
+        }
+      } catch (err) {
+        console.warn('[user/wallet/deposit-addresses] HD resolve skipped:', err.message);
       }
-    } catch (err) {
-      console.warn('[user/wallet/deposit-addresses] HD resolve skipped:', err.message);
+    } else {
+      trc20Source = 'kripicard';
+      trc20Address = null;
     }
     res.json({
       usdt_trc20_address: trc20Address,
       usdt_bep20_address: settings.usdt_bep20_address,
       minimum_usdt_deposit: settings.minimum_usdt_deposit,
       trc20_address_source: trc20Source,
-      networks: [
-        { id: 'TRC20', label: 'TRC20 (Tron)', address: trc20Address, source: trc20Source },
-        { id: 'BEP20', label: 'BEP20 (BSC)', address: settings.usdt_bep20_address },
-      ],
+      deposit_provider: isTronWalletEnabled() ? 'tron_wallet' : 'kripicard',
+      networks: isTronWalletEnabled()
+        ? [
+          { id: 'TRC20', label: 'TRC20 (Tron)', address: trc20Address, source: trc20Source },
+          { id: 'BEP20', label: 'BEP20 (BSC)', address: settings.usdt_bep20_address },
+        ]
+        : [
+          {
+            id: 'KRIPICARD',
+            label: 'Kripicard (unique pay address per top-up)',
+            address: null,
+            source: 'kripicard',
+          },
+        ],
     });
   } catch (err) {
     console.error('[user/wallet/deposit-addresses]', err);

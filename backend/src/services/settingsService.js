@@ -226,28 +226,29 @@ async function getWithdrawalFeeSettings() {
     WITHDRAW_MARKUP_PERCENT,
     WITHDRAW_PROCESSING_HOURS,
     WITHDRAW_PAYOUT_PROVIDER,
+    WITHDRAW_FEE_MODE,
     KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT,
     PLATFORM_WITHDRAW_MARGIN_PERCENT,
   } = require('../constants/kripicardWithdrawFees');
   const pricing = await getCardPricingSettings();
   const scoped = withScopedPaymentFeeShape(pricing, 'withdrawal');
   return {
-    usdt_withdraw_fee_trc20: scoped.usdt_withdraw_fee_trc20,
-    usdt_withdraw_fee_bep20: scoped.usdt_withdraw_fee_bep20,
-    usdt_withdraw_fee_trc20_type: scoped.usdt_withdraw_fee_trc20_type,
-    usdt_withdraw_fee_bep20_type: scoped.usdt_withdraw_fee_bep20_type,
-    usdt_withdraw_fee_bank: scoped.usdt_withdraw_fee_bank,
-    usdt_withdraw_fee_bank_type: scoped.usdt_withdraw_fee_bank_type,
+    usdt_withdraw_fee_trc20: WITHDRAW_MARKUP_PERCENT,
+    usdt_withdraw_fee_bep20: WITHDRAW_MARKUP_PERCENT,
+    usdt_withdraw_fee_trc20_type: 'percent',
+    usdt_withdraw_fee_bep20_type: 'percent',
+    usdt_withdraw_fee_bank: WITHDRAW_MARKUP_PERCENT,
+    usdt_withdraw_fee_bank_type: 'percent',
     minimum_usdt_withdrawal: scoped.minimum_usdt_withdrawal,
     minimum_mmk_withdrawal: scoped.minimum_mmk_withdrawal,
-    mmk_withdraw_fee_percent: scoped.mmk_withdraw_fee_percent,
+    mmk_withdraw_fee_percent: WITHDRAW_MARKUP_PERCENT,
     mmk_to_usd_rate: scoped.mmk_to_usd_rate,
-    payment_service_fee_percent: scoped.payment_service_fee_percent,
-    payment_service_fee_minimum_usdt: scoped.payment_service_fee_minimum_usdt,
-    payment_service_fee_mode: scoped.payment_service_fee_mode,
-    withdrawal_service_fee_percent: scoped.withdrawal_service_fee_percent,
-    withdrawal_service_fee_minimum_usdt: scoped.withdrawal_service_fee_minimum_usdt,
-    withdrawal_service_fee_mode: scoped.withdrawal_service_fee_mode,
+    payment_service_fee_percent: WITHDRAW_MARKUP_PERCENT,
+    payment_service_fee_minimum_usdt: 0,
+    payment_service_fee_mode: WITHDRAW_FEE_MODE,
+    withdrawal_service_fee_percent: WITHDRAW_MARKUP_PERCENT,
+    withdrawal_service_fee_minimum_usdt: 0,
+    withdrawal_service_fee_mode: WITHDRAW_FEE_MODE,
     kripicard_withdraw_network_fee_percent: KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT,
     platform_withdraw_margin_percent: PLATFORM_WITHDRAW_MARGIN_PERCENT,
     withdraw_markup_percent: WITHDRAW_MARKUP_PERCENT,
@@ -511,6 +512,7 @@ function calculateWithdrawalBreakdown(amountUsdt, network, settings) {
     WITHDRAW_MARKUP_PERCENT,
     WITHDRAW_PROCESSING_HOURS,
     WITHDRAW_PAYOUT_PROVIDER,
+    WITHDRAW_FEE_MODE,
     KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT,
     PLATFORM_WITHDRAW_MARGIN_PERCENT,
   } = require('../constants/kripicardWithdrawFees');
@@ -520,24 +522,35 @@ function calculateWithdrawalBreakdown(amountUsdt, network, settings) {
     throw new Error('Enter a valid USDT withdrawal amount');
   }
 
-  const breakdown = calculateNetworkWithdrawalFee(amount, network, settings);
+  // Policy: always charge the fixed Kripicard 4% markup (3% network + 1% platform),
+  // independent of drifted admin fee settings.
+  const forcedSettings = {
+    ...(settings || {}),
+    withdrawal_service_fee_mode: WITHDRAW_FEE_MODE,
+    withdrawal_service_fee_percent: WITHDRAW_MARKUP_PERCENT,
+    withdrawal_service_fee_minimum_usdt: 0,
+    payment_service_fee_mode: WITHDRAW_FEE_MODE,
+    payment_service_fee_percent: WITHDRAW_MARKUP_PERCENT,
+    payment_service_fee_minimum_usdt: 0,
+    usdt_withdraw_fee_trc20_type: 'percent',
+    usdt_withdraw_fee_trc20: WITHDRAW_MARKUP_PERCENT,
+    usdt_withdraw_fee_bep20_type: 'percent',
+    usdt_withdraw_fee_bep20: WITHDRAW_MARKUP_PERCENT,
+    usdt_withdraw_fee_bank_type: 'percent',
+    usdt_withdraw_fee_bank: WITHDRAW_MARKUP_PERCENT,
+  };
+
+  const breakdown = calculateNetworkWithdrawalFee(amount, network, forcedSettings);
   const min = parseFloat(settings?.minimum_usdt_withdrawal) || 10;
   const rate = parseFloat(settings?.mmk_to_usd_rate) || 4500;
   const isBank = breakdown.network === 'BANK';
   const amountMmk = isBank ? Math.round(breakdown.net_usdt * rate) : null;
 
   const markup = splitWithdrawMarkup(breakdown.amount_usdt, breakdown.fee_usdt);
-  const usesKripicardMarkup = Number(breakdown.fee_percent) === WITHDRAW_MARKUP_PERCENT
-    || Number(settings?.withdrawal_service_fee_percent) === WITHDRAW_MARKUP_PERCENT
-    || Number(settings?.payment_service_fee_percent) === WITHDRAW_MARKUP_PERCENT;
-
-  const feeLabel = usesKripicardMarkup
-    ? markup.fee_label
-    : breakdown.fee_label;
 
   return {
     ...breakdown,
-    fee_label: feeLabel,
+    fee_label: markup.fee_label,
     payout_method: isBank ? 'bank' : 'crypto',
     payout_provider: WITHDRAW_PAYOUT_PROVIDER,
     exchange_rate: isBank ? rate : null,
@@ -553,8 +566,8 @@ function calculateWithdrawalBreakdown(amountUsdt, network, settings) {
     processing_hours: WITHDRAW_PROCESSING_HOURS,
     processing_label: markup.processing_label,
     summary: isBank
-      ? `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${feeLabel} = ${breakdown.net_usdt.toFixed(2)} USDT → ${Math.round(amountMmk || 0).toLocaleString()} MMK at rate ${rate.toLocaleString()} · ${markup.processing_label}`
-      : `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${feeLabel} = ${breakdown.net_usdt.toFixed(2)} USDT via Kripicard · ${markup.processing_label}`,
+      ? `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${markup.fee_label} = ${breakdown.net_usdt.toFixed(2)} USDT → ${Math.round(amountMmk || 0).toLocaleString()} MMK at rate ${rate.toLocaleString()} · ${markup.processing_label}`
+      : `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${markup.fee_label} = ${breakdown.net_usdt.toFixed(2)} USDT via Kripicard · ${markup.processing_label}`,
   };
 }
 

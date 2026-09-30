@@ -59,13 +59,17 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
   const withdrawalFees = await getWithdrawalFeeSettings();
   assert.strictEqual(withdrawalFees.withdrawal_service_fee_mode, 'percent');
   assert.strictEqual(withdrawalFees.payment_service_fee_mode, 'percent');
-  assert.strictEqual(withdrawalFees.payment_service_fee_percent, 5);
+  // Runtime fee API always exposes the forced Kripicard 4% markup.
+  assert.strictEqual(withdrawalFees.payment_service_fee_percent, 4);
+  assert.strictEqual(withdrawalFees.withdrawal_service_fee_percent, 4);
 
   const depositBreakdown = calculateDepositFeeBreakdown(100, { currency: 'USDT', settings: depositFees });
   assert.strictEqual(depositBreakdown.fee_usdt, 0, 'deposit fee off => zero fee');
 
   const withdrawalBreakdown = calculateWithdrawalBreakdown(100, 'BANK', withdrawalFees);
-  assert.strictEqual(withdrawalBreakdown.fee_usdt, 5, 'withdrawal 5% fee on 100 USDT');
+  assert.strictEqual(withdrawalBreakdown.fee_usdt, 4, 'withdrawal forced to Kripicard 4% markup');
+  assert.strictEqual(withdrawalBreakdown.kripicard_network_fee_usdt, 3);
+  assert.strictEqual(withdrawalBreakdown.platform_margin_usdt, 1);
 
   console.log('Separate deposit vs withdrawal admin fees — ok');
   await closeDb();

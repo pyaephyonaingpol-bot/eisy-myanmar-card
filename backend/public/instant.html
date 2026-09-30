@@ -363,7 +363,7 @@
 
 
   <!-- Scan Pay modal -->
-  <div id="scanPayModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="scanPayModalTitle" aria-modal="true">
+  <div id="scanPayModal" class="modal hidden" data-instant-only data-feature="scan_pay" data-feature-disabled="true" role="dialog" aria-labelledby="scanPayModalTitle" aria-modal="true">
     <div class="modal-box modal-box-wide scan-pay-modal">
       <div class="modal-header-row">
         <h3 id="scanPayModalTitle" data-i18n="scan_pay_title">Scan Pay</h3>
@@ -1301,7 +1301,7 @@
                       <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="btn_top_up_usdt">Top Up USDT</button>
                       <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdt" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
                       <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawUsdt" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
-                      <button type="button" class="btn btn-primary btn-sm" id="btnOpenScanPay" data-i18n="btn_scan_pay">Scan Pay</button>
+                      <button type="button" class="btn btn-primary btn-sm hidden" id="btnOpenScanPay" data-i18n="btn_scan_pay" hidden aria-hidden="true" tabindex="-1" data-feature="scan_pay" data-feature-disabled="true">Scan Pay</button>
                     </div>
                   </div>
                 </div>
@@ -1441,7 +1441,7 @@
                 <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="btn_top_up_usdt">Top Up USDT</button>
                 <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdtPage" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
                 <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawUsdtPage" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
-                <button type="button" class="btn btn-primary btn-sm" id="btnOpenScanPayPage" data-i18n="btn_scan_pay">Scan Pay</button>
+                <button type="button" class="btn btn-primary btn-sm hidden" id="btnOpenScanPayPage" data-i18n="btn_scan_pay" hidden aria-hidden="true" tabindex="-1" data-feature="scan_pay" data-feature-disabled="true">Scan Pay</button>
               </div>
             </div>
 
@@ -1499,7 +1499,7 @@
                   <h2 style="margin:0" data-i18n="usdt_deposit_addresses">Kripicard Deposits</h2>
                   <button type="button" id="btnRefreshUsdtWallet" class="btn btn-secondary btn-sm" data-i18n="refresh">Refresh</button>
                 </div>
-                <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_deposit_addresses_hint">Top up via Kripicard to receive a unique pay address, exact amount, and network (e.g. Tron). Withdrawals still use the legacy TRON master wallet.</p>
+                <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_deposit_addresses_hint">Top up via Kripicard to receive a unique pay address, exact amount, and network (e.g. Tron). Withdrawals are paid via Kripicard within 48 hours (4% markup).</p>
                 <div id="usdtWalletDepositAddresses" class="usdt-wallet-address-list" data-deposit-provider="kripicard"><p class="hint" data-i18n="loading">Loading…</p></div>
               </section>
 

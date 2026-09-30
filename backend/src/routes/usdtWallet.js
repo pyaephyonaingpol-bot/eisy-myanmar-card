@@ -42,6 +42,15 @@ router.get('/balance', requireAuth, requireSensitive, async (req, res) => {
 
 router.post('/provision', requireAuth, async (req, res) => {
   try {
+    const { isTronWalletEnabled, tronWalletDisabledPayload } = require('../services/securityFlags');
+    // Custodial HD TRC20 provisioning is part of the retired Tron Wallet flow.
+    // Deposits now use Kripicard unique pay addresses — refuse new HD provisioning.
+    if (!isTronWalletEnabled()) {
+      return res.status(410).json({
+        ...tronWalletDisabledPayload(),
+        error: 'Custodial TRON deposit addresses are disabled. Top up via Kripicard instead.',
+      });
+    }
     const addresses = await provisionCustodialAddresses(req.user.id);
     res.json({
       ok: true,
@@ -172,6 +181,10 @@ router.get('/linked/:id/balance', requireAuth, async (req, res) => {
 
 router.post('/parse-qr', requireAuth, async (req, res) => {
   try {
+    const { isScanPayEnabled, scanPayDisabledPayload } = require('../services/securityFlags');
+    if (!isScanPayEnabled()) {
+      return res.status(410).json(scanPayDisabledPayload());
+    }
     const { parsePaymentQrPayload } = require('../services/scanPayService');
     const payload = String(req.body?.payload || req.body?.qr || '').trim();
     if (!payload) {
@@ -186,6 +199,10 @@ router.post('/parse-qr', requireAuth, async (req, res) => {
 
 router.post('/scan-pay', requireAuth, requireSensitive, async (req, res) => {
   try {
+    const { isScanPayEnabled, scanPayDisabledPayload } = require('../services/securityFlags');
+    if (!isScanPayEnabled()) {
+      return res.status(410).json(scanPayDisabledPayload());
+    }
     const { executeScanPay } = require('../services/scanPayService');
     const body = req.body || {};
     const result = await executeScanPay(req.user.id, {
@@ -230,6 +247,10 @@ router.post('/scan-pay', requireAuth, requireSensitive, async (req, res) => {
 
 router.get('/scan-pay', requireAuth, requireSensitive, async (req, res) => {
   try {
+    const { isScanPayEnabled, scanPayDisabledPayload } = require('../services/securityFlags');
+    if (!isScanPayEnabled()) {
+      return res.status(410).json(scanPayDisabledPayload());
+    }
     const { listScanPaymentsForUser } = require('../services/scanPayService');
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
     const payments = await listScanPaymentsForUser(req.user.id, { limit });

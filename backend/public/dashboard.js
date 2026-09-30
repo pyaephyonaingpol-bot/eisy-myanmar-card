@@ -6628,27 +6628,11 @@ const Dashboard = {
   },
 
 
-  /* ─── Scan Pay (QR → confirm → atomic USDT debit) ─── */
+  /* ─── Scan Pay (DISABLED — QR → confirm → atomic USDT debit) ─── */
   openScanPayModal() {
-    const modal = $('scanPayModal');
-    if (!modal) return;
-    this._scanPayState = {
-      payload: null,
-      address: null,
-      network: 'TRC20',
-      amount: null,
-      stream: null,
-      raf: null,
-      paying: false,
-      mode: 'chooser',
-    };
-    this._scanPayShowStep('scan');
-    this._scanPayShowChooser();
-    this._scanPaySetError('');
-    this._scanPaySetUploadStatus('');
-    modal.classList.remove('hidden');
-    this._bindScanPayUiOnce();
-    // Do not auto-start camera — user picks Camera Scan or Upload QR Image.
+    // Scan Pay is retired. Withdrawals go through Kripicard (4% markup · 48h).
+    this.closeScanPayModal();
+    this.toast?.('Scan Pay is disabled. Use Withdraw USDT instead.', 'error');
   },
 
   closeScanPayModal() {
@@ -6932,78 +6916,9 @@ const Dashboard = {
   },
 
   async submitScanPay() {
-    const st = this._scanPayState;
-    if (!st?.address || st.paying) return;
-    const amount = parseFloat($('scanPayAmountInput')?.value);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      this._scanPaySetError('Enter a valid USDT amount.');
-      return;
-    }
-    const note = $('scanPayNoteInput')?.value?.trim() || '';
-    const btn = $('btnScanPayConfirm');
-    const prev = btn?.textContent;
-    st.paying = true;
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Paying…';
-    }
-    this._scanPaySetError('');
-    try {
-      const idempotencyKey = `scanpay-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      const data = await Auth.api('POST', '/api/user/usdt-wallet/scan-pay', {
-        destination_address: st.address,
-        network: st.network || 'TRC20',
-        amount_usdt: amount,
-        qr_payload: st.payload,
-        note: note || undefined,
-        idempotency_key: idempotencyKey,
-      }, { sensitive: true });
-
-      const payment = data.payment || {};
-      if ($('scanPayResultTitle')) $('scanPayResultTitle').textContent = data.duplicate
-        ? 'Payment already recorded'
-        : 'Payment successful';
-      if ($('scanPayResultMessage')) {
-        $('scanPayResultMessage').textContent = data.message
-          || `Paid ${this.formatUsdt(amount)} USDT to ${st.address}`;
-      }
-      if ($('scanPayResultRef')) $('scanPayResultRef').textContent = payment.ref_code || '—';
-      if ($('scanPayResultAmount')) {
-        $('scanPayResultAmount').textContent = `${this.formatUsdt(payment.amount_usdt ?? amount)} USDT`;
-      }
-      if ($('scanPayResultStatus')) {
-        $('scanPayResultStatus').textContent = `${payment.status || 'completed'} / payout ${payment.payout_status || 'pending'}`;
-      }
-      const box = $('scanPayResultBox');
-      box?.classList.remove('err');
-      box?.classList.add('ok');
-
-      if (data.wallet) {
-        this.syncUsdtWalletBalancesFromPayload({
-          balance_usdt: data.wallet.available_usdt ?? data.wallet.balance_usdt,
-          balance_usdt_locked: data.wallet.locked_usdt ?? data.wallet.balance_usdt_locked ?? 0,
-          balance_usdt_total: data.wallet.total_usdt ?? data.wallet.balance_usdt_total,
-          balance_formatted: data.wallet.available_formatted,
-          locked_formatted: data.wallet.locked_formatted,
-          total_formatted: data.wallet.total_formatted,
-        });
-      }
-      this._usdtWalletCache = null;
-      this.loadUsdtWalletPage?.(true)?.catch?.(() => {});
-      this.loadWallet?.({ force: true });
-      this._scanPayShowStep('result');
-      this.toast?.(data.duplicate ? 'Already paid' : 'Scan Pay completed', 'ok');
-    } catch (err) {
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal?.();
-      this._scanPaySetError(err.message || 'Payment failed');
-      this.toast?.(err.message || 'Scan Pay failed', 'error');
-    } finally {
-      st.paying = false;
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = prev || 'Confirm & Pay';
-      }
-    }
+    // Scan Pay is retired; backend also returns 410 FEATURE_DISABLED.
+    this.toast?.('Scan Pay is disabled. Use Withdraw USDT instead.', 'error');
+    this.closeScanPayModal();
   },
 
   openWithdrawModal() {
