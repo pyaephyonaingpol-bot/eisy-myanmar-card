@@ -67,8 +67,8 @@ function testHubServiceCategories() {
   assert.ok(dash.includes('hubServiceModal'), 'hub catalog opens in modal');
   assert.ok(dash.includes('ensureHubServiceModal'));
   assert.ok(dash.includes('/api/kripicard/services/purchase'));
-  assert.ok(dash.includes('data-hub-platform'), 'platform filters');
-  assert.ok(dash.includes('data-hub-subcategory'), 'subcategory filters');
+  assert.ok(dash.includes('hubPlatformSelect'), 'platform filter select');
+  assert.ok(dash.includes('hubSubcategorySelect'), 'type filter select');
   const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
   assert.ok(indexJs.includes('/api/kripicard/services'));
   const hubApi = fs.readFileSync(path.join(ROOT, 'lib/kripicardHubApi.js'), 'utf8');
