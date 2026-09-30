@@ -125,26 +125,6 @@ const KRIPICARD_HUB_CATALOG = {
       price_usd: 22,
     },
   ],
-  webhooks: [
-    {
-      product_id: 'webhook-endpoint-1',
-      name: 'Webhook endpoint · 1 channel',
-      description: 'Managed webhook receiver with retry logs',
-      price_usd: 3,
-    },
-    {
-      product_id: 'webhook-endpoint-5',
-      name: 'Webhook endpoints · 5 channels',
-      description: 'Five managed webhook receivers',
-      price_usd: 12,
-    },
-    {
-      product_id: 'webhook-relay-pro',
-      name: 'Webhook relay Pro · 30 days',
-      description: 'High-volume relay with signed delivery',
-      price_usd: 20,
-    },
-  ],
 };
 
 module.exports = {

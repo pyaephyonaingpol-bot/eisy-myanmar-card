@@ -32,10 +32,11 @@ assert.deepStrictEqual(ids, [
   'gift_cards',
   'social_media',
   'proxies',
-  'webhooks',
 ]);
+assert.ok(!ids.includes('webhooks'), 'webhooks removed from hub categories');
 assert.ok(getCategory('gift-cards'));
-assert.ok(getCategory('SIM Top-Up'.toLowerCase().replace(/\s+/g, '_')) || getCategory('sim_topup'));
+assert.ok(getCategory('sim_topup'));
+assert.strictEqual(getCategory('webhooks'), null);
 const totals = calculateHubPurchaseTotals(9);
 assert.strictEqual(totals.product_price_usd, 9);
 assert.strictEqual(totals.processing_fee_usd, 1);
@@ -43,7 +44,7 @@ assert.strictEqual(totals.total_charge_usd, 10);
 assert.ok(totals.summary.includes('$1.00'));
 console.log('ok');
 
-section('UI hub switch surfaces all categories');
+section('UI hub switch surfaces remaining categories (no Instant card, no Webhooks)');
 {
   const dash = fs.readFileSync(path.join(__dirname, '../public/dashboard.js'), 'utf8');
   const i18n = fs.readFileSync(path.join(__dirname, '../public/i18n.js'), 'utf8');
@@ -51,15 +52,21 @@ section('UI hub switch surfaces all categories');
   for (const id of ids) {
     assert.ok(dash.includes(`id: '${id}'`) || dash.includes(`'${id}'`), `dashboard has ${id}`);
   }
+  assert.ok(!dash.includes("id: 'webhooks'"), 'dashboard list omits webhooks');
+  assert.ok(!dash.includes('portal-hub-card-instant'), 'Instant card removed from hub grid');
   assert.ok(dash.includes('data-hub-service'), 'hub category buttons');
   assert.ok(dash.includes('portalHubServicePanel'), 'service panel');
   assert.ok(dash.includes('/api/kripicard/services/purchase'), 'purchase API call');
   assert.ok(dash.includes('+$1.00 fee') || dash.includes('hub_processing_fee_chip'), 'fee chip');
+  assert.ok(dash.includes('Open Instant →') || dash.includes('data-portal-switch="instant"'), 'Instant remains in top switch');
   assert.ok(i18n.includes('hub_cat_sms_title'));
-  assert.ok(i18n.includes('hub_cat_webhooks_title'));
+  assert.ok(i18n.includes('hub_cat_proxies_title'));
+  assert.ok(!i18n.includes('hub_cat_webhooks_title'), 'i18n webhooks keys removed');
   assert.ok(i18n.includes('flat $1.00 USD processing fee') || i18n.includes('$1.00 USD processing fee'));
   assert.ok(css.includes('portal-hub-fee-chip'));
   assert.ok(css.includes('portalHubServicePanel'));
+  const catalog = fs.readFileSync(path.join(__dirname, '../src/constants/kripicardHubCatalog.js'), 'utf8');
+  assert.ok(!/\bwebhooks\s*:/.test(catalog), 'catalog omits webhooks products');
   console.log('ok');
 }
 

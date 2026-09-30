@@ -55,14 +55,6 @@ const KRIPICARD_HUB_CATEGORIES = [
     i18n_title: 'hub_cat_proxies_title',
     i18n_desc: 'hub_cat_proxies_desc',
   },
-  {
-    id: 'webhooks',
-    slug: 'webhooks',
-    title: 'Webhooks',
-    description: 'Webhook delivery and event tooling',
-    i18n_title: 'hub_cat_webhooks_title',
-    i18n_desc: 'hub_cat_webhooks_desc',
-  },
 ];
 
 const CATEGORY_BY_ID = Object.fromEntries(

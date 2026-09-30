@@ -207,6 +207,7 @@ const Dashboard = {
   },
 
   getHubServiceCategories() {
+    // Instant is available via the top header switch — keep Hub list service-only.
     return [
       { id: 'sms', slug: 'sms', titleKey: 'hub_cat_sms_title', descKey: 'hub_cat_sms_desc', title: 'SMS', desc: 'Temporary numbers for SMS verification' },
       { id: 'sim_topup', slug: 'sim-top-up', titleKey: 'hub_cat_sim_topup_title', descKey: 'hub_cat_sim_topup_desc', title: 'SIM Top-Up', desc: 'Mobile airtime top-ups worldwide' },
@@ -214,7 +215,6 @@ const Dashboard = {
       { id: 'gift_cards', slug: 'gift-cards', titleKey: 'hub_cat_gift_cards_title', descKey: 'hub_cat_gift_cards_desc', title: 'Gift Cards', desc: 'Digital gift cards from top brands' },
       { id: 'social_media', slug: 'social-media', titleKey: 'hub_cat_social_media_title', descKey: 'hub_cat_social_media_desc', title: 'Social Media', desc: 'Social account tools and boosts' },
       { id: 'proxies', slug: 'proxies', titleKey: 'hub_cat_proxies_title', descKey: 'hub_cat_proxies_desc', title: 'Proxies', desc: 'Residential and datacenter proxies' },
-      { id: 'webhooks', slug: 'webhooks', titleKey: 'hub_cat_webhooks_title', descKey: 'hub_cat_webhooks_desc', title: 'Webhooks', desc: 'Webhook delivery and event tooling' },
     ];
   },
 
@@ -238,12 +238,8 @@ const Dashboard = {
         </button>`).join('');
     box.innerHTML = `
       <h2 data-i18n="portal_hub_heading">Kripicard Hub</h2>
-      <p class="hint" data-i18n="portal_hub_hint">Open Instant Card or buy Kripicard services. Every service purchase adds a flat $1.00 USD processing fee.</p>
+      <p class="hint" data-i18n="portal_hub_hint">Buy Kripicard services below. Instant Card stays in the top switch. Every service purchase adds a flat $1.00 USD processing fee.</p>
       <div class="portal-hub-grid">
-        <a class="portal-hub-card portal-hub-card-instant" href="/instant">
-          <strong data-i18n="portal_hub_instant_title">Instant</strong>
-          <span data-i18n="portal_hub_instant_desc">Master USDT Wallet · Instant Card (No KYC)</span>
-        </a>
         ${catCards}
       </div>`;
     if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(box);

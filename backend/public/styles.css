@@ -4792,10 +4792,6 @@ html[data-eisy-portal="hub"] .app-page[data-page="home"] > :not(#portalHubChoose
   transform: translateY(-1px);
 }
 
-.portal-hub-card-instant {
-  border-color: rgba(56, 189, 248, 0.35);
-}
-
 .portal-hub-card strong {
   font-size: 1.05rem;
 }
