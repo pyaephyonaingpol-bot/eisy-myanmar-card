@@ -587,6 +587,7 @@ section('SMM variations: rate/refill/max options + incomplete nested refetch');
 
   const route = fs.readFileSync(path.join(__dirname, '../src/routes/kripicardServices.js'), 'utf8');
   assert.ok(route.includes("/social_media/sync"), 'SMM sync status/refresh endpoint');
+  assert.ok(route.includes('probeKripicardApiAuth') || route.includes('diagnose'), 'sync can surface auth diagnosis');
 
   const dash = fs.readFileSync(path.join(__dirname, '../public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('hub-service-options'), 'UI renders Max/Refill option chips');

@@ -108,8 +108,32 @@ router.post('/preload', async (_req, res) => {
 });
 
 /** GET /api/kripicard/services/social_media/sync — sync status for the full SMM catalog */
-router.get('/social_media/sync', (_req, res) => {
-  res.json({ success: true, ...getSmmSyncStatus() });
+router.get('/social_media/sync', async (req, res) => {
+  const status = getSmmSyncStatus();
+  const wantDiagnose = String(req.query.diagnose || '') === '1'
+    || String(req.query.auth || '') === '1';
+  if (!wantDiagnose) {
+    res.json({ success: true, ...status });
+    return;
+  }
+  try {
+    const { probeKripicardApiAuth } = require('../../../lib/kripicard');
+    const auth = await probeKripicardApiAuth();
+    res.json({ success: true, ...status, auth });
+  } catch (err) {
+    res.json({
+      success: true,
+      ...status,
+      auth: {
+        ok: false,
+        diagnosis: {
+          kind: 'probe_failed',
+          message: err.message,
+          authRecognized: false,
+        },
+      },
+    });
+  }
 });
 
 /**
@@ -136,6 +160,8 @@ router.post('/social_media/sync', requireAuth, async (_req, res) => {
       success: false,
       error: err.message || 'SMM sync failed',
       code: err.code || 'HUB_SMM_SYNC_FAILED',
+      provider_code: err.providerCode || null,
+      auth_kind: err.authKind || null,
       sync: getSmmSyncStatus(),
     });
   }

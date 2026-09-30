@@ -303,11 +303,17 @@ async function fetchDecoratedCatalog(category, filters = {}) {
         catalog = fallbackCatalog(category, filters);
         catalog.live_error = {
           code: err.code || 'KRIPICARD_HUB_LIVE_FAILED',
+          provider_code: err.providerCode || err.body?.code || null,
+          auth_kind: err.authKind || null,
+          auth_recognized: Boolean(err.authRecognized),
           message: err.message,
         };
       } else {
         catalog.live_error = {
           code: err.code || 'KRIPICARD_HUB_LIVE_FAILED',
+          provider_code: err.providerCode || err.body?.code || null,
+          auth_kind: err.authKind || null,
+          auth_recognized: Boolean(err.authRecognized),
           message: err.message,
         };
       }
