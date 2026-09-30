@@ -437,7 +437,7 @@ const Dashboard = {
       || Boolean(state.number)
       || Boolean(state.country && ['sim_topup', 'esim', 'gift_cards'].includes(categoryId));
 
-    // Reuse eagerly loaded catalog for platform / type / search chip filters.
+    // Reuse eagerly loaded catalog for platform / type / search dropdown filters.
     if (!needsUpstream && panel._hubFullCatalog && panel._hubFullCatalogCategory === categoryId) {
       this.renderHubServiceCatalog(
         panel,
@@ -471,22 +471,20 @@ const Dashboard = {
     }
   },
 
-  renderHubFilterChips(items, {
+  renderHubFilterSelectOptions(items, {
     selectedKey,
-    dataAttr,
     allLabel,
   } = {}) {
-    const chips = Array.isArray(items) ? items : [];
-    if (!chips.length) return '';
-    return chips.map((item) => {
+    const rows = Array.isArray(items) ? items : [];
+    if (!rows.length) {
+      return `<option value="__all__">${this.escapeHtml?.(allLabel || 'All') || allLabel || 'All'}</option>`;
+    }
+    return rows.map((item) => {
       const key = item.key || '__all__';
-      const active = String(key) === String(selectedKey || '__all__');
-      const count = item.count != null ? ` · ${item.count}` : '';
+      const selected = String(key) === String(selectedKey || '__all__') ? ' selected' : '';
+      const count = item.count != null ? ` (${item.count})` : '';
       const label = key === '__all__' ? (allLabel || item.name || 'All') : (item.name || key);
-      return `<button type="button" class="hub-filter-chip${active ? ' is-active' : ''}"
-        ${dataAttr}="${this.escapeAttr?.(key) || key}">
-        ${this.escapeHtml?.(label) || label}${count}
-      </button>`;
+      return `<option value="${this.escapeAttr?.(key) || key}"${selected}>${this.escapeHtml?.(label) || label}${count}</option>`;
     }).join('');
   },
 
@@ -518,26 +516,33 @@ const Dashboard = {
       const needsNumber = category.id === 'sim_topup' || required.includes('number');
       const needsApply = needsCountry || needsNumber;
       const countryPlaceholder = category.id === 'gift_cards' || category.id === 'esim' ? 'US' : 'MM';
+      const totalCount = data.count != null ? Number(data.count) : null;
+      const shownCount = products.length;
+      const countHint = totalCount != null
+        ? (shownCount !== totalCount
+          ? ` · ${shownCount} shown · ${totalCount} total`
+          : ` · ${totalCount} services`)
+        : (shownCount ? ` · ${shownCount} services` : '');
       toolbar.innerHTML = `
-        <div class="hub-filter-block">
-          <div class="hub-filter-label" data-i18n="hub_filter_platform">Platform</div>
-          <div class="hub-filter-row" id="hubPlatformFilters">
-            ${this.renderHubFilterChips(platforms, {
-              selectedKey: state.platform,
-              dataAttr: 'data-hub-platform',
-              allLabel: 'All platforms',
-            }) || '<span class="hint">No platforms</span>'}
-          </div>
-        </div>
-        <div class="hub-filter-block">
-          <div class="hub-filter-label" data-i18n="hub_filter_subcategory">Type</div>
-          <div class="hub-filter-row" id="hubSubcategoryFilters">
-            ${this.renderHubFilterChips(subcategories, {
-              selectedKey: state.subcategory,
-              dataAttr: 'data-hub-subcategory',
-              allLabel: 'All types',
-            }) || '<span class="hint">No sub-types</span>'}
-          </div>
+        <div class="hub-filter-selects">
+          <label class="field hub-filter-select">
+            <span class="hint" data-i18n="hub_filter_platform">Platform</span>
+            <select id="hubPlatformSelect" aria-label="Platform">
+              ${this.renderHubFilterSelectOptions(platforms, {
+                selectedKey: state.platform,
+                allLabel: 'All platforms',
+              })}
+            </select>
+          </label>
+          <label class="field hub-filter-select">
+            <span class="hint" data-i18n="hub_filter_subcategory">Type</span>
+            <select id="hubSubcategorySelect" aria-label="Type">
+              ${this.renderHubFilterSelectOptions(subcategories, {
+                selectedKey: state.subcategory,
+                allLabel: 'All types',
+              })}
+            </select>
+          </label>
         </div>
         <div class="hub-filter-search-row">
           <label class="field hub-filter-search">
@@ -563,34 +568,32 @@ const Dashboard = {
         </div>
         <div class="hub-catalog-meta">
           <span class="portal-hub-fee-chip" data-i18n="hub_processing_fee_chip">+$1.00 fee</span>
-          <span class="hint">${data.source === 'live' ? 'Live from Kripicard' : 'Catalog'}${data.count != null ? ` · ${data.count} services` : ''}</span>
+          <span class="hint">${data.source === 'live' ? 'Live from Kripicard' : 'Catalog'}${countHint}</span>
         </div>
         ${data.message ? `<p class="hint hub-catalog-message">${this.escapeHtml?.(data.message) || data.message}</p>` : ''}`;
       if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(toolbar);
 
-      toolbar.querySelectorAll('[data-hub-platform]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          state.platform = btn.getAttribute('data-hub-platform') || '__all__';
-          state.subcategory = '__all__';
-          // Country-named platform chips (eSIM / gifts) also drive the country filter.
-          if (needsCountry && state.platform && state.platform !== '__all__') {
-            const chipName = btn.textContent?.split('·')[0]?.trim() || '';
-            if (/^[A-Za-z]{2}$/.test(state.platform)) {
-              state.country = state.platform.toUpperCase();
-            } else if (chipName && chipName.length <= 32) {
-              state.country = chipName.replace(/\s+\d+$/, '').trim();
-            }
-            // Country change needs a fresh upstream catalog.
-            panel._hubFullCatalog = null;
+      const platformSelect = toolbar.querySelector('#hubPlatformSelect');
+      platformSelect?.addEventListener('change', () => {
+        state.platform = platformSelect.value || '__all__';
+        state.subcategory = '__all__';
+        // Country-named platforms (eSIM / gifts) also drive the country filter.
+        if (needsCountry && state.platform && state.platform !== '__all__') {
+          const optLabel = platformSelect.selectedOptions?.[0]?.textContent || '';
+          const cleanName = optLabel.replace(/\s*\(\d+\)\s*$/, '').trim();
+          if (/^[A-Za-z]{2}$/.test(state.platform)) {
+            state.country = state.platform.toUpperCase();
+          } else if (cleanName && cleanName.length <= 32) {
+            state.country = cleanName;
           }
-          this.reloadHubServiceCatalog(panel);
-        });
+          // Country change needs a fresh upstream catalog.
+          panel._hubFullCatalog = null;
+        }
+        this.reloadHubServiceCatalog(panel);
       });
-      toolbar.querySelectorAll('[data-hub-subcategory]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          state.subcategory = btn.getAttribute('data-hub-subcategory') || '__all__';
-          this.reloadHubServiceCatalog(panel);
-        });
+      toolbar.querySelector('#hubSubcategorySelect')?.addEventListener('change', (e) => {
+        state.subcategory = e.target.value || '__all__';
+        this.reloadHubServiceCatalog(panel);
       });
       const searchInput = toolbar.querySelector('#hubServiceSearch');
       let searchTimer = null;

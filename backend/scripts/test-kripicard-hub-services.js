@@ -631,8 +631,14 @@ section('SMM platform directory keeps Facebook/Telegram chips + name inference')
   assert.ok(catalog.includes("platform: 'LinkedIn'"), 'fallback includes LinkedIn');
   assert.ok(catalog.includes("platform: 'Spotify'"), 'fallback includes Spotify');
 
+  const dashUi = fs.readFileSync(path.join(__dirname, '../public/dashboard.js'), 'utf8');
+  assert.ok(dashUi.includes('hubPlatformSelect'), 'platform filter is a select dropdown');
+  assert.ok(dashUi.includes('hubSubcategorySelect'), 'type filter is a select dropdown');
+  assert.ok(dashUi.includes('renderHubFilterSelectOptions'), 'select options helper present');
+  assert.ok(!dashUi.includes('hub-filter-chip'), 'flat platform/type chip buttons removed');
   const css = fs.readFileSync(path.join(__dirname, '../public/styles.css'), 'utf8');
-  assert.ok(/\.hub-filter-row\s*\{[^}]*flex-wrap:\s*wrap/s.test(css), 'platform chips wrap so all platforms stay visible');
+  assert.ok(css.includes('.hub-filter-selects'), 'compact select row styles');
+  assert.ok(!css.includes('.hub-filter-chip'), 'chip button styles removed');
   console.log('ok');
 }
 
@@ -665,8 +671,8 @@ section('UI hub switch surfaces filters + remaining categories');
   assert.ok(html.includes('pinUnlockBioBtn'), 'biometric confirm control in unlock modal');
   assert.ok(html.includes('pinUnlockModalClose'), 'unlock modal close control');
   assert.ok(css.includes('#pinUnlockModal') && /#pinUnlockModal\s*\{[^}]*z-index:\s*140/s.test(css), 'PIN modal stacks above Hub modal');
-  assert.ok(dash.includes('data-hub-platform'), 'platform filter chips');
-  assert.ok(dash.includes('data-hub-subcategory'), 'subcategory filter chips');
+  assert.ok(dash.includes('hubPlatformSelect'), 'platform filter select');
+  assert.ok(dash.includes('hubSubcategorySelect'), 'type filter select');
   assert.ok(dash.includes('hub-service-options'), 'service variation option chips');
   assert.ok(dash.includes('reloadHubServiceCatalog'), 'dynamic reload');
   assert.ok(dash.includes("category.id === 'esim'"), 'eSIM country input routing');
@@ -681,7 +687,7 @@ section('UI hub switch surfaces filters + remaining categories');
   assert.ok(!i18n.includes('hub_cat_webhooks_title'), 'i18n webhooks keys removed');
   assert.ok(i18n.includes('flat $1.00 USD processing fee') || i18n.includes('$1.00 USD processing fee'));
   assert.ok(css.includes('portal-hub-fee-chip'));
-  assert.ok(css.includes('hub-filter-chip'));
+  assert.ok(css.includes('hub-filter-selects'));
   assert.ok(css.includes('hub-service-modal'));
   assert.ok(css.includes('hub-service-modal-box'));
   assert.ok(css.includes('hub-service-product-list'));
