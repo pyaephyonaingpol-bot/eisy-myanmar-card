@@ -57,14 +57,21 @@ function testDashboardInstantOnly() {
 function testHubServiceCategories() {
   section('Hub switch includes Kripicard service categories + $1 fee');
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
-  for (const id of ['sms', 'sim_topup', 'esim', 'gift_cards', 'social_media', 'proxies', 'webhooks']) {
+  for (const id of ['sms', 'sim_topup', 'esim', 'gift_cards', 'social_media', 'proxies']) {
     assert.ok(dash.includes(`'${id}'`), `hub category ${id}`);
   }
+  assert.ok(!dash.includes("id: 'webhooks'"), 'webhooks removed from hub list');
+  assert.ok(!dash.includes('portal-hub-card-instant'), 'Instant card removed from hub grid');
+  assert.ok(dash.includes('data-portal-switch="instant"') || dash.includes('Open Instant →'), 'Instant stays in top switch');
   assert.ok(dash.includes('data-hub-service'));
   assert.ok(dash.includes('portalHubServicePanel'));
   assert.ok(dash.includes('/api/kripicard/services/purchase'));
+  assert.ok(dash.includes('data-hub-platform'), 'platform filters');
+  assert.ok(dash.includes('data-hub-subcategory'), 'subcategory filters');
   const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
   assert.ok(indexJs.includes('/api/kripicard/services'));
+  const hubApi = fs.readFileSync(path.join(ROOT, 'lib/kripicardHubApi.js'), 'utf8');
+  assert.ok(hubApi.includes('/smm/services'));
   console.log('ok');
 }
 
