@@ -32,6 +32,11 @@ const {
   expandGiftCardProducts,
   expandProxyFamilies,
   listFromCatalogPayload,
+  extractSmmPage,
+  mergeSmmNestedPlatforms,
+  combineSmmPages,
+  countNestedSmmServices,
+  SMM_PAGE_SIZE,
   DEFAULT_SERVICES_PATH,
   ALL_KEY,
 } = require('../../lib/kripicardHubApi');
@@ -327,6 +332,100 @@ section('SMM nested platforms → groups → services normalizer');
   console.log('ok');
 }
 
+section('SMM full catalog merges every paginated page (no truncation)');
+{
+  assert.ok(SMM_PAGE_SIZE >= 50, 'Hub requests a large SMM page size');
+
+  const page1 = extractSmmPage({
+    success: true,
+    data: {
+      services: [
+        { service_id: 1, name: 'IG Followers A', platform: 'Instagram', category: 'Followers', rate_usd: 1.1 },
+        { service_id: 2, name: 'IG Likes A', platform: 'Instagram', category: 'Likes', rate_usd: 0.5 },
+      ],
+      platforms: [{ name: 'Instagram', count: 100 }, { name: 'TikTok', count: 80 }],
+      pagination: { page: 1, per_page: 2, total: 5, total_pages: 3 },
+    },
+  });
+  assert.strictEqual(page1.services.length, 2);
+  assert.strictEqual(page1.total, 5);
+  assert.strictEqual(page1.totalPages, 3);
+
+  const page2 = extractSmmPage({
+    success: true,
+    data: {
+      services: [
+        { service_id: 3, name: 'TT Views', platform: 'TikTok', category: 'Views', rate_usd: 0.2 },
+        { service_id: 4, name: 'IG Followers B', platform: 'Instagram', category: 'Followers', rate_usd: 2.2 },
+      ],
+      pagination: { page: 2, per_page: 2, total: 5, total_pages: 3 },
+    },
+  });
+  const page3 = extractSmmPage({
+    success: true,
+    data: {
+      services: [
+        { service_id: 5, name: 'YT Subs', platform: 'YouTube', category: 'Subscribers', rate_usd: 3.3 },
+        // Duplicate id from page 1 should be ignored when combining.
+        { service_id: 1, name: 'IG Followers A dup', platform: 'Instagram', category: 'Followers', rate_usd: 1.1 },
+      ],
+      pagination: { page: 3, per_page: 2, total: 5, total_pages: 3 },
+    },
+  });
+
+  const combined = combineSmmPages([page1, page2, page3], {
+    reportedTotal: 5,
+    namedPlatforms: page1.namedPlatforms,
+  });
+  assert.strictEqual(combined.data.services.length, 5, 'all unique services across pages');
+  const full = normalizeSmmCatalog(combined, {});
+  assert.strictEqual(full.products.length, 5);
+  assert.strictEqual(full.count, 5);
+  assert.ok(full.platforms.some((p) => p.name === 'Instagram'));
+  assert.ok(full.platforms.some((p) => p.name === 'TikTok'));
+  assert.ok(full.platforms.some((p) => p.name === 'YouTube' || p.key === 'youtube'));
+
+  const nestedA = [{
+    key: 'instagram',
+    name: 'Instagram',
+    groups: [{
+      name: 'Followers',
+      services: [{ service: 10, name: 'A', rate_usd: 1 }],
+    }],
+  }];
+  const nestedB = [{
+    key: 'instagram',
+    name: 'Instagram',
+    groups: [
+      {
+        name: 'Followers',
+        services: [
+          { service: 10, name: 'A', rate_usd: 1 },
+          { service: 11, name: 'B', rate_usd: 2 },
+        ],
+      },
+      {
+        name: 'Likes',
+        services: [{ service: 12, name: 'C', rate_usd: 3 }],
+      },
+    ],
+  }, {
+    key: 'tiktok',
+    name: 'TikTok',
+    groups: [{ name: 'Views', services: [{ service: 20, name: 'D', rate_usd: 4 }] }],
+  }];
+  const mergedNested = mergeSmmNestedPlatforms(nestedA, nestedB);
+  assert.strictEqual(countNestedSmmServices(mergedNested), 4);
+  assert.strictEqual(mergedNested.length, 2);
+
+  const api = fs.readFileSync(path.join(__dirname, '../../lib/kripicardHubApi.js'), 'utf8');
+  assert.ok(api.includes('fetchCompleteSmmCatalog'), 'complete SMM fetcher present');
+  assert.ok(api.includes('return fetchCompleteSmmCatalog(filters)'), 'social_media uses full catalog fetch');
+  assert.ok(api.includes('SMM_MAX_PAGES'), 'page walk has a safety ceiling');
+  assert.ok(api.includes('per_page: pageSize'), 'requests large per_page');
+  console.log('ok');
+}
+
 section('UI hub switch surfaces filters + remaining categories');
 {
   const dash = fs.readFileSync(path.join(__dirname, '../public/dashboard.js'), 'utf8');
@@ -389,6 +488,7 @@ section('backend routes + live API client + fee type');
   assert.ok(api.includes('mapMainServicesToHubCategories'));
   assert.ok(api.includes('fetchModuleCatalog'), 'module-first catalog client');
   assert.ok(api.includes('/smm/services'), 'SMM module route');
+  assert.ok(api.includes('fetchCompleteSmmCatalog'), 'SMM complete/paginated fetch');
   assert.ok(api.includes('/sms/services'), 'SMS module route');
   assert.ok(api.includes('/esim/packages'), 'eSIM module route');
   assert.ok(api.includes('/gifts/packages'), 'gifts module route');
