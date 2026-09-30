@@ -71,7 +71,8 @@ function testHubServiceCategories() {
   const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
   assert.ok(indexJs.includes('/api/kripicard/services'));
   const hubApi = fs.readFileSync(path.join(ROOT, 'lib/kripicardHubApi.js'), 'utf8');
-  assert.ok(hubApi.includes('/smm/services'));
+  assert.ok(hubApi.includes("'/services'") || hubApi.includes('/services'));
+  assert.ok(hubApi.includes('mapMainServicesToHubCategories'));
   console.log('ok');
 }
 

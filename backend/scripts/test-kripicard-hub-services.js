@@ -23,6 +23,9 @@ const {
   normalizeSmmCatalog,
   buildFilterMeta,
   normalizeServiceProduct,
+  mapMainServicesToHubCategories,
+  resolveHubCategory,
+  DEFAULT_SERVICES_PATH,
   ALL_KEY,
 } = require('../../lib/kripicardHubApi');
 
@@ -51,6 +54,81 @@ assert.strictEqual(totals.processing_fee_usd, 1);
 assert.strictEqual(totals.total_charge_usd, 10);
 assert.ok(totals.summary.includes('$1.00'));
 console.log('ok');
+
+section('main /services payload maps into Hub categories');
+{
+  assert.strictEqual(DEFAULT_SERVICES_PATH, '/services');
+  assert.strictEqual(resolveHubCategory('smm'), 'social_media');
+  assert.strictEqual(resolveHubCategory('gifts'), 'gift_cards');
+  assert.strictEqual(resolveHubCategory('sim'), 'sim_topup');
+
+  const mapped = mapMainServicesToHubCategories({
+    success: true,
+    data: {
+      sms: [{ id: 1, name: 'WhatsApp', code: 'wa', price_usd: 0.12, platform: 'WhatsApp', category: 'US' }],
+      smm: {
+        services: [
+          {
+            service_id: 9397,
+            name: 'Instagram Followers',
+            platform: 'Instagram',
+            category: 'Followers',
+            pricing_model: 'per_1000',
+            price_usd: 0.8,
+            min: 50,
+            max: 5000000,
+            features: ['Fast'],
+          },
+          {
+            service_id: 8150,
+            name: 'Instagram Package',
+            platform: 'Instagram',
+            category: 'Packages',
+            pricing_model: 'package',
+            price_usd: 12.62,
+            min: 1,
+            max: 1,
+          },
+        ],
+        platforms: [{ name: 'Instagram', count: 2 }],
+      },
+      esim: [{ product_id: 'esim-de-1gb', name: 'Germany 1GB / 30 days', data: '1GB', price: 8.5, country: 'DE' }],
+      gifts: {
+        products: [{
+          product_id: 20004,
+          name: 'App Store & iTunes Turkey',
+          brand: 'App Store & iTunes',
+          country_iso: 'TR',
+          currency: 'USD',
+          fixed_denominations: [25, 50, 100],
+        }],
+      },
+      sim: [{
+        operator_id: 120,
+        operator_name: 'Vodafone EG',
+        country: 'EG',
+        packages: [{ index: 0, name: '50 EGP Bundle', amount: 50, currency: 'EGP', usd_price: 1.02 }],
+      }],
+      proxies: {
+        enabled: true,
+        families: {
+          static: [{ type: 'individual_ipv4', label: 'Individual (Datacenter)', min_price_usd: 4 }],
+          pool: [{ type: 'residential_ipv4', label: 'Residential (Rotating)', min_price_usd: 3.84 }],
+        },
+      },
+    },
+  });
+
+  assert.ok(mapped.sms.length >= 1);
+  assert.ok(mapped.social_media.length >= 2);
+  assert.ok(mapped.esim.length >= 1);
+  assert.ok(mapped.gift_cards.length >= 1);
+  assert.ok(mapped.sim_topup.length >= 1);
+  assert.ok(mapped.proxies.length >= 2);
+  assert.strictEqual(mapped.social_media[0].platform_key, 'instagram');
+  assert.ok(['followers', 'packages'].includes(mapped.social_media[0].subcategory_key));
+  console.log('ok');
+}
 
 section('SMM nested platforms → groups → services normalizer');
 {
@@ -183,12 +261,10 @@ section('backend routes + live API client + fee type');
   assert.ok(svc.includes('fetchLiveHubCatalog'));
   assert.ok(svc.includes('calculateHubPurchaseTotals') || svc.includes('processing_fee_usd'));
   assert.ok(svc.includes('debitUsdt'));
-  assert.ok(api.includes('/smm/services'));
-  assert.ok(api.includes('/sms/services'));
-  assert.ok(api.includes('/esim/packages'));
-  assert.ok(api.includes('/gifts/packages'));
-  assert.ok(api.includes('/proxies/types'));
-  assert.ok(api.includes('/sim/packages'));
+  assert.ok(api.includes("DEFAULT_SERVICES_PATH = '/services'") || api.includes("'/services'"));
+  assert.ok(api.includes('fetchMainServicesCatalog'));
+  assert.ok(api.includes('mapMainServicesToHubCategories'));
+  assert.ok(api.includes('/smm/services'), 'module fallback retained');
   assert.ok(fs.existsSync(path.join(__dirname, '../migrations/067_kripicard_hub_purchases.sql')));
   console.log('ok');
 }
