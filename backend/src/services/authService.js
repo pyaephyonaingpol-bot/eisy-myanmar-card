@@ -215,8 +215,11 @@ async function completeRegistration({ email, otp, name, phone, pin, ipAddress, d
 
   ensureSupabaseUserWalletInBackground(user.id, { syncIfExists: false });
   try {
-    const { provisionDepositAddressInBackground } = require('./tronWalletService');
-    provisionDepositAddressInBackground(user.id);
+    const { isTronWalletEnabled } = require('./securityFlags');
+    if (isTronWalletEnabled()) {
+      const { provisionDepositAddressInBackground } = require('./tronWalletService');
+      provisionDepositAddressInBackground(user.id);
+    }
   } catch (err) {
     console.warn('[auth] TRON address provision hook failed:', err.message);
   }
@@ -777,8 +780,11 @@ async function loginWithGoogleOAuth({
       created = true;
       ensureSupabaseUserWalletInBackground(user.id, { syncIfExists: false });
       try {
-        const { provisionDepositAddressInBackground } = require('./tronWalletService');
-        provisionDepositAddressInBackground(user.id);
+        const { isTronWalletEnabled } = require('./securityFlags');
+        if (isTronWalletEnabled()) {
+          const { provisionDepositAddressInBackground } = require('./tronWalletService');
+          provisionDepositAddressInBackground(user.id);
+        }
       } catch (err) {
         console.warn('[auth] TRON address provision hook failed:', err.message);
       }

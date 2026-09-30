@@ -64,6 +64,20 @@ assert.strictEqual(bank.net_usdt, 96);
 assert.strictEqual(bank.amount_mmk, 96 * 4500);
 assert.ok(bank.summary.includes('48'));
 
+// Drifted admin settings must not bypass the forced 4% Kripicard markup.
+const drifted = calculateWithdrawalBreakdown(100, 'TRC20', {
+  ...settings,
+  withdrawal_service_fee_percent: 2,
+  payment_service_fee_percent: 2,
+  usdt_withdraw_fee_trc20: 2,
+  usdt_withdraw_fee_trc20_type: 'fixed',
+  withdrawal_service_fee_mode: 'fixed',
+  payment_service_fee_mode: 'fixed',
+});
+assert.strictEqual(drifted.fee_usdt, 4);
+assert.strictEqual(drifted.kripicard_network_fee_usdt, 3);
+assert.strictEqual(drifted.platform_margin_usdt, 1);
+
 const mig = fs.readFileSync(path.join(__dirname, '../migrations/066_kripicard_withdraw_fee_4pct.sql'), 'utf8');
 assert.ok(mig.includes("'4'"), 'migration sets 4%');
 assert.ok(mig.includes("'percent'"), 'migration sets percent mode');
@@ -71,6 +85,9 @@ assert.ok(mig.includes("'percent'"), 'migration sets percent mode');
 const svc = fs.readFileSync(path.join(__dirname, '../src/services/withdrawalService.js'), 'utf8');
 assert.ok(svc.includes('WITHDRAW_PROCESSING_HOURS'), 'service references 48h constant');
 assert.ok(svc.includes("payout_provider: WITHDRAW_PAYOUT_PROVIDER") || svc.includes('kripicard'), 'kripicard payout provider');
+
+const settingsSrc = fs.readFileSync(path.join(__dirname, '../src/services/settingsService.js'), 'utf8');
+assert.ok(settingsSrc.includes('forcedSettings') || settingsSrc.includes('WITHDRAW_MARKUP_PERCENT'), 'fee math forces markup');
 
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 assert.ok(html.includes('data-payout-system="kripicard"'));

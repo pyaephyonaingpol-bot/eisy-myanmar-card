@@ -8,6 +8,8 @@
  *   WITHDRAWALS_PAUSED=true|false   (default: true)
  *   AUTO_ONCHAIN_WITHDRAWALS=true|false  (default: false — admin must approve)
  *   MASTER_WALLET_TRANSFERS_PAUSED=true|false  (default: follows WITHDRAWALS_PAUSED)
+ *   TRON_WALLET_ENABLED=true|false  (default: false — per-user TRON HD wallet retired)
+ *   SCAN_PAY_ENABLED=true|false    (default: false — Scan Pay retired)
  */
 
 function envFlag(name, defaultValue) {
@@ -80,6 +82,66 @@ function assertMasterWalletTransfersAllowed(action = 'transfer') {
   throw err;
 }
 
+/**
+ * Per-user TRON HD wallet API + auto-provisioning.
+ * Default OFF — deposits use Kripicard; withdrawals use Kripicard 4% markup queue.
+ * Admin HD sweep / master-wallet tools are separate and remain available.
+ */
+function isTronWalletEnabled() {
+  return envFlag('TRON_WALLET_ENABLED', false);
+}
+
+/** User Scan Pay (QR → wallet debit). Default OFF. */
+function isScanPayEnabled() {
+  return envFlag('SCAN_PAY_ENABLED', false);
+}
+
+function featureDisabledPayload(feature, message, extra = {}) {
+  return {
+    success: false,
+    ok: false,
+    error: message,
+    code: 'FEATURE_DISABLED',
+    feature,
+    disabled: true,
+    ...extra,
+  };
+}
+
+function tronWalletDisabledPayload(extra = {}) {
+  return featureDisabledPayload(
+    'tron_wallet',
+    'Per-user TRON wallet is disabled. Use Kripicard deposits and Kripicard withdrawals instead.',
+    extra
+  );
+}
+
+function scanPayDisabledPayload(extra = {}) {
+  return featureDisabledPayload(
+    'scan_pay',
+    'Scan Pay is disabled. Use Withdraw USDT (Kripicard) to send funds.',
+    extra
+  );
+}
+
+function assertTronWalletEnabled() {
+  if (isTronWalletEnabled()) return;
+  const err = new Error(tronWalletDisabledPayload().error);
+  err.code = 'FEATURE_DISABLED';
+  err.feature = 'tron_wallet';
+  err.status = 410;
+  throw err;
+}
+
+function assertScanPayEnabled() {
+  if (isScanPayEnabled()) return;
+  const err = new Error(scanPayDisabledPayload().error);
+  err.code = 'FEATURE_DISABLED';
+  err.feature = 'scan_pay';
+  err.status = 410;
+  throw err;
+}
+
 function getSecurityStatus() {
   let sensitive_data_encryption = false;
   let stripe_webhook = false;
@@ -101,6 +163,8 @@ function getSecurityStatus() {
     withdrawals_paused: areWithdrawalsPaused(),
     auto_onchain_withdrawals: isAutoOnchainWithdrawalEnabled(),
     master_wallet_transfers_paused: areMasterWalletTransfersPaused(),
+    tron_wallet_enabled: isTronWalletEnabled(),
+    scan_pay_enabled: isScanPayEnabled(),
     sensitive_data_encryption,
     stripe_webhook,
   };
@@ -115,5 +179,12 @@ module.exports = {
   withdrawalsPausedPayload,
   assertWithdrawalsNotPaused,
   assertMasterWalletTransfersAllowed,
+  isTronWalletEnabled,
+  isScanPayEnabled,
+  featureDisabledPayload,
+  tronWalletDisabledPayload,
+  scanPayDisabledPayload,
+  assertTronWalletEnabled,
+  assertScanPayEnabled,
   getSecurityStatus,
 };
