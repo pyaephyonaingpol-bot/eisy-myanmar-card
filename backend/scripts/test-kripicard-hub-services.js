@@ -429,6 +429,37 @@ section('SMM full catalog merges every paginated page (no truncation)');
   assert.ok(api.includes('paginateSmmServices'), 'per-platform SMM pagination helper');
   assert.ok(api.includes('applySmmPlatformDirectory'), 'platform directory chips helper');
   assert.ok(api.includes('directory.length > 1'), 'fetches every platform from API directory');
+  assert.ok(api.includes('mapPool'), 'bounded concurrency batch helper');
+  assert.ok(api.includes('SMM_CONCURRENCY'), 'SMM concurrency knob');
+  assert.ok(api.includes('smmCatalogCache') || api.includes('SMM_CACHE_TTL_MS'), 'SMM eager cache');
+  assert.ok(api.includes('withSingleFlight'), 'single-flight coalescing');
+  console.log('ok');
+}
+
+section('Eager / batch Hub catalog optimizations (static)');
+{
+  const api = fs.readFileSync(path.join(__dirname, '../../lib/kripicardHubApi.js'), 'utf8');
+  assert.ok(api.includes('mapPool'), 'bounded concurrency batch helper');
+  assert.ok(api.includes('SMM_CONCURRENCY'), 'SMM concurrency knob');
+  assert.ok(api.includes('SMM_CACHE_TTL_MS'), 'SMM eager cache TTL');
+  assert.ok(api.includes('withSingleFlight'), 'single-flight coalescing');
+  assert.ok(api.includes('MODULE_CACHE_TTL_MS'), 'module catalog cache');
+
+  const svc = fs.readFileSync(path.join(__dirname, '../src/services/kripicardHubService.js'), 'utf8');
+  assert.ok(svc.includes('preloadAllCategoryCatalogs'), 'batch category preload');
+  assert.ok(svc.includes('applyLocalCatalogFilters'), 'in-process platform/search filter');
+  assert.ok(svc.includes('CATALOG_CACHE_TTL_MS'), 'eager category catalog cache');
+  assert.ok(svc.includes('crypto.randomBytes(6)'), 'purchase ref avoids SELECT loop');
+  assert.ok(svc.includes('SELECT id, ref_code, category_id'), 'purchases list projects columns');
+
+  const route = fs.readFileSync(path.join(__dirname, '../src/routes/kripicardServices.js'), 'utf8');
+  assert.ok(route.includes("'/preload'"), 'preload endpoint');
+  assert.ok(route.includes('preloadAllCategoryCatalogs'), 'categories warm uses batch preload');
+
+  const dash = fs.readFileSync(path.join(__dirname, '../public/dashboard.js'), 'utf8');
+  assert.ok(dash.includes('filterHubCatalogLocally'), 'client-side eager filter');
+  assert.ok(dash.includes('_hubFullCatalog'), 'modal keeps full catalog');
+  assert.ok(dash.includes('eager'), 'eager query mode omits chip filters');
   console.log('ok');
 }
 
@@ -613,13 +644,22 @@ section('async catalog + purchase always adds $1');
   const {
     catalogForCategory,
     catalogForCategoryAsync,
+    preloadAllCategoryCatalogs,
+    clearCatalogCaches,
     quotePurchase,
     purchaseHubProduct,
   } = require('../src/services/kripicardHubService');
+  const { mapPool, SMM_CONCURRENCY, clearMainCatalogCache } = require('../../lib/kripicardHubApi');
   const User = require('../src/models/User');
   const { creditUsdt } = require('../src/services/walletService');
 
   await initDb();
+  clearCatalogCaches();
+  clearMainCatalogCache();
+  assert.ok(SMM_CONCURRENCY >= 1);
+
+  const pooled = await mapPool([1, 2, 3, 4], 2, async (n) => n * 3);
+  assert.deepStrictEqual(pooled, [3, 6, 9, 12], 'mapPool preserves order with concurrency');
 
   const syncCatalog = catalogForCategory('social_media', { platform: 'instagram' });
   assert.ok(syncCatalog.platforms.length >= 2);
@@ -632,6 +672,17 @@ section('async catalog + purchase always adds $1');
       Math.round((Number(p.price_usd) + 1) * 100) / 100
     );
   });
+
+  const eagerAll = await catalogForCategoryAsync('social_media', {});
+  assert.ok(eagerAll.platforms.length >= 5, 'eager social catalog exposes many platforms');
+  const eagerFb = await catalogForCategoryAsync('social_media', { platform: 'facebook' });
+  assert.ok(eagerFb.products.length >= 1);
+  assert.ok(eagerFb.products.every((p) => p.platform_key === 'facebook'));
+  assert.strictEqual(eagerFb.cache, 'hit', 'second filter reuses eager catalog cache');
+
+  const warmed = await preloadAllCategoryCatalogs({ concurrency: 3 });
+  assert.strictEqual(warmed.length, 6);
+  assert.ok(warmed.every((r) => r.ok), 'batch preload all Hub categories');
 
   const liveShaped = await catalogForCategoryAsync('social_media', {
     platform: 'tiktok',

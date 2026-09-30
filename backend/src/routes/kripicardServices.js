@@ -10,6 +10,7 @@ const { requireAuth, requireSensitive } = require('../middleware/auth');
 const {
   listCategories,
   catalogForCategoryAsync,
+  preloadAllCategoryCatalogs,
   quotePurchase,
   purchaseHubProduct,
   listPurchasesForUser,
@@ -17,6 +18,7 @@ const {
 } = require('../services/kripicardHubService');
 
 const router = express.Router();
+let hubWarmStarted = false;
 
 function catalogFiltersFromQuery(query = {}) {
   return {
@@ -55,11 +57,45 @@ function serializeCatalog(catalog) {
 
 /** GET /api/kripicard/services/categories — public catalog metadata */
 router.get('/categories', (_req, res) => {
+  // Fire-and-forget eager warm of all Hub categories (batch/concurrency inside).
+  if (!hubWarmStarted && process.env.KRIPICARD_HUB_FORCE_FALLBACK !== '1') {
+    hubWarmStarted = true;
+    preloadAllCategoryCatalogs({ concurrency: 3 }).catch((err) => {
+      console.warn('[kripicard/services] eager catalog warm failed:', err.message);
+      hubWarmStarted = false;
+    });
+  }
   res.json({
     success: true,
     processing_fee_usd: KRIPICARD_HUB_PROCESSING_FEE_USD,
     categories: listCategories(),
   });
+});
+
+/** POST /api/kripicard/services/preload — batch eager-load all category catalogs */
+router.post('/preload', async (_req, res) => {
+  try {
+    const results = await preloadAllCategoryCatalogs({ concurrency: 3 });
+    res.json({
+      success: true,
+      warmed: results.filter((r) => r.ok).length,
+      failed: results.filter((r) => !r.ok).length,
+      categories: results.map((r) => ({
+        category_id: r.categoryId,
+        ok: r.ok,
+        source: r.catalog?.source || null,
+        count: r.catalog?.count ?? null,
+        platforms: r.catalog?.platforms?.length ?? null,
+        error: r.error || null,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to preload Hub catalogs',
+      code: 'HUB_PRELOAD_FAILED',
+    });
+  }
 });
 
 /** GET /api/kripicard/services/purchases/mine */
