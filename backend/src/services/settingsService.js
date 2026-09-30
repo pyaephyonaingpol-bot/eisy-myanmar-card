@@ -27,24 +27,24 @@ const DEFAULTS = {
   usdt_trc20_address: process.env.USDT_TRC20_ADDRESS || 'TExampleTrc20Address1234567890',
   usdt_bep20_address: process.env.USDT_BEP20_ADDRESS || '0xExampleBep20Address1234567890abcdef',
   usdt_erc20_address: process.env.USDT_ERC20_ADDRESS || '',
-  usdt_withdraw_fee_trc20: '2',
-  usdt_withdraw_fee_bep20: '2',
-  usdt_withdraw_fee_trc20_type: 'fixed',
-  usdt_withdraw_fee_bep20_type: 'fixed',
-  usdt_withdraw_fee_bank: '2',
+  usdt_withdraw_fee_trc20: '4',
+  usdt_withdraw_fee_bep20: '4',
+  usdt_withdraw_fee_trc20_type: 'percent',
+  usdt_withdraw_fee_bep20_type: 'percent',
+  usdt_withdraw_fee_bank: '4',
   usdt_withdraw_fee_bank_type: 'percent',
   minimum_usdt_withdrawal: '10',
   minimum_mmk_withdrawal: '10000',
-  mmk_withdraw_fee_percent: '2',
-  payment_service_fee_percent: '2',
-  payment_service_fee_minimum_usdt: '1',
-  payment_service_fee_mode: 'max_percent_or_min',
+  mmk_withdraw_fee_percent: '4',
+  payment_service_fee_percent: '4',
+  payment_service_fee_minimum_usdt: '0',
+  payment_service_fee_mode: 'percent',
   deposit_service_fee_percent: '2',
   deposit_service_fee_minimum_usdt: '1',
   deposit_service_fee_mode: 'max_percent_or_min',
-  withdrawal_service_fee_percent: '2',
-  withdrawal_service_fee_minimum_usdt: '1',
-  withdrawal_service_fee_mode: 'max_percent_or_min',
+  withdrawal_service_fee_percent: '4',
+  withdrawal_service_fee_minimum_usdt: '0',
+  withdrawal_service_fee_mode: 'percent',
 };
 
 const NUMERIC_KEYS = new Set([
@@ -222,6 +222,13 @@ async function getDepositFeeSettings() {
 }
 
 async function getWithdrawalFeeSettings() {
+  const {
+    WITHDRAW_MARKUP_PERCENT,
+    WITHDRAW_PROCESSING_HOURS,
+    WITHDRAW_PAYOUT_PROVIDER,
+    KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT,
+    PLATFORM_WITHDRAW_MARGIN_PERCENT,
+  } = require('../constants/kripicardWithdrawFees');
   const pricing = await getCardPricingSettings();
   const scoped = withScopedPaymentFeeShape(pricing, 'withdrawal');
   return {
@@ -241,6 +248,11 @@ async function getWithdrawalFeeSettings() {
     withdrawal_service_fee_percent: scoped.withdrawal_service_fee_percent,
     withdrawal_service_fee_minimum_usdt: scoped.withdrawal_service_fee_minimum_usdt,
     withdrawal_service_fee_mode: scoped.withdrawal_service_fee_mode,
+    kripicard_withdraw_network_fee_percent: KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT,
+    platform_withdraw_margin_percent: PLATFORM_WITHDRAW_MARGIN_PERCENT,
+    withdraw_markup_percent: WITHDRAW_MARKUP_PERCENT,
+    withdraw_processing_hours: WITHDRAW_PROCESSING_HOURS,
+    withdraw_payout_provider: WITHDRAW_PAYOUT_PROVIDER,
   };
 }
 
@@ -494,6 +506,15 @@ function calculateNetworkWithdrawalFee(amountUsdt, network, settings) {
 }
 
 function calculateWithdrawalBreakdown(amountUsdt, network, settings) {
+  const {
+    splitWithdrawMarkup,
+    WITHDRAW_MARKUP_PERCENT,
+    WITHDRAW_PROCESSING_HOURS,
+    WITHDRAW_PAYOUT_PROVIDER,
+    KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT,
+    PLATFORM_WITHDRAW_MARGIN_PERCENT,
+  } = require('../constants/kripicardWithdrawFees');
+
   const amount = parseFloat(amountUsdt);
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('Enter a valid USDT withdrawal amount');
@@ -505,17 +526,35 @@ function calculateWithdrawalBreakdown(amountUsdt, network, settings) {
   const isBank = breakdown.network === 'BANK';
   const amountMmk = isBank ? Math.round(breakdown.net_usdt * rate) : null;
 
+  const markup = splitWithdrawMarkup(breakdown.amount_usdt, breakdown.fee_usdt);
+  const usesKripicardMarkup = Number(breakdown.fee_percent) === WITHDRAW_MARKUP_PERCENT
+    || Number(settings?.withdrawal_service_fee_percent) === WITHDRAW_MARKUP_PERCENT
+    || Number(settings?.payment_service_fee_percent) === WITHDRAW_MARKUP_PERCENT;
+
+  const feeLabel = usesKripicardMarkup
+    ? markup.fee_label
+    : breakdown.fee_label;
+
   return {
     ...breakdown,
+    fee_label: feeLabel,
     payout_method: isBank ? 'bank' : 'crypto',
+    payout_provider: WITHDRAW_PAYOUT_PROVIDER,
     exchange_rate: isBank ? rate : null,
     amount_mmk: amountMmk,
     minimum_usdt_withdrawal: min,
     below_minimum: amount < min,
     invalid_net: breakdown.net_usdt <= 0,
+    kripicard_network_fee_percent: KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT,
+    platform_margin_percent: PLATFORM_WITHDRAW_MARGIN_PERCENT,
+    markup_percent: WITHDRAW_MARKUP_PERCENT,
+    kripicard_network_fee_usdt: markup.kripicard_network_fee_usdt,
+    platform_margin_usdt: markup.platform_margin_usdt,
+    processing_hours: WITHDRAW_PROCESSING_HOURS,
+    processing_label: markup.processing_label,
     summary: isBank
-      ? `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${breakdown.fee_label} fee = ${breakdown.net_usdt.toFixed(2)} USDT → ${Math.round(amountMmk || 0).toLocaleString()} MMK at rate ${rate.toLocaleString()}`
-      : `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${breakdown.fee_label} fee = ${breakdown.net_usdt.toFixed(2)} USDT sent`,
+      ? `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${feeLabel} = ${breakdown.net_usdt.toFixed(2)} USDT → ${Math.round(amountMmk || 0).toLocaleString()} MMK at rate ${rate.toLocaleString()} · ${markup.processing_label}`
+      : `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${feeLabel} = ${breakdown.net_usdt.toFixed(2)} USDT via Kripicard · ${markup.processing_label}`,
   };
 }
 

@@ -6391,21 +6391,19 @@ const Dashboard = {
   updateWithdrawUsdtHint() {
     const fees = this.withdrawalFees || {};
     const pct = Number(
-      fees.withdrawal_service_fee_percent ?? fees.payment_service_fee_percent ?? 2
+      fees.withdrawal_service_fee_percent ?? fees.payment_service_fee_percent ?? 4
     );
-    const minFee = Number(
-      fees.withdrawal_service_fee_minimum_usdt ?? fees.payment_service_fee_minimum_usdt ?? 1
-    );
+    const hours = Number(fees.withdraw_processing_hours ?? 48);
     const feeSummary = Number.isFinite(pct)
-      ? `${pct}% (min $${(Number.isFinite(minFee) ? minFee : 1).toFixed(2)})`
-      : 'see Rates';
+      ? `${pct}% (3% Kripicard network + 1% platform)`
+      : '4% Kripicard markup';
     const pageHint = document.querySelector('[data-i18n="withdraw_usdt_hint"]');
     if (pageHint) {
       delete pageHint.dataset.i18n;
       pageHint.textContent =
-        `Withdrawals use our legacy TRON master wallet (TRC20 automated, service fee ${feeSummary}), `
-        + 'optional BEP20 (manual), or bank payout in MMK. '
-        + 'Deposits use Kripicard; withdrawals do not. MMK → USDT is not available.';
+        `Withdrawals are processed via Kripicard within ${hours} hours. `
+        + `Service fee ${feeSummary}. Crypto (TRC20/BEP20) or bank payout in MMK. `
+        + 'MMK → USDT is not available.';
     }
     const methodHint = $('withdrawMethodHint');
     if (methodHint && !methodHint.dataset.i18nKeep) {
@@ -6455,21 +6453,18 @@ const Dashboard = {
     if (methodHint) {
       const fees = this.withdrawalFees || {};
       const pct = Number(
-        fees.withdrawal_service_fee_percent ?? fees.payment_service_fee_percent ?? 2
+        fees.withdrawal_service_fee_percent ?? fees.payment_service_fee_percent ?? 4
       );
-      const minFee = Number(
-        fees.withdrawal_service_fee_minimum_usdt ?? fees.payment_service_fee_minimum_usdt ?? 1
-      );
-      const feeSummary = `${pct}% (min $${minFee.toFixed(2)})`;
-      // Do NOT re-attach data-i18n here — static i18n strings still say "Fixed $2"
-      // and would overwrite the live admin fee on the next I18n.apply().
+      const hours = Number(fees.withdraw_processing_hours ?? 48);
+      const feeSummary = `${pct}% (3% Kripicard + 1% platform)`;
+      // Do NOT re-attach data-i18n here — static i18n strings would overwrite the live fee.
       delete methodHint.dataset.i18n;
       if (method === 'crypto') {
         methodHint.textContent =
-          `Legacy TRON master-wallet payout (TRC20 automated). Service fee: ${feeSummary}. BEP20 remains manual. Not via Kripicard.`;
+          `Kripicard crypto payout (TRC20/BEP20). Fee: ${feeSummary}. Processed within ${hours} hours.`;
       } else {
         methodHint.textContent =
-          `Convert USDT to MMK at the platform rate. Service fee: ${feeSummary}. Bank transfer after processing.`;
+          `Convert USDT to MMK at the platform rate via Kripicard. Fee: ${feeSummary}. Bank transfer within ${hours} hours.`;
       }
     }
 
@@ -6504,12 +6499,12 @@ const Dashboard = {
     let feePercent = Number(
       fees.withdrawal_service_fee_percent
       ?? fees.payment_service_fee_percent
-      ?? 2
+      ?? 4
     );
     let minimumFee = Number(
       fees.withdrawal_service_fee_minimum_usdt
       ?? fees.payment_service_fee_minimum_usdt
-      ?? 1
+      ?? 0
     );
     if (hook?.normalizeFeeMode) mode = hook.normalizeFeeMode(mode);
     else if (mode === 'max_percent_or_minimum' || mode === 'percent_with_minimum' || mode === 'legacy' || mode === 'max') {
@@ -6547,11 +6542,14 @@ const Dashboard = {
     let feeLabel = 'No service fee';
     if (feeUsdt > 0) {
       if (mode === 'fixed') feeLabel = `fixed $${feeUsdt.toFixed(2)}`;
-      else if (mode === 'percent') feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
+      else if (feePercent === 4 || Number(fees.withdraw_markup_percent) === 4) {
+        feeLabel = `4% ($${feeUsdt.toFixed(2)} · 3% Kripicard + 1% platform)`;
+      } else if (mode === 'percent') feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
       else if (usedMinimum) feeLabel = `min $${minimumFee.toFixed(2)} (${feePercent}% = $${percentFee.toFixed(2)})`;
       else feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
     }
 
+    const hours = Number(fees.withdraw_processing_hours ?? 48);
     return {
       payout_method: payoutMethod,
       network: net,
@@ -6568,6 +6566,9 @@ const Dashboard = {
       minimum_usdt_withdrawal: min,
       below_minimum: amountUsdt < min,
       invalid_net: netUsdt <= 0 || (isBank && (!amountMmk || amountMmk <= 0)),
+      processing_hours: hours,
+      processing_label: `Processed within ${hours} hours`,
+      payout_provider: fees.withdraw_payout_provider || 'kripicard',
     };
   },
 
@@ -6592,11 +6593,11 @@ const Dashboard = {
 
     if ($('withdrawPreviewNetwork')) {
       if (method === 'bank') {
-        $('withdrawPreviewNetwork').textContent = 'Bank (USDT → MMK)';
+        $('withdrawPreviewNetwork').textContent = 'Bank (USDT → MMK) · Kripicard · 48h';
       } else if (network === 'BEP20') {
-        $('withdrawPreviewNetwork').textContent = 'BEP20 (BSC — manual)';
+        $('withdrawPreviewNetwork').textContent = 'BEP20 (BSC) · Kripicard · 48h';
       } else {
-        $('withdrawPreviewNetwork').textContent = 'TRC20 · Legacy Tron Master Wallet (auto)';
+        $('withdrawPreviewNetwork').textContent = 'TRC20 · Kripicard · 48h';
       }
     }
 
@@ -6617,11 +6618,10 @@ const Dashboard = {
       $('withdrawPreviewMmk').textContent = `${Math.round(preview.amount_mmk).toLocaleString()} MMK`;
     }
 
+    const hours = preview.processing_hours || 48;
     let summary = method === 'bank'
-      ? `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} = $${preview.net_usdt.toFixed(2)} USDT → ${Math.round(preview.amount_mmk || 0).toLocaleString()} MMK (rate ${Number(preview.exchange_rate || 0).toLocaleString()}).`
-      : network === 'TRC20'
-        ? `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} fee = $${preview.net_usdt.toFixed(2)} sent via master wallet (TRC20).`
-        : `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} fee = $${preview.net_usdt.toFixed(2)} queued for ${network} processing.`;
+      ? `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} = $${preview.net_usdt.toFixed(2)} USDT → ${Math.round(preview.amount_mmk || 0).toLocaleString()} MMK · processed within ${hours} hours.`
+      : `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} = $${preview.net_usdt.toFixed(2)} via Kripicard (${network}) · processed within ${hours} hours.`;
     if (preview.below_minimum) summary = `Minimum withdrawal is $${preview.minimum_usdt_withdrawal.toFixed(2)} USDT.`;
     if (preview.invalid_net) summary = 'Amount too small after fee.';
     if ($('withdrawPreviewSummary')) $('withdrawPreviewSummary').textContent = summary;

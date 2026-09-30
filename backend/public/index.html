@@ -304,7 +304,7 @@
 
       <div class="sell-usdt-notice" role="note">
         <strong data-i18n="sell_usdt_mmk_notice_title">Processing notice</strong>
-        <p data-i18n="sell_usdt_mmk_notice">Withdrawals will be processed within 5 working days.</p>
+        <p data-i18n="sell_usdt_mmk_notice">Withdrawals are processed via Kripicard within 48 hours.</p>
       </div>
 
       <form id="sellUsdtMmkForm" class="form">
@@ -438,30 +438,30 @@
     </div>
   </div>
 
-  <div id="withdrawUsdtModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="withdrawUsdtModalTitle" aria-modal="true" data-payout-system="legacy-tron-master-wallet">
+  <div id="withdrawUsdtModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="withdrawUsdtModalTitle" aria-modal="true" data-payout-system="kripicard" data-processing-hours="48">
     <div class="modal-box modal-box-wide">
       <div class="modal-header-row">
         <h3 id="withdrawUsdtModalTitle" data-i18n="withdraw_usdt_title">Withdraw USDT</h3>
         <button type="button" id="withdrawUsdtModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">Withdrawals use our legacy TRON master wallet (automated TRC20), optional BEP20 (manual), or bank payout in MMK. Deposits use Kripicard; withdrawals do not.</p>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">Withdrawals are processed via Kripicard within 48 hours. Fee is 4% (3% Kripicard network + 1% platform). Crypto (TRC20/BEP20) or bank payout in MMK.</p>
 
-      <form id="withdrawUsdtForm" class="form" data-withdraw-provider="legacy-tron">
+      <form id="withdrawUsdtForm" class="form" data-withdraw-provider="kripicard">
         <div class="field">
           <label for="withdrawPayoutMethod" data-i18n="withdraw_payout_method">Payout Method</label>
           <select id="withdrawPayoutMethod" required>
-            <option value="crypto" data-i18n="withdraw_method_crypto" selected>USDT TRC20 (Legacy Master Wallet)</option>
+            <option value="crypto" data-i18n="withdraw_method_crypto" selected>USDT Crypto (Kripicard · 48h)</option>
             <option value="bank" data-i18n="withdraw_method_bank">Bank Account (USDT → MMK)</option>
           </select>
-          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Automated TRC20 payout from our legacy TRON master wallet. Service fee follows the live admin withdrawal fee. BEP20 remains manual.</small>
+          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Kripicard crypto payout (TRC20/BEP20). Fee: 4% (3% network + 1% platform). Processed within 48 hours.</small>
         </div>
 
         <div id="withdrawCryptoFields">
           <div class="field" id="withdrawNetworkField">
             <label for="withdrawNetwork" data-i18n="withdraw_network">Network</label>
-            <select id="withdrawNetwork" data-legacy-tron-network="1">
-              <option value="TRC20" selected>TRC20 (TRON master wallet — automated)</option>
-              <option value="BEP20">BEP20 (BSC — manual)</option>
+            <select id="withdrawNetwork" data-kripicard-withdraw-network="1">
+              <option value="TRC20" selected>TRC20 (TRON · Kripicard · 48h)</option>
+              <option value="BEP20">BEP20 (BSC · Kripicard · 48h)</option>
             </select>
           </div>
           <div class="field">
@@ -493,7 +493,7 @@
             <input id="withdrawUsdtAccountNumber" type="text" placeholder="09… or bank account number" inputmode="tel" autocomplete="off" />
           </div>
           <div class="sell-usdt-notice sell-usdt-notice-compact" role="note">
-            <p data-i18n="sell_usdt_mmk_notice">Withdrawals will be processed within 5 working days.</p>
+            <p data-i18n="sell_usdt_mmk_notice">Withdrawals are processed via Kripicard within 48 hours.</p>
           </div>
         </div>
 
@@ -558,7 +558,7 @@
           <input id="withdrawMmkAccountNumber" type="text" required placeholder="09… or bank account number" inputmode="tel" autocomplete="off" />
         </div>
         <div class="sell-usdt-notice sell-usdt-notice-compact" role="note">
-          <p data-i18n="sell_usdt_mmk_notice">Withdrawals will be processed within 5 working days.</p>
+          <p data-i18n="sell_usdt_mmk_notice">Withdrawals are processed via Kripicard within 48 hours.</p>
         </div>
         <div class="field">
           <label for="withdrawAmountMmk" data-i18n="withdraw_amount_mmk">Withdrawal Amount (MMK)</label>
