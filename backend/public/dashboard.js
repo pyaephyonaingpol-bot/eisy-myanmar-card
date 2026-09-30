@@ -624,11 +624,30 @@ const Dashboard = {
       const metaBits = [platformLabel, typeLabel].filter(Boolean).join(' · ');
       const productTitle = p.name || [platformLabel, typeLabel].filter(Boolean).join(' · ') || p.product_id;
       const pricingNote = p.pricing_model === 'per_1000' ? ' / 1K' : '';
+      const optionBits = Array.isArray(p.options) && p.options.length
+        ? p.options
+        : [
+          Number.isFinite(Number(p.min_quantity)) && Number(p.min_quantity) > 1
+            ? `Min ${Number(p.min_quantity).toLocaleString()}`
+            : null,
+          Number.isFinite(Number(p.max_quantity)) && Number(p.max_quantity) > 0
+            ? `Max ${Number(p.max_quantity).toLocaleString()}`
+            : null,
+          p.refill ? 'Refill' : null,
+          p.cancel ? 'Cancel' : null,
+          p.pricing_model === 'per_1000' ? 'Per 1K' : null,
+        ].filter(Boolean);
+      const optionsHtml = optionBits.length
+        ? `<div class="hub-service-options">${optionBits.map((opt) => (
+          `<span class="hub-service-option">${this.escapeHtml?.(String(opt)) || opt}</span>`
+        )).join('')}</div>`
+        : '';
       return `
       <article class="hub-service-product" data-product-id="${this.escapeAttr?.(p.product_id) || p.product_id}">
         <div class="hub-service-product-main">
           <strong>${this.escapeHtml?.(productTitle) || productTitle}</strong>
           ${metaBits ? `<div class="hub-service-meta">${this.escapeHtml?.(metaBits) || metaBits}</div>` : ''}
+          ${optionsHtml}
           <p class="hint">${this.escapeHtml?.(p.description || '') || ''}</p>
           <div class="hub-service-price-stack">
             <div class="pricing-row"><span>Product${pricingNote}</span><strong>$${Number(p.price_usd).toFixed(2)}</strong></div>

@@ -39,6 +39,8 @@ const {
   inferSmmPlatformLabel,
   combineSmmPages,
   countNestedSmmServices,
+  directoryServiceTarget,
+  smmPlatformsNeedingRefetch,
   SMM_PAGE_SIZE,
   DEFAULT_SERVICES_PATH,
   ALL_KEY,
@@ -433,6 +435,107 @@ section('SMM full catalog merges every paginated page (no truncation)');
   assert.ok(api.includes('SMM_CONCURRENCY'), 'SMM concurrency knob');
   assert.ok(api.includes('smmCatalogCache') || api.includes('SMM_CACHE_TTL_MS'), 'SMM eager cache');
   assert.ok(api.includes('withSingleFlight'), 'single-flight coalescing');
+  assert.ok(api.includes('smmPlatformsNeedingRefetch'), 'incomplete nested platforms are re-fetched');
+  assert.ok(
+    api.includes('target != null && collectedCount() >= target')
+      || api.includes('target != null && collected >= target'),
+    'nested-only pages do not stop without an authoritative total'
+  );
+  assert.ok(!api.includes('Math.min(services.length, 12)'), 'SMS details are not capped at 12 services');
+  assert.ok(api.includes('SMS_DETAIL_CONCURRENCY'), 'SMS detail expansion uses bounded concurrency');
+  console.log('ok');
+}
+
+section('SMM variations: rate/refill/max options + incomplete nested refetch');
+{
+  const withOpts = normalizeServiceProduct({
+    service: 501,
+    name: 'IG Followers Max 100K',
+    platform: 'Instagram',
+    category: 'Followers',
+    rate: 1.25,
+    min: 50,
+    max: 100000,
+    refill: true,
+    cancel: true,
+  }, { categoryId: 'social_media' });
+  assert.ok(withOpts, 'rate field normalizes without rate_usd');
+  assert.strictEqual(withOpts.pricing_model, 'per_1000');
+  assert.strictEqual(withOpts.price_usd, 1.25);
+  assert.strictEqual(withOpts.max_quantity, 100000);
+  assert.strictEqual(withOpts.refill, true);
+  assert.ok(withOpts.options.includes('Max 100,000') || withOpts.options.some((o) => /Max/.test(o)));
+  assert.ok(withOpts.options.includes('Refill'));
+  assert.ok(withOpts.options.includes('Cancel'));
+  assert.ok(withOpts.options.includes('Per 1K'));
+  assert.ok(/Max/.test(withOpts.description) || /Refill/.test(withOpts.description));
+
+  const directory = [
+    { name: 'Instagram', count: 40 },
+    { name: 'TikTok', count: 25 },
+    { name: 'Facebook', count: 18 },
+  ];
+  assert.strictEqual(directoryServiceTarget(directory), 83);
+  assert.strictEqual(directoryServiceTarget(directory, 'Instagram'), 40);
+
+  const sparseNested = [
+    {
+      key: 'instagram',
+      name: 'Instagram',
+      groups: [{ name: 'Followers', services: [{ service: 1, name: 'A', rate_usd: 1 }] }],
+    },
+    {
+      key: 'tiktok',
+      name: 'TikTok',
+      groups: [{ name: 'Views', services: [{ service: 2, name: 'B', rate_usd: 1 }] }],
+    },
+    {
+      key: 'facebook',
+      name: 'Facebook',
+      groups: [{ name: 'Likes', services: [{ service: 3, name: 'C', rate_usd: 1 }] }],
+    },
+  ];
+  const incomplete = smmPlatformsNeedingRefetch(directory, sparseNested, {
+    hasAuthoritativeCounts: true,
+  });
+  assert.ok(incomplete.includes('Instagram'), 'Instagram incomplete vs directory count');
+  assert.ok(incomplete.includes('TikTok'), 'TikTok incomplete vs directory count');
+  assert.ok(incomplete.includes('Facebook'), 'Facebook incomplete vs directory count');
+
+  const noCounts = smmPlatformsNeedingRefetch(
+    sparseNested.map((p) => ({ name: p.name, key: p.key, count: 1 })),
+    sparseNested,
+    { hasAuthoritativeCounts: false }
+  );
+  assert.ok(noCounts.length >= 3, 'without authoritative counts every platform is re-fetched');
+
+  const completeNested = [{
+    key: 'instagram',
+    name: 'Instagram',
+    groups: [{
+      name: 'Followers',
+      services: Array.from({ length: 40 }, (_, i) => ({
+        service: 1000 + i,
+        name: `IG ${i}`,
+        rate_usd: 1,
+      })),
+    }],
+  }];
+  const done = smmPlatformsNeedingRefetch(
+    [{ name: 'Instagram', count: 40 }],
+    completeNested,
+    { hasAuthoritativeCounts: true }
+  );
+  assert.deepStrictEqual(done, [], 'complete nested tree needs no refetch');
+
+  const svc = fs.readFileSync(path.join(__dirname, '../src/services/kripicardHubService.js'), 'utf8');
+  assert.ok(svc.includes("catalog.source !== 'fallback'"), 'eager cache skips truncated fallback catalogs');
+
+  const dash = fs.readFileSync(path.join(__dirname, '../public/dashboard.js'), 'utf8');
+  assert.ok(dash.includes('hub-service-options'), 'UI renders Max/Refill option chips');
+  assert.ok(dash.includes('p.options') || dash.includes('optionBits'), 'UI reads product options');
+  const css = fs.readFileSync(path.join(__dirname, '../public/styles.css'), 'utf8');
+  assert.ok(css.includes('.hub-service-option'), 'option chip styles present');
   console.log('ok');
 }
 
@@ -564,6 +667,7 @@ section('UI hub switch surfaces filters + remaining categories');
   assert.ok(css.includes('#pinUnlockModal') && /#pinUnlockModal\s*\{[^}]*z-index:\s*140/s.test(css), 'PIN modal stacks above Hub modal');
   assert.ok(dash.includes('data-hub-platform'), 'platform filter chips');
   assert.ok(dash.includes('data-hub-subcategory'), 'subcategory filter chips');
+  assert.ok(dash.includes('hub-service-options'), 'service variation option chips');
   assert.ok(dash.includes('reloadHubServiceCatalog'), 'dynamic reload');
   assert.ok(dash.includes("category.id === 'esim'"), 'eSIM country input routing');
   assert.ok(dash.includes("category.id === 'gift_cards'"), 'gift card country input routing');
@@ -675,10 +779,15 @@ section('async catalog + purchase always adds $1');
 
   const eagerAll = await catalogForCategoryAsync('social_media', {});
   assert.ok(eagerAll.platforms.length >= 5, 'eager social catalog exposes many platforms');
+  assert.strictEqual(eagerAll.source, 'fallback');
+  // FORCE_FALLBACK catalogs must not be eagerly cached — the starter list is
+  // intentionally tiny (~one row/platform) and would look permanently truncated.
+  assert.notStrictEqual(eagerAll.cache, 'hit', 'fallback catalogs are not cached');
   const eagerFb = await catalogForCategoryAsync('social_media', { platform: 'facebook' });
   assert.ok(eagerFb.products.length >= 1);
   assert.ok(eagerFb.products.every((p) => p.platform_key === 'facebook'));
-  assert.strictEqual(eagerFb.cache, 'hit', 'second filter reuses eager catalog cache');
+  assert.strictEqual(eagerFb.source, 'fallback');
+  assert.notStrictEqual(eagerFb.cache, 'hit', 'second filter still skips caching fallback');
 
   const warmed = await preloadAllCategoryCatalogs({ concurrency: 3 });
   assert.strictEqual(warmed.length, 6);

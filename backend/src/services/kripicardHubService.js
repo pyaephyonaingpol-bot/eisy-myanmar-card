@@ -274,10 +274,15 @@ async function loadCatalog(categoryId, filters = {}) {
         country: filters.country || null,
         number: filters.number || null,
       }).then((catalog) => {
-        catalogCache.set(key, {
-          expires: Date.now() + CATALOG_CACHE_TTL_MS,
-          catalog,
-        });
+        // Never cache the local starter fallback — it is intentionally tiny
+        // (~one row per platform) and would make Hub look permanently truncated.
+        const productCount = Array.isArray(catalog.products) ? catalog.products.length : 0;
+        if (catalog.source !== 'fallback' && productCount > 0) {
+          catalogCache.set(key, {
+            expires: Date.now() + CATALOG_CACHE_TTL_MS,
+            catalog,
+          });
+        }
         catalogInflight.delete(key);
         return catalog;
       }).catch((err) => {
