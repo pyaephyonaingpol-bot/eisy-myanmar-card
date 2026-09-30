@@ -604,10 +604,15 @@ small.hint {
   /* PIN reset expands with OTP + new PIN fields — always allow scroll. */
   align-items: flex-start;
 }
+#pinUnlockModal.is-secure-prompt {
+  align-items: center;
+  justify-content: center;
+}
 #pinUnlockModal.is-secure-prompt .modal-box {
   animation: hubSecurePromptIn 180ms ease-out;
   border-color: rgba(56, 189, 248, 0.45);
   box-shadow: 0 18px 48px rgba(2, 8, 23, 0.55), 0 0 0 1px rgba(56, 189, 248, 0.12);
+  margin-block: auto;
 }
 @keyframes hubSecurePromptIn {
   from {
