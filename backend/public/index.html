@@ -49,7 +49,7 @@
       touch-action: pan-y !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20260930hubModal" />
+  <link rel="stylesheet" href="/styles.css?v=20260930hubBuyPin" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -1114,14 +1114,18 @@
     </div>
   </div>
 
-  <div id="pinUnlockModal" class="modal hidden">
-    <div class="modal-box">
-      <h3>Unlock Sensitive Access</h3>
-      <p class="hint">Enter your 6-digit PIN to view balance, card details, and make deposits.</p>
+  <div id="pinUnlockModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pinUnlockModalTitle">
+    <div class="modal-box pin-unlock-modal-box">
+      <div class="modal-header-row">
+        <h3 id="pinUnlockModalTitle" data-i18n="pin_unlock_title">Unlock Sensitive Access</h3>
+        <button type="button" id="pinUnlockModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p id="pinUnlockHint" class="hint" data-i18n="pin_unlock_hint">Enter your 6-digit PIN to view balance, card details, and make deposits.</p>
       <form id="pinUnlockForm">
         <div class="field"><input id="unlockPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="one-time-code" required /></div>
         <p id="pinUnlockError" class="error-text"></p>
-        <button type="submit" id="pinUnlockBtn" class="btn btn-primary" style="width:100%;margin-bottom:0.5rem">Verify PIN</button>
+        <button type="submit" id="pinUnlockBtn" class="btn btn-primary" style="width:100%;margin-bottom:0.5rem" data-i18n="pin_unlock_verify">Verify PIN</button>
+        <button type="button" id="pinUnlockBioBtn" class="btn btn-secondary" style="width:100%;margin-bottom:0.5rem" data-i18n="pin_unlock_biometric">Use biometrics</button>
         <button type="button" id="pinForgotBtn" class="btn btn-secondary btn-sm" style="width:100%">Reset PIN via email</button>
       </form>
       <div id="pinResetEmailSection" class="hidden" style="margin-top:1rem">
@@ -1817,7 +1821,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20260908bootFast"></script>
-  <script defer src="/i18n.js?v=20260930hubModal"></script>
+  <script defer src="/i18n.js?v=20260930hubBuyPin"></script>
   <script defer src="/auth.js?v=20260909pinResetOnly"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1842,7 +1846,7 @@
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20260930hubModal"></script>
+  <script defer src="/dashboard.js?v=20260930hubBuyPin"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
