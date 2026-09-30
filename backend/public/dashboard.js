@@ -139,17 +139,19 @@ const Dashboard = {
 
   /**
    * Hub (/) gateway: Instant + Kripicard service categories.
-   * Wallets/cards load on /instant; Hub hosts category purchase panels.
+   * Wallets/cards load on /instant; Hub opens category catalogs in a modal.
    */
   applyHubGateway() {
     const home = document.querySelector('.app-page[data-page="home"]');
     if (home) {
       [...home.children].forEach((child) => {
-        if (child.id === 'portalHubChooser' || child.id === 'portalHubServicePanel') return;
+        if (child.id === 'portalHubChooser') return;
         child.remove();
       });
       home.classList.add('is-active', 'portal-hub-home');
     }
+    // Remove legacy inline service panel if an older bundle left one behind.
+    $('portalHubServicePanel')?.remove();
 
     document.querySelectorAll('.app-page[data-page]:not([data-page="home"])').forEach((el) => {
       el.remove();
@@ -244,7 +246,7 @@ const Dashboard = {
       </div>`;
     if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(box);
     this.bindPortalHubChooser(box);
-    this.ensurePortalHubServicePanel(home);
+    this.ensureHubServiceModal();
   },
 
   bindPortalHubChooser(box) {
@@ -258,24 +260,70 @@ const Dashboard = {
     });
   },
 
-  ensurePortalHubServicePanel(home) {
-    const host = home || document.querySelector('.app-page[data-page="home"]');
-    if (!host) return null;
-    let panel = $('portalHubServicePanel');
-    if (!panel) {
-      panel = document.createElement('section');
-      panel.id = 'portalHubServicePanel';
-      panel.className = 'panel portal-hub-service-panel hidden';
-      host.appendChild(panel);
+  ensureHubServiceModal() {
+    let modal = $('hubServiceModal');
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+    modal.id = 'hubServiceModal';
+    modal.className = 'modal hub-service-modal hidden';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'hubServiceModalTitle');
+    modal.innerHTML = `
+      <div class="modal-box modal-box-wide hub-service-modal-box" role="document">
+        <div class="modal-header-row hub-service-modal-header">
+          <h3 id="hubServiceModalTitle" data-i18n="hub_service_loading">Loading services…</h3>
+          <button type="button" id="btnHubServiceModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+        </div>
+        <p class="hint hub-service-modal-fee" data-i18n="hub_processing_fee_notice">A flat $1.00 USD processing fee is added to every purchase.</p>
+        <div id="hubServiceToolbar" class="hub-service-toolbar"></div>
+        <div id="hubServiceProductList" class="hub-service-product-list" tabindex="0">
+          <p class="hint">Loading…</p>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+
+    const close = () => this.closeHubServiceModal();
+    modal.querySelector('#btnHubServiceModalClose')?.addEventListener('click', close);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) close();
+    });
+    if (!this._hubModalEscBound) {
+      this._hubModalEscBound = true;
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const open = $('hubServiceModal');
+        if (open && !open.classList.contains('hidden')) {
+          e.preventDefault();
+          this.closeHubServiceModal();
+        }
+      });
     }
-    return panel;
+    return modal;
+  },
+
+  closeHubServiceModal() {
+    const modal = $('hubServiceModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal._hubState = null;
+    document.body.classList.remove('hub-service-modal-open');
+    const list = modal.querySelector('#hubServiceProductList');
+    const toolbar = modal.querySelector('#hubServiceToolbar');
+    if (list) list.innerHTML = '';
+    if (toolbar) toolbar.innerHTML = '';
+    const title = modal.querySelector('#hubServiceModalTitle');
+    if (title) {
+      title.textContent = 'Loading services…';
+      title.setAttribute('data-i18n', 'hub_service_loading');
+    }
   },
 
   async openHubServiceCategory(categoryId) {
-    const panel = this.ensurePortalHubServicePanel();
-    if (!panel) return;
-    panel.classList.remove('hidden');
-    panel._hubState = {
+    const modal = this.ensureHubServiceModal();
+    if (!modal) return;
+    modal._hubState = {
       categoryId,
       platform: '__all__',
       subcategory: '__all__',
@@ -283,22 +331,20 @@ const Dashboard = {
       number: '',
       country: '',
     };
-    panel.innerHTML = `
-      <div class="panel-header-row">
-        <h2 style="margin:0" data-i18n="hub_service_loading">Loading services…</h2>
-        <button type="button" class="btn btn-secondary btn-sm" id="btnHubServiceBack" data-i18n="hub_service_back">← Categories</button>
-      </div>
-      <p class="hint" data-i18n="hub_processing_fee_notice">A flat $1.00 USD processing fee is added to every purchase.</p>
-      <div id="hubServiceToolbar" class="hub-service-toolbar"></div>
-      <div id="hubServiceProductList"><p class="hint">Loading…</p></div>`;
-    if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(panel);
-    $('btnHubServiceBack')?.addEventListener('click', () => {
-      panel.classList.add('hidden');
-      panel.innerHTML = '';
-      panel._hubState = null;
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-    await this.reloadHubServiceCatalog(panel);
+    const title = modal.querySelector('#hubServiceModalTitle');
+    if (title) {
+      title.textContent = 'Loading services…';
+      title.setAttribute('data-i18n', 'hub_service_loading');
+    }
+    const toolbar = modal.querySelector('#hubServiceToolbar');
+    if (toolbar) toolbar.innerHTML = '';
+    const list = modal.querySelector('#hubServiceProductList');
+    if (list) list.innerHTML = '<p class="hint">Loading…</p>';
+    modal.classList.remove('hidden');
+    document.body.classList.add('hub-service-modal-open');
+    if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(modal);
+    modal.querySelector('#btnHubServiceModalClose')?.focus?.();
+    await this.reloadHubServiceCatalog(modal);
   },
 
   hubServiceQuery(state = {}) {
@@ -363,10 +409,9 @@ const Dashboard = {
     state.subcategory = filters.subcategory || state.subcategory || '__all__';
     panel._hubState = state;
 
-    const title = panel.querySelector('h2');
+    const title = panel.querySelector('#hubServiceModalTitle') || panel.querySelector('h3') || panel.querySelector('h2');
     if (title) {
-      const sourceNote = data.source === 'live' ? '' : '';
-      title.textContent = `${category.title || 'Services'}${sourceNote}`;
+      title.textContent = category.title || 'Services';
       title.removeAttribute('data-i18n');
     }
 
@@ -481,17 +526,19 @@ const Dashboard = {
       const platformLabel = p.platform_name || p.platform || '';
       const typeLabel = p.subcategory_name || p.country_name || p.subcategory || '';
       const metaBits = [platformLabel, typeLabel].filter(Boolean).join(' · ');
-      const title = p.name || [platformLabel, typeLabel].filter(Boolean).join(' · ') || p.product_id;
+      const productTitle = p.name || [platformLabel, typeLabel].filter(Boolean).join(' · ') || p.product_id;
       const pricingNote = p.pricing_model === 'per_1000' ? ' / 1K' : '';
       return `
       <article class="hub-service-product" data-product-id="${this.escapeAttr?.(p.product_id) || p.product_id}">
         <div class="hub-service-product-main">
-          <strong>${this.escapeHtml?.(title) || title}</strong>
+          <strong>${this.escapeHtml?.(productTitle) || productTitle}</strong>
           ${metaBits ? `<div class="hub-service-meta">${this.escapeHtml?.(metaBits) || metaBits}</div>` : ''}
           <p class="hint">${this.escapeHtml?.(p.description || '') || ''}</p>
-          <div class="pricing-row"><span>Product${pricingNote}</span><strong>$${Number(p.price_usd).toFixed(2)}</strong></div>
-          <div class="pricing-row"><span>+ Processing Fee</span><strong>$${fee.toFixed(2)}</strong></div>
-          <div class="pricing-row"><span>Total</span><strong>$${total.toFixed(2)} USDT</strong></div>
+          <div class="hub-service-price-stack">
+            <div class="pricing-row"><span>Product${pricingNote}</span><strong>$${Number(p.price_usd).toFixed(2)}</strong></div>
+            <div class="pricing-row"><span>+ Processing Fee</span><strong>$${fee.toFixed(2)}</strong></div>
+            <div class="pricing-row hub-service-total-row"><span>Total</span><strong>$${total.toFixed(2)} USDT</strong></div>
+          </div>
         </div>
         <div class="hub-service-product-actions">
           ${category.id === 'social_media' ? `
@@ -528,6 +575,8 @@ const Dashboard = {
         });
       });
     });
+    // Keep the modal product list scrolled to the top after filter reloads.
+    list.scrollTop = 0;
   },
 
   async purchaseHubServiceProduct({
