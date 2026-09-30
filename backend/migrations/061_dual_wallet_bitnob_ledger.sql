@@ -1,8 +1,6 @@
--- Dual-wallet architecture:
---   Master Wallet ledger  → users.balance_usdt        (Instant Card / Kripicard)
---   Bitnob user ledger    → users.balance_bitnob_usdt (Standard Card / Bitnob)
--- Deposits to Bitnob addresses credit the Bitnob ledger only.
--- Master/HD TRON deposits continue to credit balance_usdt only.
+-- HISTORICAL (retired): dual-wallet Bitnob ledger for the old Standard Card pipeline.
+-- Superseded by 063_drop_bitnob_schema.sql — card creation/deposits are Kripicard-only.
+-- Kept only so existing databases can replay migration history.
 
 ALTER TABLE users ADD COLUMN balance_bitnob_usdt REAL NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN bitnob_customer_id TEXT;

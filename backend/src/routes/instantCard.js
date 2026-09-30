@@ -1,6 +1,7 @@
 /**
  * Instant Card (Non-KYC) routes — Kripicard + Master Wallet only.
  * Mounted under /api/user. Instant / Kripicard issuance only.
+ * Bitnob / Standard Card providers are rejected (retired).
  */
 const express = require('express');
 const { requireAuth, requireSensitive } = require('../middleware/auth');
@@ -13,6 +14,7 @@ const {
   purchaseKripicardFromUsdtWallet,
   getKripicardBinOptions,
 } = require('../services/kripicardCardWalletService');
+const { assertKripicardOnlyProvider } = require('../services/kripicardOnlyGateways');
 
 const router = express.Router();
 
@@ -73,6 +75,16 @@ function attachHelpers({ respondCardPurchaseError, buildCardPurchaseSuccessPaylo
 
   async function handleInstantRequest(req, res, logTag) {
     try {
+      try {
+        assertKripicardOnlyProvider(req.body || {});
+      } catch (providerErr) {
+        return res.status(400).json({
+          error: providerErr.message,
+          code: providerErr.code || 'BITNOB_RETIRED',
+          provider: 'kripicard',
+        });
+      }
+
       const user = await User.findById(req.user.id);
       const walletType = String(req.body.wallet_type || 'usdt').toLowerCase();
       if (walletType && walletType !== 'usdt' && walletType !== 'master_usdt') {
