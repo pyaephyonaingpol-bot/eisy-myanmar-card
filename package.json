@@ -14,6 +14,7 @@
     "test:admin-kripicard-balance": "node backend/scripts/test-admin-kripicard-balance.js",
     "test:kripicard-payment-collections": "node backend/scripts/test-kripicard-payment-collections.js",
     "test:kripicard-deposits": "node backend/scripts/test-kripicard-deposits.js",
+    "test:kripicard-deposit-ui": "node backend/scripts/test-kripicard-deposit-ui.js",
     "test:sidebar-nav-cleanup": "node backend/scripts/test-sidebar-nav-cleanup.js",
     "write-portal-html": "node backend/scripts/write-portal-html.js && node backend/scripts/write-admin-portal-html.js",
     "test:dashboard-usdt-wallet": "node backend/scripts/test-dashboard-usdt-wallet-only.js",
