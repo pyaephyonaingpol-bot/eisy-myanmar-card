@@ -73,6 +73,9 @@ function testHubServiceCategories() {
   const hubApi = fs.readFileSync(path.join(ROOT, 'lib/kripicardHubApi.js'), 'utf8');
   assert.ok(hubApi.includes("'/services'") || hubApi.includes('/services'));
   assert.ok(hubApi.includes('mapMainServicesToHubCategories'));
+  assert.ok(hubApi.includes('fetchModuleCatalog'));
+  assert.ok(hubApi.includes('/esim/packages') && hubApi.includes('/gifts/packages'));
+  assert.ok(dash.includes("category.id === 'esim'") && dash.includes("category.id === 'gift_cards'"));
   console.log('ok');
 }
 

@@ -372,7 +372,14 @@ const Dashboard = {
 
     const toolbar = panel.querySelector('#hubServiceToolbar');
     if (toolbar) {
-      const needsTopupInputs = category.id === 'sim_topup' || Array.isArray(data.requires_input);
+      const required = Array.isArray(data.requires_input) ? data.requires_input : [];
+      const needsCountry = category.id === 'sim_topup'
+        || category.id === 'esim'
+        || category.id === 'gift_cards'
+        || required.includes('country');
+      const needsNumber = category.id === 'sim_topup' || required.includes('number');
+      const needsApply = needsCountry || needsNumber;
+      const countryPlaceholder = category.id === 'gift_cards' || category.id === 'esim' ? 'US' : 'MM';
       toolbar.innerHTML = `
         <div class="hub-filter-block">
           <div class="hub-filter-label" data-i18n="hub_filter_platform">Platform</div>
@@ -400,17 +407,19 @@ const Dashboard = {
             <input type="search" id="hubServiceSearch" value="${this.escapeAttr?.(state.search || '') || ''}"
               placeholder="Name, platform, type…" />
           </label>
-          ${needsTopupInputs ? `
+          ${needsCountry ? `
           <label class="field">
             <span class="hint" data-i18n="hub_filter_country">Country ISO</span>
             <input type="text" id="hubServiceCountry" maxlength="8"
-              value="${this.escapeAttr?.(state.country || '') || ''}" placeholder="MM" />
-          </label>
+              value="${this.escapeAttr?.(state.country || '') || ''}" placeholder="${countryPlaceholder}" />
+          </label>` : ''}
+          ${needsNumber ? `
           <label class="field">
             <span class="hint" data-i18n="hub_filter_number">Phone number</span>
             <input type="tel" id="hubServiceNumber"
               value="${this.escapeAttr?.(state.number || '') || ''}" placeholder="09…" />
-          </label>
+          </label>` : ''}
+          ${needsApply ? `
           <button type="button" class="btn btn-secondary btn-sm" id="btnHubServiceRefresh" data-i18n="hub_filter_apply">Apply</button>
           ` : ''}
         </div>
@@ -418,13 +427,22 @@ const Dashboard = {
           <span class="portal-hub-fee-chip" data-i18n="hub_processing_fee_chip">+$1.00 fee</span>
           <span class="hint">${data.source === 'live' ? 'Live from Kripicard' : 'Catalog'}${data.count != null ? ` · ${data.count} services` : ''}</span>
         </div>
-        ${data.message ? `<p class="hint">${this.escapeHtml?.(data.message) || data.message}</p>` : ''}`;
+        ${data.message ? `<p class="hint hub-catalog-message">${this.escapeHtml?.(data.message) || data.message}</p>` : ''}`;
       if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(toolbar);
 
       toolbar.querySelectorAll('[data-hub-platform]').forEach((btn) => {
         btn.addEventListener('click', () => {
           state.platform = btn.getAttribute('data-hub-platform') || '__all__';
           state.subcategory = '__all__';
+          // Country-named platform chips (eSIM / gifts) also drive the country filter.
+          if (needsCountry && state.platform && state.platform !== '__all__') {
+            const chipName = btn.textContent?.split('·')[0]?.trim() || '';
+            if (/^[A-Za-z]{2}$/.test(state.platform)) {
+              state.country = state.platform.toUpperCase();
+            } else if (chipName && chipName.length <= 32) {
+              state.country = chipName.replace(/\s+\d+$/, '').trim();
+            }
+          }
           this.reloadHubServiceCatalog(panel);
         });
       });
