@@ -34,6 +34,9 @@ const {
   listFromCatalogPayload,
   extractSmmPage,
   mergeSmmNestedPlatforms,
+  mergeNamedSmmPlatforms,
+  applySmmPlatformDirectory,
+  inferSmmPlatformLabel,
   combineSmmPages,
   countNestedSmmServices,
   SMM_PAGE_SIZE,
@@ -423,6 +426,79 @@ section('SMM full catalog merges every paginated page (no truncation)');
   assert.ok(api.includes('return fetchCompleteSmmCatalog(filters)'), 'social_media uses full catalog fetch');
   assert.ok(api.includes('SMM_MAX_PAGES'), 'page walk has a safety ceiling');
   assert.ok(api.includes('per_page: pageSize'), 'requests large per_page');
+  assert.ok(api.includes('paginateSmmServices'), 'per-platform SMM pagination helper');
+  assert.ok(api.includes('applySmmPlatformDirectory'), 'platform directory chips helper');
+  assert.ok(api.includes('directory.length > 1'), 'fetches every platform from API directory');
+  console.log('ok');
+}
+
+section('SMM platform directory keeps Facebook/Telegram chips + name inference');
+{
+  assert.strictEqual(inferSmmPlatformLabel('Facebook Page Likes HQ'), 'Facebook');
+  assert.strictEqual(inferSmmPlatformLabel('Telegram Channel Members'), 'Telegram');
+  assert.strictEqual(inferSmmPlatformLabel('Discord Server Members'), 'Discord');
+
+  const inferred = normalizeServiceProduct({
+    service_id: 77,
+    name: 'Facebook Page Likes',
+    category: 'Likes',
+    rate_usd: 1.25,
+  }, { categoryId: 'social_media' });
+  assert.ok(inferred);
+  assert.strictEqual(inferred.platform_key, 'facebook');
+  assert.strictEqual(inferred.subcategory_key, 'likes');
+
+  const directory = mergeNamedSmmPlatforms([], [
+    { name: 'Instagram', count: 100 },
+    { name: 'Facebook', count: 80 },
+    { name: 'Telegram', count: 40 },
+    { name: 'TikTok', count: 60 },
+    { name: 'YouTube', count: 50 },
+  ]);
+  assert.strictEqual(directory.length, 5);
+
+  // Page-1 products only cover Instagram/TikTok/YouTube — directory must still expose Facebook/Telegram.
+  const partial = normalizeSmmCatalog({
+    success: true,
+    data: {
+      services: [
+        { service_id: 1, name: 'IG Followers', platform: 'Instagram', category: 'Followers', rate_usd: 1 },
+        { service_id: 2, name: 'TT Views', platform: 'TikTok', category: 'Views', rate_usd: 0.2 },
+        { service_id: 3, name: 'YT Subs', platform: 'YouTube', category: 'Subscribers', rate_usd: 3 },
+      ],
+      platforms: directory,
+    },
+  }, {});
+  assert.ok(partial.platforms.some((p) => p.key === 'facebook'), 'Facebook chip from directory');
+  assert.ok(partial.platforms.some((p) => p.key === 'telegram'), 'Telegram chip from directory');
+  assert.ok(partial.platforms.some((p) => p.key === 'instagram'));
+
+  const chips = applySmmPlatformDirectory(
+    [{ key: '__all__', name: 'All platforms', count: 3 }, { key: 'instagram', name: 'Instagram', count: 1 }],
+    directory,
+    partial.products
+  );
+  assert.ok(chips.some((p) => p.key === 'facebook' && p.count === 80));
+  assert.ok(chips.some((p) => p.key === 'telegram' && p.count === 40));
+
+  // Discord inferred from name when platform omitted.
+  const discordProd = normalizeServiceProduct({
+    service_id: 14,
+    name: 'Discord Members',
+    category: 'Members',
+    rate_usd: 2,
+  }, { categoryId: 'social_media' });
+  assert.strictEqual(discordProd.platform_key, 'discord');
+
+  const catalog = fs.readFileSync(path.join(__dirname, '../src/constants/kripicardHubCatalog.js'), 'utf8');
+  assert.ok(catalog.includes("platform: 'Facebook'"), 'fallback includes Facebook');
+  assert.ok(catalog.includes("platform: 'Telegram'"), 'fallback includes Telegram');
+  assert.ok(catalog.includes("platform: 'Discord'"), 'fallback includes Discord');
+  assert.ok(catalog.includes("platform: 'LinkedIn'"), 'fallback includes LinkedIn');
+  assert.ok(catalog.includes("platform: 'Spotify'"), 'fallback includes Spotify');
+
+  const css = fs.readFileSync(path.join(__dirname, '../public/styles.css'), 'utf8');
+  assert.ok(/\.hub-filter-row\s*\{[^}]*flex-wrap:\s*wrap/s.test(css), 'platform chips wrap so all platforms stay visible');
   console.log('ok');
 }
 

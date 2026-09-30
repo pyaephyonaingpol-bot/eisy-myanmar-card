@@ -4909,11 +4909,11 @@ body.hub-service-modal-open {
 
 .hub-filter-row {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 0.45rem;
-  overflow-x: auto;
+  overflow-x: visible;
   padding-bottom: 0.15rem;
-  scrollbar-width: thin;
+  max-height: none;
 }
 
 .hub-filter-chip {
