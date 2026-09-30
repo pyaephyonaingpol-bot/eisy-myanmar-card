@@ -355,29 +355,114 @@ const Dashboard = {
     await this.reloadHubServiceCatalog(modal);
   },
 
-  hubServiceQuery(state = {}) {
+  hubServiceQuery(state = {}, { eager = false } = {}) {
     const params = new URLSearchParams();
-    if (state.platform && state.platform !== '__all__') params.set('platform', state.platform);
-    if (state.subcategory && state.subcategory !== '__all__') params.set('subcategory', state.subcategory);
-    if (state.search) params.set('search', state.search);
+    // Eager full-catalog loads omit platform/subcategory/search so one response
+    // can be filtered locally for every chip click.
+    if (!eager) {
+      if (state.platform && state.platform !== '__all__') params.set('platform', state.platform);
+      if (state.subcategory && state.subcategory !== '__all__') params.set('subcategory', state.subcategory);
+      if (state.search) params.set('search', state.search);
+    }
     if (state.country) params.set('country', state.country);
     if (state.number) params.set('number', state.number);
     const qs = params.toString();
     return qs ? `?${qs}` : '';
   },
 
-  async reloadHubServiceCatalog(panel) {
+  filterHubCatalogLocally(full, state = {}) {
+    if (!full || typeof full !== 'object') return full;
+    const ALL = '__all__';
+    const platform = state.platform || ALL;
+    const subcategory = state.subcategory || ALL;
+    const search = String(state.search || '').trim().toLowerCase();
+    let products = Array.isArray(full.products) ? full.products.slice() : [];
+
+    if (platform !== ALL) {
+      products = products.filter((p) => (
+        String(p.platform_key || '') === String(platform)
+        || String(p.platform || '').toLowerCase() === String(platform).toLowerCase()
+      ));
+    }
+
+    const subMap = new Map();
+    for (const p of products) {
+      const key = p.subcategory_key || ALL;
+      if (key === ALL) continue;
+      if (!subMap.has(key)) {
+        subMap.set(key, { key, name: p.subcategory || key, platform_key: platform, count: 0 });
+      }
+      subMap.get(key).count += 1;
+    }
+    const subcategories = [
+      { key: ALL, name: 'All types', platform_key: platform, count: products.length },
+      ...[...subMap.values()].sort((a, b) => String(a.name).localeCompare(String(b.name))),
+    ];
+
+    if (subcategory !== ALL) {
+      products = products.filter((p) => String(p.subcategory_key || ALL) === String(subcategory));
+    }
+    if (search) {
+      products = products.filter((p) => (
+        String(p.name || '').toLowerCase().includes(search)
+        || String(p.description || '').toLowerCase().includes(search)
+        || String(p.platform || '').toLowerCase().includes(search)
+        || String(p.subcategory || '').toLowerCase().includes(search)
+      ));
+    }
+
+    return {
+      ...full,
+      products,
+      platforms: Array.isArray(full.platforms) ? full.platforms : [],
+      subcategories,
+      filters: {
+        ...(full.filters || {}),
+        platform,
+        subcategory,
+        search: state.search || null,
+        country: state.country || null,
+        number: state.number || null,
+      },
+      count: Array.isArray(full.products) ? full.products.length : products.length,
+    };
+  },
+
+  async reloadHubServiceCatalog(panel, { force = false } = {}) {
     if (!panel?._hubState?.categoryId) return;
-    const { categoryId } = panel._hubState;
+    const state = panel._hubState;
+    const { categoryId } = state;
     const list = panel.querySelector('#hubServiceProductList');
+    const needsUpstream = force
+      || Boolean(state.number)
+      || Boolean(state.country && ['sim_topup', 'esim', 'gift_cards'].includes(categoryId));
+
+    // Reuse eagerly loaded catalog for platform / type / search chip filters.
+    if (!needsUpstream && panel._hubFullCatalog && panel._hubFullCatalogCategory === categoryId) {
+      this.renderHubServiceCatalog(
+        panel,
+        this.filterHubCatalogLocally(panel._hubFullCatalog, state)
+      );
+      return;
+    }
+
     if (list) list.innerHTML = '<p class="hint">Loading…</p>';
     try {
-      const qs = this.hubServiceQuery(panel._hubState);
+      const eager = !needsUpstream;
+      const qs = this.hubServiceQuery(state, { eager });
       const data = await Auth.api(
         'GET',
         `/api/kripicard/services/${encodeURIComponent(categoryId)}/products${qs}`
       );
-      this.renderHubServiceCatalog(panel, data);
+      if (eager) {
+        panel._hubFullCatalog = data;
+        panel._hubFullCatalogCategory = categoryId;
+        this.renderHubServiceCatalog(panel, this.filterHubCatalogLocally(data, state));
+      } else {
+        panel._hubFullCatalog = null;
+        panel._hubFullCatalogCategory = null;
+        this.renderHubServiceCatalog(panel, data);
+      }
     } catch (err) {
       if (list) {
         list.innerHTML = `<p class="hint err">${this.escapeHtml?.(err.message) || err.message || 'Failed to load products'}</p>`;
@@ -495,6 +580,8 @@ const Dashboard = {
             } else if (chipName && chipName.length <= 32) {
               state.country = chipName.replace(/\s+\d+$/, '').trim();
             }
+            // Country change needs a fresh upstream catalog.
+            panel._hubFullCatalog = null;
           }
           this.reloadHubServiceCatalog(panel);
         });
@@ -518,7 +605,8 @@ const Dashboard = {
         state.country = toolbar.querySelector('#hubServiceCountry')?.value?.trim() || '';
         state.number = toolbar.querySelector('#hubServiceNumber')?.value?.trim() || '';
         state.search = searchInput?.value?.trim() || '';
-        this.reloadHubServiceCatalog(panel);
+        panel._hubFullCatalog = null;
+        this.reloadHubServiceCatalog(panel, { force: true });
       });
     }
 

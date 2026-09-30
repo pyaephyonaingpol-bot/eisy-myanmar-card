@@ -34,6 +34,26 @@ const {
 const PRODUCT_CACHE_TTL_MS = Number(process.env.KRIPICARD_HUB_PRODUCT_CACHE_MS) || 15 * 60 * 1000;
 const productCache = new Map(); // product_id -> { product, categoryId, expires }
 
+/**
+ * Eager category catalog cache — load full platforms/products once, then
+ * apply platform/subcategory/search filters in-process (no upstream round-trip).
+ */
+const CATALOG_CACHE_TTL_MS = Math.max(
+  0,
+  Number(process.env.KRIPICARD_HUB_CATALOG_CACHE_MS) || 5 * 60 * 1000
+);
+const catalogCache = new Map(); // key -> { expires, catalog }
+const catalogInflight = new Map(); // key -> Promise
+
+/** Categories that can reuse one eager full catalog for chip/search filtering. */
+const EAGER_FILTER_CATEGORIES = new Set([
+  'social_media',
+  'sms',
+  'proxies',
+  'gift_cards',
+  'esim',
+]);
+
 function listCategories() {
   return KRIPICARD_HUB_CATEGORIES.map((c) => ({
     id: c.id,
@@ -44,6 +64,14 @@ function listCategories() {
     i18n_desc: c.i18n_desc,
     processing_fee_usd: KRIPICARD_HUB_PROCESSING_FEE_USD,
   }));
+}
+
+function baseCatalogCacheKey(categoryId, filters = {}) {
+  return [
+    String(categoryId || ''),
+    `c=${String(filters.country || '').trim().toLowerCase()}`,
+    `n=${String(filters.number || '').trim()}`,
+  ].join('|');
 }
 
 function rememberProducts(categoryId, products) {
@@ -132,14 +160,44 @@ function fallbackCatalog(category, filters = {}) {
   };
 }
 
-async function loadCatalog(categoryId, filters = {}) {
-  const category = getCategory(categoryId);
-  if (!category) {
-    const err = new Error('Unknown Kripicard Hub category');
-    err.code = 'UNKNOWN_HUB_CATEGORY';
-    throw err;
+function applyLocalCatalogFilters(baseCatalog, filters = {}) {
+  const allProducts = asArrayProducts(baseCatalog.products);
+  const meta = buildFilterMeta(allProducts, {
+    platform: filters.platform,
+    subcategory: filters.subcategory,
+  });
+  let products = meta.products;
+  if (filters.search) {
+    const q = String(filters.search).trim().toLowerCase();
+    products = products.filter((p) => (
+      (p.name || '').toLowerCase().includes(q)
+      || (p.description || '').toLowerCase().includes(q)
+      || (p.platform || '').toLowerCase().includes(q)
+      || (p.subcategory || '').toLowerCase().includes(q)
+    ));
   }
+  return {
+    ...baseCatalog,
+    platforms: meta.platforms.length ? meta.platforms : (baseCatalog.platforms || []),
+    subcategories: meta.subcategories,
+    filters: {
+      platform: meta.filters?.platform || ALL_KEY,
+      subcategory: meta.filters?.subcategory || ALL_KEY,
+      search: filters.search || null,
+      country: filters.country || null,
+      number: filters.number || null,
+    },
+    count: baseCatalog.count ?? allProducts.length,
+    products,
+    cache: baseCatalog.cache || 'local-filter',
+  };
+}
 
+function asArrayProducts(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+async function fetchDecoratedCatalog(category, filters = {}) {
   let catalog;
   let liveError = null;
 
@@ -189,7 +247,88 @@ async function loadCatalog(categoryId, filters = {}) {
       message: liveError.message,
     } : null),
     products,
+    cache: catalog.cache || 'miss',
   };
+}
+
+async function loadCatalog(categoryId, filters = {}) {
+  const category = getCategory(categoryId);
+  if (!category) {
+    const err = new Error('Unknown Kripicard Hub category');
+    err.code = 'UNKNOWN_HUB_CATEGORY';
+    throw err;
+  }
+
+  const eagerOk = EAGER_FILTER_CATEGORIES.has(category.id) && !filters.number;
+  if (eagerOk && CATALOG_CACHE_TTL_MS > 0) {
+    const key = baseCatalogCacheKey(category.id, filters);
+    const hit = catalogCache.get(key);
+    if (hit && hit.expires > Date.now()) {
+      return applyLocalCatalogFilters({ ...hit.catalog, cache: 'hit' }, filters);
+    }
+
+    let pending = catalogInflight.get(key);
+    if (!pending) {
+      // Eager load without platform/subcategory/search so one fetch serves all chip filters.
+      pending = fetchDecoratedCatalog(category, {
+        country: filters.country || null,
+        number: filters.number || null,
+      }).then((catalog) => {
+        catalogCache.set(key, {
+          expires: Date.now() + CATALOG_CACHE_TTL_MS,
+          catalog,
+        });
+        catalogInflight.delete(key);
+        return catalog;
+      }).catch((err) => {
+        catalogInflight.delete(key);
+        throw err;
+      });
+      catalogInflight.set(key, pending);
+    }
+
+    const base = await pending;
+    return applyLocalCatalogFilters({ ...base, cache: hit ? 'hit' : 'miss' }, filters);
+  }
+
+  return fetchDecoratedCatalog(category, filters);
+}
+
+/** Batch-warm every Hub category catalog (eager loading). */
+async function preloadAllCategoryCatalogs({ concurrency = 3 } = {}) {
+  const ids = KRIPICARD_HUB_CATEGORIES.map((c) => c.id);
+  const limit = Math.max(1, Math.min(Number(concurrency) || 3, ids.length));
+  const results = [];
+  let cursor = 0;
+  async function runner() {
+    while (cursor < ids.length) {
+      const index = cursor;
+      cursor += 1;
+      const id = ids[index];
+      try {
+        results[index] = {
+          categoryId: id,
+          ok: true,
+          catalog: await catalogForCategoryAsync(id, {}),
+        };
+      } catch (err) {
+        results[index] = {
+          categoryId: id,
+          ok: false,
+          error: err.message,
+          code: err.code,
+        };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: limit }, () => runner()));
+  return results;
+}
+
+function clearCatalogCaches() {
+  catalogCache.clear();
+  catalogInflight.clear();
+  productCache.clear();
 }
 
 /** @deprecated sync helper — prefer catalogForCategoryAsync */
@@ -287,16 +426,8 @@ function quotePurchase({ categoryId, productId, productPriceUsd = null, quantity
 }
 
 async function uniqueRefCode() {
-  const db = getDb();
-  for (let i = 0; i < 8; i += 1) {
-    const ref = `KH-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
-    const existing = await db.get(
-      'SELECT id FROM kripicard_hub_purchases WHERE ref_code = ? LIMIT 1',
-      ref
-    );
-    if (!existing) return ref;
-  }
-  return `KH-${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
+  // High-entropy ref avoids SELECT round-trips on the hot purchase path.
+  return `KH-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
 }
 
 async function purchaseHubProduct(userId, {
@@ -443,10 +574,14 @@ function mapPurchase(row) {
 
 async function listPurchasesForUser(userId, { limit = 50 } = {}) {
   const db = getDb();
+  // Project only columns needed by mapPurchase — avoids pulling unused blobs.
   const rows = await db.all(
-    `SELECT * FROM kripicard_hub_purchases
+    `SELECT id, ref_code, category_id, product_id, product_name,
+            product_price_usd, processing_fee_usd, total_charge_usd,
+            status, recipient_email, metadata, created_at
+     FROM kripicard_hub_purchases
      WHERE user_id = ?
-     ORDER BY datetime(created_at) DESC, id DESC
+     ORDER BY created_at DESC, id DESC
      LIMIT ?`,
     userId,
     Math.min(Math.max(Number(limit) || 50, 1), 100)
@@ -458,9 +593,13 @@ module.exports = {
   listCategories,
   catalogForCategory,
   catalogForCategoryAsync,
+  preloadAllCategoryCatalogs,
+  clearCatalogCaches,
   quotePurchase,
   purchaseHubProduct,
   listPurchasesForUser,
   KRIPICARD_HUB_PROCESSING_FEE_USD,
   ALL_KEY,
+  CATALOG_CACHE_TTL_MS,
+  EAGER_FILTER_CATEGORIES,
 };
