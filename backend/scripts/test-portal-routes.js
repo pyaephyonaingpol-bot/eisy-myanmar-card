@@ -64,7 +64,8 @@ function testHubServiceCategories() {
   assert.ok(!dash.includes('portal-hub-card-instant'), 'Instant card removed from hub grid');
   assert.ok(dash.includes('data-portal-switch="instant"') || dash.includes('Open Instant →'), 'Instant stays in top switch');
   assert.ok(dash.includes('data-hub-service'));
-  assert.ok(dash.includes('portalHubServicePanel'));
+  assert.ok(dash.includes('hubServiceModal'), 'hub catalog opens in modal');
+  assert.ok(dash.includes('ensureHubServiceModal'));
   assert.ok(dash.includes('/api/kripicard/services/purchase'));
   assert.ok(dash.includes('data-hub-platform'), 'platform filters');
   assert.ok(dash.includes('data-hub-subcategory'), 'subcategory filters');
@@ -76,6 +77,8 @@ function testHubServiceCategories() {
   assert.ok(hubApi.includes('fetchModuleCatalog'));
   assert.ok(hubApi.includes('/esim/packages') && hubApi.includes('/gifts/packages'));
   assert.ok(dash.includes("category.id === 'esim'") && dash.includes("category.id === 'gift_cards'"));
+  const css = fs.readFileSync(path.join(ROOT, 'backend/public/styles.css'), 'utf8');
+  assert.ok(css.includes('hub-service-modal-box'));
   console.log('ok');
 }
 
