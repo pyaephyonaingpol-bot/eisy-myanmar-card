@@ -275,82 +275,248 @@ const Dashboard = {
     const panel = this.ensurePortalHubServicePanel();
     if (!panel) return;
     panel.classList.remove('hidden');
+    panel._hubState = {
+      categoryId,
+      platform: '__all__',
+      subcategory: '__all__',
+      search: '',
+      number: '',
+      country: '',
+    };
     panel.innerHTML = `
       <div class="panel-header-row">
         <h2 style="margin:0" data-i18n="hub_service_loading">Loading services…</h2>
         <button type="button" class="btn btn-secondary btn-sm" id="btnHubServiceBack" data-i18n="hub_service_back">← Categories</button>
       </div>
       <p class="hint" data-i18n="hub_processing_fee_notice">A flat $1.00 USD processing fee is added to every purchase.</p>
+      <div id="hubServiceToolbar" class="hub-service-toolbar"></div>
       <div id="hubServiceProductList"><p class="hint">Loading…</p></div>`;
     if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(panel);
     $('btnHubServiceBack')?.addEventListener('click', () => {
       panel.classList.add('hidden');
       panel.innerHTML = '';
+      panel._hubState = null;
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
+    await this.reloadHubServiceCatalog(panel);
+  },
 
+  hubServiceQuery(state = {}) {
+    const params = new URLSearchParams();
+    if (state.platform && state.platform !== '__all__') params.set('platform', state.platform);
+    if (state.subcategory && state.subcategory !== '__all__') params.set('subcategory', state.subcategory);
+    if (state.search) params.set('search', state.search);
+    if (state.country) params.set('country', state.country);
+    if (state.number) params.set('number', state.number);
+    const qs = params.toString();
+    return qs ? `?${qs}` : '';
+  },
+
+  async reloadHubServiceCatalog(panel) {
+    if (!panel?._hubState?.categoryId) return;
+    const { categoryId } = panel._hubState;
+    const list = panel.querySelector('#hubServiceProductList');
+    if (list) list.innerHTML = '<p class="hint">Loading…</p>';
     try {
-      const data = await Auth.api('GET', `/api/kripicard/services/${encodeURIComponent(categoryId)}/products`);
+      const qs = this.hubServiceQuery(panel._hubState);
+      const data = await Auth.api(
+        'GET',
+        `/api/kripicard/services/${encodeURIComponent(categoryId)}/products${qs}`
+      );
       this.renderHubServiceCatalog(panel, data);
     } catch (err) {
-      const list = panel.querySelector('#hubServiceProductList');
-      if (list) list.innerHTML = `<p class="hint err">${this.escapeHtml?.(err.message) || err.message || 'Failed to load products'}</p>`;
+      if (list) {
+        list.innerHTML = `<p class="hint err">${this.escapeHtml?.(err.message) || err.message || 'Failed to load products'}</p>`;
+      }
       this.toast?.(err.message || 'Failed to load category', 'error');
     }
+  },
+
+  renderHubFilterChips(items, {
+    selectedKey,
+    dataAttr,
+    allLabel,
+  } = {}) {
+    const chips = Array.isArray(items) ? items : [];
+    if (!chips.length) return '';
+    return chips.map((item) => {
+      const key = item.key || '__all__';
+      const active = String(key) === String(selectedKey || '__all__');
+      const count = item.count != null ? ` · ${item.count}` : '';
+      const label = key === '__all__' ? (allLabel || item.name || 'All') : (item.name || key);
+      return `<button type="button" class="hub-filter-chip${active ? ' is-active' : ''}"
+        ${dataAttr}="${this.escapeAttr?.(key) || key}">
+        ${this.escapeHtml?.(label) || label}${count}
+      </button>`;
+    }).join('');
   },
 
   renderHubServiceCatalog(panel, data) {
     const category = data.category || {};
     const products = Array.isArray(data.products) ? data.products : [];
+    const platforms = Array.isArray(data.platforms) ? data.platforms : [];
+    const subcategories = Array.isArray(data.subcategories) ? data.subcategories : [];
+    const filters = data.filters || {};
     const fee = Number(data.processing_fee_usd ?? 1);
+    const state = panel._hubState || { categoryId: category.id };
+    state.platform = filters.platform || state.platform || '__all__';
+    state.subcategory = filters.subcategory || state.subcategory || '__all__';
+    panel._hubState = state;
+
     const title = panel.querySelector('h2');
     if (title) {
-      title.textContent = category.title || 'Services';
+      const sourceNote = data.source === 'live' ? '' : '';
+      title.textContent = `${category.title || 'Services'}${sourceNote}`;
       title.removeAttribute('data-i18n');
     }
+
+    const toolbar = panel.querySelector('#hubServiceToolbar');
+    if (toolbar) {
+      const needsTopupInputs = category.id === 'sim_topup' || Array.isArray(data.requires_input);
+      toolbar.innerHTML = `
+        <div class="hub-filter-block">
+          <div class="hub-filter-label" data-i18n="hub_filter_platform">Platform</div>
+          <div class="hub-filter-row" id="hubPlatformFilters">
+            ${this.renderHubFilterChips(platforms, {
+              selectedKey: state.platform,
+              dataAttr: 'data-hub-platform',
+              allLabel: 'All platforms',
+            }) || '<span class="hint">No platforms</span>'}
+          </div>
+        </div>
+        <div class="hub-filter-block">
+          <div class="hub-filter-label" data-i18n="hub_filter_subcategory">Type</div>
+          <div class="hub-filter-row" id="hubSubcategoryFilters">
+            ${this.renderHubFilterChips(subcategories, {
+              selectedKey: state.subcategory,
+              dataAttr: 'data-hub-subcategory',
+              allLabel: 'All types',
+            }) || '<span class="hint">No sub-types</span>'}
+          </div>
+        </div>
+        <div class="hub-filter-search-row">
+          <label class="field hub-filter-search">
+            <span class="hint" data-i18n="hub_filter_search">Search services</span>
+            <input type="search" id="hubServiceSearch" value="${this.escapeAttr?.(state.search || '') || ''}"
+              placeholder="Name, platform, type…" />
+          </label>
+          ${needsTopupInputs ? `
+          <label class="field">
+            <span class="hint" data-i18n="hub_filter_country">Country ISO</span>
+            <input type="text" id="hubServiceCountry" maxlength="8"
+              value="${this.escapeAttr?.(state.country || '') || ''}" placeholder="MM" />
+          </label>
+          <label class="field">
+            <span class="hint" data-i18n="hub_filter_number">Phone number</span>
+            <input type="tel" id="hubServiceNumber"
+              value="${this.escapeAttr?.(state.number || '') || ''}" placeholder="09…" />
+          </label>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnHubServiceRefresh" data-i18n="hub_filter_apply">Apply</button>
+          ` : ''}
+        </div>
+        <div class="hub-catalog-meta">
+          <span class="portal-hub-fee-chip" data-i18n="hub_processing_fee_chip">+$1.00 fee</span>
+          <span class="hint">${data.source === 'live' ? 'Live from Kripicard' : 'Catalog'}${data.count != null ? ` · ${data.count} services` : ''}</span>
+        </div>
+        ${data.message ? `<p class="hint">${this.escapeHtml?.(data.message) || data.message}</p>` : ''}`;
+      if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(toolbar);
+
+      toolbar.querySelectorAll('[data-hub-platform]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.platform = btn.getAttribute('data-hub-platform') || '__all__';
+          state.subcategory = '__all__';
+          this.reloadHubServiceCatalog(panel);
+        });
+      });
+      toolbar.querySelectorAll('[data-hub-subcategory]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.subcategory = btn.getAttribute('data-hub-subcategory') || '__all__';
+          this.reloadHubServiceCatalog(panel);
+        });
+      });
+      const searchInput = toolbar.querySelector('#hubServiceSearch');
+      let searchTimer = null;
+      searchInput?.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          state.search = searchInput.value.trim();
+          this.reloadHubServiceCatalog(panel);
+        }, 350);
+      });
+      toolbar.querySelector('#btnHubServiceRefresh')?.addEventListener('click', () => {
+        state.country = toolbar.querySelector('#hubServiceCountry')?.value?.trim() || '';
+        state.number = toolbar.querySelector('#hubServiceNumber')?.value?.trim() || '';
+        state.search = searchInput?.value?.trim() || '';
+        this.reloadHubServiceCatalog(panel);
+      });
+    }
+
     const list = panel.querySelector('#hubServiceProductList');
     if (!list) return;
     if (!products.length) {
-      list.innerHTML = '<p class="hint">No products in this category yet.</p>';
+      list.innerHTML = `<p class="hint" data-i18n="hub_service_empty">No services match these filters.</p>`;
+      if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(list);
       return;
     }
-    list.innerHTML = products.map((p) => `
+    list.innerHTML = products.map((p) => {
+      const total = Number(p.total_charge_usd ?? (Number(p.price_usd) + fee));
+      const metaBits = [p.platform, p.subcategory].filter(Boolean).join(' · ');
+      const pricingNote = p.pricing_model === 'per_1000' ? ' / 1K' : '';
+      return `
       <article class="hub-service-product" data-product-id="${this.escapeAttr?.(p.product_id) || p.product_id}">
         <div class="hub-service-product-main">
           <strong>${this.escapeHtml?.(p.name) || p.name}</strong>
+          ${metaBits ? `<div class="hub-service-meta">${this.escapeHtml?.(metaBits) || metaBits}</div>` : ''}
           <p class="hint">${this.escapeHtml?.(p.description || '') || ''}</p>
-          <div class="pricing-row"><span>Product</span><strong>$${Number(p.price_usd).toFixed(2)}</strong></div>
+          <div class="pricing-row"><span>Product${pricingNote}</span><strong>$${Number(p.price_usd).toFixed(2)}</strong></div>
           <div class="pricing-row"><span>+ Processing Fee</span><strong>$${fee.toFixed(2)}</strong></div>
-          <div class="pricing-row"><span>Total</span><strong>$${Number(p.total_charge_usd ?? (Number(p.price_usd) + fee)).toFixed(2)} USDT</strong></div>
+          <div class="pricing-row"><span>Total</span><strong>$${total.toFixed(2)} USDT</strong></div>
         </div>
         <div class="hub-service-product-actions">
+          ${category.id === 'social_media' ? `
+          <label class="field">
+            <span class="hint" data-i18n="hub_service_link">Target link</span>
+            <input type="url" class="hub-service-link" placeholder="https://…" />
+          </label>` : `
           <label class="field">
             <span class="hint">Recipient email (optional)</span>
             <input type="email" class="hub-service-email" placeholder="you@example.com" />
-          </label>
+          </label>`}
           <button type="button" class="btn btn-primary btn-sm" data-hub-buy
             data-category="${this.escapeAttr?.(category.id) || category.id}"
-            data-product="${this.escapeAttr?.(p.product_id) || p.product_id}">
-            Buy · $${Number(p.total_charge_usd ?? (Number(p.price_usd) + fee)).toFixed(2)}
+            data-product="${this.escapeAttr?.(p.product_id) || p.product_id}"
+            data-price="${Number(p.price_usd)}">
+            Buy · $${total.toFixed(2)}
           </button>
         </div>
-      </article>`).join('');
+      </article>`;
+    }).join('');
 
     list.querySelectorAll('[data-hub-buy]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const card = btn.closest('.hub-service-product');
         const email = card?.querySelector('.hub-service-email')?.value?.trim() || '';
+        const link = card?.querySelector('.hub-service-link')?.value?.trim() || '';
         this.purchaseHubServiceProduct({
           categoryId: btn.getAttribute('data-category'),
           productId: btn.getAttribute('data-product'),
+          productPriceUsd: Number(btn.getAttribute('data-price')) || undefined,
           recipientEmail: email,
+          link,
           triggerBtn: btn,
         });
       });
     });
   },
 
-  async purchaseHubServiceProduct({ categoryId, productId, recipientEmail, triggerBtn } = {}) {
+  async purchaseHubServiceProduct({
+    categoryId,
+    productId,
+    productPriceUsd,
+    recipientEmail,
+    link,
+    triggerBtn,
+  } = {}) {
     if (!Auth.isLoggedIn?.()) {
       this.toast?.('Sign in to purchase', 'error');
       return;
@@ -364,7 +530,9 @@ const Dashboard = {
       const data = await Auth.api('POST', '/api/kripicard/services/purchase', {
         category_id: categoryId,
         product_id: productId,
+        product_price_usd: productPriceUsd,
         recipient_email: recipientEmail || undefined,
+        link: link || undefined,
       }, { sensitive: true });
       this.toast?.(data.message || 'Purchase completed', 'ok');
       if (data.quote) {

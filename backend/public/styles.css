@@ -4812,6 +4812,84 @@ html[data-eisy-portal="hub"] .app-page[data-page="home"] > :not(#portalHubChoose
   margin-top: 0.25rem;
 }
 
+.hub-service-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.hub-filter-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.hub-filter-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted, #94a3b8);
+}
+
+.hub-filter-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
+  scrollbar-width: thin;
+}
+
+.hub-filter-chip {
+  flex: 0 0 auto;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.28));
+  background: rgba(15, 23, 42, 0.55);
+  color: inherit;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.hub-filter-chip:hover {
+  border-color: rgba(56, 189, 248, 0.55);
+  transform: translateY(-1px);
+}
+
+.hub-filter-chip.is-active {
+  border-color: rgba(56, 189, 248, 0.85);
+  background: rgba(14, 116, 144, 0.35);
+  color: #e0f2fe;
+}
+
+.hub-filter-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 0.7fr)) auto;
+  gap: 0.55rem;
+  align-items: end;
+}
+
+.hub-filter-search-row:not(:has(#hubServiceCountry)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.hub-catalog-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.hub-service-meta {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: #7dd3fc;
+}
+
 .hub-service-product {
   display: grid;
   grid-template-columns: 1.4fr 1fr;
@@ -4833,6 +4911,11 @@ html[data-eisy-portal="hub"] .app-page[data-page="home"] > :not(#portalHubChoose
 
 @media (max-width: 720px) {
   .hub-service-product {
+    grid-template-columns: 1fr;
+  }
+
+  .hub-filter-search-row,
+  .hub-filter-search-row:not(:has(#hubServiceCountry)) {
     grid-template-columns: 1fr;
   }
 }

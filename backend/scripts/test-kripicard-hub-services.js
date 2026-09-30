@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Kripicard Hub categories + flat $1 processing fee.
+ * Kripicard Hub — live-shaped catalog (platforms/subcategories) + flat $1 fee.
  */
 'use strict';
 
@@ -10,6 +10,8 @@ const path = require('path');
 const os = require('os');
 
 process.chdir(path.join(__dirname, '..'));
+process.env.KRIPICARD_HUB_FORCE_FALLBACK = '1';
+delete process.env.KRIPICARD_API_KEY;
 
 const {
   KRIPICARD_HUB_CATEGORIES,
@@ -17,6 +19,12 @@ const {
   calculateHubPurchaseTotals,
   getCategory,
 } = require('../src/constants/kripicardServiceCategories');
+const {
+  normalizeSmmCatalog,
+  buildFilterMeta,
+  normalizeServiceProduct,
+  ALL_KEY,
+} = require('../../lib/kripicardHubApi');
 
 function section(t) {
   console.log(`\n== ${t} ==`);
@@ -44,7 +52,89 @@ assert.strictEqual(totals.total_charge_usd, 10);
 assert.ok(totals.summary.includes('$1.00'));
 console.log('ok');
 
-section('UI hub switch surfaces remaining categories (no Instant card, no Webhooks)');
+section('SMM nested platforms → groups → services normalizer');
+{
+  const nested = normalizeSmmCatalog({
+    success: true,
+    data: {
+      enabled: true,
+      count: 3,
+      platforms: [
+        {
+          key: 'instagram',
+          name: 'Instagram',
+          groups: [
+            {
+              name: 'Followers',
+              services: [
+                {
+                  service: 101,
+                  name: 'IG Followers Fast',
+                  rate_usd: 2.5,
+                  pricing_model: 'per_1000',
+                  min: 100,
+                  max: 10000,
+                  features: ['Fast', 'Refill'],
+                },
+              ],
+            },
+            {
+              name: 'Likes',
+              services: [
+                {
+                  service: 102,
+                  name: 'IG Likes',
+                  rate_usd: 1.1,
+                  pricing_model: 'package',
+                  min: 1,
+                  max: 1,
+                  features: [],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          key: 'tiktok',
+          name: 'TikTok',
+          groups: [
+            {
+              name: 'Views',
+              services: [
+                {
+                  service: 201,
+                  name: 'TT Views',
+                  rate_usd: 0.9,
+                  pricing_model: 'per_1000',
+                  min: 1000,
+                  features: ['HQ'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  }, { platform: 'instagram' });
+
+  assert.ok(nested.platforms.some((p) => p.key === 'instagram' || p.name === 'Instagram'));
+  assert.ok(nested.products.every((p) => p.platform_key === 'instagram'));
+  assert.ok(nested.subcategories.some((s) => s.key === 'followers' || s.name === 'Followers'));
+  nested.products.forEach((p) => {
+    assert.ok(p.price_usd > 0);
+    assert.ok(p.product_id);
+  });
+
+  const filtered = buildFilterMeta(nested.products, {
+    platform: 'instagram',
+    subcategory: 'likes',
+  });
+  assert.strictEqual(filtered.products.length, 1);
+  assert.strictEqual(filtered.products[0].name, 'IG Likes');
+  console.log('ok');
+}
+
+section('UI hub switch surfaces filters + remaining categories');
 {
   const dash = fs.readFileSync(path.join(__dirname, '../public/dashboard.js'), 'utf8');
   const i18n = fs.readFileSync(path.join(__dirname, '../public/i18n.js'), 'utf8');
@@ -57,50 +147,70 @@ section('UI hub switch surfaces remaining categories (no Instant card, no Webhoo
   assert.ok(dash.includes('data-hub-service'), 'hub category buttons');
   assert.ok(dash.includes('portalHubServicePanel'), 'service panel');
   assert.ok(dash.includes('/api/kripicard/services/purchase'), 'purchase API call');
+  assert.ok(dash.includes('data-hub-platform'), 'platform filter chips');
+  assert.ok(dash.includes('data-hub-subcategory'), 'subcategory filter chips');
+  assert.ok(dash.includes('reloadHubServiceCatalog'), 'dynamic reload');
   assert.ok(dash.includes('+$1.00 fee') || dash.includes('hub_processing_fee_chip'), 'fee chip');
   assert.ok(dash.includes('Open Instant →') || dash.includes('data-portal-switch="instant"'), 'Instant remains in top switch');
   assert.ok(i18n.includes('hub_cat_sms_title'));
-  assert.ok(i18n.includes('hub_cat_proxies_title'));
+  assert.ok(i18n.includes('hub_filter_platform'));
+  assert.ok(i18n.includes('hub_filter_subcategory'));
   assert.ok(!i18n.includes('hub_cat_webhooks_title'), 'i18n webhooks keys removed');
   assert.ok(i18n.includes('flat $1.00 USD processing fee') || i18n.includes('$1.00 USD processing fee'));
   assert.ok(css.includes('portal-hub-fee-chip'));
-  assert.ok(css.includes('portalHubServicePanel'));
+  assert.ok(css.includes('hub-filter-chip'));
+  assert.ok(css.includes('portalHubServicePanel') || css.includes('portal-hub-service-panel'));
   const catalog = fs.readFileSync(path.join(__dirname, '../src/constants/kripicardHubCatalog.js'), 'utf8');
   assert.ok(!/\bwebhooks\s*:/.test(catalog), 'catalog omits webhooks products');
+  assert.ok(catalog.includes('platform:'), 'fallback catalog has platform fields');
+  assert.ok(catalog.includes('subcategory:'), 'fallback catalog has subcategory fields');
   console.log('ok');
 }
 
-section('backend routes + fee type');
+section('backend routes + live API client + fee type');
 {
   const route = fs.readFileSync(path.join(__dirname, '../src/routes/kripicardServices.js'), 'utf8');
   const indexJs = fs.readFileSync(path.join(__dirname, '../src/index.js'), 'utf8');
   const feeTypes = fs.readFileSync(path.join(__dirname, '../src/constants/platformFeeTypes.js'), 'utf8');
   const svc = fs.readFileSync(path.join(__dirname, '../src/services/kripicardHubService.js'), 'utf8');
-  assert.ok(indexJs.includes("/api/kripicard/services"));
+  const api = fs.readFileSync(path.join(__dirname, '../../lib/kripicardHubApi.js'), 'utf8');
+  assert.ok(indexJs.includes('/api/kripicard/services'));
   assert.ok(route.includes("router.post('/purchase'"));
   assert.ok(route.includes("router.get('/categories'"));
+  assert.ok(route.includes("/platforms'"));
+  assert.ok(route.includes('catalogForCategoryAsync'));
   assert.ok(feeTypes.includes('HUB_SERVICE'));
+  assert.ok(svc.includes('fetchLiveHubCatalog'));
   assert.ok(svc.includes('calculateHubPurchaseTotals') || svc.includes('processing_fee_usd'));
   assert.ok(svc.includes('debitUsdt'));
+  assert.ok(api.includes('/smm/services'));
+  assert.ok(api.includes('/sms/services'));
+  assert.ok(api.includes('/esim/packages'));
+  assert.ok(api.includes('/gifts/packages'));
+  assert.ok(api.includes('/proxies/types'));
+  assert.ok(api.includes('/sim/packages'));
   assert.ok(fs.existsSync(path.join(__dirname, '../migrations/067_kripicard_hub_purchases.sql')));
   console.log('ok');
 }
 
-section('purchase quote always adds $1');
+section('async catalog + purchase always adds $1');
 (async () => {
   const dbFile = path.join(os.tmpdir(), `eisy-hub-${Date.now()}.db`);
   process.env.DATABASE_URL = `file:${dbFile}`;
   process.env.NODE_ENV = 'test';
+  process.env.KRIPICARD_HUB_FORCE_FALLBACK = '1';
   for (const key of Object.keys(process.env)) {
     if (/supabase/i.test(key)) delete process.env[key];
   }
 
   delete require.cache[require.resolve('../src/db')];
   delete require.cache[require.resolve('../src/services/kripicardHubService')];
+  delete require.cache[require.resolve('../../lib/kripicardHubApi')];
 
   const { initDb, closeDb, getDb } = require('../src/db');
   const {
     catalogForCategory,
+    catalogForCategoryAsync,
     quotePurchase,
     purchaseHubProduct,
   } = require('../src/services/kripicardHubService');
@@ -108,15 +218,26 @@ section('purchase quote always adds $1');
   const { creditUsdt } = require('../src/services/walletService');
 
   await initDb();
-  const catalog = catalogForCategory('esim');
-  assert.ok(catalog.products.length >= 1);
-  catalog.products.forEach((p) => {
+
+  const syncCatalog = catalogForCategory('social_media', { platform: 'instagram' });
+  assert.ok(syncCatalog.platforms.length >= 2);
+  assert.ok(syncCatalog.subcategories.length >= 1);
+  assert.ok(syncCatalog.products.every((p) => p.platform_key === 'instagram'));
+  syncCatalog.products.forEach((p) => {
     assert.strictEqual(p.processing_fee_usd, 1);
     assert.strictEqual(
       p.total_charge_usd,
       Math.round((Number(p.price_usd) + 1) * 100) / 100
     );
   });
+
+  const liveShaped = await catalogForCategoryAsync('social_media', {
+    platform: 'tiktok',
+    subcategory: 'followers',
+  });
+  assert.strictEqual(liveShaped.source, 'fallback');
+  assert.ok(liveShaped.products.length >= 1);
+  assert.ok(liveShaped.products.every((p) => p.processing_fee_usd === 1));
 
   const quote = quotePurchase({ categoryId: 'gift_cards', productId: 'gift-itunes-10' });
   assert.strictEqual(quote.product_price_usd, 10);
@@ -146,6 +267,21 @@ section('purchase quote always adds $1');
     Math.round((bought.purchase.product_price_usd + 1) * 100) / 100
   );
 
+  // Live-shaped product retained in cache from catalog load still charges +$1
+  const sm = await catalogForCategoryAsync('social_media');
+  const ig = sm.products.find((p) => p.product_id === 'social-ig-boost-1k');
+  assert.ok(ig);
+  const boughtLiveId = await purchaseHubProduct(user.id, {
+    categoryId: 'social_media',
+    productId: ig.product_id,
+    link: 'https://instagram.com/example',
+  });
+  assert.strictEqual(boughtLiveId.purchase.processing_fee_usd, 1);
+  assert.strictEqual(
+    boughtLiveId.purchase.total_charge_usd,
+    Math.round((Number(ig.price_usd) + 1) * 100) / 100
+  );
+
   const db = getDb();
   const row = await db.get(
     'SELECT * FROM kripicard_hub_purchases WHERE user_id = ? ORDER BY id DESC LIMIT 1',
@@ -154,9 +290,20 @@ section('purchase quote always adds $1');
   assert.ok(row);
   assert.strictEqual(Number(row.processing_fee_usd), 1);
 
+  const normalized = normalizeServiceProduct({
+    service: 9,
+    name: 'Sample',
+    rate_usd: 3,
+    platform: 'YouTube',
+    group: 'Subscribers',
+  });
+  assert.strictEqual(normalized.platform_key, 'youtube');
+  assert.strictEqual(normalized.subcategory_key, 'subscribers');
+  assert.notStrictEqual(ALL_KEY, normalized.subcategory_key);
+
   await closeDb();
   console.log('ok');
-  console.log('\nKripicard Hub categories + $1 processing fee — ok');
+  console.log('\nKripicard Hub live catalog shape + $1 processing fee — ok');
 })().catch((err) => {
   console.error(err);
   process.exit(1);

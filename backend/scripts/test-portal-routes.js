@@ -66,8 +66,12 @@ function testHubServiceCategories() {
   assert.ok(dash.includes('data-hub-service'));
   assert.ok(dash.includes('portalHubServicePanel'));
   assert.ok(dash.includes('/api/kripicard/services/purchase'));
+  assert.ok(dash.includes('data-hub-platform'), 'platform filters');
+  assert.ok(dash.includes('data-hub-subcategory'), 'subcategory filters');
   const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
   assert.ok(indexJs.includes('/api/kripicard/services'));
+  const hubApi = fs.readFileSync(path.join(ROOT, 'lib/kripicardHubApi.js'), 'utf8');
+  assert.ok(hubApi.includes('/smm/services'));
   console.log('ok');
 }
 

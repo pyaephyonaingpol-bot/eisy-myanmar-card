@@ -1,5 +1,6 @@
 /**
- * Kripicard Hub services — categories catalog + purchase with flat $1 fee.
+ * Kripicard Hub services — live catalog (platforms / subcategories / products)
+ * with flat $1 processing fee on every purchase.
  * Mounted at /api/kripicard/services
  */
 'use strict';
@@ -8,7 +9,7 @@ const express = require('express');
 const { requireAuth, requireSensitive } = require('../middleware/auth');
 const {
   listCategories,
-  catalogForCategory,
+  catalogForCategoryAsync,
   quotePurchase,
   purchaseHubProduct,
   listPurchasesForUser,
@@ -16,6 +17,41 @@ const {
 } = require('../services/kripicardHubService');
 
 const router = express.Router();
+
+function catalogFiltersFromQuery(query = {}) {
+  return {
+    platform: query.platform || query.platform_key || null,
+    subcategory: query.subcategory || query.group || query.category || null,
+    search: query.search || query.q || null,
+    country: query.country || query.countryIso || null,
+    number: query.number || query.phone || null,
+    page: query.page || null,
+    per_page: query.per_page || query.perPage || null,
+  };
+}
+
+function serializeCatalog(catalog) {
+  return {
+    success: true,
+    processing_fee_usd: catalog.processing_fee_usd,
+    source: catalog.source,
+    enabled: catalog.enabled,
+    count: catalog.count,
+    category: {
+      id: catalog.category.id,
+      slug: catalog.category.slug,
+      title: catalog.category.title,
+      description: catalog.category.description,
+    },
+    platforms: catalog.platforms,
+    subcategories: catalog.subcategories,
+    filters: catalog.filters,
+    requires_input: catalog.requires_input,
+    message: catalog.message,
+    live_error: catalog.live_error,
+    products: catalog.products,
+  };
+}
 
 /** GET /api/kripicard/services/categories — public catalog metadata */
 router.get('/categories', (_req, res) => {
@@ -43,21 +79,49 @@ router.get('/purchases/mine', requireAuth, requireSensitive, async (req, res) =>
   }
 });
 
-/** GET /api/kripicard/services/:categoryId/products */
-router.get('/:categoryId/products', (req, res) => {
+/**
+ * GET /api/kripicard/services/:categoryId/platforms
+ * Returns platform chips + subcategory chips for the selected platform.
+ */
+router.get('/:categoryId/platforms', async (req, res) => {
   try {
-    const catalog = catalogForCategory(req.params.categoryId);
+    const catalog = await catalogForCategoryAsync(
+      req.params.categoryId,
+      catalogFiltersFromQuery(req.query)
+    );
     res.json({
       success: true,
       processing_fee_usd: catalog.processing_fee_usd,
+      source: catalog.source,
       category: {
         id: catalog.category.id,
         slug: catalog.category.slug,
         title: catalog.category.title,
-        description: catalog.category.description,
       },
-      products: catalog.products,
+      platforms: catalog.platforms,
+      subcategories: catalog.subcategories,
+      filters: catalog.filters,
+      requires_input: catalog.requires_input,
+      message: catalog.message,
     });
+  } catch (err) {
+    const status = err.code === 'UNKNOWN_HUB_CATEGORY' ? 404 : 400;
+    res.status(status).json({
+      success: false,
+      error: err.message || 'Failed to load platforms',
+      code: err.code || 'HUB_PLATFORMS_ERROR',
+    });
+  }
+});
+
+/** GET /api/kripicard/services/:categoryId/products */
+router.get('/:categoryId/products', async (req, res) => {
+  try {
+    const catalog = await catalogForCategoryAsync(
+      req.params.categoryId,
+      catalogFiltersFromQuery(req.query)
+    );
+    res.json(serializeCatalog(catalog));
   } catch (err) {
     const status = err.code === 'UNKNOWN_HUB_CATEGORY' ? 404 : 400;
     res.status(status).json({
@@ -76,6 +140,7 @@ router.post('/quote', requireAuth, (req, res) => {
       categoryId: body.category_id || body.category,
       productId: body.product_id || body.productId,
       productPriceUsd: body.product_price_usd ?? body.price_usd ?? null,
+      quantity: body.quantity ?? 1,
     });
     res.json({
       success: true,
@@ -89,6 +154,7 @@ router.post('/quote', requireAuth, (req, res) => {
         processing_fee_usd: quote.processing_fee_usd,
         total_charge_usd: quote.total_charge_usd,
         total_charge_usdt: quote.total_charge_usdt,
+        quantity: quote.quantity,
         fee_label: quote.fee_label,
         summary: quote.summary,
       },
@@ -114,6 +180,9 @@ router.post('/purchase', requireAuth, requireSensitive, async (req, res) => {
       productId: body.product_id || body.productId,
       recipientEmail: body.recipient_email || body.email || null,
       note: body.note || null,
+      productPriceUsd: body.product_price_usd ?? body.price_usd ?? null,
+      quantity: body.quantity ?? 1,
+      link: body.link || null,
     });
     res.status(201).json({
       success: true,
