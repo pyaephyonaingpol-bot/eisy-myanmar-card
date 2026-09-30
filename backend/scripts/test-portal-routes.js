@@ -54,10 +54,25 @@ function testDashboardInstantOnly() {
   console.log('ok');
 }
 
+function testHubServiceCategories() {
+  section('Hub switch includes Kripicard service categories + $1 fee');
+  const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
+  for (const id of ['sms', 'sim_topup', 'esim', 'gift_cards', 'social_media', 'proxies', 'webhooks']) {
+    assert.ok(dash.includes(`'${id}'`), `hub category ${id}`);
+  }
+  assert.ok(dash.includes('data-hub-service'));
+  assert.ok(dash.includes('portalHubServicePanel'));
+  assert.ok(dash.includes('/api/kripicard/services/purchase'));
+  const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
+  assert.ok(indexJs.includes('/api/kripicard/services'));
+  console.log('ok');
+}
+
 function main() {
   testServerRoutesPortalPages();
   testPortalHtmlGenerator();
   testDashboardInstantOnly();
+  testHubServiceCategories();
   console.log('\nPortal route checks passed.');
 }
 

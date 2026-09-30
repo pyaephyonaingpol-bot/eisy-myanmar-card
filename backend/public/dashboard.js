@@ -138,13 +138,14 @@ const Dashboard = {
   },
 
   /**
-   * Hub (/) gateway: Instant CTA only — wallets/cards load on /instant.
+   * Hub (/) gateway: Instant + Kripicard service categories.
+   * Wallets/cards load on /instant; Hub hosts category purchase panels.
    */
   applyHubGateway() {
     const home = document.querySelector('.app-page[data-page="home"]');
     if (home) {
       [...home.children].forEach((child) => {
-        if (child.id === 'portalHubChooser') return;
+        if (child.id === 'portalHubChooser' || child.id === 'portalHubServicePanel') return;
         child.remove();
       });
       home.classList.add('is-active', 'portal-hub-home');
@@ -165,19 +166,19 @@ const Dashboard = {
     const brandTitle = document.querySelector('.sidebar-brand-title');
     if (brandTitle) brandTitle.textContent = 'Eisy Myanmar';
     const brandSub = document.querySelector('.sidebar-brand-sub');
-    if (brandSub) brandSub.textContent = 'Instant · Kripicard · Master Wallet';
+    if (brandSub) brandSub.textContent = 'Hub · Instant · Kripicard Services';
 
     const heading = document.querySelector('.header .page-heading');
     if (heading) {
-      heading.textContent = 'Open Instant portal';
+      heading.textContent = 'Kripicard Hub';
       heading.removeAttribute('data-i18n');
     }
     const subtitle = document.querySelector('.header .subtitle');
     if (subtitle) {
-      subtitle.textContent = 'Master USDT Wallet, Kripicard deposits, and Instant Card';
+      subtitle.textContent = 'Instant Card plus SMS, eSIM, Gift Cards, and more — $1 processing fee per purchase';
       subtitle.removeAttribute('data-i18n');
     }
-    document.title = 'Eisy Myanmar — Instant';
+    document.title = 'Eisy Myanmar — Kripicard Hub';
   },
 
   isHubGateway() {
@@ -205,6 +206,18 @@ const Dashboard = {
     }
   },
 
+  getHubServiceCategories() {
+    return [
+      { id: 'sms', slug: 'sms', titleKey: 'hub_cat_sms_title', descKey: 'hub_cat_sms_desc', title: 'SMS', desc: 'Temporary numbers for SMS verification' },
+      { id: 'sim_topup', slug: 'sim-top-up', titleKey: 'hub_cat_sim_topup_title', descKey: 'hub_cat_sim_topup_desc', title: 'SIM Top-Up', desc: 'Mobile airtime top-ups worldwide' },
+      { id: 'esim', slug: 'esim', titleKey: 'hub_cat_esim_title', descKey: 'hub_cat_esim_desc', title: 'eSIM', desc: 'Global data eSIM packages' },
+      { id: 'gift_cards', slug: 'gift-cards', titleKey: 'hub_cat_gift_cards_title', descKey: 'hub_cat_gift_cards_desc', title: 'Gift Cards', desc: 'Digital gift cards from top brands' },
+      { id: 'social_media', slug: 'social-media', titleKey: 'hub_cat_social_media_title', descKey: 'hub_cat_social_media_desc', title: 'Social Media', desc: 'Social account tools and boosts' },
+      { id: 'proxies', slug: 'proxies', titleKey: 'hub_cat_proxies_title', descKey: 'hub_cat_proxies_desc', title: 'Proxies', desc: 'Residential and datacenter proxies' },
+      { id: 'webhooks', slug: 'webhooks', titleKey: 'hub_cat_webhooks_title', descKey: 'hub_cat_webhooks_desc', title: 'Webhooks', desc: 'Webhook delivery and event tooling' },
+    ];
+  },
+
   renderPortalHubChooser() {
     if (this.getPortal()) return;
     const home = document.querySelector('.app-page[data-page="home"]');
@@ -216,16 +229,164 @@ const Dashboard = {
       box.className = 'panel portal-hub-chooser';
       home.appendChild(box);
     }
+    const cats = this.getHubServiceCategories();
+    const catCards = cats.map((c) => `
+        <button type="button" class="portal-hub-card" data-hub-service="${c.id}" data-hub-slug="${c.slug}">
+          <strong data-i18n="${c.titleKey}">${c.title}</strong>
+          <span data-i18n="${c.descKey}">${c.desc}</span>
+          <em class="portal-hub-fee-chip" data-i18n="hub_processing_fee_chip">+$1.00 fee</em>
+        </button>`).join('');
     box.innerHTML = `
-      <h2 data-i18n="portal_hub_heading">Open Instant portal</h2>
-      <p class="hint" data-i18n="portal_hub_hint">Master USDT Wallet, Kripicard deposits, and Instant Card.</p>
+      <h2 data-i18n="portal_hub_heading">Kripicard Hub</h2>
+      <p class="hint" data-i18n="portal_hub_hint">Open Instant Card or buy Kripicard services. Every service purchase adds a flat $1.00 USD processing fee.</p>
       <div class="portal-hub-grid">
-        <a class="portal-hub-card" href="/instant">
+        <a class="portal-hub-card portal-hub-card-instant" href="/instant">
           <strong data-i18n="portal_hub_instant_title">Instant</strong>
           <span data-i18n="portal_hub_instant_desc">Master USDT Wallet · Instant Card (No KYC)</span>
         </a>
+        ${catCards}
       </div>`;
     if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(box);
+    this.bindPortalHubChooser(box);
+    this.ensurePortalHubServicePanel(home);
+  },
+
+  bindPortalHubChooser(box) {
+    if (!box || box.dataset.hubBound === '1') return;
+    box.dataset.hubBound = '1';
+    box.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-hub-service]');
+      if (!btn) return;
+      e.preventDefault();
+      this.openHubServiceCategory(btn.getAttribute('data-hub-service'));
+    });
+  },
+
+  ensurePortalHubServicePanel(home) {
+    const host = home || document.querySelector('.app-page[data-page="home"]');
+    if (!host) return null;
+    let panel = $('portalHubServicePanel');
+    if (!panel) {
+      panel = document.createElement('section');
+      panel.id = 'portalHubServicePanel';
+      panel.className = 'panel portal-hub-service-panel hidden';
+      host.appendChild(panel);
+    }
+    return panel;
+  },
+
+  async openHubServiceCategory(categoryId) {
+    const panel = this.ensurePortalHubServicePanel();
+    if (!panel) return;
+    panel.classList.remove('hidden');
+    panel.innerHTML = `
+      <div class="panel-header-row">
+        <h2 style="margin:0" data-i18n="hub_service_loading">Loading services…</h2>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnHubServiceBack" data-i18n="hub_service_back">← Categories</button>
+      </div>
+      <p class="hint" data-i18n="hub_processing_fee_notice">A flat $1.00 USD processing fee is added to every purchase.</p>
+      <div id="hubServiceProductList"><p class="hint">Loading…</p></div>`;
+    if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(panel);
+    $('btnHubServiceBack')?.addEventListener('click', () => {
+      panel.classList.add('hidden');
+      panel.innerHTML = '';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    try {
+      const data = await Auth.api('GET', `/api/kripicard/services/${encodeURIComponent(categoryId)}/products`);
+      this.renderHubServiceCatalog(panel, data);
+    } catch (err) {
+      const list = panel.querySelector('#hubServiceProductList');
+      if (list) list.innerHTML = `<p class="hint err">${this.escapeHtml?.(err.message) || err.message || 'Failed to load products'}</p>`;
+      this.toast?.(err.message || 'Failed to load category', 'error');
+    }
+  },
+
+  renderHubServiceCatalog(panel, data) {
+    const category = data.category || {};
+    const products = Array.isArray(data.products) ? data.products : [];
+    const fee = Number(data.processing_fee_usd ?? 1);
+    const title = panel.querySelector('h2');
+    if (title) {
+      title.textContent = category.title || 'Services';
+      title.removeAttribute('data-i18n');
+    }
+    const list = panel.querySelector('#hubServiceProductList');
+    if (!list) return;
+    if (!products.length) {
+      list.innerHTML = '<p class="hint">No products in this category yet.</p>';
+      return;
+    }
+    list.innerHTML = products.map((p) => `
+      <article class="hub-service-product" data-product-id="${this.escapeAttr?.(p.product_id) || p.product_id}">
+        <div class="hub-service-product-main">
+          <strong>${this.escapeHtml?.(p.name) || p.name}</strong>
+          <p class="hint">${this.escapeHtml?.(p.description || '') || ''}</p>
+          <div class="pricing-row"><span>Product</span><strong>$${Number(p.price_usd).toFixed(2)}</strong></div>
+          <div class="pricing-row"><span>+ Processing Fee</span><strong>$${fee.toFixed(2)}</strong></div>
+          <div class="pricing-row"><span>Total</span><strong>$${Number(p.total_charge_usd ?? (Number(p.price_usd) + fee)).toFixed(2)} USDT</strong></div>
+        </div>
+        <div class="hub-service-product-actions">
+          <label class="field">
+            <span class="hint">Recipient email (optional)</span>
+            <input type="email" class="hub-service-email" placeholder="you@example.com" />
+          </label>
+          <button type="button" class="btn btn-primary btn-sm" data-hub-buy
+            data-category="${this.escapeAttr?.(category.id) || category.id}"
+            data-product="${this.escapeAttr?.(p.product_id) || p.product_id}">
+            Buy · $${Number(p.total_charge_usd ?? (Number(p.price_usd) + fee)).toFixed(2)}
+          </button>
+        </div>
+      </article>`).join('');
+
+    list.querySelectorAll('[data-hub-buy]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const card = btn.closest('.hub-service-product');
+        const email = card?.querySelector('.hub-service-email')?.value?.trim() || '';
+        this.purchaseHubServiceProduct({
+          categoryId: btn.getAttribute('data-category'),
+          productId: btn.getAttribute('data-product'),
+          recipientEmail: email,
+          triggerBtn: btn,
+        });
+      });
+    });
+  },
+
+  async purchaseHubServiceProduct({ categoryId, productId, recipientEmail, triggerBtn } = {}) {
+    if (!Auth.isLoggedIn?.()) {
+      this.toast?.('Sign in to purchase', 'error');
+      return;
+    }
+    const prev = triggerBtn?.textContent;
+    if (triggerBtn) {
+      triggerBtn.disabled = true;
+      triggerBtn.textContent = 'Purchasing…';
+    }
+    try {
+      const data = await Auth.api('POST', '/api/kripicard/services/purchase', {
+        category_id: categoryId,
+        product_id: productId,
+        recipient_email: recipientEmail || undefined,
+      }, { sensitive: true });
+      this.toast?.(data.message || 'Purchase completed', 'ok');
+      if (data.quote) {
+        this.toast?.(
+          `Total $${Number(data.quote.total_charge_usd).toFixed(2)} (includes $${Number(data.processing_fee_usd || 1).toFixed(2)} fee)`,
+          'ok'
+        );
+      }
+      this.loadWallet?.({ force: true });
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal?.();
+      this.toast?.(err.message || 'Purchase failed', 'error');
+    } finally {
+      if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.textContent = prev || 'Buy';
+      }
+    }
   },
 
   portalDefaultPage() {
@@ -1768,6 +1929,14 @@ const Dashboard = {
       .replace(/&/g, '&amp;')
       .replace(/"/g, '&quot;')
       .replace(/</g, '&lt;');
+  },
+
+  escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   },
 
   async loadUsdtWalletTransactions() {
