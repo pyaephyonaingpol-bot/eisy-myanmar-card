@@ -594,12 +594,38 @@ small.hint {
   box-sizing: border-box;
 }
 #pinSetupModal {
-  z-index: 110; /* stay above unlock if both ever race open */
+  z-index: 150; /* above Hub service modal (120) and unlock */
+}
+#pinUnlockModal {
+  z-index: 140; /* secure confirm prompt above Hub catalog modal */
 }
 #pinUnlockModal,
 #pinSetupModal {
   /* PIN reset expands with OTP + new PIN fields — always allow scroll. */
   align-items: flex-start;
+}
+#pinUnlockModal.is-secure-prompt {
+  align-items: center;
+  justify-content: center;
+}
+#pinUnlockModal.is-secure-prompt .modal-box {
+  animation: hubSecurePromptIn 180ms ease-out;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 18px 48px rgba(2, 8, 23, 0.55), 0 0 0 1px rgba(56, 189, 248, 0.12);
+  margin-block: auto;
+}
+@keyframes hubSecurePromptIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+#pinUnlockBioBtn.hidden {
+  display: none !important;
 }
 .modal-box {
   background: var(--bg-glass-strong);
@@ -4809,7 +4835,7 @@ html[data-eisy-portal="hub"] .app-page[data-page="home"] > :not(#portalHubChoose
 
 /* Hub category catalog opens in a focused modal instead of an inline panel. */
 .hub-service-modal {
-  z-index: 120;
+  z-index: 120; /* below PIN unlock/setup (140/150) so Buy can confirm securely */
   align-items: center;
   padding-top: max(0.75rem, var(--safe-top));
   padding-bottom: max(0.75rem, var(--safe-bottom));

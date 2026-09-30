@@ -440,7 +440,21 @@ section('UI hub switch surfaces filters + remaining categories');
   assert.ok(dash.includes('hubServiceModal'), 'service catalog modal');
   assert.ok(dash.includes('ensureHubServiceModal'), 'modal factory');
   assert.ok(dash.includes('closeHubServiceModal'), 'modal close helper');
+  assert.ok(dash.includes('requestHubPurchaseUnlock'), 'Buy opens secure PIN/biometric confirm');
+  assert.ok(dash.includes('queueSensitiveAction'), 'pending purchase after unlock');
+  assert.ok(dash.includes('runPendingSensitiveAction'), 'resume purchase after PIN/biometrics');
+  assert.ok(dash.includes("reason: 'purchase'") || dash.includes('reason === \'purchase\''), 'purchase unlock context');
+  assert.ok(
+    /if\s*\(!_skipUnlockGate\)\s*\{[\s\S]*requestHubPurchaseUnlock/.test(dash),
+    'Buy always prompts PIN/biometrics before charge'
+  );
   assert.ok(dash.includes('/api/kripicard/services/purchase'), 'purchase API call');
+  assert.ok(i18n.includes('pin_unlock_purchase_title'));
+  assert.ok(i18n.includes('pin_unlock_biometric'));
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+  assert.ok(html.includes('pinUnlockBioBtn'), 'biometric confirm control in unlock modal');
+  assert.ok(html.includes('pinUnlockModalClose'), 'unlock modal close control');
+  assert.ok(css.includes('#pinUnlockModal') && /#pinUnlockModal\s*\{[^}]*z-index:\s*140/s.test(css), 'PIN modal stacks above Hub modal');
   assert.ok(dash.includes('data-hub-platform'), 'platform filter chips');
   assert.ok(dash.includes('data-hub-subcategory'), 'subcategory filter chips');
   assert.ok(dash.includes('reloadHubServiceCatalog'), 'dynamic reload');

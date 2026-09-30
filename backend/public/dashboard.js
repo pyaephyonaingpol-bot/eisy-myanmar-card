@@ -293,6 +293,14 @@ const Dashboard = {
       this._hubModalEscBound = true;
       document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
+        const pinOpen = $('pinUnlockModal') && !$('pinUnlockModal').classList.contains('hidden');
+        const setupOpen = $('pinSetupModal') && !$('pinSetupModal').classList.contains('hidden');
+        if (pinOpen) {
+          e.preventDefault();
+          this.closePinUnlockModal();
+          return;
+        }
+        if (setupOpen) return;
         const open = $('hubServiceModal');
         if (open && !open.classList.contains('hidden')) {
           e.preventDefault();
@@ -579,6 +587,19 @@ const Dashboard = {
     list.scrollTop = 0;
   },
 
+  requestHubPurchaseUnlock(purchaseArgs = {}) {
+    this.queueSensitiveAction(() => this.purchaseHubServiceProduct({
+      ...purchaseArgs,
+      _skipUnlockGate: true,
+    }));
+    this.openPinUnlockModal({
+      reason: 'purchase',
+      title: (typeof t === 'function' ? t('pin_unlock_purchase_title') : null) || 'Confirm purchase',
+      message: (typeof t === 'function' ? t('pin_unlock_purchase_hint') : null)
+        || 'Enter your 6-digit PIN or use biometrics to authorize this purchase.',
+    });
+  },
+
   async purchaseHubServiceProduct({
     categoryId,
     productId,
@@ -586,11 +607,26 @@ const Dashboard = {
     recipientEmail,
     link,
     triggerBtn,
+    _skipUnlockGate = false,
   } = {}) {
     if (!Auth.isLoggedIn?.()) {
       this.toast?.('Sign in to purchase', 'error');
       return;
     }
+
+    // Always show PIN/biometric confirm as a secure modal before charging.
+    if (!_skipUnlockGate) {
+      this.requestHubPurchaseUnlock({
+        categoryId,
+        productId,
+        productPriceUsd,
+        recipientEmail,
+        link,
+        triggerBtn,
+      });
+      return;
+    }
+
     const prev = triggerBtn?.textContent;
     if (triggerBtn) {
       triggerBtn.disabled = true;
@@ -613,7 +649,17 @@ const Dashboard = {
       }
       this.loadWallet?.({ force: true });
     } catch (err) {
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal?.();
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+        this.requestHubPurchaseUnlock({
+          categoryId,
+          productId,
+          productPriceUsd,
+          recipientEmail,
+          link,
+          triggerBtn,
+        });
+        return;
+      }
       this.toast?.(err.message || 'Purchase failed', 'error');
     } finally {
       if (triggerBtn) {
@@ -778,21 +824,107 @@ const Dashboard = {
   openPinSetupModal() {
     const modal = $('pinSetupModal');
     modal?.classList.remove('hidden');
-    $('pinUnlockModal')?.classList.add('hidden');
+    this.closePinUnlockModal({ clearPending: false });
     if ($('pinSetupError')) $('pinSetupError').textContent = '';
     requestAnimationFrame(() => {
       $('setupPin')?.focus();
     });
   },
 
-  openPinUnlockModal() {
+  queueSensitiveAction(action) {
+    this._pendingSensitiveAction = typeof action === 'function' ? action : null;
+  },
+
+  clearPendingSensitiveAction() {
+    this._pendingSensitiveAction = null;
+  },
+
+  async runPendingSensitiveAction() {
+    const action = this._pendingSensitiveAction;
+    this._pendingSensitiveAction = null;
+    if (typeof action !== 'function') return;
+    try {
+      await action();
+    } catch (err) {
+      this.toast?.(err.message || 'Action failed', 'error');
+    }
+  },
+
+  restorePinUnlockCopy() {
+    const title = $('pinUnlockModalTitle');
+    const hint = $('pinUnlockHint');
+    if (title) {
+      title.textContent = (typeof t === 'function' ? t('pin_unlock_title') : null)
+        || 'Unlock Sensitive Access';
+      title.setAttribute('data-i18n', 'pin_unlock_title');
+    }
+    if (hint) {
+      hint.textContent = (typeof t === 'function' ? t('pin_unlock_hint') : null)
+        || 'Enter your 6-digit PIN to view balance, card details, and make deposits.';
+      hint.setAttribute('data-i18n', 'pin_unlock_hint');
+    }
+  },
+
+  closePinUnlockModal({ clearPending = true } = {}) {
+    const modal = $('pinUnlockModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('is-secure-prompt');
+    modal.dataset.pinReason = '';
+    if ($('pinUnlockError')) $('pinUnlockError').textContent = '';
+    if ($('unlockPin')) $('unlockPin').value = '';
+    this.restorePinUnlockCopy();
+    if (clearPending) this.clearPendingSensitiveAction();
+  },
+
+  openPinUnlockModal(opts = {}) {
     // Never cover the post-registration PIN setup form with the unlock modal.
     if (!Auth.user?.has_pin) {
       this.openPinSetupModal();
       return;
     }
     $('pinSetupModal')?.classList.add('hidden');
-    $('pinUnlockModal')?.classList.remove('hidden');
+    const modal = $('pinUnlockModal');
+    if (!modal) return;
+
+    const reason = opts.reason || 'unlock';
+    modal.dataset.pinReason = reason;
+    modal.classList.toggle('is-secure-prompt', reason === 'purchase');
+
+    const title = $('pinUnlockModalTitle');
+    const hint = $('pinUnlockHint');
+    if (reason === 'purchase') {
+      if (title) {
+        title.textContent = opts.title
+          || (typeof t === 'function' ? t('pin_unlock_purchase_title') : null)
+          || 'Confirm purchase';
+        title.removeAttribute('data-i18n');
+      }
+      if (hint) {
+        hint.textContent = opts.message
+          || (typeof t === 'function' ? t('pin_unlock_purchase_hint') : null)
+          || 'Enter your 6-digit PIN or use biometrics to authorize this purchase.';
+        hint.removeAttribute('data-i18n');
+      }
+    } else {
+      this.restorePinUnlockCopy();
+      if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(modal);
+    }
+
+    const bioBtn = $('pinUnlockBioBtn');
+    if (bioBtn) {
+      const canBio = typeof Auth.canUseBiometricLogin === 'function' && Auth.canUseBiometricLogin();
+      bioBtn.classList.toggle('hidden', !canBio);
+    }
+
+    if ($('pinUnlockError')) $('pinUnlockError').textContent = '';
+    if (!modal.dataset.backdropBound) {
+      modal.dataset.backdropBound = '1';
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) this.closePinUnlockModal();
+      });
+    }
+    modal.classList.remove('hidden');
     requestAnimationFrame(() => {
       $('unlockPin')?.focus();
     });
@@ -5611,22 +5743,77 @@ const Dashboard = {
     }
 
     const pinUnlockForm = $('pinUnlockForm');
-    if (pinUnlockForm) {
+    if (pinUnlockForm && pinUnlockForm.dataset.bound !== '1') {
+      pinUnlockForm.dataset.bound = '1';
       pinUnlockForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        const btn = $('pinUnlockBtn');
+        const prev = btn?.textContent;
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Verifying…';
+        }
         try {
           await Auth.verifyPin($('unlockPin').value.trim());
-          $('pinUnlockModal')?.classList.add('hidden');
-          $('pinUnlockError').textContent = '';
-          if ($('unlockPin')) $('unlockPin').value = '';
+          const wasPurchase = $('pinUnlockModal')?.dataset?.pinReason === 'purchase';
+          this.closePinUnlockModal({ clearPending: false });
           this.log('PIN verified — sensitive access unlocked', 'ok');
           this.invalidateFetch('wallet', 'deposits', 'usdtWallet', 'cards');
           this.refreshAuthUI();
           if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
             this.loadUsdtWalletPage(true);
           }
+          if (wasPurchase) {
+            this.toast?.(
+              (typeof t === 'function' ? t('pin_unlock_purchase_ok') : null) || 'Purchase authorized',
+              'ok'
+            );
+          }
+          await this.runPendingSensitiveAction();
         } catch (err) {
-          $('pinUnlockError').textContent = err.message;
+          if ($('pinUnlockError')) $('pinUnlockError').textContent = err.message;
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = prev || 'Verify PIN';
+          }
+        }
+      });
+    }
+
+    const pinUnlockClose = $('pinUnlockModalClose');
+    if (pinUnlockClose && pinUnlockClose.dataset.bound !== '1') {
+      pinUnlockClose.dataset.bound = '1';
+      pinUnlockClose.addEventListener('click', () => this.closePinUnlockModal());
+    }
+
+    const pinUnlockBioBtn = $('pinUnlockBioBtn');
+    if (pinUnlockBioBtn && pinUnlockBioBtn.dataset.bound !== '1') {
+      pinUnlockBioBtn.dataset.bound = '1';
+      pinUnlockBioBtn.addEventListener('click', async () => {
+        const prev = pinUnlockBioBtn.textContent;
+        pinUnlockBioBtn.disabled = true;
+        pinUnlockBioBtn.textContent = 'Checking…';
+        try {
+          await Auth.biometricLogin(Auth.user?.email || Auth.getDeviceProfile?.()?.email || '');
+          const wasPurchase = $('pinUnlockModal')?.dataset?.pinReason === 'purchase';
+          this.closePinUnlockModal({ clearPending: false });
+          this.log('Biometric unlock successful', 'ok');
+          this.invalidateFetch('wallet', 'deposits', 'usdtWallet', 'cards');
+          this.refreshAuthUI();
+          if (wasPurchase) {
+            this.toast?.(
+              (typeof t === 'function' ? t('pin_unlock_purchase_ok') : null) || 'Purchase authorized',
+              'ok'
+            );
+          }
+          await this.runPendingSensitiveAction();
+        } catch (err) {
+          if ($('pinUnlockError')) $('pinUnlockError').textContent = err.message || 'Biometric unlock failed';
+          this.toast?.(err.message || 'Biometric unlock failed', 'error');
+        } finally {
+          pinUnlockBioBtn.disabled = false;
+          pinUnlockBioBtn.textContent = prev || 'Use biometrics';
         }
       });
     }
