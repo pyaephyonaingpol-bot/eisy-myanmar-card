@@ -41,7 +41,10 @@ const {
   countNestedSmmServices,
   directoryServiceTarget,
   smmPlatformsNeedingRefetch,
+  smmPageLimit,
   SMM_PAGE_SIZE,
+  SMM_MAX_PAGES,
+  SMM_EXPECTED_TOTAL,
   DEFAULT_SERVICES_PATH,
   ALL_KEY,
 } = require('../../lib/kripicardHubApi');
@@ -443,6 +446,54 @@ section('SMM full catalog merges every paginated page (no truncation)');
   );
   assert.ok(!api.includes('Math.min(services.length, 12)'), 'SMS details are not capped at 12 services');
   assert.ok(api.includes('SMS_DETAIL_CONCURRENCY'), 'SMS detail expansion uses bounded concurrency');
+  assert.ok(api.includes('ensureCompleteSmmCatalog'), 'gap-fill walk when haul is incomplete');
+  assert.ok(api.includes('smmPageLimit'), 'dynamic page ceiling helper');
+  assert.ok(api.includes('offset:'), 'sends offset for gateways that ignore page');
+  assert.ok(SMM_MAX_PAGES >= 500, 'page ceiling covers ~5249 services at small page sizes');
+  assert.ok(SMM_EXPECTED_TOTAL >= 5249, 'expected live catalog size is documented');
+
+  // Simulate Kripicard returning 20 rows/page across 5249 services (263 pages).
+  // The old 200-page soft cap would have truncated ~1260 services.
+  const perPage = 20;
+  const total = 5249;
+  const totalPages = Math.ceil(total / perPage);
+  assert.ok(totalPages > 200, 'fixture needs more than the legacy 200-page cap');
+  const pageCap = smmPageLimit({
+    reportedTotal: total,
+    observedPageSize: perPage,
+    knownTotalPages: totalPages,
+  });
+  assert.ok(pageCap >= totalPages, `page ceiling (${pageCap}) must cover ${totalPages} API pages`);
+
+  const manyPages = [];
+  for (let page = 1; page <= totalPages; page += 1) {
+    const start = (page - 1) * perPage;
+    const end = Math.min(total, start + perPage);
+    const services = [];
+    for (let id = start + 1; id <= end; id += 1) {
+      services.push({
+        service_id: id,
+        name: `Svc ${id}`,
+        platform: id % 2 ? 'Instagram' : 'TikTok',
+        category: 'Followers',
+        rate: `$${(0.1 + (id % 50) / 100).toFixed(2)}`,
+        max: 100000,
+        refill: true,
+      });
+    }
+    manyPages.push(extractSmmPage({
+      success: true,
+      data: {
+        services,
+        pagination: { page, per_page: perPage, total, total_pages: totalPages },
+      },
+    }));
+  }
+  const mega = combineSmmPages(manyPages, { reportedTotal: total });
+  assert.strictEqual(mega.data.services.length, total, 'all 5249 unique services across pages');
+  const megaNorm = normalizeSmmCatalog(mega, {});
+  assert.strictEqual(megaNorm.products.length, total, 'normalizer keeps every priced SMM row');
+  assert.ok(megaNorm.products.every((p) => p.price_usd > 0), 'string $rates parse to money');
   console.log('ok');
 }
 
@@ -529,11 +580,18 @@ section('SMM variations: rate/refill/max options + incomplete nested refetch');
   assert.deepStrictEqual(done, [], 'complete nested tree needs no refetch');
 
   const svc = fs.readFileSync(path.join(__dirname, '../src/services/kripicardHubService.js'), 'utf8');
-  assert.ok(svc.includes("catalog.source !== 'fallback'"), 'eager cache skips truncated fallback catalogs');
+  assert.ok(svc.includes("catalog.source !== 'fallback'") || svc.includes("source === 'live'"), 'eager cache skips truncated fallback catalogs');
+  assert.ok(svc.includes('writeSmmDiskCache'), 'persists full SMM catalog to disk');
+  assert.ok(svc.includes('readSmmDiskCache'), 'reads durable SMM catalog cache');
+  assert.ok(svc.includes('getSmmSyncStatus'), 'exposes SMM sync status');
+
+  const route = fs.readFileSync(path.join(__dirname, '../src/routes/kripicardServices.js'), 'utf8');
+  assert.ok(route.includes("/social_media/sync"), 'SMM sync status/refresh endpoint');
 
   const dash = fs.readFileSync(path.join(__dirname, '../public/dashboard.js'), 'utf8');
   assert.ok(dash.includes('hub-service-options'), 'UI renders Max/Refill option chips');
   assert.ok(dash.includes('p.options') || dash.includes('optionBits'), 'UI reads product options');
+  assert.ok(dash.includes('expected_total') || dash.includes('expectedTotal'), 'UI surfaces expected catalog size');
   const css = fs.readFileSync(path.join(__dirname, '../public/styles.css'), 'utf8');
   assert.ok(css.includes('.hub-service-option'), 'option chip styles present');
   console.log('ok');

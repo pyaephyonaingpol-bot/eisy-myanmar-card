@@ -14,6 +14,8 @@ const {
   quotePurchase,
   purchaseHubProduct,
   listPurchasesForUser,
+  getSmmSyncStatus,
+  clearCatalogCaches,
   KRIPICARD_HUB_PROCESSING_FEE_USD,
 } = require('../services/kripicardHubService');
 
@@ -52,6 +54,12 @@ function serializeCatalog(catalog) {
     message: catalog.message,
     live_error: catalog.live_error,
     products: catalog.products,
+    api_configured: catalog.api_configured,
+    expected_total: catalog.expected_total,
+    reported_total: catalog.reported_total,
+    pages_fetched: catalog.pages_fetched,
+    sync_incomplete: catalog.sync_incomplete || false,
+    cache: catalog.cache,
   };
 }
 
@@ -88,12 +96,47 @@ router.post('/preload', async (_req, res) => {
         platforms: r.catalog?.platforms?.length ?? null,
         error: r.error || null,
       })),
+      smm_sync: getSmmSyncStatus(),
     });
   } catch (err) {
     res.status(500).json({
       success: false,
       error: err.message || 'Failed to preload Hub catalogs',
       code: 'HUB_PRELOAD_FAILED',
+    });
+  }
+});
+
+/** GET /api/kripicard/services/social_media/sync — sync status for the full SMM catalog */
+router.get('/social_media/sync', (_req, res) => {
+  res.json({ success: true, ...getSmmSyncStatus() });
+});
+
+/**
+ * POST /api/kripicard/services/social_media/sync
+ * Force a fresh live pull of every Social Media service (clears caches first).
+ */
+router.post('/social_media/sync', requireAuth, async (_req, res) => {
+  try {
+    clearCatalogCaches();
+    const catalog = await catalogForCategoryAsync('social_media', {});
+    const status = getSmmSyncStatus();
+    res.json({
+      success: true,
+      source: catalog.source,
+      count: catalog.count,
+      platforms: catalog.platforms?.length || 0,
+      message: catalog.message || null,
+      live_error: catalog.live_error || null,
+      sync: status,
+    });
+  } catch (err) {
+    console.error('[kripicard/services/social_media/sync]', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'SMM sync failed',
+      code: err.code || 'HUB_SMM_SYNC_FAILED',
+      sync: getSmmSyncStatus(),
     });
   }
 });
