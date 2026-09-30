@@ -6063,7 +6063,8 @@ const Dashboard = {
       }
     });
 
-    $('btnLoadCard').onclick = () => this.loadAllCards({ forceRefresh: true });
+    const btnLoadCard = $('btnLoadCard');
+    if (btnLoadCard) btnLoadCard.onclick = () => this.loadAllCards({ forceRefresh: true });
     $('btnShowCardDetails')?.addEventListener('click', () => this.openCardDetailsForActiveCard());
     $('cardStatusHero')?.addEventListener('click', () => {
       if (!this.allCards.length) return;
