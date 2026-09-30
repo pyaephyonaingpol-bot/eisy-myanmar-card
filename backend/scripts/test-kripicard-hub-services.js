@@ -25,6 +25,9 @@ const {
   normalizeServiceProduct,
   mapMainServicesToHubCategories,
   resolveHubCategory,
+  resolveCountryName,
+  pickDisplayName,
+  enrichDisplayLabels,
   DEFAULT_SERVICES_PATH,
   ALL_KEY,
 } = require('../../lib/kripicardHubApi');
@@ -54,6 +57,45 @@ assert.strictEqual(totals.processing_fee_usd, 1);
 assert.strictEqual(totals.total_charge_usd, 10);
 assert.ok(totals.summary.includes('$1.00'));
 console.log('ok');
+
+section('country ids and bare numbers resolve to real names');
+{
+  assert.strictEqual(resolveCountryName(14), 'Hong Kong');
+  assert.strictEqual(resolveCountryName('1004'), 'Kosovo');
+  assert.strictEqual(resolveCountryName('US'), 'United States');
+  assert.strictEqual(pickDisplayName(14, 'WhatsApp'), 'Hong Kong');
+  assert.strictEqual(pickDisplayName('WhatsApp', 14), 'WhatsApp');
+
+  const smsRow = normalizeServiceProduct({
+    product_id: 'sms-1-14',
+    service_name: 'WhatsApp',
+    country_id: 14,
+    price_usd: 0.25,
+  }, { categoryId: 'sms', platform: 'WhatsApp' });
+  assert.strictEqual(smsRow.platform, 'WhatsApp');
+  assert.strictEqual(smsRow.subcategory, 'Hong Kong');
+  assert.ok(smsRow.name.includes('Hong Kong'));
+  assert.ok(!/\b14\b/.test(smsRow.subcategory));
+
+  const enriched = enrichDisplayLabels([{
+    product_id: 'sms-1-1004',
+    name: 'Telegram · country 1004',
+    platform: 'Telegram',
+    platform_key: 'telegram',
+    subcategory: '1004',
+    subcategory_key: '1004',
+    country_id: '1004',
+    price_usd: 0.3,
+  }]);
+  assert.strictEqual(enriched[0].subcategory, 'Kosovo');
+  assert.ok(enriched[0].name.includes('Kosovo'));
+  assert.ok(!enriched[0].name.includes('1004'));
+
+  const chips = buildFilterMeta(enriched, {});
+  assert.ok(chips.subcategories.some((s) => s.name === 'Kosovo'));
+  assert.ok(!chips.subcategories.some((s) => s.name === '1004'));
+  console.log('ok');
+}
 
 section('main /services payload maps into Hub categories');
 {
