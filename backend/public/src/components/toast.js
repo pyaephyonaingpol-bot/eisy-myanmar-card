@@ -13,19 +13,14 @@
 
   const state = { toastTimer: null, copyTimer: null };
 
-  function showToast(message, type = 'ok', otpCode = null) {
+  function showToast(message, type = 'ok') {
     const el = $('authToast');
     if (!el) return;
-    if (otpCode) {
-      el.className = 'auth-toast otp';
-      el.innerHTML = `${message}<span class="toast-otp-code">${otpCode}</span><small>Auto-filled in OTP field</small>`;
-    } else {
-      el.className = `auth-toast ${type === 'error' ? 'err' : 'ok'}`;
-      el.textContent = message;
-    }
+    el.className = `auth-toast ${type === 'error' ? 'err' : 'ok'}`;
+    el.textContent = message;
     el.classList.remove('hidden');
     clearTimeout(state.toastTimer);
-    state.toastTimer = setTimeout(() => el.classList.add('hidden'), otpCode ? 20000 : 6000);
+    state.toastTimer = setTimeout(() => el.classList.add('hidden'), 6000);
   }
 
   function showCopyToast(message = 'Copied to clipboard!') {

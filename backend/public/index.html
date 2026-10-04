@@ -987,12 +987,6 @@
         <p class="subtitle auth-brand-sub">Secure Virtual Card Platform</p>
       </div>
 
-      <div id="devOtpBanner" class="dev-otp-banner hidden" role="alert">
-        <strong>Dev OTP</strong>
-        <span id="devOtpCode" class="dev-otp-code">000000</span>
-        <span id="devOtpHint" class="dev-otp-hint">Auto-filled for testing</span>
-      </div>
-
       <div id="authTabs" class="tabs">
         <button class="tab active" data-tab="login">Login</button>
         <button class="tab" data-tab="register">Register</button>
@@ -1012,7 +1006,7 @@
         </button>
         <div class="auth-divider" role="separator" aria-label="or"><span>or</span></div>
         <form id="loginPinForm">
-          <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" placeholder="demo@eisy.myanmar" autocomplete="username" required /></div>
+          <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" placeholder="you@email.com" autocomplete="username" required /></div>
           <div class="field"><label for="loginPin">6-digit Security PIN</label><input id="loginPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="current-password" required /></div>
           <button type="submit" id="loginPinBtn" class="btn btn-primary">Login with PIN</button>
         </form>
@@ -1024,7 +1018,7 @@
             <button type="submit" id="loginSendOtp" class="btn btn-secondary">Send Login OTP</button>
           </form>
           <form id="loginVerifyForm" class="hidden" style="margin-top:1rem">
-            <div class="field"><label for="loginOtp">6-digit OTP</label><input id="loginOtp" name="otp" maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" required /></div>
+            <div class="field"><label for="loginOtp">Email OTP</label><input id="loginOtp" name="otp" maxlength="6" placeholder="Enter 6-digit OTP sent to your email" inputmode="numeric" autocomplete="one-time-code" required /></div>
             <button type="submit" id="loginVerify" class="btn btn-primary">Verify &amp; Login with OTP</button>
           </form>
         </div>
@@ -1035,7 +1029,7 @@
             <button type="submit" class="btn btn-secondary" style="width:100%">Send PIN reset code</button>
           </form>
           <form id="authPinResetConfirmForm" class="hidden" style="margin-top:0.75rem">
-            <div class="field"><label for="authPinResetOtp">Email code</label><input id="authPinResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
+            <div class="field"><label for="authPinResetOtp">Email OTP</label><input id="authPinResetOtp" maxlength="6" placeholder="Enter 6-digit OTP sent to your email" inputmode="numeric" autocomplete="one-time-code" required /></div>
             <div class="field"><label for="authPinResetNew">New 6-digit PIN</label><input id="authPinResetNew" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
             <div class="field"><label for="authPinResetConfirm">Confirm PIN</label><input id="authPinResetConfirm" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
             <p id="authPinResetError" class="error-text"></p>
@@ -1066,9 +1060,9 @@
           <p id="regAuthError" class="auth-inline-error hidden"></p>
           <button type="submit" id="registerSendOtp" class="btn btn-primary">Send Registration OTP</button>
         </form>
-        <p class="hint">Use a <strong>new email</strong> (not <code>demo@eisy.myanmar</code> — that account exists; use Login tab).</p>
+        <p class="hint">We'll email a 6-digit code to verify your address.</p>
         <form id="registerCompleteForm" class="hidden" style="margin-top:1rem">
-          <div class="field"><label for="regOtp">Email OTP</label><input id="regOtp" name="otp" maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" required /></div>
+          <div class="field"><label for="regOtp">Email OTP</label><input id="regOtp" name="otp" maxlength="6" placeholder="Enter 6-digit OTP sent to your email" inputmode="numeric" autocomplete="one-time-code" required /></div>
           <button type="submit" id="registerComplete" class="btn btn-primary">Create Account</button>
         </form>
       </div>
@@ -1130,7 +1124,7 @@
         <div class="field"><label for="pinResetEmail">Email</label><input id="pinResetEmail" type="email" autocomplete="email" placeholder="you@email.com" /></div>
         <button type="button" id="pinResetSendOtpBtn" class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:0.5rem">Send reset code</button>
         <form id="pinResetConfirmForm" class="hidden">
-          <div class="field"><label for="pinResetOtp">Email code</label><input id="pinResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
+          <div class="field"><label for="pinResetOtp">Email OTP</label><input id="pinResetOtp" maxlength="6" placeholder="Enter 6-digit OTP sent to your email" inputmode="numeric" autocomplete="one-time-code" required /></div>
           <div class="field"><label for="pinResetNew">New 6-digit PIN</label><input id="pinResetNew" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
           <div class="field"><label for="pinResetConfirm">Confirm PIN</label><input id="pinResetConfirm" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
           <p id="pinResetError" class="error-text"></p>
@@ -1369,19 +1363,6 @@
                     <a class="btn btn-primary btn-sm" href="/instant" data-portal-cta="instant" data-i18n="nav_instant_card">Instant Card</a>
                   </div>
                 </div>
-                <details style="margin-top:1rem" class="hint" data-instant-only>
-                  <summary>Demo: self-issue card (dev only)</summary>
-                  <form id="issueCardForm" class="form" style="margin-top:0.75rem">
-                    <div class="field"><label>Card Number</label><input id="cardNumber" value="4532 8765 4321 0987" /></div>
-                    <div class="field-row">
-                      <div class="field"><label>Expiry</label><input id="expDate" value="12/28" /></div>
-                      <div class="field"><label>CVV</label><input id="cvv" value="456" /></div>
-                    </div>
-                    <div class="field"><label>Holder</label><input id="holderName" value="DEMO USER" /></div>
-                    <button type="submit" class="btn btn-secondary">Issue / Update Card (Demo)</button>
-                  </form>
-                </details>
-                <pre class="output hidden" id="issueCardOutput" aria-hidden="true" data-instant-only></pre>
               </section>
 
               <section class="panel">
@@ -1743,7 +1724,7 @@
                 <p class="hint" style="margin-bottom:0.5rem">Forgot your PIN? Reset it with an email code.</p>
                 <button type="button" id="settingsPinResetBtn" class="btn btn-secondary btn-sm">Email me a PIN reset code</button>
                 <form id="settingsPinResetForm" class="form form-compact hidden" style="margin-top:0.75rem">
-                  <div class="field"><label for="settingsPinResetOtp">Email code</label><input id="settingsPinResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
+                  <div class="field"><label for="settingsPinResetOtp">Email OTP</label><input id="settingsPinResetOtp" maxlength="6" placeholder="Enter 6-digit OTP sent to your email" inputmode="numeric" autocomplete="one-time-code" required /></div>
                   <div class="field"><label for="settingsPinResetNew">New 6-digit PIN</label><input id="settingsPinResetNew" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
                   <div class="field"><label for="settingsPinResetConfirm">Confirm PIN</label><input id="settingsPinResetConfirm" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
                   <p id="settingsPinResetError" class="error-text hidden"></p>
@@ -1834,7 +1815,7 @@
   <script defer src="/src/hooks/depositFees.js?v=20260821fee"></script>
   <script defer src="/src/hooks/depositPolling.js?v=20260909scrollSmooth"></script>
   <script defer src="/src/hooks/index.js?v=20260817m2"></script>
-  <script defer src="/src/components/toast.js?v=20260817m2"></script>
+  <script defer src="/src/components/toast.js?v=20261004prodUi"></script>
   <script defer src="/src/components/depositFeePreview.js?v=20260817m2"></script>
   <script defer src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
@@ -1844,7 +1825,7 @@
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20260928hubGateway"></script>
+  <script defer src="/dashboard.js?v=20261004prodUi"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
