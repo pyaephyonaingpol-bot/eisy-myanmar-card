@@ -750,22 +750,17 @@ const Dashboard = {
     return true;
   },
 
-  toast(message, type = 'ok', otpCode = null) {
+  toast(message, type = 'ok') {
     if (window.EisyComponents?.toast?.showToast) {
-      return window.EisyComponents.toast.showToast(message, type, otpCode);
+      return window.EisyComponents.toast.showToast(message, type);
     }
     const el = $('authToast');
     if (!el) return;
-    if (otpCode) {
-      el.className = 'auth-toast otp';
-      el.innerHTML = `${message}<span class="toast-otp-code">${otpCode}</span><small>Auto-filled in OTP field</small>`;
-    } else {
-      el.className = `auth-toast ${type === 'error' ? 'err' : 'ok'}`;
-      el.textContent = message;
-    }
+    el.className = `auth-toast ${type === 'error' ? 'err' : 'ok'}`;
+    el.textContent = message;
     el.classList.remove('hidden');
     clearTimeout(this._toastTimer);
-    this._toastTimer = setTimeout(() => el.classList.add('hidden'), otpCode ? 20000 : 6000);
+    this._toastTimer = setTimeout(() => el.classList.add('hidden'), 6000);
   },
 
   copyToast(message = 'Copied to clipboard!') {
@@ -5049,7 +5044,7 @@ const Dashboard = {
           const data = await Auth.sendLoginOtp(email);
           $('loginVerifyForm')?.classList.remove('hidden');
           this.showDevOtp(data, 'loginOtp');
-          this.toast('Login OTP sent!', 'ok', data.dev_otp || null);
+          this.toast('Enter the 6-digit OTP sent to your email', 'ok');
           this.log(`OTP sent to ${email}`, 'ok');
           $('loginOtp')?.focus();
         } catch (err) {
@@ -5126,12 +5121,7 @@ const Dashboard = {
           const data = await Auth.sendRegisterOtp(email);
           $('registerCompleteForm')?.classList.remove('hidden');
           this.showDevOtp(data, 'regOtp');
-          const otp = data.dev_otp;
-          if (otp) {
-            this.toast('Registration OTP — use this code:', 'ok', otp);
-          } else {
-            this.toast('Registration OTP sent! Check server console.', 'ok');
-          }
+          this.toast('Enter the 6-digit OTP sent to your email', 'ok');
           this.log(`Registration OTP sent to ${email}`, 'ok');
           $('regOtp')?.focus();
         } catch (err) {
@@ -5258,7 +5248,7 @@ const Dashboard = {
           const confirmForm = $('pinResetConfirmForm');
           confirmForm?.classList.remove('hidden');
           this.showDevOtp?.(data, 'pinResetOtp');
-          this.toast(data.message || 'PIN reset code sent to your email', 'ok', data.dev_otp);
+          this.toast('Enter the 6-digit OTP sent to your email', 'ok');
           const otpInput = $('pinResetOtp');
           otpInput?.focus();
           window.EisyScroll?.ensureVisible?.(otpInput);
@@ -5325,7 +5315,7 @@ const Dashboard = {
           const data = await Auth.sendPinResetOtp(email);
           $('authPinResetConfirmForm')?.classList.remove('hidden');
           this.showDevOtp?.(data, 'authPinResetOtp');
-          this.toast(data.message || 'PIN reset code sent', 'ok', data.dev_otp);
+          this.toast('Enter the 6-digit OTP sent to your email', 'ok');
         } catch (err) {
           if (errEl) errEl.textContent = err.message || 'Failed to send reset code';
           this.toast(err.message || 'Failed to send reset code', 'error');
@@ -5366,7 +5356,7 @@ const Dashboard = {
           const data = await Auth.sendPinResetOtp(Auth.user?.email);
           $('settingsPinResetForm')?.classList.remove('hidden');
           this.showDevOtp?.(data, 'settingsPinResetOtp');
-          this.toast(data.message || 'PIN reset code sent', 'ok', data.dev_otp);
+          this.toast('Enter the 6-digit OTP sent to your email', 'ok');
         } catch (err) {
           this.toast(err.message || 'Failed to send reset code', 'error');
         } finally {
@@ -5661,25 +5651,13 @@ const Dashboard = {
     });
   },
 
-  showDevOtp(data, inputId) {
-    const otp = data?.dev_otp;
-    console.log('[Dashboard] showDevOtp', { otp, inputId, data });
-    if (!otp) {
-      console.warn('[Dashboard] No dev_otp in response — check DEV_SHOW_OTP env');
-      return;
-    }
-    $('devOtpCode').textContent = otp;
-    $('devOtpHint').textContent = data.dev_message || 'Auto-filled for testing';
-    $('devOtpBanner').classList.remove('hidden');
-    const input = $(inputId);
-    if (input) {
-      input.value = otp;
-      input.focus();
-    }
+  showDevOtp(_data, inputId) {
+    const input = inputId ? $(inputId) : null;
+    if (input && !input.value) input.focus();
   },
 
   hideDevOtp() {
-    $('devOtpBanner').classList.add('hidden');
+    $('devOtpBanner')?.classList.add('hidden');
   },
 
   bindDashboardForms() {
