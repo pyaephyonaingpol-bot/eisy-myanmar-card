@@ -46,7 +46,12 @@ assert.ok(legalCss.includes('.about-founder'), 'about founder styles');
 assert.ok(legalCss.includes('.about-hero'), 'about hero styles');
 
 assert.ok(terms.includes('Terms of Service') || terms.includes('Terms and Conditions'), 'terms title');
-assert.ok(terms.includes('Stripe Issuing'), 'terms mentions Stripe Issuing');
+assert.ok(terms.includes('Know Your Customer (KYC) verification'), 'terms requires KYC');
+assert.ok(terms.includes('6-digit security PIN'), 'terms covers security PIN');
+assert.ok(terms.includes('anti-money laundering (AML)'), 'terms covers AML');
+assert.ok(terms.includes('$3.50 fixed card reload fee'), 'terms states reload fee');
+assert.ok(terms.includes('operated under the Abu Dhabi Department of Economic Development (ADDED) Freelance License'), 'terms welcome license line');
+assert.ok(!terms.includes('Stripe Issuing'), 'terms no longer mentions Stripe Issuing');
 assert.ok(terms.includes('P2P'), 'terms mentions P2P');
 assert.ok(terms.includes('Company Name:</strong> Eisy Myanmar') || terms.includes('Company Name:</strong> Eisy Myanmar'), 'terms company name is Eisy Myanmar');
 assert.ok(terms.includes('Eisy Myanmar'), 'terms uses Eisy Myanmar');
@@ -71,7 +76,10 @@ assert.ok(privacy.includes('support@eisymyanmar.com'), 'privacy support email');
 assert.ok(privacy.includes('href="/about"'), 'privacy nav links to about');
 
 assert.ok(refund.includes('Refund'), 'refund title');
-assert.ok(refund.includes('top-up') || refund.includes('reload'), 'refund covers card top-ups');
+assert.ok(refund.includes('strictly non-refundable'), 'refund issuance fees are non-refundable');
+assert.ok(refund.includes('top-up') || refund.includes('reload') || refund.includes('Reloads/Top-ups'), 'refund covers card top-ups');
+assert.ok(refund.includes('$20.00 USDT'), 'refund states deposit minimum');
+assert.ok(refund.includes('within 48 hours'), 'refund P2P review window');
 assert.ok(refund.includes('P2P'), 'refund covers P2P');
 assert.ok(!refund.includes('[Company Name]'), 'refund has no company placeholder');
 assert.ok(!refund.includes('[Registered Address]'), 'refund has no address placeholder');
