@@ -16,6 +16,7 @@
     "test:kripicard-deposits": "node backend/scripts/test-kripicard-deposits.js",
     "test:kripicard-deposit-ui": "node backend/scripts/test-kripicard-deposit-ui.js",
     "test:kripicard-withdraw-fee": "node backend/scripts/test-kripicard-withdraw-fee.js",
+    "diagnose:kripicard-auth": "node backend/scripts/diagnose-kripicard-auth-headers.js",
     "test:tron-scanpay-disabled": "node backend/scripts/test-tron-scanpay-disabled.js",
     "test:p2p-true-escrow": "node backend/scripts/test-p2p-true-escrow.js",
     "test:p2p-mmk-escrow-ledger": "node backend/scripts/test-p2p-mmk-escrow-ledger.js",
