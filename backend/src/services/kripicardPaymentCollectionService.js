@@ -37,9 +37,6 @@ const {
   kripicardRequest,
 } = require('../../../lib/kripicard');
 
-const DEFAULT_COLLECTIONS_URL =
-  'https://appapi.kripicard.com/api/v1/payment-collections';
-
 const PAID_STATUSES = new Set([
   'paid',
   'completed',
@@ -76,9 +73,9 @@ function isKripicardWebhookConfigured() {
 }
 
 function getCollectionsBaseUrl() {
-  return String(
-    process.env.KRIPICARD_PAYMENT_COLLECTIONS_URL || DEFAULT_COLLECTIONS_URL
-  ).trim().replace(/\/$/, '');
+  const explicit = String(process.env.KRIPICARD_PAYMENT_COLLECTIONS_URL || '').trim();
+  if (explicit) return explicit.replace(/\/$/, '');
+  return `${getKripicardConfig().origin}/api/v1/payment-collections`;
 }
 
 function getPublishableKey() {

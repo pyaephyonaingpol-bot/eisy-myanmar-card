@@ -24,7 +24,7 @@ const {
   debitUsdtForCardPurchase,
   finalizeCardPurchaseWallet,
 } = require('./supabaseWalletLedgerService');
-const { fetchAvailableBins } = require('../../../lib/kripicard');
+const { fetchAvailableBins, getKripicardConfig } = require('../../../lib/kripicard');
 const CardReloadRequest = require('../models/CardReloadRequest');
 const { RELOAD_PENDING_MESSAGE } = require('./cardReloadApprovalService');
 
@@ -254,8 +254,8 @@ async function purchaseKripicardFromUsdtWallet(userId, {
     err.code = 'SUPABASE_NOT_CONFIGURED';
     throw err;
   }
-  if (!String(process.env.KRIPICARD_API_KEY || '').trim()) {
-    const err = new Error('KRIPICARD_API_KEY is not configured');
+  if (!getKripicardConfig().apiKey) {
+    const err = new Error('CARD_API_KEY or KRIPICARD_API_KEY is not configured');
     err.code = 'KRIPICARD_NOT_CONFIGURED';
     throw err;
   }

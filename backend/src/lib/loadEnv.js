@@ -15,7 +15,12 @@
  * Keys whose file value replaces an already-injected platform/shell value.
  * Later files still win over earlier files.
  */
-const FILE_OVERRIDES_PLATFORM = new Set(['KRIPICARD_API_KEY']);
+const FILE_OVERRIDES_PLATFORM = new Set([
+  'KRIPICARD_API_KEY',
+  'CARD_API_KEY',
+  'KRIPICARD_BASE_URL',
+  'CARD_BASE_URL',
+]);
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
