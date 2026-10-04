@@ -1,7 +1,9 @@
 /**
  * Load repo + backend env files into process.env before any config checks.
  *
- * Priority (later files win, but never clobber non-empty platform/shell vars):
+ * Priority (later files win). Non-empty platform/shell vars are kept, except
+ * KRIPICARD_API_KEY: a value in .env or .env.local always replaces a stale
+ * Cloud Agent / shell secret so a restarted process picks up the file.
  *   <repo>/.env
  *   <backend>/.env
  *   <cwd>/.env
@@ -9,6 +11,11 @@
  *   <backend>/.env.local
  *   <cwd>/.env.local
  */
+/**
+ * Keys whose file value replaces an already-injected platform/shell value.
+ * Later files still win over earlier files.
+ */
+const FILE_OVERRIDES_PLATFORM = new Set(['KRIPICARD_API_KEY']);
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
@@ -54,7 +61,7 @@ function loadEnv({ force = false } = {}) {
 
     const parsed = parseEnvFile(resolved);
     for (const [key, value] of Object.entries(parsed)) {
-      if (platformKeys.has(key)) continue;
+      if (platformKeys.has(key) && !FILE_OVERRIDES_PLATFORM.has(key)) continue;
       process.env[key] = value;
     }
   }

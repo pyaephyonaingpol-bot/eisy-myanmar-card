@@ -31,7 +31,7 @@ cp backend/.env.example backend/.env   # or root .env
 node backend/scripts/check-env-config.js
 ```
 
-`loadEnv` loads (without overwriting non-empty platform vars):
+`loadEnv` loads these files. Non-empty platform vars are kept, except `KRIPICARD_API_KEY`, which a `.env` / `.env.local` value replaces so a restart drops a stale Cloud Agent key:
 
 1. `<repo>/.env`
 2. `<backend>/.env`
