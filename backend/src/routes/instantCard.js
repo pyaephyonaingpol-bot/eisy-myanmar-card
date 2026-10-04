@@ -46,7 +46,9 @@ function attachHelpers({ respondCardPurchaseError, buildCardPurchaseSuccessPaylo
       try {
         sample = calculateKripicardRequestPricingUsdt(sampleLoad, settings);
       } catch (_) { /* ignore */ }
-      const kripicardConfigured = Boolean(String(process.env.KRIPICARD_API_KEY || '').trim());
+      const kripicardConfigured = Boolean(
+        String(process.env.CARD_API_KEY || process.env.KRIPICARD_API_KEY || '').trim()
+      );
       res.json({
         provider: 'kripicard',
         card_flow: 'instant',

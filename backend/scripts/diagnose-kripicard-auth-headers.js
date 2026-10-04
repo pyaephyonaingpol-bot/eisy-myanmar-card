@@ -19,7 +19,7 @@
 const crypto = require('crypto');
 
 const DEFAULT_HOST = 'https://appapi.kripicard.com';
-const HOST = String(process.env.KRIPICARD_AUTH_DIAG_HOST || DEFAULT_HOST).replace(/\/$/, '');
+let activeHost = String(process.env.KRIPICARD_AUTH_DIAG_HOST || DEFAULT_HOST).replace(/\/$/, '');
 const TIMEOUT_MS = Number(process.env.KRIPICARD_AUTH_DIAG_TIMEOUT_MS) || 12000;
 
 const ENDPOINTS = Object.freeze([
@@ -193,7 +193,7 @@ async function requestOnce({ method, url, headers, body, apiKey }) {
 
 async function runProfile(endpoint, profile, apiKey) {
   const method = profile.method || (profile.body ? 'POST' : 'GET');
-  const url = new URL(HOST + endpoint.path);
+  const url = new URL(activeHost + endpoint.path);
   if (profile.query) {
     for (const [key, value] of Object.entries(profile.query)) {
       url.searchParams.set(key, value);
@@ -287,7 +287,13 @@ function summarize(keyInfo, rows) {
 }
 
 async function main() {
-  const apiKey = String(process.env.KRIPICARD_API_KEY || '').trim();
+  require('../src/lib/loadEnv').loadEnv({ force: true });
+  const { resolveKripicardApiKey, resolveKripicardOrigin } = require('../../lib/kripicard');
+  const apiKey = resolveKripicardApiKey();
+  const configuredHost = resolveKripicardOrigin();
+  if (!String(process.env.KRIPICARD_AUTH_DIAG_HOST || '').trim()) {
+    activeHost = configuredHost;
+  }
   const keyInfo = describeKey(apiKey);
   if (!keyInfo.configured) {
     console.error(JSON.stringify({
@@ -313,12 +319,12 @@ async function main() {
 
   const report = {
     checked_at: new Date().toISOString(),
-    host: HOST,
+    host: activeHost,
     key: keyInfo,
     endpoints: ENDPOINTS.map((endpoint) => ({
       id: endpoint.id,
       product: endpoint.product,
-      url: HOST + endpoint.path,
+      url: activeHost + endpoint.path,
     })),
     results: rows.map((row) => ({
       endpoint: row.endpoint,
