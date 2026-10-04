@@ -109,10 +109,18 @@ html.legal-doc body {
 
 .legal-company .legal-copyright {
   margin-top: 0.75rem;
+  margin-bottom: 0;
   padding-top: 0.65rem;
   border-top: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.25));
   font-size: 0.85rem;
   color: var(--muted, #94a3b8);
+}
+
+.legal-company .legal-license {
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #888;
 }
 
 /* ── About page ─────────────────────────────────────────────── */
