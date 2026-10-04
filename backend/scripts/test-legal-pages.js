@@ -54,6 +54,7 @@ assert.ok(!terms.includes('[Company Name]'), 'terms has no company placeholder')
 assert.ok(!terms.includes('[Registered Address]'), 'terms has no address placeholder');
 assert.ok(!terms.includes('Registered Address'), 'terms omits registered address');
 assert.ok(terms.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'terms copyright');
+assert.ok(terms.includes('Freelance License No. CN-6790788'), 'terms ADDED license');
 assert.ok(terms.includes('support@eisymyanmar.com'), 'terms support email');
 assert.ok(terms.includes('href="/about"'), 'terms nav links to about');
 
@@ -65,6 +66,7 @@ assert.ok(!privacy.includes('[Company Name]'), 'privacy has no company placehold
 assert.ok(!privacy.includes('[Registered Address]'), 'privacy has no address placeholder');
 assert.ok(!privacy.includes('Registered Address'), 'privacy omits registered address');
 assert.ok(privacy.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'privacy copyright');
+assert.ok(privacy.includes('Freelance License No. CN-6790788'), 'privacy ADDED license');
 assert.ok(privacy.includes('support@eisymyanmar.com'), 'privacy support email');
 assert.ok(privacy.includes('href="/about"'), 'privacy nav links to about');
 
@@ -75,6 +77,7 @@ assert.ok(!refund.includes('[Company Name]'), 'refund has no company placeholder
 assert.ok(!refund.includes('[Registered Address]'), 'refund has no address placeholder');
 assert.ok(!refund.includes('Registered Address'), 'refund omits registered address');
 assert.ok(refund.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'refund copyright');
+assert.ok(refund.includes('Freelance License No. CN-6790788'), 'refund ADDED license');
 assert.ok(refund.includes('support@eisymyanmar.com'), 'refund support email');
 assert.ok(refund.includes('href="/about"'), 'refund nav links to about');
 
@@ -88,6 +91,7 @@ assert.ok(/trust|security|accessible|accessibility/i.test(about), 'about emphasi
 assert.ok(about.includes('support@eisymyanmar.com'), 'about support email');
 assert.ok(about.includes('about-founder'), 'about founder markup class');
 assert.ok(about.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'about copyright');
+assert.ok(about.includes('Freelance License No. CN-6790788'), 'about ADDED license');
 assert.ok(!about.includes('[Registered Address]'), 'about has no address placeholder');
 assert.ok(!about.includes('Registered Address'), 'about omits registered address');
 
@@ -106,6 +110,8 @@ assert.ok(indexHtml.includes('href="/privacy"'), 'footer privacy link');
 assert.ok(indexHtml.includes('href="/refund"'), 'footer refund link');
 assert.ok(indexHtml.includes('legal-footer-links') || indexHtml.includes('auth-legal-links'), 'legal link containers');
 assert.ok(indexHtml.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'app footer copyright');
+assert.ok(indexHtml.includes('Freelance License No. CN-6790788'), 'app footer ADDED license');
+assert.ok((indexHtml.match(/CN-6790788/g) || []).length >= 2, 'auth and sidebar footers include the license');
 assert.ok(!indexHtml.includes('[Registered Address]'), 'app footer has no address placeholder');
 assert.ok(!indexHtml.includes('[Company Name]'), 'app footer has no company placeholder');
 assert.ok(styles.includes('.legal-footer-links'), 'footer link styles');

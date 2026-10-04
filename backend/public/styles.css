@@ -2961,11 +2961,19 @@ pre.output.hidden { display: none !important; }
 }
 
 .legal-footer-copyright {
-  margin: 0 0.55rem 0.75rem;
+  margin: 0 0.55rem 0;
   padding: 0;
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--muted, #94a3b8);
+}
+
+.legal-footer-license {
+  margin: 5px 0.55rem 0.75rem;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #888;
 }
 
 .auth-legal-copyright {
