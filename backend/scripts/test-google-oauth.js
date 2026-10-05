@@ -44,12 +44,19 @@ assert.ok(bridge.includes('getAuthClient'), 'dedicated auth client');
 assert.ok(bridge.includes('__EISY_SUPABASE_PUBLIC__'), 'uses baked public config');
 assert.ok(bridge.includes('force'), 'supports forced re-init');
 assert.ok(bridge.includes('exchangeCodeForSession'), 'callback code exchange');
+assert.ok(bridge.includes('pkceExchangeArgs'), 'exchanges the raw code, not the callback URL');
+assert.ok(!bridge.includes('exchangeCodeForSession(window.location.href)'), 'full callback URL is not the auth code');
+assert.ok(bridge.includes('@supabase/supabase-js@2.112.4'), 'browser SDK matches exchangeCodeForSession(code)');
 assert.ok(bridge.includes('getSession'), 'falls back when the code was already exchanged');
 assert.ok(bridge.includes('skipBrowserRedirect: true'), 'stores PKCE verifier before navigation');
 assert.ok(bridge.includes('detectSessionInUrl: false'), 'manual exchange is the only callback reader');
 assert.ok(!bridge.includes('Supabase is not configured'), 'bridge avoids generic false-negative text');
 assert.ok(authJs.includes('detectSessionInUrl: false'), 'direct client does not auto-consume the code');
 assert.ok(authJs.includes('skipBrowserRedirect: true'), 'direct client redirects after PKCE storage');
+assert.ok(authJs.includes('exchangeCodeForSession(code, flowId'), 'direct client exchanges the raw code');
+assert.ok(authJs.includes("searchParams.get('sb_flow_id')"), 'direct client keeps the PKCE flow id');
+assert.ok(!authJs.includes('exchangeCodeForSession(window.location.href)'), 'direct client does not send the callback URL as auth_code');
+assert.ok(authJs.includes('@supabase/supabase-js@2.112.4'), 'direct client uses the pinned SDK');
 
 assert.ok(html.includes('supabase-public-config.js'), 'loads baked public config script');
 const baked = read('backend/public/supabase-public-config.js');
@@ -87,4 +94,26 @@ assert.ok(css.includes('.btn-google'), 'google button styles');
 assert.ok(css.includes('.auth-divider'), 'divider styles');
 console.log('ok');
 
-console.log('\nGoogle OAuth checks passed.');
+async function assertPkceArgs() {
+  console.log('\n== PKCE code is not the callback URL ==');
+  const { readGoogleOAuthCallback, pkceExchangeArgs } = await import('../public/src/lib/googleOAuthCallback.mjs');
+  const href = 'https://eisymyanmar.com/auth/callback?code=auth-code-1&sb_flow_id=flow-1';
+  const parsed = readGoogleOAuthCallback(href);
+  assert.strictEqual(parsed.code, 'auth-code-1');
+  assert.strictEqual(parsed.flowId, 'flow-1');
+  assert.deepStrictEqual(pkceExchangeArgs(parsed), ['auth-code-1', { flowId: 'flow-1' }]);
+  assert.notStrictEqual(pkceExchangeArgs(parsed)[0], href);
+  const cancelled = readGoogleOAuthCallback('https://www.eisymyanmar.com/auth/callback?error=access_denied&error_description=User%20cancelled');
+  assert.strictEqual(cancelled.errorMessage, 'User cancelled');
+  assert.strictEqual(pkceExchangeArgs(cancelled), null);
+  const plain = readGoogleOAuthCallback('https://eisymyanmar.com/auth/callback?code=only-code');
+  assert.deepStrictEqual(pkceExchangeArgs(plain), ['only-code', undefined]);
+  console.log('ok');
+}
+
+assertPkceArgs()
+  .then(() => console.log('\nGoogle OAuth checks passed.'))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
