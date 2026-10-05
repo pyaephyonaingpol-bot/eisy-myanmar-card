@@ -43,7 +43,8 @@ assert.ok(bridge.includes('redirectTo'), 'redirectTo option');
 assert.ok(bridge.includes('getAuthClient'), 'dedicated auth client');
 assert.ok(bridge.includes('__EISY_SUPABASE_PUBLIC__'), 'uses baked public config');
 assert.ok(bridge.includes('force'), 'supports forced re-init');
-assert.ok(bridge.includes('exchangeCodeForSession') || bridge.includes('getSession'), 'callback session exchange');
+assert.ok(bridge.includes('pkceExchangeArgs'), 'exchanges the raw PKCE code');
+assert.ok(!bridge.includes('exchangeCodeForSession(window.location.href)'), 'callback URL is not the auth code');
 assert.ok(!bridge.includes('Supabase is not configured'), 'bridge avoids generic false-negative text');
 
 assert.ok(html.includes('supabase-public-config.js'), 'loads baked public config script');
@@ -54,6 +55,10 @@ const dash = read('backend/public/dashboard.js');
 assert.ok(dash.includes('handleGoogleOAuthCallback'), 'callback handler');
 assert.ok(dash.includes('data-google-auth'), 'binds Google buttons');
 assert.ok(dash.includes('isGoogleOAuthCallback'), 'detects callback path');
+assert.ok(dash.includes('if (supportForm) supportForm.onsubmit'), 'missing support form cannot abort init');
+const bootCall = dash.indexOf('boot()');
+const dashboardBind = dash.indexOf('this.bindDashboardForms();');
+assert.ok(bootCall > 0 && dashboardBind > bootCall, 'Google callback starts before hub form binds');
 console.log('ok');
 
 console.log('\n== Backend route + service ==');

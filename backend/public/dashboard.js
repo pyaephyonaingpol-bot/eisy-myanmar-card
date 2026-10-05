@@ -802,11 +802,46 @@ const Dashboard = {
 
   init() {
     console.log('[Dashboard] init');
+    const finishBoot = () => {
+      try {
+        Auth.initLoginPanel();
+        this.refreshAuthUI();
+      } catch (err) {
+        console.warn('[Dashboard] finishBoot:', err.message);
+      }
+      this.markAppReady();
+    };
+    const boot = async () => {
+      if (this.isGoogleOAuthCallback()) {
+        await this.handleGoogleOAuthCallback();
+        return;
+      }
+      // Paint immediately from cached session; revalidate in the background.
+      if (Auth.sessionToken) {
+        finishBoot();
+        await Auth.restoreSession()
+          .then(() => this.refreshAuthUI())
+          .catch((err) => console.warn('[Dashboard] session restore:', err.message));
+        return;
+      }
+      await Auth.restoreSession().catch((err) => console.warn('[Dashboard] session restore:', err.message));
+    };
     try {
       this.applyPortalIsolation();
       this.bindI18n();
       this.clearStaleDepositDrafts();
       this.bindAuthForms();
+    } catch (err) {
+      console.error('[Dashboard] auth bind failed:', err);
+    }
+    // Start the Google callback before later form binds. /auth/callback serves
+    // the hub document, and a missing hub form must not skip the PKCE exchange.
+    boot()
+      .catch((err) => console.warn('[Dashboard] boot:', err.message))
+      .finally(() => {
+        if (!document.documentElement.classList.contains('app-ready')) finishBoot();
+      });
+    try {
       this.bindChangePasswordForm();
       this.bindProfileForm();
       this.bindDashboardForms();
@@ -821,36 +856,10 @@ const Dashboard = {
       this.bindWithdrawUsdt();
       this.bindWithdrawMmk();
       this.bindUsdtWalletPage();
-      const finishBoot = () => {
-        Auth.initLoginPanel();
-        this.refreshAuthUI();
-        this.markAppReady();
-      };
-      const boot = async () => {
-        if (this.isGoogleOAuthCallback()) {
-          await this.handleGoogleOAuthCallback();
-          return;
-        }
-        // Paint immediately from cached session; revalidate in the background.
-        if (Auth.sessionToken) {
-          finishBoot();
-          await Auth.restoreSession()
-            .then(() => this.refreshAuthUI())
-            .catch((err) => console.warn('[Dashboard] session restore:', err.message));
-          return;
-        }
-        await Auth.restoreSession().catch((err) => console.warn('[Dashboard] session restore:', err.message));
-      };
-      boot()
-        .catch((err) => console.warn('[Dashboard] boot:', err.message))
-        .finally(() => {
-          // Logged-out / OAuth paths still need a single paint.
-          if (!document.documentElement.classList.contains('app-ready')) finishBoot();
-        });
     } catch (err) {
       console.error('[Dashboard] init failed:', err);
       this.endHydration();
-      this.markAppReady();
+      if (!document.documentElement.classList.contains('app-ready')) this.markAppReady();
     }
   },
 
@@ -5203,22 +5212,29 @@ const Dashboard = {
   },
 
   bindCardSelector() {
-    $('cardSelect').onchange = () => {
-      const idx = parseInt($('cardSelect').value, 10);
-      if (!Number.isNaN(idx)) this.selectCard(idx);
-    };
-
-    $('btnPrevCard').onclick = () => {
-      if (!this.allCards.length) return;
-      const next = (this.activeCardIndex - 1 + this.allCards.length) % this.allCards.length;
-      this.selectCard(next);
-    };
-
-    $('btnNextCard').onclick = () => {
-      if (!this.allCards.length) return;
-      const next = (this.activeCardIndex + 1) % this.allCards.length;
-      this.selectCard(next);
-    };
+    const cardSelect = $('cardSelect');
+    if (cardSelect) {
+      cardSelect.onchange = () => {
+        const idx = parseInt(cardSelect.value, 10);
+        if (!Number.isNaN(idx)) this.selectCard(idx);
+      };
+    }
+    const prev = $('btnPrevCard');
+    if (prev) {
+      prev.onclick = () => {
+        if (!this.allCards.length) return;
+        const next = (this.activeCardIndex - 1 + this.allCards.length) % this.allCards.length;
+        this.selectCard(next);
+      };
+    }
+    const nextBtn = $('btnNextCard');
+    if (nextBtn) {
+      nextBtn.onclick = () => {
+        if (!this.allCards.length) return;
+        const next = (this.activeCardIndex + 1) % this.allCards.length;
+        this.selectCard(next);
+      };
+    }
   },
 
   cardThumbLabel(card) {
@@ -6473,7 +6489,8 @@ const Dashboard = {
     $('btnLoadDeposits')?.addEventListener('click', () => this.loadDepositHistory());
     $('btnLoadCardReloads')?.addEventListener('click', () => this.loadReloadHistory());
 
-    $('supportForm').onsubmit = async (e) => {
+    const supportForm = $('supportForm');
+    if (supportForm) supportForm.onsubmit = async (e) => {
       e.preventDefault();
       try {
         await Auth.api('POST', '/api/support/threads', {

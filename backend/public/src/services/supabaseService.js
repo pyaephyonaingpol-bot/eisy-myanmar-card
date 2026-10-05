@@ -6,7 +6,8 @@
  *
  * Canonical location: /src/services/supabaseService.js (Step 3).
  */
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/+esm';
+import { pkceExchangeArgs, readGoogleOAuthCallback } from '../lib/googleOAuthCallback.mjs';
 
 const SupabaseBridge = {
   client: null,
@@ -102,7 +103,7 @@ const SupabaseBridge = {
         auth: {
           persistSession: true,
           autoRefreshToken: true,
-          detectSessionInUrl: true,
+          detectSessionInUrl: false,
           flowType: 'pkce',
           storageKey: 'eisy-supabase-auth',
         },
@@ -118,6 +119,7 @@ const SupabaseBridge = {
       provider: 'google',
       options: {
         redirectTo: target,
+        skipBrowserRedirect: true,
         queryParams: { access_type: 'offline', prompt: 'select_account' },
       },
     });
@@ -132,14 +134,21 @@ const SupabaseBridge = {
   async getOAuthAccessToken() {
     const client = await this.getAuthClient();
     // Prefer exchanging an auth code from the callback URL (PKCE).
-    const url = new URL(window.location.href);
-    const code = url.searchParams.get('code');
-    if (code) {
-      const { data, error } = await client.auth.exchangeCodeForSession(window.location.href);
-      if (error) throw error;
-      const token = data?.session?.access_token;
-      if (!token) throw new Error('Google Sign-In did not return a session');
-      return { accessToken: token, user: data.session.user || null };
+    const callback = readGoogleOAuthCallback(window.location.href);
+    if (callback.errorMessage) throw new Error(callback.errorMessage);
+    const exchangeArgs = pkceExchangeArgs(callback);
+    if (exchangeArgs) {
+      const exchanged = await client.auth.exchangeCodeForSession(...exchangeArgs);
+      const exchangedToken = exchanged.data?.session?.access_token;
+      if (!exchanged.error && exchangedToken) {
+        return { accessToken: exchangedToken, user: exchanged.data.session.user || null };
+      }
+      const sessionResult = await client.auth.getSession();
+      const token = sessionResult.data?.session?.access_token;
+      if (token) return { accessToken: token, user: sessionResult.data.session.user || null };
+      if (exchanged.error) throw exchanged.error;
+      if (sessionResult.error) throw sessionResult.error;
+      throw new Error('Google Sign-In did not return a session');
     }
     const { data, error } = await client.auth.getSession();
     if (error) throw error;
