@@ -66,6 +66,11 @@ const dash = read('backend/public/dashboard.js');
 assert.ok(dash.includes('handleGoogleOAuthCallback'), 'callback handler');
 assert.ok(dash.includes('data-google-auth'), 'binds Google buttons');
 assert.ok(dash.includes('isGoogleOAuthCallback'), 'detects callback path');
+assert.ok(!dash.includes('onAuthStateChange'), 'session exchange is explicit, not an auth listener');
+const bootCall = dash.indexOf('boot()');
+const dashboardBind = dash.indexOf('this.bindDashboardForms();');
+assert.ok(bootCall > 0 && dashboardBind > bootCall, 'Google callback starts before hub form binds');
+assert.ok(dash.includes('if (supportForm) supportForm.onsubmit'), 'missing support form cannot abort init');
 console.log('ok');
 
 console.log('\n== Backend route + service ==');
