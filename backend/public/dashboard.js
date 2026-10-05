@@ -2376,6 +2376,7 @@ const Dashboard = {
     this.setKycPhotoStatus('selfie', '', null);
     this.setKycCompressBanner('', false);
     this.setKycSubmitBusy(false);
+    this.applyKycAttemptLock();
     const status = (this._kycStatus?.kyc_status || '').toUpperCase();
     const form = $('kycForm');
     if (form) form.classList.toggle('hidden', status === 'PENDING_REVIEW' || status === 'VERIFIED');
@@ -2417,11 +2418,111 @@ const Dashboard = {
     el.classList.toggle('hidden', !visible);
   },
 
+  kycSessionUserId() {
+    return Auth.user?.id || Auth.user?.email || 'session';
+  },
+
+  kycPrefilter() {
+    return window.EisyKycPrefilter || null;
+  },
+
+  applyKycAttemptLock() {
+    const filter = this.kycPrefilter();
+    const locked = Boolean(filter?.isLocked(this.kycSessionUserId()));
+    const btn = $('kycSubmitBtn');
+    const notice = $('kycAttemptNotice');
+    const supportBtn = $('kycManualSupportBtn');
+    if (locked) {
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'KYC submissions locked';
+      }
+      if (notice) {
+        notice.textContent = 'You have used 2 KYC attempts this session. Continue with a manual support ticket.';
+        notice.classList.remove('hidden');
+      }
+      supportBtn?.classList.remove('hidden');
+      return;
+    }
+    supportBtn?.classList.add('hidden');
+    if (btn && !btn.dataset.kycBusy) {
+      btn.disabled = false;
+      btn.textContent = 'Submit for Review';
+    }
+    if (notice) {
+      const used = filter ? filter.readAttempts(this.kycSessionUserId()) : 0;
+      notice.textContent = used ? (used + ' of 2 KYC attempts used this session.') : '';
+      notice.classList.toggle('hidden', !used);
+    }
+  },
+
+  noteKycAttemptFailed() {
+    const filter = this.kycPrefilter();
+    if (!filter) return 0;
+    const count = filter.recordFailedAttempt(this.kycSessionUserId());
+    this.applyKycAttemptLock();
+    if (count >= filter.MAX_ATTEMPTS) this.routeKycToManualSupport();
+    return count;
+  },
+
+  routeKycToManualSupport() {
+    const subject = 'KYC verification — manual review';
+    const message = 'Automatic KYC could not be completed after 2 attempts in this session. Please review my NRC or Passport manually.';
+    if ($('supportSubject')) $('supportSubject').value = subject;
+    if ($('supportMessage')) $('supportMessage').value = message;
+    if ($('supportPriority')) $('supportPriority').value = 'high';
+    if ($('supportCategory')) $('supportCategory').value = 'card_issuing';
+    this.closeKycModal();
+    if (typeof AppNav !== 'undefined') {
+      AppNav.navigate('settings', { pushHash: true });
+    }
+    window.SupportChat?.openTicket?.({
+      subject: subject,
+      message: message,
+      category: 'card_issuing',
+      priority: 'high',
+    });
+    this.toast('KYC is locked for this session. Please open a manual support ticket.', 'error');
+    requestAnimationFrame(() => {
+      document.getElementById('supportForm')?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    });
+  },
+
   setKycSubmitBusy(busy) {
     const btn = $('kycSubmitBtn');
     if (!btn) return;
+    if (busy) btn.dataset.kycBusy = '1';
+    else delete btn.dataset.kycBusy;
+    if (this.kycPrefilter()?.isLocked(this.kycSessionUserId())) {
+      btn.disabled = true;
+      btn.textContent = 'KYC submissions locked';
+      return;
+    }
     btn.disabled = Boolean(busy);
     btn.textContent = busy ? 'Compressing photos…' : 'Submit for Review';
+  },
+
+  async reviewKycPhotoClarity(kind, file) {
+    if (kind !== 'front' && kind !== 'back') return null;
+    const filter = this.kycPrefilter();
+    if (!filter) {
+      const err = new Error('Identity photo check is unavailable. Refresh the page before submitting.');
+      err.code = 'KYC_CLARITY_UNAVAILABLE';
+      throw err;
+    }
+    let result;
+    try {
+      result = await filter.measureFile(file);
+    } catch (err) {
+      if (err?.code === 'KYC_CLARITY_UNAVAILABLE') throw err;
+      console.warn('[kyc] clarity check skipped', err);
+      return null;
+    }
+    if (!result?.blurry) return result;
+    const blurErr = new Error(filter.BLUR_ALERT);
+    blurErr.code = 'KYC_PHOTO_BLURRY';
+    blurErr.clarity = result;
+    throw blurErr;
   },
 
   async ensureImageCompression() {
@@ -2545,6 +2646,7 @@ const Dashboard = {
           );
         },
       });
+      await this.reviewKycPhotoClarity(kind, compressed);
       this._kycCompressedFiles[kind] = compressed;
       const same = compressed === file || compressed.size >= file.size * 0.98;
       this.setKycPhotoStatus(
@@ -2577,6 +2679,7 @@ const Dashboard = {
       e.preventDefault();
       this.submitKycForm();
     });
+    $('kycManualSupportBtn')?.addEventListener('click', () => this.routeKycToManualSupport());
 
     const photoInputs = [
       ['kycFrontPhoto', 'front'],
@@ -2598,6 +2701,10 @@ const Dashboard = {
 
   async submitKycForm() {
     if ($('kycFormError')) $('kycFormError').textContent = '';
+    if (this.kycPrefilter()?.isLocked(this.kycSessionUserId())) {
+      this.routeKycToManualSupport();
+      return;
+    }
     const frontInput = $('kycFrontPhoto');
     const backInput = $('kycBackPhoto');
     const selfieInput = $('kycSelfiePhoto');
@@ -2626,17 +2733,38 @@ const Dashboard = {
     }
 
     this.setKycSubmitBusy(true);
-    this.setKycCompressBanner('Compressing photos before upload…', true);
+    this.setKycCompressBanner('Checking photo clarity…', true);
+
+    let front;
+    let back;
+    let selfie;
+    try {
+      front = this._kycCompressedFiles.front
+        || await this.prepareKycPhoto('front', frontRaw);
+      back = this._kycCompressedFiles.back
+        || await this.prepareKycPhoto('back', backRaw);
+      selfie = this._kycCompressedFiles.selfie
+        || await this.prepareKycPhoto('selfie', selfieRaw);
+      if (!this._kycCompressedFiles.front) await this.reviewKycPhotoClarity('front', front);
+      if (!this._kycCompressedFiles.back) await this.reviewKycPhotoClarity('back', back);
+    } catch (err) {
+      const filter = this.kycPrefilter();
+      if (err.code === 'KYC_PHOTO_BLURRY') {
+        if ($('kycFormError')) $('kycFormError').textContent = filter?.BLUR_ALERT || err.message;
+        window.alert(filter?.BLUR_ALERT || err.message);
+        this.noteKycAttemptFailed();
+      } else if ($('kycFormError')) {
+        $('kycFormError').textContent = err.message || 'Could not check the ID photo';
+      }
+      this.setKycCompressBanner('', false);
+      this.setKycSubmitBusy(false);
+      this.applyKycAttemptLock();
+      return;
+    }
+
+    this.setKycCompressBanner('Uploading compressed photos…', true);
 
     try {
-      const front = this._kycCompressedFiles.front
-        || await this.prepareKycPhoto('front', frontRaw);
-      const back = this._kycCompressedFiles.back
-        || await this.prepareKycPhoto('back', backRaw);
-      const selfie = this._kycCompressedFiles.selfie
-        || await this.prepareKycPhoto('selfie', selfieRaw);
-
-      this.setKycCompressBanner('Uploading compressed photos…', true);
 
       const formData = new FormData();
       formData.append('full_name', $('kycFullName')?.value?.trim() || '');
@@ -2661,6 +2789,7 @@ const Dashboard = {
     } catch (err) {
       if ($('kycFormError')) $('kycFormError').textContent = err.message || 'Failed to submit KYC';
       if (err.code === 'KYC_REQUIRED') this.showKycGateModal(err.message);
+      else this.noteKycAttemptFailed();
     } finally {
       this.setKycCompressBanner('', false);
       this.setKycSubmitBusy(false);
@@ -4538,22 +4667,31 @@ const Dashboard = {
   },
 
   bindCardSelector() {
-    $('cardSelect').onchange = () => {
-      const idx = parseInt($('cardSelect').value, 10);
-      if (!Number.isNaN(idx)) this.selectCard(idx);
-    };
+    const cardSelect = $('cardSelect');
+    if (cardSelect) {
+      cardSelect.onchange = () => {
+        const idx = parseInt(cardSelect.value, 10);
+        if (!Number.isNaN(idx)) this.selectCard(idx);
+      };
+    }
 
-    $('btnPrevCard').onclick = () => {
-      if (!this.allCards.length) return;
-      const next = (this.activeCardIndex - 1 + this.allCards.length) % this.allCards.length;
-      this.selectCard(next);
-    };
+    const prev = $('btnPrevCard');
+    if (prev) {
+      prev.onclick = () => {
+        if (!this.allCards.length) return;
+        const next = (this.activeCardIndex - 1 + this.allCards.length) % this.allCards.length;
+        this.selectCard(next);
+      };
+    }
 
-    $('btnNextCard').onclick = () => {
-      if (!this.allCards.length) return;
-      const next = (this.activeCardIndex + 1) % this.allCards.length;
-      this.selectCard(next);
-    };
+    const nextBtn = $('btnNextCard');
+    if (nextBtn) {
+      nextBtn.onclick = () => {
+        if (!this.allCards.length) return;
+        const next = (this.activeCardIndex + 1) % this.allCards.length;
+        this.selectCard(next);
+      };
+    }
   },
 
   cardThumbLabel(card) {
@@ -5687,7 +5825,8 @@ const Dashboard = {
       }
     });
 
-    $('btnLoadCard').onclick = () => this.loadAllCards({ forceRefresh: true });
+    const loadCardBtn = $('btnLoadCard');
+    if (loadCardBtn) loadCardBtn.onclick = () => this.loadAllCards({ forceRefresh: true });
     $('btnShowCardDetails')?.addEventListener('click', () => this.openCardDetailsForActiveCard());
     $('cardStatusHero')?.addEventListener('click', () => {
       if (!this.allCards.length) return;
@@ -5735,7 +5874,8 @@ const Dashboard = {
     $('btnLoadDeposits')?.addEventListener('click', () => this.loadDepositHistory());
     $('btnLoadCardReloads')?.addEventListener('click', () => this.loadReloadHistory());
 
-    $('supportForm').onsubmit = async (e) => {
+    const supportForm = $('supportForm');
+    if (supportForm) supportForm.onsubmit = async (e) => {
       e.preventDefault();
       try {
         await Auth.api('POST', '/api/support/threads', {

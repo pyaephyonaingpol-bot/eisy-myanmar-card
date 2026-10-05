@@ -261,6 +261,12 @@
       state.view = 'list';
       render();
     });
+    const draft = state.draft || {};
+    if (el('scCategory') && draft.category) el('scCategory').value = draft.category;
+    if (el('scPriority') && draft.priority) el('scPriority').value = draft.priority;
+    if (el('scSubject') && draft.subject) el('scSubject').value = draft.subject;
+    if (el('scMessage') && draft.message) el('scMessage').value = draft.message;
+
     el('supportChatComposeForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const errEl = el('scComposeError');
@@ -275,6 +281,7 @@
           subject: el('scSubject')?.value.trim() || 'Support request',
           message: el('scMessage')?.value.trim(),
         });
+        state.draft = null;
         await refreshThreads();
         if (data.thread?.id) openThread(data.thread.id);
       } catch (err) {
@@ -388,9 +395,29 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 
+  function openTicket(draft) {
+    ensureMounted();
+    if (!(global.Auth && Auth.isLoggedIn && Auth.isLoggedIn())) {
+      alert('Please sign in to chat with support.');
+      return;
+    }
+    state.draft = {
+      subject: draft?.subject || 'KYC verification — manual review',
+      message: draft?.message || '',
+      category: draft?.category || 'card_issuing',
+      priority: draft?.priority || 'high',
+    };
+    state.open = true;
+    state.view = 'compose';
+    el('supportChatPanel')?.classList.remove('hidden');
+    render();
+    startPolling();
+  }
+
   global.SupportChat = {
     open: () => setOpen(true),
     close: () => setOpen(false),
+    openTicket: openTicket,
     refresh: refreshThreads,
   };
 })(window);
