@@ -460,7 +460,7 @@ const Auth = {
       }
     }
 
-    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/+esm');
     const client = createClient(cfg.url, cfg.anonKey, {
       auth: {
         persistSession: true,
@@ -504,7 +504,7 @@ const Auth = {
     }
 
     if (!accessToken) {
-      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/+esm');
       const client = createClient(cfg.url, cfg.anonKey, {
         auth: {
           persistSession: true,
@@ -514,9 +514,13 @@ const Auth = {
           storageKey: 'eisy-supabase-auth',
         },
       });
-      const url = new URL(window.location.href);
-      if (url.searchParams.get('code')) {
-        const exchanged = await client.auth.exchangeCodeForSession(window.location.href);
+      const callbackUrl = new URL(window.location.href);
+      const callbackError = callbackUrl.searchParams.get('error_description') || callbackUrl.searchParams.get('error');
+      if (callbackError) throw new Error(callbackError);
+      const code = callbackUrl.searchParams.get('code');
+      const flowId = callbackUrl.searchParams.get('sb_flow_id');
+      if (code) {
+        const exchanged = await client.auth.exchangeCodeForSession(code, flowId ? { flowId } : undefined);
         accessToken = exchanged.data?.session?.access_token || null;
         if (!accessToken) {
           const sessionResult = await client.auth.getSession();
