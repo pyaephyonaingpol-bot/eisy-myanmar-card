@@ -643,58 +643,32 @@ const GOOGLE_TOKEN_VERIFY_TIMEOUT_MS = parseInt(
   10
 );
 
-function decodeJwtPayloadUnsafe(token) {
-  const parts = String(token || '').split('.');
-  if (parts.length < 2) return null;
-  try {
-    const json = Buffer.from(parts[1], 'base64url').toString('utf8');
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
-
 /**
- * Prefer local HS256 verify with SUPABASE_JWT_SECRET (no network).
- * Fall back to a single timed auth.getUser — never dual remote round-trips.
+ * Verify ES256 tokens with the project JWKS, and HS256 only when the token
+ * header says HS256. A stale HMAC secret must not reject Google sign-in.
+ * Fall back to a single timed auth.getUser when local verification cannot.
  */
 async function verifySupabaseAccessToken(accessToken) {
   const token = String(accessToken || '').trim();
   const { firstEnv } = require('../lib/envAliases');
+  const { verifySupabaseJwtLocally } = require('../lib/supabaseJwt');
   const jwtSecret = String(
     firstEnv('SUPABASE_JWT_SECRET', 'JWT_SECRET_SUPABASE') || ''
   ).trim();
 
-  if (jwtSecret) {
-    const parts = token.split('.');
-    if (parts.length !== 3) throw new Error('Malformed Supabase access token');
-    const [headerB64, payloadB64, sigB64] = parts;
-    const data = `${headerB64}.${payloadB64}`;
-    const expected = crypto
-      .createHmac('sha256', jwtSecret)
-      .update(data)
-      .digest();
-    let sigBuf;
-    try {
-      sigBuf = Buffer.from(sigB64, 'base64url');
-    } catch {
-      throw new Error('Invalid Supabase access token encoding');
+  let jwksUrl = '';
+  try {
+    const { getSupabaseConfig } = require('../lib/supabase');
+    const { url } = getSupabaseConfig();
+    if (url && /^https?:\/\//i.test(url)) {
+      jwksUrl = `${url.replace(/\/+$/, '')}/auth/v1/.well-known/jwks.json`;
     }
-    if (sigBuf.length !== expected.length || !crypto.timingSafeEqual(sigBuf, expected)) {
-      throw new Error('Invalid Supabase access token signature');
-    }
-    const payload = decodeJwtPayloadUnsafe(token);
-    if (!payload?.sub) throw new Error('Supabase token missing subject');
-    if (payload.exp && Date.now() / 1000 > Number(payload.exp)) {
-      throw new Error('Supabase access token expired');
-    }
-    return {
-      id: payload.sub,
-      email: payload.email || payload.user_metadata?.email || null,
-      user_metadata: payload.user_metadata || {},
-      app_metadata: payload.app_metadata || {},
-    };
+  } catch (err) {
+    console.warn('[auth] Supabase JWKS URL unavailable:', err.message);
   }
+
+  const localUser = await verifySupabaseJwtLocally(token, { jwtSecret, jwksUrl });
+  if (localUser) return localUser;
 
   const { getSupabase } = require('../lib/supabase');
   const admin = getSupabase();
@@ -824,6 +798,7 @@ module.exports = {
   verifyLoginOtp,
   loginWithPin,
   loginWithGoogleOAuth,
+  verifySupabaseAccessToken,
   setPin,
   verifyPinCode,
   resetPinToDefault,

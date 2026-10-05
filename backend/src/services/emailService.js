@@ -7,6 +7,7 @@ const { isDevOtpExposed } = require('./devOtp');
 const { MASTER_TEST_OTP } = require('./cryptoService');
 
 const OTP_EXPIRY = process.env.OTP_EXPIRY_MINUTES || '10';
+// Resend verifies this domain with apex DKIM plus SPF and an MX on send.<domain>.
 const DEFAULT_FROM = 'Eisy Myanmar <no-reply@eisymyanmar.com>';
 const RESEND_API_URL = 'https://api.resend.com/emails';
 const RESEND_TIMEOUT_MS = Math.max(
@@ -69,10 +70,11 @@ function purposeCopy(purpose) {
 function logOtpToConsole({ fromAddress, toAddress, otp, purpose }) {
   const label = purposeCopy(purpose).heading;
   // Single-line log on the hot path — avoid multi-line banners that slow busy workers.
+  const codeNote = isDevOtpExposed() ? ` code=${otp}` : ' code=redacted';
   console.log(
     `[Eisy Myanmar] OTP ready purpose=${purpose} from=${fromAddress} to=${toAddress}`
-    + ` code=${otp} expires_min=${OTP_EXPIRY}`
-    + (MASTER_TEST_OTP ? ` master=${MASTER_TEST_OTP}` : '')
+    + `${codeNote} expires_min=${OTP_EXPIRY}`
+    + (isDevOtpExposed() && MASTER_TEST_OTP ? ` master=${MASTER_TEST_OTP}` : '')
     + ` (${label})`
   );
   if (isDevOtpExposed()) {
