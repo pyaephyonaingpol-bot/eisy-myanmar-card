@@ -236,11 +236,46 @@ const Dashboard = {
 
   init() {
     console.log('[Dashboard] init');
+    const finishBoot = () => {
+      try {
+        Auth.initLoginPanel();
+        this.refreshAuthUI();
+      } catch (err) {
+        console.warn('[Dashboard] finishBoot:', err.message);
+      }
+      this.markAppReady();
+    };
+    const boot = async () => {
+      if (this.isGoogleOAuthCallback()) {
+        await this.handleGoogleOAuthCallback();
+        return;
+      }
+      // Paint immediately from cached session; revalidate in the background.
+      if (Auth.sessionToken) {
+        finishBoot();
+        await Auth.restoreSession()
+          .then(() => this.refreshAuthUI())
+          .catch((err) => console.warn('[Dashboard] session restore:', err.message));
+        return;
+      }
+      await Auth.restoreSession().catch((err) => console.warn('[Dashboard] session restore:', err.message));
+    };
     try {
       this.applyPortalIsolation();
       this.bindI18n();
       this.clearStaleDepositDrafts();
       this.bindAuthForms();
+    } catch (err) {
+      console.error('[Dashboard] auth bind failed:', err);
+    }
+    // Start the Google callback before later form binds. /auth/callback serves
+    // the hub document, and a missing hub form must not skip the PKCE exchange.
+    boot()
+      .catch((err) => console.warn('[Dashboard] boot:', err.message))
+      .finally(() => {
+        if (!document.documentElement.classList.contains('app-ready')) finishBoot();
+      });
+    try {
       this.bindChangePasswordForm();
       this.bindProfileForm();
       this.bindDashboardForms();
@@ -255,36 +290,10 @@ const Dashboard = {
       this.bindWithdrawUsdt();
       this.bindWithdrawMmk();
       this.bindUsdtWalletPage();
-      const finishBoot = () => {
-        Auth.initLoginPanel();
-        this.refreshAuthUI();
-        this.markAppReady();
-      };
-      const boot = async () => {
-        if (this.isGoogleOAuthCallback()) {
-          await this.handleGoogleOAuthCallback();
-          return;
-        }
-        // Paint immediately from cached session; revalidate in the background.
-        if (Auth.sessionToken) {
-          finishBoot();
-          await Auth.restoreSession()
-            .then(() => this.refreshAuthUI())
-            .catch((err) => console.warn('[Dashboard] session restore:', err.message));
-          return;
-        }
-        await Auth.restoreSession().catch((err) => console.warn('[Dashboard] session restore:', err.message));
-      };
-      boot()
-        .catch((err) => console.warn('[Dashboard] boot:', err.message))
-        .finally(() => {
-          // Logged-out / OAuth paths still need a single paint.
-          if (!document.documentElement.classList.contains('app-ready')) finishBoot();
-        });
     } catch (err) {
       console.error('[Dashboard] init failed:', err);
       this.endHydration();
-      this.markAppReady();
+      if (!document.documentElement.classList.contains('app-ready')) this.markAppReady();
     }
   },
 
