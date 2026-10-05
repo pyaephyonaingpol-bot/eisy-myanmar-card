@@ -975,8 +975,9 @@
   </div>
 
   <!-- ═══ AUTH SCREEN ═══ -->
-  <div id="authScreen" class="auth-screen">
+  <div id="authScreen" class="auth-screen hidden">
     <div class="auth-card">
+      <button type="button" id="backToDashboardBtn" class="btn btn-secondary btn-sm hidden" data-i18n="back_to_dashboard" style="align-self:flex-start;margin-bottom:0.75rem">← Dashboard</button>
       <div class="auth-brand">
         <img
           class="auth-brand-logo"
@@ -1146,7 +1147,7 @@
   </div>
 
   <!-- ═══ DASHBOARD ═══ -->
-  <div id="dashboardScreen" class="hidden">
+  <div id="dashboardScreen">
     <div class="app-shell" id="userAppShell">
       <div class="sidebar-backdrop" data-sidebar-backdrop aria-hidden="true"></div>
       <aside class="app-sidebar" id="userSidebar" aria-label="Main navigation">
@@ -1263,13 +1264,14 @@
                   <span class="account-menu-caret" aria-hidden="true">▾</span>
                 </button>
                 <div class="account-menu-panel hidden" id="accountMenuPanel" role="menu" aria-labelledby="accountMenuToggle">
-                  <p class="account-menu-heading" data-i18n="account_security_heading">Account &amp; security</p>
-                  <button type="button" role="menuitem" id="unlockBtn" class="account-menu-item" data-i18n="btn_unlock_pin">Unlock PIN</button>
-                  <button type="button" role="menuitem" id="registerBioBtn" class="account-menu-item" data-i18n="btn_register_bio">Register Biometrics</button>
-                  <button type="button" role="menuitem" class="account-menu-item" data-goto="profile" data-i18n="nav_profile">Profile</button>
-                  <button type="button" role="menuitem" class="account-menu-item" data-goto="settings" data-i18n="nav_settings">Settings &amp; Security</button>
-                  <div class="account-menu-divider" role="separator"></div>
-                  <button type="button" role="menuitem" id="logoutBtn" class="account-menu-item danger" data-i18n="btn_logout">Logout</button>
+                  <button type="button" role="menuitem" id="accountSignInBtn" class="account-menu-item hidden" data-account-auth="in" data-i18n="account_sign_in">Sign in</button>
+                  <p class="account-menu-heading" data-account-auth="out" data-i18n="account_security_heading">Account &amp; security</p>
+                  <button type="button" role="menuitem" id="unlockBtn" class="account-menu-item" data-account-auth="out" data-i18n="btn_unlock_pin">Unlock PIN</button>
+                  <button type="button" role="menuitem" id="registerBioBtn" class="account-menu-item" data-account-auth="out" data-i18n="btn_register_bio">Register Biometrics</button>
+                  <button type="button" role="menuitem" class="account-menu-item" data-account-auth="out" data-goto="profile" data-i18n="nav_profile">Profile</button>
+                  <button type="button" role="menuitem" class="account-menu-item" data-account-auth="out" data-goto="settings" data-i18n="nav_settings">Settings &amp; Security</button>
+                  <div class="account-menu-divider" data-account-auth="out" role="separator"></div>
+                  <button type="button" role="menuitem" id="logoutBtn" class="account-menu-item danger" data-account-auth="out" data-i18n="btn_logout">Logout</button>
                 </div>
               </div>
             </div>
@@ -1823,7 +1825,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20260930hubBuyPin"></script>
+  <script defer src="/i18n.js?v=20261005hubLanding"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1848,7 +1850,7 @@
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20261005googleCallback"></script>
+  <script defer src="/dashboard.js?v=20261005hubLanding"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

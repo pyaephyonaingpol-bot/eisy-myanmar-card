@@ -736,6 +736,7 @@ const Dashboard = {
   } = {}) {
     if (!Auth.isLoggedIn?.()) {
       this.toast?.('Sign in to purchase', 'error');
+      this.showHubSignIn();
       return;
     }
 
@@ -1084,6 +1085,7 @@ const Dashboard = {
     this.updateReloadWalletHint();
     this.updateCardPricingBreakdown();
     this.updateHomeRateSummary();
+    if (this.isHubGateway()) this.syncHubAccountMenu(Auth.isLoggedIn());
     if (Auth.user) {
       // Re-render from cache; only fetch when stale.
       this.loadAllCards({ preserveSelection: true, silent: true, forceRefresh: false });
@@ -5677,6 +5679,9 @@ const Dashboard = {
       });
     });
 
+    $('backToDashboardBtn')?.addEventListener('click', () => this.presentHubHome());
+    $('accountSignInBtn')?.addEventListener('click', () => this.showHubSignIn());
+
     const loginPinForm = $('loginPinForm');
     if (loginPinForm) {
       loginPinForm.addEventListener('submit', async (e) => {
@@ -6185,6 +6190,11 @@ const Dashboard = {
 
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (this.isHubGateway() && !Auth.isLoggedIn()) {
+        setOpen(false);
+        this.showHubSignIn();
+        return;
+      }
       setOpen(!menu.classList.contains('is-open'));
     });
 
@@ -6508,12 +6518,78 @@ const Dashboard = {
     };
   },
 
+  /**
+   * Hub (/) landing: the Kripicard dashboard is the first screen.
+   * Sign-in stays available from Account, not as a full-page wall.
+   */
+  presentHubHome() {
+    if (!this.isHubGateway()) return;
+    const authScreen = $('authScreen');
+    const dashboardScreen = $('dashboardScreen');
+    if (authScreen) authScreen.classList.add('hidden');
+    if (dashboardScreen) dashboardScreen.classList.remove('hidden');
+    $('backToDashboardBtn')?.classList.add('hidden');
+    document.documentElement.classList.toggle('has-session', Auth.isLoggedIn());
+    this.applyHubGateway();
+    this.renderPortalHubChooser();
+    this.renderPortalHeaderNav();
+    this.initNavigationIfNeeded();
+    this.syncHubAccountMenu(Auth.isLoggedIn());
+    if (Auth.isLoggedIn()) this.applySessionUserToUI();
+    this.endHydration();
+    if (typeof AppNav !== 'undefined') {
+      AppNav.navigate('home', { pushHash: true, replace: true });
+    }
+    const heading = document.querySelector('.header .page-heading');
+    const homeTitle = document.querySelector('[data-page-title="home"]');
+    if (heading && homeTitle) heading.textContent = homeTitle.textContent.trim();
+  },
+
+  showHubSignIn() {
+    if (!this.isHubGateway()) return;
+    const authScreen = $('authScreen');
+    const dashboardScreen = $('dashboardScreen');
+    if (dashboardScreen) dashboardScreen.classList.add('hidden');
+    if (authScreen) authScreen.classList.remove('hidden');
+    document.documentElement.classList.remove('has-session');
+    $('backToDashboardBtn')?.classList.remove('hidden');
+    window.scrollTo(0, 0);
+  },
+
+  syncHubAccountMenu(loggedIn) {
+    document.querySelectorAll('[data-account-auth="in"]').forEach((el) => {
+      el.classList.toggle('hidden', loggedIn);
+    });
+    document.querySelectorAll('[data-account-auth="out"]').forEach((el) => {
+      el.classList.toggle('hidden', !loggedIn);
+    });
+    const label = document.querySelector('#accountMenuToggle .account-menu-toggle-label');
+    if (!label || !this.isHubGateway()) return;
+    const key = loggedIn ? 'account_menu' : 'account_sign_in';
+    label.setAttribute('data-i18n', key);
+    label.textContent = typeof t === 'function' ? t(key) : (loggedIn ? 'Account' : 'Sign in');
+  },
+
   refreshAuthUI() {
     const loggedIn = Auth.isLoggedIn();
     const authScreen = $('authScreen');
     const dashboardScreen = $('dashboardScreen');
 
     document.documentElement.classList.toggle('has-session', loggedIn);
+
+    // Root (/) always opens the dashboard. Instant keeps the login gate.
+    if (this.isHubGateway()) {
+      if (!loggedIn) {
+        this.clearCardsCache();
+        this.allCards = [];
+        if (window.location.hash && !window.location.hash.startsWith('#admin')) {
+          history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+      }
+      this.presentHubHome();
+      return;
+    }
+
     if (authScreen) authScreen.classList.toggle('hidden', loggedIn);
     if (dashboardScreen) dashboardScreen.classList.toggle('hidden', !loggedIn);
 
@@ -6523,20 +6599,6 @@ const Dashboard = {
       this.endHydration();
       if (window.location.hash && !window.location.hash.startsWith('#admin')) {
         history.replaceState(null, '', window.location.pathname + window.location.search);
-      }
-      return;
-    }
-
-    // Hub (/) gateway: show Instant entry only — do not load wallets/cards.
-    if (this.isHubGateway()) {
-      this.applyHubGateway();
-      this.renderPortalHubChooser();
-      this.renderPortalHeaderNav();
-      this.initNavigationIfNeeded();
-      this.applySessionUserToUI();
-      this.endHydration();
-      if (typeof AppNav !== 'undefined') {
-        AppNav.navigate('home', { pushHash: true, replace: true });
       }
       return;
     }
