@@ -957,7 +957,9 @@
           <p id="kycSelfiePhotoStatus" class="hint kyc-photo-status" aria-live="polite"></p>
         </div>
         <p id="kycCompressStatus" class="hint kyc-compress-banner hidden" aria-live="polite"></p>
+        <p id="kycAttemptNotice" class="hint hidden" aria-live="polite"></p>
         <p id="kycFormError" class="error-text"></p>
+        <button type="button" id="kycManualSupportBtn" class="btn btn-secondary hidden" style="width:100%;margin-bottom:0.5rem">Open Manual Support Ticket</button>
         <button type="submit" id="kycSubmitBtn" class="btn btn-primary" style="width:100%">Submit for Review</button>
       </form>
     </div>
@@ -1827,8 +1829,9 @@
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20261004prodUi"></script>
-  <script defer src="/supportChat.js?v=20260911supportChat"></script>
+  <script defer src="/src/lib/kycImagePrefilter.js?v=20261005kycBlur"></script>
+  <script defer src="/dashboard.js?v=20261005kycBlur"></script>
+  <script defer src="/supportChat.js?v=20261005kycBlur"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
 </html>
