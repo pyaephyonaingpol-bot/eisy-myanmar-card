@@ -465,7 +465,7 @@ const Auth = {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl: false,
         flowType: 'pkce',
         storageKey: 'eisy-supabase-auth',
       },
@@ -474,6 +474,7 @@ const Auth = {
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        skipBrowserRedirect: true,
         queryParams: { access_type: 'offline', prompt: 'select_account' },
       },
     });
@@ -508,16 +509,21 @@ const Auth = {
         auth: {
           persistSession: true,
           autoRefreshToken: true,
-          detectSessionInUrl: true,
+          detectSessionInUrl: false,
           flowType: 'pkce',
           storageKey: 'eisy-supabase-auth',
         },
       });
       const url = new URL(window.location.href);
       if (url.searchParams.get('code')) {
-        const { data, error } = await client.auth.exchangeCodeForSession(window.location.href);
-        if (error) throw error;
-        accessToken = data?.session?.access_token || null;
+        const exchanged = await client.auth.exchangeCodeForSession(window.location.href);
+        accessToken = exchanged.data?.session?.access_token || null;
+        if (!accessToken) {
+          const sessionResult = await client.auth.getSession();
+          accessToken = sessionResult.data?.session?.access_token || null;
+          if (!accessToken && exchanged.error) throw exchanged.error;
+          if (!accessToken && sessionResult.error) throw sessionResult.error;
+        }
       } else {
         const { data, error } = await client.auth.getSession();
         if (error) throw error;

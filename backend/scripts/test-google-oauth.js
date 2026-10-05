@@ -43,8 +43,13 @@ assert.ok(bridge.includes('redirectTo'), 'redirectTo option');
 assert.ok(bridge.includes('getAuthClient'), 'dedicated auth client');
 assert.ok(bridge.includes('__EISY_SUPABASE_PUBLIC__'), 'uses baked public config');
 assert.ok(bridge.includes('force'), 'supports forced re-init');
-assert.ok(bridge.includes('exchangeCodeForSession') || bridge.includes('getSession'), 'callback session exchange');
+assert.ok(bridge.includes('exchangeCodeForSession'), 'callback code exchange');
+assert.ok(bridge.includes('getSession'), 'falls back when the code was already exchanged');
+assert.ok(bridge.includes('skipBrowserRedirect: true'), 'stores PKCE verifier before navigation');
+assert.ok(bridge.includes('detectSessionInUrl: false'), 'manual exchange is the only callback reader');
 assert.ok(!bridge.includes('Supabase is not configured'), 'bridge avoids generic false-negative text');
+assert.ok(authJs.includes('detectSessionInUrl: false'), 'direct client does not auto-consume the code');
+assert.ok(authJs.includes('skipBrowserRedirect: true'), 'direct client redirects after PKCE storage');
 
 assert.ok(html.includes('supabase-public-config.js'), 'loads baked public config script');
 const baked = read('backend/public/supabase-public-config.js');
@@ -64,6 +69,12 @@ assert.ok(routes.includes('loginWithGoogleOAuth'), 'calls service');
 const service = read('backend/src/services/authService.js');
 assert.ok(service.includes('loginWithGoogleOAuth'), 'service export');
 assert.ok(service.includes('auth.getUser'), 'verifies Supabase user');
+assert.ok(service.includes('verifySupabaseJwtLocally'), 'local ES256/HS256 verify before getUser');
+const jwtLib = read('backend/src/lib/supabaseJwt.js');
+assert.ok(jwtLib.includes("alg === 'ES256'"), 'accepts ES256 access tokens');
+assert.ok(jwtLib.includes("alg === 'HS256'"), 'HMAC only for HS256 tokens');
+assert.ok(service.includes('jwks.json'), 'loads project JWKS');
+assert.ok(routes.includes('GOOGLE_TOKEN_TIMEOUT'), 'timeout is its own status');
 assert.ok(service.includes("provider: 'google'") || service.includes('Google OAuth'), 'google metadata');
 
 const server = read('backend/src/index.js');

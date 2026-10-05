@@ -102,7 +102,7 @@ const SupabaseBridge = {
         auth: {
           persistSession: true,
           autoRefreshToken: true,
-          detectSessionInUrl: true,
+          detectSessionInUrl: false,
           flowType: 'pkce',
           storageKey: 'eisy-supabase-auth',
         },
@@ -118,6 +118,7 @@ const SupabaseBridge = {
       provider: 'google',
       options: {
         redirectTo: target,
+        skipBrowserRedirect: true,
         queryParams: { access_type: 'offline', prompt: 'select_account' },
       },
     });
@@ -135,11 +136,17 @@ const SupabaseBridge = {
     const url = new URL(window.location.href);
     const code = url.searchParams.get('code');
     if (code) {
-      const { data, error } = await client.auth.exchangeCodeForSession(window.location.href);
-      if (error) throw error;
-      const token = data?.session?.access_token;
-      if (!token) throw new Error('Google Sign-In did not return a session');
-      return { accessToken: token, user: data.session.user || null };
+      const exchanged = await client.auth.exchangeCodeForSession(window.location.href);
+      const exchangedToken = exchanged.data?.session?.access_token;
+      if (!exchanged.error && exchangedToken) {
+        return { accessToken: exchangedToken, user: exchanged.data.session.user || null };
+      }
+      const sessionResult = await client.auth.getSession();
+      const token = sessionResult.data?.session?.access_token;
+      if (token) return { accessToken: token, user: sessionResult.data.session.user || null };
+      if (exchanged.error) throw exchanged.error;
+      if (sessionResult.error) throw sessionResult.error;
+      throw new Error('Google Sign-In did not return a session');
     }
     const { data, error } = await client.auth.getSession();
     if (error) throw error;

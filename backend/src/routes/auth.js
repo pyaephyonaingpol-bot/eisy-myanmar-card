@@ -245,9 +245,11 @@ router.post('/oauth/google', async (req, res) => {
       code === 'GOOGLE_EMAIL_REQUIRED' ||
       code === 'GOOGLE_NOT_CONFIGURED'
         ? 400
-        : code === 'GOOGLE_TOKEN_INVALID'
+        : code === 'GOOGLE_TOKEN_INVALID' || code === 'GOOGLE_TOKEN_EXPIRED'
           ? 401
-          : 400;
+          : code === 'GOOGLE_TOKEN_TIMEOUT'
+            ? 503
+            : 400;
     console.warn('[auth] Google OAuth failed:', code, err.message);
     res.status(status).json({ error: err.message || 'Google Sign-In failed', code });
   }
