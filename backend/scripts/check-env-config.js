@@ -25,6 +25,13 @@ const GROUPS = [
     ],
   },
   {
+    title: 'Google OAuth (NextAuth names are unused)',
+    keys: [
+      ['AUTH_GOOGLE_ID', ['AUTH_GOOGLE_ID', 'GOOGLE_CLIENT_ID']],
+      ['AUTH_GOOGLE_SECRET', ['AUTH_GOOGLE_SECRET', 'GOOGLE_CLIENT_SECRET']],
+    ],
+  },
+  {
     title: 'Supabase',
     keys: [
       ['NEXT_PUBLIC_SUPABASE_URL', ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL']],
@@ -92,5 +99,6 @@ console.log('- Put secrets in Vercel / Cursor Cloud env UIs — never commit .en
 console.log('- Paste BARE values only (no KEY=value text, no markdown links).');
 console.log('- Prefer a dedicated TRON_HD_MNEMONIC; do not reuse MASTER_PRIVATE_KEY as HD seed long-term.');
 console.log('- Re-check after updating secrets: node backend/scripts/check-env-config.js');
+console.log('- Google Sign-In uses the Supabase Auth provider. AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET are NextAuth names and are not read.');
 
 process.exit(missingCritical ? 1 : 0);
