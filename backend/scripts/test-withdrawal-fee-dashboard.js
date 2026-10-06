@@ -132,7 +132,7 @@ async function testSettingsAndBreakdown() {
   assert.strictEqual(settings.minimum_usdt_withdrawal, 25);
   assert.strictEqual(settings.usdt_withdraw_fee_trc20_type, 'percent');
   assert.strictEqual(settings.usdt_withdraw_fee_bank_type, 'percent');
-  assert.strictEqual(settings.withdraw_payout_provider, 'kripicard');
+  assert.strictEqual(settings.withdraw_payout_provider, 'platform');
   assert.strictEqual(settings.withdraw_processing_hours, 48);
 
   const rawPayment = await db.get(
@@ -144,7 +144,7 @@ async function testSettingsAndBreakdown() {
   assert.strictEqual(bankBreakdown.fee_usdt, 4, '100 USDT at forced 4% = 4 USDT fee');
   assert.strictEqual(bankBreakdown.minimum_usdt_withdrawal, 25);
   assert.ok(bankBreakdown.fee_label.includes('4%'), 'fee label shows 4%');
-  assert.strictEqual(bankBreakdown.kripicard_network_fee_usdt, 3);
+  assert.strictEqual(bankBreakdown.network_fee_usdt, 3);
   assert.strictEqual(bankBreakdown.platform_margin_usdt, 1);
 
   const trc20Breakdown = calculateWithdrawalBreakdown(100, 'TRC20', settings);

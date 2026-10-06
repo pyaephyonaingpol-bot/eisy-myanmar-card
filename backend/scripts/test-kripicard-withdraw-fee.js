@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Kripicard withdrawal markup: 4% (3% network + 1% platform) + 48h processing SLA.
+ * Withdrawal markup: 4% (3% network + 1% platform) + 48h processing SLA.
  */
 'use strict';
 
@@ -11,28 +11,26 @@ const path = require('path');
 process.chdir(path.join(__dirname, '..'));
 
 const {
-  KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT,
+  NETWORK_FEE_PERCENT,
   PLATFORM_WITHDRAW_MARGIN_PERCENT,
   WITHDRAW_MARKUP_PERCENT,
   WITHDRAW_PROCESSING_HOURS,
   WITHDRAW_PAYOUT_PROVIDER,
   splitWithdrawMarkup,
-} = require('../src/constants/kripicardWithdrawFees');
+} = require('../src/constants/withdrawMarkupPolicy');
 const { calculateWithdrawalBreakdown } = require('../src/services/settingsService');
 
-assert.strictEqual(KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT, 3);
+assert.strictEqual(NETWORK_FEE_PERCENT, 3);
 assert.strictEqual(PLATFORM_WITHDRAW_MARGIN_PERCENT, 1);
 assert.strictEqual(WITHDRAW_MARKUP_PERCENT, 4);
 assert.strictEqual(WITHDRAW_PROCESSING_HOURS, 48);
-assert.strictEqual(WITHDRAW_PAYOUT_PROVIDER, 'kripicard');
+assert.strictEqual(WITHDRAW_PAYOUT_PROVIDER, 'platform');
 
 const split = splitWithdrawMarkup(100);
 assert.strictEqual(split.fee_usdt, 4);
-assert.strictEqual(split.kripicard_network_fee_usdt, 3);
+assert.strictEqual(split.network_fee_usdt, 3);
 assert.strictEqual(split.platform_margin_usdt, 1);
 assert.ok(split.fee_label.includes('4%'));
-assert.ok(split.fee_label.includes('3%'));
-assert.ok(split.fee_label.includes('1%'));
 assert.ok(split.processing_label.includes('48'));
 
 const settings = {
@@ -51,11 +49,11 @@ const settings = {
 const trc20 = calculateWithdrawalBreakdown(100, 'TRC20', settings);
 assert.strictEqual(trc20.fee_usdt, 4);
 assert.strictEqual(trc20.net_usdt, 96);
-assert.strictEqual(trc20.kripicard_network_fee_usdt, 3);
+assert.strictEqual(trc20.network_fee_usdt, 3);
 assert.strictEqual(trc20.platform_margin_usdt, 1);
 assert.strictEqual(trc20.processing_hours, 48);
-assert.strictEqual(trc20.payout_provider, 'kripicard');
-assert.ok(trc20.fee_label.includes('Kripicard'));
+assert.strictEqual(trc20.payout_provider, 'platform');
+assert.ok(!/Kripicard/i.test(trc20.fee_label));
 assert.ok(trc20.summary.includes('48'));
 
 const bank = calculateWithdrawalBreakdown(100, 'BANK', settings);
@@ -64,7 +62,6 @@ assert.strictEqual(bank.net_usdt, 96);
 assert.strictEqual(bank.amount_mmk, 96 * 4500);
 assert.ok(bank.summary.includes('48'));
 
-// Drifted admin settings must not bypass the forced 4% Kripicard markup.
 const drifted = calculateWithdrawalBreakdown(100, 'TRC20', {
   ...settings,
   withdrawal_service_fee_percent: 2,
@@ -75,7 +72,7 @@ const drifted = calculateWithdrawalBreakdown(100, 'TRC20', {
   payment_service_fee_mode: 'fixed',
 });
 assert.strictEqual(drifted.fee_usdt, 4);
-assert.strictEqual(drifted.kripicard_network_fee_usdt, 3);
+assert.strictEqual(drifted.network_fee_usdt, 3);
 assert.strictEqual(drifted.platform_margin_usdt, 1);
 
 const mig = fs.readFileSync(path.join(__dirname, '../migrations/066_kripicard_withdraw_fee_4pct.sql'), 'utf8');
@@ -84,14 +81,16 @@ assert.ok(mig.includes("'percent'"), 'migration sets percent mode');
 
 const svc = fs.readFileSync(path.join(__dirname, '../src/services/withdrawalService.js'), 'utf8');
 assert.ok(svc.includes('WITHDRAW_PROCESSING_HOURS'), 'service references 48h constant');
-assert.ok(svc.includes("payout_provider: WITHDRAW_PAYOUT_PROVIDER") || svc.includes('kripicard'), 'kripicard payout provider');
+assert.ok(svc.includes('payout_provider: WITHDRAW_PAYOUT_PROVIDER'), 'platform payout provider');
+assert.ok(!/Kripicard/.test(svc), 'withdrawal service has no card-provider brand');
 
 const settingsSrc = fs.readFileSync(path.join(__dirname, '../src/services/settingsService.js'), 'utf8');
 assert.ok(settingsSrc.includes('forcedSettings') || settingsSrc.includes('WITHDRAW_MARKUP_PERCENT'), 'fee math forces markup');
+assert.ok(!fs.existsSync(path.join(__dirname, '../src/constants/kripicardWithdrawFees.js')));
 
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 assert.ok(html.includes('data-payout-system="tron"'));
 assert.ok(html.includes('value="TRC20"'));
 assert.ok(!/Kripicard/i.test(html));
 
-console.log('Kripicard withdraw fee 4% + 48h — ok');
+console.log('Withdraw fee 4% + 48h — ok');

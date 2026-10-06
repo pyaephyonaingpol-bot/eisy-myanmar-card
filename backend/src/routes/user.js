@@ -14,9 +14,6 @@ const CardReloadRequest = require('../models/CardReloadRequest');
 const { walletPayload, formatUsdt, migrateLegacyUsdToMmk } = require('../services/walletService');
 const { overlayWalletPayloadFromSupabase } = require('../services/supabaseWalletReadService');
 const { ensureSupabaseUserWalletInBackground } = require('../services/supabaseSyncService');
-const {
-  reloadCardFromUsdtWallet,
-} = require('../services/kripicardCardWalletService');
 const { mapPublicUser, updateUserProfile } = require('../services/profileService');
 const {
   isPendingCardRecord,
@@ -25,13 +22,6 @@ const {
   isCardReloadAllowed,
   isCardVisibleInUserList,
 } = require('../constants/cardStatuses');
-const {
-  isTemporaryCardProviderOutage,
-  cardProviderMaintenancePayload,
-  cardIssuancePausedPayload,
-  CARD_ISSUANCE_PAUSED,
-} = require('../../../lib/kripicardCardMaintenance');
-
 const router = express.Router();
 
 function resolveClientCardStatus(c) {
@@ -63,127 +53,15 @@ function mapCardForClient(c) {
     // Bitnob / Standard providers are retired — never expose them to clients.
     provider: (() => {
       const p = String(metadata.provider || '').toLowerCase();
-      if (p === 'kripicard') return 'kripicard';
       if (!p || p === 'bitnob' || p === 'bitnod' || p === 'standard') return null;
       return 'legacy';
     })(),
-    card_flow: metadata.card_flow
-      || (String(metadata.provider || '').toLowerCase() === 'kripicard' ? 'instant' : null),
+    card_flow: metadata.card_flow || null,
     funding_wallet: metadata.wallet_type || metadata.payment_method || null,
     created_at: c.created_at,
     activated_at: metadata.activated_at || c.activated_at || null,
     label: pending ? 'Pending request' : `Card •••• ${last4}${c.is_primary ? ' (Primary)' : ''}`,
     last4,
-  };
-}
-
-function respondCardPurchaseError(res, err, logTag) {
-  const message = String(err?.message || 'Unexpected error');
-  const code = err?.code;
-
-  if (err?.maintenance === true || isTemporaryCardProviderOutage(err)) {
-    const payload = code === CARD_ISSUANCE_PAUSED
-      ? cardIssuancePausedPayload()
-      : cardProviderMaintenancePayload(err);
-    if (err.refunded != null) payload.refunded = err.refunded;
-    else if (err.refund_failed === true) payload.refunded = false;
-    else if (err.refund_failed === false) payload.refunded = true;
-    console.warn(
-      `[${logTag}] card maintenance`,
-      payload.code,
-      err?.cause_code || code || '',
-      err?.providerCode || err?.provider_code || ''
-    );
-    return res.status(503).json(payload);
-  }
-
-  if (code === 'INSUFFICIENT_USDT_BALANCE') {
-    return res.status(400).json({
-      error: message,
-      code,
-      required_usdt: err.required_usdt,
-      available_usdt: err.available_usdt,
-    });
-  }
-  if (
-    code === 'USDT_ONLY_CARD_ISSUANCE'
-    || code === 'INVALID_NAME_ON_CARD'
-    || code === 'INVALID_AMOUNT'
-    || code === 'INVALID_BIN'
-    || code === 'KRIPICARD_NOT_CONFIGURED'
-    || code === 'SUPABASE_NOT_CONFIGURED'
-  ) {
-    const status = (
-      code === 'KRIPICARD_NOT_CONFIGURED'
-      || code === 'SUPABASE_NOT_CONFIGURED'
-    )
-      ? 503
-      : 400;
-    return res.status(status).json({
-      error: message,
-      code,
-      kyc_status: err.kyc_status || undefined,
-    });
-  }
-  if (
-    code === 'KRIPICARD_HTTP_ERROR'
-    || code === 'KRIPICARD_API_ERROR'
-    || code === 'KRIPICARD_TIMEOUT'
-  ) {
-    return res.status(502).json({
-      error: message || 'Card provider issuance failed',
-      code,
-      provider_status: err.status,
-      refunded: !err.refund_failed,
-    });
-  }
-  if (
-    code === 'SUPABASE_CARD_PURCHASE_RPC_MISSING'
-    || code === 'SUPABASE_RPC_ERROR'
-    || code === 'PGRST202'
-    || code === 'PGRST205'
-    || code === 'USER_CARD_STORE_FAILED'
-  ) {
-    return res.status(503).json({
-      error: message,
-      code: code === 'PGRST202' || code === 'PGRST205'
-        ? 'SUPABASE_CARD_PURCHASE_RPC_MISSING'
-        : code,
-    });
-  }
-  if (
-    message.includes('Minimum initial deposit')
-    || message.includes('must be')
-    || message.includes('pending')
-  ) {
-    return res.status(400).json({ error: message, code });
-  }
-  console.error(`[${logTag}]`, err);
-  return res.status(500).json({ error: 'Internal server error', code: code || 'CARD_PURCHASE_FAILED' });
-}
-
-function buildCardPurchaseSuccessPayload(result) {
-  return {
-    success: true,
-    paid_from_wallet: true,
-    pending: Boolean(result.pending),
-    issued: Boolean(result.issued),
-    wallet_type: result.wallet_type || 'usdt',
-    ledger: 'master_wallet',
-    message: result.message,
-    card: mapCardForClient(result.card),
-    card_request_id: result.card?.id,
-    provider_card_id: result.provider_card_id || null,
-    bin: result.bin || null,
-    pricing_breakdown: {
-      ...result.pricing,
-      payment_method: 'Master Wallet',
-    },
-    wallet: {
-      debited_usdt: result.wallet_debit_usdt,
-      balance_usdt: result.balance_usdt,
-      usdt_formatted: formatUsdt(result.balance_usdt ?? result.wallet_debit_usdt),
-    },
   };
 }
 
@@ -341,11 +219,10 @@ router.patch('/profile', requireAuth, async (req, res) => {
 router.get('/wallet/deposit-addresses', requireAuth, async (req, res) => {
   try {
     const settings = await getUsdtDepositSettings();
-    const { isTronWalletEnabled } = require('../services/securityFlags');
+    const { isTronDepositEnabled } = require('../services/securityFlags');
     let trc20Address = settings.usdt_trc20_address;
     let trc20Source = 'shared';
-    // Per-user HD TRON addresses are retired — deposits use Kripicard pay_address.
-    if (isTronWalletEnabled()) {
+    if (isTronDepositEnabled()) {
       try {
         const { generateUserDepositAddress } = require('../services/tronWalletService');
         const assigned = await generateUserDepositAddress(req.user.id);
@@ -356,29 +233,16 @@ router.get('/wallet/deposit-addresses', requireAuth, async (req, res) => {
       } catch (err) {
         console.warn('[user/wallet/deposit-addresses] HD resolve skipped:', err.message);
       }
-    } else {
-      trc20Source = 'kripicard';
-      trc20Address = null;
     }
     res.json({
       usdt_trc20_address: trc20Address,
-      usdt_bep20_address: settings.usdt_bep20_address,
+      usdt_bep20_address: null,
       minimum_usdt_deposit: settings.minimum_usdt_deposit,
       trc20_address_source: trc20Source,
-      deposit_provider: isTronWalletEnabled() ? 'tron_wallet' : 'kripicard',
-      networks: isTronWalletEnabled()
-        ? [
-          { id: 'TRC20', label: 'TRC20 (Tron)', address: trc20Address, source: trc20Source },
-          { id: 'BEP20', label: 'BEP20 (BSC)', address: settings.usdt_bep20_address },
-        ]
-        : [
-          {
-            id: 'KRIPICARD',
-            label: 'Kripicard (unique pay address per top-up)',
-            address: null,
-            source: 'kripicard',
-          },
-        ],
+      deposit_provider: 'tron-hd',
+      networks: [
+        { id: 'TRC20', label: 'TRC20 (Tron)', address: trc20Address, source: trc20Source },
+      ],
     });
   } catch (err) {
     console.error('[user/wallet/deposit-addresses]', err);
@@ -459,72 +323,12 @@ router.get('/card', requireAuth, requireSensitive, async (req, res) => {
   }
 });
 
-// Instant Card (Kripicard / Master Wallet) routes.
-const instantCardRoutes = require('./instantCard').attachHelpers({
-  respondCardPurchaseError,
-  buildCardPurchaseSuccessPayload,
-});
-router.use(instantCardRoutes);
-
-router.post('/card/reload', requireAuth, requireSensitive, async (req, res) => {
-  try {
-    const walletType = String(req.body.wallet_type || 'usdt').toLowerCase();
-    const cardId = parseInt(req.body.card_id, 10);
-    const amountUsdt = parseFloat(req.body.amount_usdt);
-
-    if (walletType !== 'usdt' || req.body.amount_mmk != null) {
-      return res.status(400).json({
-        error: 'Card reload accepts USDT wallet payment only. MMK wallet and KBZPay/WavePay are not supported.',
-        code: 'USDT_ONLY_CARD_RELOAD',
-      });
-    }
-
-    if (req.body.pay_from_wallet === false || req.body.payment_method || req.body.payment_method_id) {
-      return res.status(400).json({
-        error: 'Card reload accepts USDT wallet payment only.',
-        code: 'USDT_ONLY_CARD_RELOAD',
-      });
-    }
-
-    if (!cardId) {
-      return res.status(400).json({ error: 'card_id is required — select a card to reload' });
-    }
-
-    if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) {
-      return res.status(400).json({ error: 'Positive amount_usdt is required' });
-    }
-
-    const result = await reloadCardFromUsdtWallet(req.user.id, { cardId, amountUsdt });
-    return res.json({
-      success: true,
-      paid_from_wallet: true,
-      pending: Boolean(result.pending),
-      reload_request_id: result.reload_request_id,
-      wallet_type: 'usdt',
-      message: result.message,
-      reload_request: result.reload_request,
-      pricing_breakdown: result.pricing,
-      wallet: {
-        debited_usdt: result.wallet_debit_usdt,
-        balance_usdt: result.balance_usdt,
-        usdt_formatted: formatUsdt(result.balance_usdt),
-      },
-    });
-  } catch (err) {
-    if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
-      return res.status(400).json({
-        error: err.message,
-        code: err.code,
-        required_usdt: err.required_usdt,
-        available_usdt: err.available_usdt,
-      });
-    }
-    if (err.message.includes('Minimum') || err.message.includes('Amount') || err.message.includes('too small')) {
-      return res.status(400).json({ error: err.message });
-    }
-    console.error('[user/card/reload]', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+router.post('/card/reload', requireAuth, requireSensitive, (_req, res) => {
+  res.status(410).json({
+    success: false,
+    error: 'Virtual card funding is no longer available.',
+    code: 'CARD_FEATURES_REMOVED',
+  });
 });
 
 router.get('/transactions', requireAuth, async (req, res) => {

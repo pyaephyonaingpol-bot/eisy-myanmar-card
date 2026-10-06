@@ -23,7 +23,7 @@ function betweenMarkers(startNeedle, endNeedle) {
   return html.slice(start, end);
 }
 
-const home = betweenMarkers('id="pageHome"', 'id="pageCards"');
+const home = betweenMarkers('id="pageHome"', 'id="pageInstantCard"');
 const profile = betweenMarkers('id="pageProfile"', 'id="pageSettings"');
 const settings = betweenMarkers('id="pageSettings"', '</main>');
 
@@ -37,8 +37,8 @@ assert(!/id="profileForm"/.test(home), 'home must not contain profileForm');
 assert(/id="sumName"/.test(profile), 'profile must contain sumName');
 assert(/id="sumEmail"/.test(profile), 'profile must contain sumEmail');
 assert(/id="sumPhone"/.test(profile), 'profile must contain sumPhone');
-assert(/id="sumCard"/.test(profile), 'profile must contain sumCard');
-assert(/id="sumCardStatus"/.test(profile), 'profile must contain sumCardStatus');
+assert(!/id="sumCard"/.test(profile), 'profile must not show a selected card');
+assert(!/id="sumCardStatus"/.test(profile), 'profile must not show card status');
 assert(/id="profileForm"/.test(profile), 'profile must contain profileForm');
 
 assert(!/id="profileForm"/.test(settings), 'settings must not host profileForm');
@@ -51,7 +51,8 @@ assert(!/<nav[\s\S]*?data-page="profile"[\s\S]*?<\/nav>/.test(
   html.slice(html.indexOf('id="userSidebar"'), html.indexOf('</aside>', html.indexOf('id="userSidebar"')))
 ), 'sidebar must not include Profile nav item');
 assert(/id="sumBalanceUsdt"/.test(home), 'home must keep wallet balance');
-assert(/home-card-purchase/.test(home), 'home must keep card purchase panel');
+assert(!/home-card-purchase/.test(home), 'home must not offer card purchase');
+assert(!/id="pageCards"/.test(html), 'my cards page removed');
 assert(!/quick_actions/.test(home), 'home must not contain redundant quick actions panel');
 assert(!/btnSellConvertUsdtQuick/.test(home), 'home must not duplicate sell-usdt quick button');
 

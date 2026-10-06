@@ -229,7 +229,7 @@ async function listCardIssuanceAdminTransactions({ userId, limit = 200 } = {}) {
         pricing.total_charge_usdt ?? pricing.total_usdt ?? row.amount_usd
       ),
       wallet_type: metadata.wallet || metadata.wallet_type || 'usdt',
-      provider: metadata.provider || 'kripicard',
+      provider: metadata.provider || 'platform',
       provider_card_id: metadata.provider_card_id || null,
       status: metadata.pending || row.card_status === 'pending' ? 'pending' : 'issued',
       created_at: row.created_at,

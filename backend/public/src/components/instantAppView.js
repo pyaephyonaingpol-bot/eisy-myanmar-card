@@ -21,8 +21,8 @@
       <strong id="instantAppUsdtBalance">—</strong>
     </div>
     <div class="field" style="margin-bottom:0.75rem" data-deposit-provider="tron-hd">
-      <label data-i18n="instant_kripicard_deposit_label">TRON HD deposit</label>
-      <p class="hint" id="instantAppDepositHint" data-i18n="instant_kripicard_deposit_hint" style="margin:0.35rem 0 0.75rem">
+      <label data-i18n="instant_tron_hd_deposit_label">TRON HD deposit</label>
+      <p class="hint" id="instantAppDepositHint" data-i18n="instant_tron_hd_deposit_hint" style="margin:0.35rem 0 0.75rem">
         Send USDT on TRON (TRC20) to the address below. Your wallet is credited after confirmation.
       </p>
       <div class="usdt-address-box" id="instantTronHdBox" data-tron-hd-paybox="1">
@@ -78,7 +78,7 @@
   async function loadTrc20Deposit(ctx) {
     const hint = $('instantAppDepositHint');
     if (hint && typeof ctx.t === 'function') {
-      const next = ctx.t('instant_kripicard_deposit_hint');
+      const next = ctx.t('instant_tron_hd_deposit_hint');
       if (next) hint.textContent = next;
     }
     if (typeof ctx.refreshUsdtWallet === 'function') {

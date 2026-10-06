@@ -227,9 +227,9 @@ async function getWithdrawalFeeSettings() {
     WITHDRAW_PROCESSING_HOURS,
     WITHDRAW_PAYOUT_PROVIDER,
     WITHDRAW_FEE_MODE,
-    KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT,
+    NETWORK_FEE_PERCENT,
     PLATFORM_WITHDRAW_MARGIN_PERCENT,
-  } = require('../constants/kripicardWithdrawFees');
+  } = require('../constants/withdrawMarkupPolicy');
   const pricing = await getCardPricingSettings();
   const scoped = withScopedPaymentFeeShape(pricing, 'withdrawal');
   return {
@@ -249,7 +249,7 @@ async function getWithdrawalFeeSettings() {
     withdrawal_service_fee_percent: WITHDRAW_MARKUP_PERCENT,
     withdrawal_service_fee_minimum_usdt: 0,
     withdrawal_service_fee_mode: WITHDRAW_FEE_MODE,
-    kripicard_withdraw_network_fee_percent: KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT,
+    network_fee_percent: NETWORK_FEE_PERCENT,
     platform_withdraw_margin_percent: PLATFORM_WITHDRAW_MARGIN_PERCENT,
     withdraw_markup_percent: WITHDRAW_MARKUP_PERCENT,
     withdraw_processing_hours: WITHDRAW_PROCESSING_HOURS,
@@ -513,16 +513,16 @@ function calculateWithdrawalBreakdown(amountUsdt, network, settings) {
     WITHDRAW_PROCESSING_HOURS,
     WITHDRAW_PAYOUT_PROVIDER,
     WITHDRAW_FEE_MODE,
-    KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT,
+    NETWORK_FEE_PERCENT,
     PLATFORM_WITHDRAW_MARGIN_PERCENT,
-  } = require('../constants/kripicardWithdrawFees');
+  } = require('../constants/withdrawMarkupPolicy');
 
   const amount = parseFloat(amountUsdt);
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('Enter a valid USDT withdrawal amount');
   }
 
-  // Policy: always charge the fixed Kripicard 4% markup (3% network + 1% platform),
+  // Policy: always charge the fixed 4% markup (3% network + 1% platform),
   // independent of drifted admin fee settings.
   const forcedSettings = {
     ...(settings || {}),
@@ -558,16 +558,16 @@ function calculateWithdrawalBreakdown(amountUsdt, network, settings) {
     minimum_usdt_withdrawal: min,
     below_minimum: amount < min,
     invalid_net: breakdown.net_usdt <= 0,
-    kripicard_network_fee_percent: KRIPICARD_WITHDRAW_NETWORK_FEE_PERCENT,
+    network_fee_percent: NETWORK_FEE_PERCENT,
     platform_margin_percent: PLATFORM_WITHDRAW_MARGIN_PERCENT,
     markup_percent: WITHDRAW_MARKUP_PERCENT,
-    kripicard_network_fee_usdt: markup.kripicard_network_fee_usdt,
+    network_fee_usdt: markup.network_fee_usdt,
     platform_margin_usdt: markup.platform_margin_usdt,
     processing_hours: WITHDRAW_PROCESSING_HOURS,
     processing_label: markup.processing_label,
     summary: isBank
       ? `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${markup.fee_label} = ${breakdown.net_usdt.toFixed(2)} USDT → ${Math.round(amountMmk || 0).toLocaleString()} MMK at rate ${rate.toLocaleString()} · ${markup.processing_label}`
-      : `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${markup.fee_label} = ${breakdown.net_usdt.toFixed(2)} USDT via Kripicard · ${markup.processing_label}`,
+      : `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${markup.fee_label} = ${breakdown.net_usdt.toFixed(2)} USDT · ${markup.processing_label}`,
   };
 }
 
@@ -889,63 +889,11 @@ function calculateCardReloadPricingUsdt(topUpUsdt, settings) {
     payment_wallet: 'usdt',
     mmk_wallet_allowed: false,
     exchange_rate_applied: false,
-    provider: 'kripicard',
+    provider: 'platform',
     note:
       '1 USDT ≈ 1 USD — Master Wallet only. Debit covers card top-up + platform reload fee'
       + (reloadFeeUsd > 0 ? ` ($${reloadFeeUsd.toFixed(2)})` : '')
       + '.',
-  };
-}
-
-/**
- * Non-KYC Kripicard pricing (USDT wallet).
- * Card load goes to Kripicard; issuance + funding% + processing stay on-platform.
- */
-function calculateKripicardRequestPricingUsdt(initialLoadUsd, settings) {
-  const initial = parseFloat(initialLoadUsd);
-  const issuanceFee = parseFloat(settings.card_issuance_fee_usd);
-  const min = parseFloat(settings.minimum_initial_deposit_usd);
-  const fundingFeePercent = parseFloat(settings.card_funding_fee_percent) || 0;
-
-  if (!Number.isFinite(initial) || initial <= 0) {
-    throw new Error('Initial card load amount must be a positive number');
-  }
-  if (!Number.isFinite(min) || initial < min) {
-    throw new Error(`Minimum initial deposit is $${Number(min || 0).toFixed(2)} USD`);
-  }
-
-  const kripicardCostUsd = roundUsd(initial);
-  const issuanceFeeUsd = roundUsd(
-    Number.isFinite(issuanceFee) && issuanceFee >= 0 ? issuanceFee : 0
-  );
-  const fundingFeeUsd = resolveCardFundingFeeUsd(kripicardCostUsd, {
-    card_funding_fee_percent: fundingFeePercent,
-  });
-  const processingFeeUsd = roundUsd(CARD_PROCESSING_FEE_USD);
-  const platformMarkupUsd = roundUsd(issuanceFeeUsd + fundingFeeUsd + processingFeeUsd);
-  const totalUsd = roundUsd(kripicardCostUsd + platformMarkupUsd);
-  const totalUsdt = totalUsd;
-
-  return {
-    initial_load_usd: kripicardCostUsd,
-    kripicard_cost_usd: kripicardCostUsd,
-    provider_load_usd: kripicardCostUsd,
-    issuance_fee_usd: issuanceFeeUsd,
-    funding_fee_percent: fundingFeePercent,
-    funding_fee_usd: fundingFeeUsd,
-    processing_fee_usd: processingFeeUsd,
-    platform_markup_usd: platformMarkupUsd,
-    total_usd_required: totalUsd,
-    total_usdt: totalUsdt,
-    total_charge_usdt: totalUsdt,
-    payment_currency: 'USDT',
-    payment_wallet: 'usdt',
-    mmk_wallet_allowed: false,
-    exchange_rate_applied: false,
-    provider: 'kripicard',
-    note:
-      '1 USDT ≈ 1 USD — Non-KYC Instant Card. Issuance + funding + processing fees retained; '
-      + 'only card load sent to Kripicard. Fund USDT via crypto deposit (master wallet) first.',
   };
 }
 
@@ -972,7 +920,6 @@ module.exports = {
   buildRateSnapshot,
   listExchangeRateHistory,
   updateSettings,
-  calculateKripicardRequestPricingUsdt,
   calculateCardReloadPricingUsdt,
   getUsdtDepositSettings,
   calculateP2pFeeBreakdown,

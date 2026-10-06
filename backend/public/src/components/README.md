@@ -1,4 +1,4 @@
-# Frontend components (Step 5)
+# Frontend components
 
 Reusable UI helpers for the vanilla SPA. Attached to `window.EisyComponents`.
 
@@ -8,16 +8,10 @@ Reusable UI helpers for the vanilla SPA. Attached to `window.EisyComponents`.
 | `depositFeePreview.js` | Fee preview DOM |
 | `usdtAddressBox.js` | Address/QR + deposit tabs |
 | `activityLog.js` | Activity feed entries |
-| `instantCardView.js` | Non-KYC Instant Card form — USDT Wallet + Kripicard only |
-| `instantAppView.js` | Full Instant portal page — Master USDT + TRC20 + Instant Card |
+| `instantAppView.js` | Instant page — Master USDT wallet and TRON HD deposit address |
 
 ## Portals
 
-Dedicated URL:
-
-- `/instant` → Instant portal (Master USDT Wallet + Kripicard + P2P)
-- `/` hub → portal gateway with Instant CTA; header links to `/instant`
-
-**My Cards** shows card management + route CTAs only. Apply flows live on the Instant portal (`#instant-card` or `/instant`).
+- `/` and `/instant` show the Instant wallet (TRON HD deposit address + QR).
 
 Generated shell: `instant.html` via `npm run write-portal-html`.

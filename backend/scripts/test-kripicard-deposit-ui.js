@@ -16,7 +16,7 @@ const appView = fs.readFileSync(path.join(ROOT, 'backend/public/src/components/i
 const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
 
 const modalStart = html.indexOf('id="usdtTopUpModal"');
-const modalEnd = html.indexOf('<!-- ═══ CARD DETAIL MODAL ═══');
+const modalEnd = html.indexOf('<!-- ═══ SELL USDT');
 assert.ok(modalStart >= 0 && modalEnd > modalStart, 'USDT top-up modal present');
 const modalHtml = html.slice(modalStart, modalEnd);
 

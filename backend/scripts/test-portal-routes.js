@@ -61,12 +61,8 @@ function testHubServiceCategories() {
   assert.ok(dash.includes('/api/tron/wallet/address'), 'TRON HD address loader');
   const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
   assert.ok(!indexJs.includes("app.use('/api/kripicard/services'"), 'hub routes unmounted');
-  const hubApi = fs.readFileSync(path.join(ROOT, 'lib/kripicardHubApi.js'), 'utf8');
-  assert.ok(hubApi.includes("'/services'") || hubApi.includes('/services'));
-  assert.ok(hubApi.includes('mapMainServicesToHubCategories'));
-  assert.ok(hubApi.includes('fetchModuleCatalog'));
-  assert.ok(hubApi.includes('/esim/packages') && hubApi.includes('/gifts/packages'));
-  assert.ok(dash.includes("category.id === 'esim'") && dash.includes("category.id === 'gift_cards'"));
+  assert.ok(!fs.existsSync(path.join(ROOT, 'lib/kripicardHubApi.js')), 'hub API client removed');
+  assert.ok(!fs.existsSync(path.join(ROOT, 'lib/kripicard.js')), 'card API client removed');
   const css = fs.readFileSync(path.join(ROOT, 'backend/public/styles.css'), 'utf8');
   assert.ok(css.includes('hub-service-modal-box'));
   console.log('ok');

@@ -136,7 +136,7 @@ function tronDepositDisabledPayload(extra = {}) {
 function scanPayDisabledPayload(extra = {}) {
   return featureDisabledPayload(
     'scan_pay',
-    'Scan Pay is disabled. Use Withdraw USDT (Kripicard) to send funds.',
+    'Scan Pay is disabled. Use Withdraw USDT to send funds.',
     extra
   );
 }

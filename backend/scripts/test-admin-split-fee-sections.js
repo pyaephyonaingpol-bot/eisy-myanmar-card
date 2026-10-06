@@ -68,7 +68,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 
   const withdrawalBreakdown = calculateWithdrawalBreakdown(100, 'BANK', withdrawalFees);
   assert.strictEqual(withdrawalBreakdown.fee_usdt, 4, 'withdrawal forced to Kripicard 4% markup');
-  assert.strictEqual(withdrawalBreakdown.kripicard_network_fee_usdt, 3);
+  assert.strictEqual(withdrawalBreakdown.network_fee_usdt, 3);
   assert.strictEqual(withdrawalBreakdown.platform_margin_usdt, 1);
 
   console.log('Separate deposit vs withdrawal admin fees — ok');

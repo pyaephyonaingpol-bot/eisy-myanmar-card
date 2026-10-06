@@ -583,10 +583,6 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 10h18M7 15h1M12 15h1M17 15h1"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
             <span>MMK Withdrawals</span>
           </button>
-          <button type="button" class="nav-item" data-page="cards" data-admin-perm="cards" data-admin-pipeline="shared">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
-            <span data-i18n="nav_admin_cards" data-admin-cards-label>Cards</span>
-          </button>
           <button type="button" class="nav-item" data-page="users" data-admin-perm="users" data-admin-pipeline="shared">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             <span data-i18n="nav_admin_users">Users</span>
@@ -699,25 +695,6 @@
               Manual sweep moves USDT from user HD deposit addresses to the master wallet when balance ≥ <strong id="masterWalletSweepMinLabel">25</strong> USDT.
             </p>
             <div id="masterWalletSweepStatus" class="hint" style="margin:0.5rem 0 0" aria-live="polite"></div>
-          </div>
-
-          <div class="sa-card" id="overviewKripicardBalanceCard" data-admin-perm="cards" data-admin-pipeline="instant">
-            <div class="sa-card-header">
-              <div>
-                <p class="sa-card-eyebrow">Instant Card</p>
-                <h2 class="sa-card-title">Kripicard balance</h2>
-                <p class="sa-card-sub">Live provider float used to issue Instant Cards (USD)</p>
-              </div>
-              <div class="sa-card-actions">
-                <button type="button" id="btnRefreshKripicardBalance" class="btn btn-secondary btn-sm" data-kripicard-balance-refresh>
-                  Refresh
-                </button>
-              </div>
-            </div>
-            <div id="kripicardBalanceAlert" class="sa-alert hidden" role="alert" aria-live="assertive"></div>
-            <div id="kripicardBalanceStatus" aria-live="polite">
-              <p class="hint" style="margin:0">Loading Kripicard balance…</p>
-            </div>
           </div>
 
           <div class="sa-card" id="overviewRatesCard" data-admin-perm="withdrawal_rates_read">
@@ -848,42 +825,6 @@
           <button type="button" id="mmkWithdrawalRefreshBtn" class="btn btn-secondary btn-sm">Refresh</button>
         </div>
         <div id="mmkWithdrawalsTable" class="data-table-wrap"><p class="hint">Loading MMK bank withdrawals…</p></div>
-      </section>
-
-      <section id="tabCards" class="panel app-page" data-page="cards" data-admin-pipeline="shared">
-        <h2 id="adminCardsHeading" data-i18n="virtual_card_management">Virtual Card Management</h2>
-        <p class="hint" id="adminCardsHint" style="margin-bottom:1rem" data-i18n="virtual_card_mgmt_hint">Approve card applications and reload requests — no per-transaction spending management.</p>
-
-        <h3 style="margin-top:0.5rem;font-size:1rem" data-i18n="card_requests">Card Requests</h3>
-        <p class="hint" style="margin-bottom:0.65rem" data-i18n="card_requests_hint">Pending applications awaiting manual card details from admin.</p>
-        <div id="pendingCardsTable" class="data-table-wrap"><p class="hint" data-i18n="loading_card_requests">Loading card requests…</p></div>
-
-        <div id="adminInstantCardIssueBlock" data-admin-pipeline="instant">
-        <h3 style="margin-top:1.5rem;font-size:1rem" id="issueCardFormTitle" data-i18n="issue_update_card">Issue / Update Instant Card</h3>
-        <p class="hint" style="margin-bottom:0.65rem">Manual Instant (Kripicard) issuance — click <strong>Edit</strong> in the table below to pre-fill this form.</p>
-        <form id="issueCardAdminForm" class="form grid-admin-form">
-          <div class="field"><label for="acUserId" data-i18n="user_id">User ID</label><input id="acUserId" type="number" required /></div>
-          <div class="field"><label for="acCardId" data-i18n="card_id">Card ID</label><input id="acCardId" type="number" data-i18n-placeholder="card_id_placeholder" placeholder="Leave empty to issue new" /></div>
-          <div class="field"><label for="acCardNumber" data-i18n="card_number">Card Number</label><input id="acCardNumber" placeholder="4532 8765 4321 0987" required /></div>
-          <div class="field"><label for="acExp" data-i18n="expiry">Expiry (MM/YY)</label><input id="acExp" placeholder="12/28" required /></div>
-          <div class="field"><label for="acCvv">CVV</label><input id="acCvv" placeholder="456" required /></div>
-          <div class="field"><label for="acHolder" data-i18n="th_holder">Holder Name</label><input id="acHolder" /></div>
-          <div class="field"><label for="acNotes" data-i18n="admin_notes">Admin Notes</label><input id="acNotes" data-i18n-placeholder="admin_notes_placeholder" placeholder="Optional internal note" /></div>
-          <div class="field" style="grid-column:1/-1;display:flex;gap:0.5rem;flex-wrap:wrap">
-            <button type="submit" class="btn btn-primary" id="issueCardAdminSubmit" data-i18n="btn_issue_card">Issue Card</button>
-            <button type="button" class="btn btn-secondary" id="issueCardAdminReset" data-i18n="clear_form">Clear Form</button>
-          </div>
-        </form>
-        <pre class="output hidden" id="issueCardAdminOut" aria-hidden="true"></pre>
-        </div>
-
-        <h3 style="margin-top:1.5rem;font-size:1rem" data-i18n="issued_cards_status">Issued Cards — Status Control</h3>
-        <p class="hint" style="margin-bottom:0.65rem" data-i18n="issued_cards_hint">Update lifecycle status for issued virtual cards. Optional reason is shown to the user when suspended or frozen.</p>
-        <div id="issuedCardsTable" class="data-table-wrap"><p class="hint" data-i18n="loading_issued_cards">Loading issued cards…</p></div>
-
-        <h3 style="margin-top:1.5rem;font-size:1rem" data-i18n="card_reload_requests">Card Reload Requests</h3>
-        <p class="hint" style="margin-bottom:0.65rem" data-i18n="card_reload_requests_hint">Wallet funds were deducted when the user submitted — approve to credit the card or reject to refund.</p>
-        <div id="pendingReloadsTable" class="data-table-wrap"><p class="hint" data-i18n="loading_reload_requests">Loading reload requests…</p></div>
       </section>
 
       <section id="tabUsers" class="panel app-page" data-page="users" data-admin-pipeline="shared">
@@ -1214,7 +1155,7 @@
                 <h3 id="pricingBlockUsdtWithdrawTitle" class="pricing-block-title">
                   <span class="pricing-block-num">5</span>USDT Withdrawal Fee
                 </h3>
-                <p class="pricing-block-desc">Kripicard withdrawal markup: default 4% (3% network fee + 1% platform). Processed within 48 hours.</p>
+                <p class="pricing-block-desc">Withdrawal markup: 4% (3% network fee + 1% platform). Processed within 48 hours.</p>
               </div>
               <div class="sa-rates-form">
                 <div class="field">
@@ -1224,7 +1165,7 @@
                 <div class="field">
                   <label for="settingWithdrawFeeMinUsdt">Minimum fee (USDT)</label>
                   <input id="settingWithdrawFeeMinUsdt" type="number" step="0.01" min="0" required />
-                  <small class="hint">Use 0 with percent mode for a flat 4% Kripicard markup (3% network + 1% platform)</small>
+                  <small class="hint">Use 0 with percent mode for a flat 4% markup (3% network + 1% platform)</small>
                 </div>
                 <div class="field">
                   <label for="settingMinUsdtWithdrawal">Min USDT withdrawal</label>
@@ -1361,29 +1302,6 @@
     </div>
   </div>
 
-  <div id="issueCardModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="issueCardModalTitle" aria-modal="true">
-    <div class="proof-lightbox-backdrop issue-card-modal-backdrop"></div>
-    <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:min(520px,100%);width:96vw">
-      <button type="button" id="issueCardModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
-      <h3 id="issueCardModalTitle" class="kyc-doc-viewer-title">Issue Virtual Card</h3>
-      <p id="issueCardModalMeta" class="hint" style="margin-bottom:1rem;text-align:left"></p>
-      <form id="issueCardModalForm" class="form grid-admin-form">
-        <input type="hidden" id="issueModalCardId" />
-        <input type="hidden" id="issueModalUserId" />
-        <div class="field"><label for="issueModalCardNumber">Card Number (16 digits)</label><input id="issueModalCardNumber" placeholder="4532 8765 4321 0987" required maxlength="19" /></div>
-        <div class="field"><label for="issueModalExp">Expiry Date (MM/YY)</label><input id="issueModalExp" placeholder="12/28" required maxlength="5" /></div>
-        <div class="field"><label for="issueModalCvv">CVV Code</label><input id="issueModalCvv" placeholder="123" required maxlength="4" /></div>
-        <div class="field"><label for="issueModalBalance">Initial Card Balance (USD)</label><input id="issueModalBalance" type="number" step="0.01" min="0" required /></div>
-        <div class="field"><label for="issueModalHolder">Cardholder Name</label><input id="issueModalHolder" /></div>
-        <div class="field"><label for="issueModalNotes">Admin Notes</label><input id="issueModalNotes" placeholder="Optional internal note" /></div>
-        <div class="deposit-receipt-actions" style="margin-top:0.5rem">
-          <button type="submit" class="btn btn-primary">Issue Card &amp; Activate</button>
-          <button type="button" id="issueCardModalCancel" class="btn btn-secondary">Cancel</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <div id="depositReceiptReviewModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="depositReceiptReviewTitle" aria-modal="true">
     <div class="proof-lightbox-backdrop deposit-receipt-review-backdrop"></div>
     <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:min(760px,100%)">
@@ -1455,6 +1373,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20260817m2"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20260929kripicardBalance" defer></script>
+  <script src="/admin.js?v=20261006removeCards" defer></script>
 </body>
 </html>

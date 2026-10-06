@@ -20,12 +20,12 @@ const router = express.Router();
 router.post('/', requireAuth, requireSensitive, requireWithdrawalsEnabled, async (req, res) => {
   try {
     const { isTronWalletEnabled, tronWalletDisabledPayload } = require('../services/securityFlags');
-    // Legacy fixed-fee master-wallet send is part of the retired Tron Wallet path.
-    // Use POST /api/withdrawal/usdt (Kripicard 4% markup · 48h) instead.
+    // Legacy fixed-fee master-wallet send stays off unless TRON_WALLET_ENABLED.
+    // Use POST /api/withdrawal/usdt (4% markup · 48h) instead.
     if (!isTronWalletEnabled()) {
       return res.status(410).json({
         ...tronWalletDisabledPayload(),
-        error: 'Legacy TRON master-wallet withdraw is disabled. Use /api/withdrawal/usdt (Kripicard).',
+        error: 'Legacy TRON master-wallet withdraw is disabled. Use /api/withdrawal/usdt.',
         feeCollected: getFixedWithdrawFeeUsdt(),
       });
     }

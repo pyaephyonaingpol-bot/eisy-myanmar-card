@@ -118,7 +118,7 @@ const Dashboard = {
   },
 
   /**
-   * Portal isolation: Instant / Kripicard only. Hub (/) is Instant entry.
+   * Portal isolation: Instant (TRON HD wallet). Hub (/) is Instant entry.
    */
   applyPortalIsolation() {
     const portal = this.getPortal();
@@ -145,8 +145,7 @@ const Dashboard = {
   },
 
   /**
-   * Hub (/) gateway: Instant + Kripicard service categories.
-   * Wallets/cards load on /instant; Hub opens category catalogs in a modal.
+   * Hub (/) gateway redirects into the Instant wallet.
    */
   applyHubGateway() {
     const home = document.querySelector('.app-page[data-page="home"]');
@@ -1196,15 +1195,9 @@ const Dashboard = {
         this.loadWallet({ force: false });
       }
       if (page === 'cards') {
-        const hasPending = (this.allCards || []).some((c) => this.isCardPending(c));
-        this.loadAllCards({
-          preserveSelection: true,
-          silent: true,
-          forceRefresh: force || hasPending || !this._isFresh('cards'),
-        });
-        this.loadReloadHistory({ force });
-        this.syncCardsApplyCtas();
-        this.renderPortalHeaderNav();
+        if (typeof AppNav !== 'undefined') {
+          AppNav.navigate(this.portalDefaultPage(), { pushHash: true, replace: true });
+        }
       }
       if (page === 'instant-card') {
         this.enterInstantCardPage({ force });
@@ -1659,29 +1652,6 @@ const Dashboard = {
     return ['PENDING', 'SUBMITTED', 'UNDER_REVIEW'].includes(s);
   },
 
-  formatKripicardNetworkLabel(network) {
-    const key = String(network || '').trim().toLowerCase();
-    const map = {
-      tron: 'Tron',
-      trc20: 'Tron',
-      bsc: 'BSC',
-      bep20: 'BSC',
-      eth: 'Ethereum',
-      erc20: 'Ethereum',
-      arbitrum: 'Arbitrum',
-      avalanche: 'Avalanche',
-      avax: 'Avalanche',
-      ton: 'TON',
-      polygon: 'Polygon',
-      matic: 'Polygon',
-      sol: 'Solana',
-      solana: 'Solana',
-    };
-    if (map[key]) return map[key];
-    if (!key) return 'Tron';
-    return key.charAt(0).toUpperCase() + key.slice(1);
-  },
-
   resetUsdtDepositForm() {
     this._usdtDepositRequestInFlight = false;
     this._usdtDepositSubmitInFlight = false;
@@ -1717,7 +1687,7 @@ const Dashboard = {
     }
     this._usdtDepositAddress = '';
     this._activeTronOrderId = '';
-    this._activeKripicardDeposit = null;
+    this._activeDepositOrder = null;
     if (typeof this._tronPollStop === 'function') {
       this._tronPollStop();
       this._tronPollStop = null;
@@ -1930,10 +1900,6 @@ const Dashboard = {
       this.showTronHdDepositError(err.message);
       throw err;
     }
-  },
-
-  async loadKripicardDepositNetworks() {
-    return this.loadTronHdDepositAddress().catch(() => {});
   },
 
   closeUsdtTopUpModal() {
@@ -4812,40 +4778,19 @@ const Dashboard = {
   },
 
   calculateUsdtDepositFeePreviewClient(amountUsdt) {
-    // Kripicard Deposit API applies the gateway fee; estimate ~1% until address is issued.
+    const fees = this.depositFees || this.pricingSettings || {};
+    if (window.EisyHooks?.depositFees?.calculateUsdtDepositFeePreview) {
+      return window.EisyHooks.depositFees.calculateUsdtDepositFeePreview(amountUsdt, fees);
+    }
     const amount = Math.round((Number(amountUsdt) || 0) * 100) / 100;
     if (!(amount > 0)) return null;
-    const feePercent = 1;
-    const fee = Math.round(amount * feePercent) / 100;
-    const net = Math.round((amount - fee) * 100) / 100;
     return {
       amount_usdt: amount,
-      fee_usdt: fee,
-      net_usdt: net,
-      fee_label: `est. ${feePercent}% ($${fee.toFixed(2)}) — confirmed with pay address`,
-      invalid_net: net <= 0,
-      estimated: true,
+      fee_usdt: 0,
+      net_usdt: amount,
+      fee_label: 'No service fee',
+      invalid_net: false,
     };
-  },
-
-  applyKripicardDepositFeePreview(feeBreakdown, payAmount) {
-    const gross = Number(payAmount ?? feeBreakdown?.amount_usdt);
-    const fee = Number(feeBreakdown?.fee_usdt);
-    const net = Number(feeBreakdown?.net_usdt);
-    if (!Number.isFinite(gross)) return;
-    if ($('usdtDepositPreviewGross')) {
-      $('usdtDepositPreviewGross').textContent = `$${gross.toFixed(2)}`;
-    }
-    if ($('usdtDepositPreviewFee')) {
-      $('usdtDepositPreviewFee').textContent = Number.isFinite(fee)
-        ? (feeBreakdown?.fee_label || `$${fee.toFixed(2)}`)
-        : '—';
-    }
-    if ($('usdtDepositPreviewNet')) {
-      $('usdtDepositPreviewNet').textContent = Number.isFinite(net)
-        ? `$${net.toFixed(2)}`
-        : '—';
-    }
   },
 
   calculateMmkDepositFeePreviewClient(amountMmk) {
@@ -4929,7 +4874,7 @@ const Dashboard = {
 
   bindUsdtDepositForms() {
     $('usdtNetwork')?.addEventListener('change', () => {
-      // Network only applies to the next Kripicard /deposits/create request.
+      // TRON HD deposits are TRC20 only.
       this.updateUsdtDepositFeePreview();
     });
 
@@ -6445,7 +6390,7 @@ const Dashboard = {
   },
 
   /**
-   * Hub (/) landing: the Kripicard dashboard is the first screen.
+   * Hub (/) landing: Instant is the first screen.
    * Sign-in stays available from Account, not as a full-page wall.
    */
   presentHubHome() {
@@ -6639,7 +6584,6 @@ const Dashboard = {
 
     const instantCtx = {
       ...shared,
-      pricing: self.kripicardPricing,
       getUsdtWalletBalance: () => Number(self.walletUsdt ?? self.cardFundingWallets?.instant?.balance_usdt ?? 0),
       getMasterBalance: () => Number(self.walletUsdt ?? self.cardFundingWallets?.instant?.balance_usdt ?? 0),
       getMasterDepositAddresses: () => self._usdtWalletCache?.deposit_addresses || null,
@@ -6669,8 +6613,6 @@ const Dashboard = {
       onIssued: () => {
         self.loadWallet();
         self.loadUsdtWalletPage?.(true);
-        self.loadAllCards({ forceRefresh: true });
-        if (typeof AppNav !== 'undefined') AppNav.navigate('cards', { pushHash: true });
       },
     };
 
@@ -6710,86 +6652,8 @@ const Dashboard = {
     this.mountInstantAppUi();
   },
 
-  renderInstantWalletBalance() {
-    const ctx = this.buildCardViewContexts().instantCtx;
-    EisyComponents?.instantCardView?.renderUsdtWalletBalance?.(ctx)
-      || EisyComponents?.instantCardView?.renderMasterBalance?.(ctx);
-  },
-
-  async loadKripicardBins() {
-    return EisyComponents?.instantCardView?.loadBins();
-  },
-
-  async loadKripicardPricing() {
-    const ctx = this.buildCardViewContexts().instantCtx;
-    const data = await EisyComponents?.instantCardView?.loadPricing(ctx);
-    if (data) this.kripicardPricing = data;
-    return data;
-  },
-
-  _estimateKripicardTotal(initialLoad) {
-    return EisyComponents?.instantCardView?.estimateTotal(this.kripicardPricing, initialLoad) || 0;
-  },
-
-  updateKripicardPricingBreakdown() {
-    const ctx = this.buildCardViewContexts().instantCtx;
-    ctx.pricing = this.kripicardPricing;
-    EisyComponents?.instantCardView?.updatePricingBreakdown(ctx);
-  },
-
   async loadCardPricing() {
-    if (!Auth.isLoggedIn()) return;
-    if (this.cardPricing && this._isFresh('pricing')) {
-      this.updateCardPricingBreakdown();
-      this.updateHomeRateSummary();
-      return;
-    }
-    return this._withInflight('pricing', async () => {
-    try {
-      const data = await Auth.api('GET', '/api/user/card/pricing');
-      this.cardPricing = data;
-      this.depositFees = data.deposit_fees || null;
-      this._markFetched('pricing');
-      const min = data.minimum_initial_deposit_usd ?? 10;
-      const input = $('cardInitialLoad');
-      if (input) {
-        input.min = min;
-        input.placeholder = min.toFixed(2);
-        if (!input.value) input.value = min.toFixed(2);
-      }
-      const hint = $('cardMinDepositHint');
-      if (hint) hint.textContent = `Minimum initial deposit: $${min.toFixed(2)}`;
-      this.populateCardPaymentMethodOptions();
-      const nameInput = $('cardHolderNameInput');
-      if (nameInput && !nameInput.value && this.user?.name) {
-        nameInput.value = this.user.name;
-      }
-      this.updateCardPricingBreakdown();
-      this.updateHomeRateSummary();
-      this.renderRatesPage();
-      this.updateReloadPreview();
-      const minUsdtReload = $('reloadMinUsdtHint');
-      if (minUsdtReload && data.minimum_usdt_reload) {
-        minUsdtReload.textContent = `Minimum reload: $${Number(data.minimum_usdt_reload).toFixed(2)} USDT`;
-      }
-      const usdtMinHint = $('usdtMinHint');
-      // Kripicard Deposit API enforces ≥ $20; keep local floor aligned.
-      const kripicardMin = Math.max(20, Number(data.minimum_usdt_deposit) || 20);
-      if (usdtMinHint) {
-        usdtMinHint.textContent = `Minimum deposit: $${kripicardMin.toFixed(2)} USDT`;
-      }
-      if ($('usdtAmount')) {
-        $('usdtAmount').min = kripicardMin;
-      }
-      const reloadUsdtInput = $('reloadAmountUsdt');
-      if (reloadUsdtInput && data.minimum_usdt_reload) {
-        reloadUsdtInput.min = data.minimum_usdt_reload;
-      }
-      this.loadUsdtAddresses();
-    } catch (err) {
-      console.warn('[card pricing]', err.message);
-    }
-    });
+    return;
   },
 
   updateCardPricingBreakdown() {
@@ -6797,11 +6661,11 @@ const Dashboard = {
     if (!p) return;
 
     const initial = parseFloat($('cardInitialLoad')?.value) || 0;
-    const providerCreate = Number(p.kripicard_create_fee_usd);
+    const providerCreate = Number(p.create_fee_usd);
     const createFee = Number.isFinite(providerCreate) && providerCreate >= 0 ? providerCreate : 2;
     const platformIssuance = Number(p.card_issuance_fee_usd) || 0;
     const issuanceFee = Math.round((createFee + platformIssuance) * 100) / 100;
-    const schedule = p.kripicard_fee_schedule || {};
+    const schedule = p.fee_schedule || {};
     const threshold = Number(schedule.fund_fee_threshold_usd) || 100;
     const flatFund = Number(schedule.fund_fee_flat_usd);
     const pctFund = Number(schedule.fund_fee_percent);
@@ -6835,8 +6699,8 @@ const Dashboard = {
     this.cardPricing = {
       ...(this.cardPricing || {}),
       initial_load_usd: initial,
-      kripicard_create_fee_usd: createFee,
-      kripicard_funding_fee_usd: fundingFee,
+      create_fee_usd: createFee,
+      funding_fee_usd: fundingFee,
       platform_issuance_fee_usd: platformIssuance,
       issuance_fee_usd: issuanceFee,
       funding_fee_usd: fundingFee,
@@ -7279,7 +7143,7 @@ const Dashboard = {
       invalid_net: netUsdt <= 0 || (isBank && (!amountMmk || amountMmk <= 0)),
       processing_hours: hours,
       processing_label: `Processed within ${hours} hours`,
-      payout_provider: fees.withdraw_payout_provider || 'kripicard',
+      payout_provider: fees.withdraw_payout_provider || 'platform',
     };
   },
 
@@ -7341,7 +7205,7 @@ const Dashboard = {
 
   /* ─── Scan Pay (DISABLED — QR → confirm → atomic USDT debit) ─── */
   openScanPayModal() {
-    // Scan Pay is retired. Withdrawals go through Kripicard (4% markup · 48h).
+    // Scan Pay is retired. Withdrawals use the 4% markup queue (48h).
     this.closeScanPayModal();
     this.toast?.('Scan Pay is disabled. Use Withdraw USDT instead.', 'error');
   },

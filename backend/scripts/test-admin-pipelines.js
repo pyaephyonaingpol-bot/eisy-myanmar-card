@@ -1,5 +1,5 @@
 /**
- * Instant admin pipeline (Kripicard). Legacy /admin/business redirects to Instant.
+ * Instant admin pipeline. Legacy /admin/business redirects to Instant.
  * Run: npm run test:admin-pipelines
  */
 'use strict';

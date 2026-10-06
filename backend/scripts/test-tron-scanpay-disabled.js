@@ -94,11 +94,11 @@ section('backend routes guard Tron Wallet + Scan Pay');
   assert.ok(auth.includes('isTronWalletEnabled()'), 'auth skips HD provision when disabled');
 
   const userRoute = read('src/routes/user.js');
-  assert.ok(userRoute.includes("trc20Source = 'kripicard'") || userRoute.includes("deposit_provider:"), 'deposit-addresses kripicard when disabled');
+  assert.ok(userRoute.includes("deposit_provider: 'tron-hd'"), 'deposit-addresses use TRON HD');
   console.log('ok');
 }
 
-section('Kripicard 4% markup forced even with drifted settings');
+section('4% markup forced even with drifted settings');
 {
   const {
     calculateWithdrawalBreakdown,
@@ -122,10 +122,10 @@ section('Kripicard 4% markup forced even with drifted settings');
   const trc20 = calculateWithdrawalBreakdown(100, 'TRC20', drifted);
   assert.strictEqual(trc20.fee_usdt, 4, 'forced 4% fee on drifted settings');
   assert.strictEqual(trc20.net_usdt, 96);
-  assert.strictEqual(trc20.kripicard_network_fee_usdt, 3);
+  assert.strictEqual(trc20.network_fee_usdt, 3);
   assert.strictEqual(trc20.platform_margin_usdt, 1);
   assert.strictEqual(trc20.processing_hours, 48);
-  assert.strictEqual(trc20.payout_provider, 'kripicard');
+  assert.strictEqual(trc20.payout_provider, 'platform');
   assert.ok(trc20.fee_label.includes('4%'));
 
   const bank = calculateWithdrawalBreakdown(100, 'BANK', drifted);
@@ -143,4 +143,4 @@ section('i18n describes TRON HD deposits');
   console.log('ok');
 }
 
-console.log('\nTron Wallet + Scan Pay disabled; Kripicard 4% withdraw active — ok');
+console.log('\nTron Wallet + Scan Pay disabled; 4% withdraw markup active — ok');

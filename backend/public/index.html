@@ -207,61 +207,6 @@
     </div>
   </div>
 
-  <!-- ═══ CARD DETAIL MODAL ═══ -->
-  <div id="cardDetailModal" class="modal hidden" role="dialog" aria-labelledby="cardDetailModalTitle" aria-modal="true">
-    <div class="modal-box modal-box-wide card-detail-modal-box">
-      <div class="modal-header-row">
-        <h3 id="cardDetailModalTitle" data-i18n="card_detail_modal_title">Card Details</h3>
-        <button type="button" id="cardDetailModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
-      </div>
-
-      <div id="cardDetailPreview" class="card-detail-preview" aria-hidden="true">
-        <div class="card-detail-preview-top">
-          <span class="card-detail-brand">EISY MYANMAR</span>
-          <span id="cardDetailStatusPill" class="card-status-pill">—</span>
-        </div>
-        <div id="cardDetailNumber" class="card-detail-number">•••• •••• •••• ••••</div>
-        <div class="card-detail-preview-meta">
-          <div><small data-i18n="name_on_card">Name on Card</small><strong id="cardDetailHolder">—</strong></div>
-          <div><small>EXP</small><strong id="cardDetailExp">—</strong></div>
-          <div><small>CVV</small><strong id="cardDetailCvv">—</strong></div>
-        </div>
-      </div>
-
-      <div class="card-detail-grid" id="cardDetailGrid">
-        <div class="card-detail-item">
-          <span class="label" data-i18n="status">Status</span>
-          <span class="value" id="cardDetailStatus">—</span>
-        </div>
-        <div class="card-detail-item">
-          <span class="label" data-i18n="card_balance">Balance</span>
-          <span class="value" id="cardDetailBalance">—</span>
-        </div>
-        <div class="card-detail-item">
-          <span class="label" data-i18n="selected_card">Selected Card</span>
-          <span class="value" id="cardDetailLabel">—</span>
-        </div>
-        <div class="card-detail-item">
-          <span class="label" data-i18n="card_created">Created</span>
-          <span class="value" id="cardDetailCreated">—</span>
-        </div>
-      </div>
-      <p id="cardDetailStatusReason" class="hint card-detail-reason hidden"></p>
-      <p id="cardDetailError" class="error-text hidden" role="alert"></p>
-
-      <div class="card-detail-actions">
-        <button type="button" id="cardDetailRevealBtn" class="btn btn-secondary btn-sm" data-i18n="show_card_details">Show Card Details</button>
-        <button type="button" id="cardDetailReloadBtn" class="btn btn-primary btn-sm" data-i18n="top_up_reload_card">Top Up / Reload Card</button>
-        <button type="button" id="cardDetailDeleteBtn" class="btn btn-reject btn-sm" data-i18n="btn_delete_card">Delete Card</button>
-      </div>
-      <div id="cardDetailCopyActions" class="card-detail-copy-actions hidden">
-        <button type="button" id="cardDetailCopyNumber" class="btn btn-secondary btn-sm" data-i18n="copy_card_number">Copy Card Number</button>
-        <button type="button" id="cardDetailCopyAll" class="btn btn-secondary btn-sm" data-i18n="copy_all_details">Copy All Details</button>
-      </div>
-      <p class="hint" style="margin-top:0.75rem" data-i18n="card_delete_hint">Removes this card from My Cards. Pending requests are cancelled; issued cards stay in records for history.</p>
-    </div>
-  </div>
-
   <!-- ═══ SELL USDT / CONVERT TO MMK MODAL ═══ -->
   <div id="sellUsdtMmkModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="sellUsdtMmkModalTitle" aria-modal="true">
     <div class="modal-box modal-box-wide sell-usdt-mmk-modal-box">
@@ -1144,10 +1089,6 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"/></svg>
             <span data-i18n="nav_dashboard">Dashboard</span>
           </button>
-          <button type="button" class="nav-item" data-page="cards">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
-            <span data-i18n="nav_my_cards">My Cards</span>
-          </button>
           <button type="button" class="nav-item" data-page="instant-card" data-mode-nav="instant">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
             <span data-i18n="nav_instant_card">Instant Card</span>
@@ -1247,7 +1188,6 @@
         <main class="app-content">
           <!-- Hidden titles for page heading sync -->
           <span class="hidden" data-page-title="home" data-i18n="nav_dashboard">Dashboard</span>
-          <span class="hidden" data-page-title="cards" data-i18n="nav_my_cards">My Cards</span>
           <span class="hidden" data-page-title="instant-card" data-i18n="nav_instant_card">Instant Card</span>
           <span class="hidden" data-page-title="deposits" data-instant-only data-i18n="deposits_page_title">Deposit &amp; Reload History</span>
           <span class="hidden" data-page-title="usdt-wallet" data-instant-only data-i18n="usdt_wallet_page_title">USDT Wallet</span>
@@ -1265,7 +1205,7 @@
                 <div class="wallet-hero-card usdt" id="walletHeroUsdt" data-mode-shell="instant">
                   <div class="wallet-hero-label" data-i18n="header_usdt_wallet">Master USDT Wallet</div>
                   <div class="wallet-hero-value" id="sumBalanceUsdt">—</div>
-                  <p class="wallet-hero-hint" data-i18n="usdt_wallet_hint">TRC20 deposit · Instant Card funding only</p>
+                  <p class="wallet-hero-hint" data-i18n="usdt_wallet_hint">USDT (TRC20) sent to your TRON HD address is credited here.</p>
                   <div class="wallet-hero-actions" role="group" aria-label="Master USDT wallet actions">
                     <span class="wallet-actions-label" data-i18n="wallet_actions_label">Wallet actions</span>
                     <div class="wallet-hero-actions-row">
@@ -1280,14 +1220,6 @@
               </div>
             </section>
 
-            <section class="panel home-card-purchase hidden" data-mode-shell="instant" hidden>
-              <h2 data-i18n="home_card_purchase_heading_instant">Get Instant Card</h2>
-              <p class="hint" data-i18n="home_card_purchase_hint_instant">Master USDT Wallet · Instant Card (No KYC).</p>
-              <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
-                <button type="button" class="btn btn-primary btn-sm" data-goto="instant-card" data-i18n="nav_instant_card">Instant Card</button>
-                <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="nav_my_cards">My Cards</button>
-              </div>
-            </section>
             <section class="panel">
               <h2 data-i18n="todays_exchange_rate">Today's Exchange Rate</h2>
               <p id="homeRateSummary" class="hint" data-i18n="loading">Loading rate…</p>
@@ -1305,89 +1237,6 @@
               </div>
               <p class="hint" style="margin-bottom:0.75rem" data-i18n="active_requests_hint">Track card and deposit requests awaiting admin approval.</p>
               <div id="pendingRequestsList" class="data-table-wrap"><p class="hint" data-i18n="loading_requests">Loading requests…</p></div>
-            </section>
-          </section>
-
-          <!-- ══ PAGE: My Cards ══ -->
-          <section id="pageCards" class="app-page" data-page="cards">
-            <div class="page-header">
-              <div>
-                <h2 class="page-heading" data-i18n="nav_my_cards">My Cards</h2>
-                <p class="page-desc" data-i18n="cards_page_desc">View card status, reveal details when needed, and reload your virtual cards.</p>
-              </div>
-            </div>
-
-            <section class="panel summary-panel">
-              <div id="cardSelectorSection" class="card-selector-section hidden">
-                <div class="card-selector-header">
-                  <label class="card-selector-label" for="cardSelect" data-i18n="your_virtual_cards">Your Virtual Cards</label>
-                  <div class="card-nav-buttons">
-                    <button type="button" id="btnPrevCard" class="btn btn-secondary btn-sm" data-i18n-title="prev_card" title="Previous card" data-i18n="prev_card">‹ Prev</button>
-                    <span id="cardIndexLabel" class="card-index-label">1 / 1</span>
-                    <button type="button" id="btnNextCard" class="btn btn-secondary btn-sm" data-i18n-title="next_card" title="Next card" data-i18n="next_card">Next ›</button>
-                  </div>
-                </div>
-                <select id="cardSelect" class="card-select" aria-label="Select virtual card"></select>
-                <div id="cardThumbnails" class="card-thumbnails" role="tablist" aria-label="Card previews"></div>
-              </div>
-            </section>
-
-            <div class="grid-2">
-              <section class="panel card-apply-panel">
-                <div id="cardsApplyCta" class="cards-apply-cta">
-                  <h2 data-i18n="cards_apply_heading">Get a new card</h2>
-                  <p class="hint" data-i18n="cards_apply_hint">Issue Instant Card from your Master USDT Wallet (TRC20).</p>
-                  <div class="action-row cards-apply-cta-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
-                    <a class="btn btn-primary btn-sm" href="/" data-portal-cta="instant" data-i18n="nav_instant_card">Instant Card</a>
-                  </div>
-                </div>
-                <details style="margin-top:1rem" class="hint" data-instant-only>
-                  <summary>Demo: self-issue card (dev only)</summary>
-                  <form id="issueCardForm" class="form" style="margin-top:0.75rem">
-                    <div class="field"><label>Card Number</label><input id="cardNumber" value="4532 8765 4321 0987" /></div>
-                    <div class="field-row">
-                      <div class="field"><label>Expiry</label><input id="expDate" value="12/28" /></div>
-                      <div class="field"><label>CVV</label><input id="cvv" value="456" /></div>
-                    </div>
-                    <div class="field"><label>Holder</label><input id="holderName" value="DEMO USER" /></div>
-                    <button type="submit" class="btn btn-secondary">Issue / Update Card (Demo)</button>
-                  </form>
-                </details>
-                <pre class="output hidden" id="issueCardOutput" aria-hidden="true" data-instant-only></pre>
-              </section>
-
-              <section class="panel">
-                <h2><span data-i18n="virtual_card">Virtual Card</span> <span id="cardDetailsTitle" class="card-details-subtitle"></span></h2>
-                <div id="cardStatusHero" class="card-status-hero">
-                  <div class="card-status-hero-main">
-                    <span class="label" data-i18n="status">Status</span>
-                    <span id="cardStatusDisplay" class="card-status-pill">—</span>
-                  </div>
-                  <div class="card-status-hero-aside">
-                    <div id="cardLast4Display" class="card-status-last4">—</div>
-                    <div id="cardBalanceDisplay" class="card-status-balance">—</div>
-                  </div>
-                </div>
-                <div class="card-action-bar">
-                  <button type="button" id="btnShowCardDetails" class="btn btn-secondary btn-sm" disabled data-i18n="show_card_details">Show Card Details</button>
-                  <button type="button" id="btnReloadSelectedCard" class="btn btn-primary btn-sm" data-i18n="top_up_reload_card">Top Up / Reload Card</button>
-                  <button id="btnLoadCard" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
-                </div>
-                <div id="cardStatusAlert" class="card-status-alert hidden" role="alert"></div>
-                <div id="cardPendingNotice" class="card-pending-notice hidden">
-                  <p data-i18n="card_pending_notice">This card request is pending admin approval. You'll receive your card number once issued.</p>
-                </div>
-                <pre class="output hidden" id="viewCardOutput" aria-hidden="true"></pre>
-              </section>
-            </div>
-
-            <section class="panel">
-              <div class="section-toolbar">
-                <h2 style="margin:0" data-i18n="card_reload_history">Card Reload History</h2>
-                <button type="button" id="btnLoadCardReloads" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
-              </div>
-              <p class="hint" style="margin-bottom:0.75rem" data-i18n="card_reload_history_hint">Top-up requests to your virtual card — wallet funds are held until admin approves.</p>
-              <div id="cardsReloadHistoryTable" class="data-table-wrap"><p class="hint" data-i18n="loading_reload_history">Loading reload history…</p></div>
             </section>
           </section>
 
@@ -1637,12 +1486,6 @@
               </div>
             </div>
 
-            <section class="panel">
-              <h2>Sample New Card Cost</h2>
-              <p class="hint" style="margin-bottom:0.75rem">Example breakdown at the minimum deposit amount.</p>
-              <div id="ratesSampleBreakdown" class="pricing-breakdown"></div>
-              <button type="button" class="btn btn-primary btn-sm" data-goto="cards">Apply for a Card</button>
-            </section>
           </section>
 
           <!-- ══ PAGE: Profile ══ -->
@@ -1650,7 +1493,7 @@
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="nav_profile">Profile</h2>
-                <p class="page-desc" data-i18n="profile_page_desc">Your account details, contact info, and selected card status.</p>
+                <p class="page-desc" data-i18n="profile_page_desc">Your account details and contact info.</p>
               </div>
             </div>
 
@@ -1660,11 +1503,8 @@
                 <div class="summary-item"><span class="label" data-i18n="name">Name</span><span class="value" id="sumName">—</span></div>
                 <div class="summary-item"><span class="label" data-i18n="email">Email</span><span class="value" id="sumEmail">—</span></div>
                 <div class="summary-item"><span class="label" data-i18n="phone">Phone</span><span class="value" id="sumPhone">—</span></div>
-                <div class="summary-item"><span class="label" data-i18n="selected_card">Selected Card</span><span class="value" id="sumCard">—</span></div>
-                <div class="summary-item highlight"><span class="label" data-i18n="card_status">Card Status</span><span class="value" id="sumCardStatus">—</span></div>
               </div>
               <div class="action-row" style="margin-top:1rem">
-                <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="view_my_cards">View My Cards</button>
                 <button type="button" class="btn btn-secondary btn-sm" data-goto="settings" data-i18n="nav_settings">Settings &amp; Security</button>
               </div>
             </section>
@@ -1791,14 +1631,12 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261006tronHd"></script>
+  <script defer src="/i18n.js?v=20261006removeCards"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
   <script defer src="/src/services/usdtWalletApi.js?v=20260909walletPerf"></script>
   <script defer src="/src/services/withdrawalApi.js?v=20260817m2"></script>
-  <script defer src="/src/services/cardsApi.js?v=20260928cardViews"></script>
-  <script defer src="/src/services/instantCardApi.js?v=20260928cardViews"></script>
   <script defer src="/src/services/accountApi.js?v=20260823profile"></script>
   <script defer src="/src/services/p2pApi.js?v=20260819p2p"></script>
   <script defer src="/src/services/index.js?v=20260817m2"></script>
@@ -1810,13 +1648,12 @@
   <script defer src="/src/components/depositFeePreview.js?v=20260817m2"></script>
   <script defer src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
-  <script defer src="/src/components/instantCardView.js?v=20260928appModes"></script>
-  <script defer src="/src/components/instantAppView.js?v=20261006tronHd"></script>
+  <script defer src="/src/components/instantAppView.js?v=20261006removeCards"></script>
   <script defer src="/src/components/index.js?v=20260928appModes"></script>
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20261006tronHdUi"></script>
+  <script defer src="/dashboard.js?v=20261006removeCards"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

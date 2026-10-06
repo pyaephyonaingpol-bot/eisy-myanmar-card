@@ -10,7 +10,7 @@ const ROOT = path.join(__dirname, '../..');
 const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8');
 
 const homeStart = html.indexOf('id="pageHome"');
-const homeEnd = html.indexOf('id="pageCards"');
+const homeEnd = html.indexOf('id="pageInstantCard"');
 assert.ok(homeStart >= 0 && homeEnd > homeStart, 'dashboard home page markers');
 const homeHtml = html.slice(homeStart, homeEnd);
 

@@ -3,9 +3,9 @@
  *
  * Mounted at /api/tron/wallet
  *
- * DISABLED by default (TRON_WALLET_ENABLED=false). Deposits use Kripicard;
- * withdrawals use the Kripicard 4% markup queue. Sync-deposits remains available
- * for ops recovery of legacy HD addresses when authorized.
+ * Deposit address provisioning is on by default (TRON_DEPOSITS_ENABLED).
+ * Master-wallet sends stay off (TRON_WALLET_ENABLED=false). Withdrawals use
+ * the 4% markup queue. Sync-deposits remains available for ops recovery.
  */
 const express = require('express');
 const { requireAuth, requireSensitive } = require('../middleware/auth');

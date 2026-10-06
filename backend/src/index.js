@@ -102,7 +102,7 @@ app.get(['/instant', '/instant.html'], (_req, res) => {
   sendPortalApp(res, 'instant');
 });
 
-// Legacy Business/Standard portal URLs → Instant (Kripicard + Master Wallet only).
+// Legacy Business/Standard portal URLs → Instant (TRON HD wallet).
 app.get(['/business', '/business.html', '/standard', '/standard.html'], (_req, res) => {
   res.redirect(302, '/instant');
 });
