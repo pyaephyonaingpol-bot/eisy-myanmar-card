@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * Root (/) opens the dashboard. Instant keeps the login gate.
+ * Root (/) opens Instant and keeps the login gate. Hub stays at /hub.
  * Run: node backend/scripts/test-hub-landing.js
  */
 const assert = require('assert');
@@ -12,28 +12,18 @@ const path = require('path');
 const root = path.join(__dirname, '../..');
 const indexHtml = fs.readFileSync(path.join(root, 'backend/public/index.html'), 'utf8');
 const dash = fs.readFileSync(path.join(root, 'backend/public/dashboard.js'), 'utf8');
-const i18n = fs.readFileSync(path.join(root, 'backend/public/i18n.js'), 'utf8');
+const server = fs.readFileSync(path.join(root, 'backend/src/index.js'), 'utf8');
 
-const authTag = indexHtml.match(/<div id="authScreen"[^>]*>/);
-const dashTag = indexHtml.match(/<div id="dashboardScreen"[^>]*>/);
-assert.ok(authTag, 'auth screen exists');
-assert.ok(dashTag, 'dashboard screen exists');
-assert.ok(/\bhidden\b/.test(authTag[0]), 'login screen starts hidden on /');
-assert.ok(!/\bhidden\b/.test(dashTag[0]), 'dashboard is the default view on /');
-assert.ok(indexHtml.includes('id="backToDashboardBtn"'), 'sign-in can return to the dashboard');
-assert.ok(indexHtml.includes('id="accountSignInBtn"'), 'account menu can open sign-in');
-assert.ok(indexHtml.includes('dashboard.js?v=20261005hubLanding'), 'dashboard cache bust');
+assert.ok(indexHtml.includes('dashboard.js?v=20261006instantLanding'), 'dashboard cache bust');
+assert.ok(dash.includes("pathName === '/'"), 'root path selects Instant');
+assert.ok(dash.includes("pathName === '/auth/callback'"), 'OAuth callback keeps the Instant document');
+assert.ok(dash.includes('href="/hub"'), 'Instant can return to the hub');
+assert.ok(dash.includes('href="/" data-portal-switch="instant"'), 'hub switch opens Instant at /');
+assert.ok(dash.includes('Root (/) is Instant and keeps the login gate'), 'logged-out Instant still shows sign-in');
 
-assert.ok(dash.includes('presentHubHome()'), 'hub landing helper');
-assert.ok(dash.includes('showHubSignIn()'), 'hub sign-in helper');
-const presentStart = dash.indexOf('presentHubHome() {');
-const present = dash.slice(presentStart, presentStart + 900);
-assert.ok(present.includes("authScreen.classList.add('hidden')"), 'hub home hides the login wall');
-assert.ok(present.includes("dashboardScreen.classList.remove('hidden')"), 'hub home shows the dashboard');
-assert.ok(dash.includes('if (this.isHubGateway())'), 'root path is special-cased');
-assert.ok(dash.includes('Instant keeps the login gate'), 'instant portal stays gated');
+const rootRoute = server.slice(server.indexOf("app.get('/',"), server.indexOf("app.get('/hub'"));
+assert.ok(rootRoute.includes('sendPortalApp'), 'root serves the Instant portal');
+assert.ok(server.includes("app.get('/hub'"), 'hub remains available');
+assert.ok(server.includes("app.get(['/instant', '/instant.html']"), '/instant stays available');
 
-assert.ok(i18n.includes("account_sign_in: 'Sign in'"), 'english sign-in label');
-assert.ok(i18n.includes("account_sign_in: 'အကောင့်ဝင်ရန်'"), 'myanmar sign-in label');
-
-console.log('hub landing checks passed');
+console.log('instant landing checks passed');

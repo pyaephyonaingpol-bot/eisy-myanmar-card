@@ -83,17 +83,22 @@ const Dashboard = {
     return text;
   },
 
-  /** Dedicated Instant (/instant) portal, or hub (/). */
+  /** Instant is the root and /instant. Hub lives at /hub. */
   getPortal() {
     if (window.__EISY_PORTAL__ === 'instant') return 'instant';
     const pathName = String(window.location.pathname || '/').replace(/\/+$/, '') || '/';
-    if (pathName === '/instant' || pathName.endsWith('/instant.html')) return 'instant';
+    if (
+      pathName === '/'
+      || pathName === '/instant'
+      || pathName === '/auth/callback'
+      || pathName.endsWith('/instant.html')
+    ) return 'instant';
     return null;
   },
 
   portalHref(portal) {
-    if (portal === 'instant') return '/instant';
-    return '/';
+    if (portal === 'instant') return '/';
+    return '/hub';
   },
 
   rememberPortal(portal) {
@@ -192,11 +197,11 @@ const Dashboard = {
     if (!header) return;
     const portal = this._portal || this.getPortal();
     if (portal === 'instant') {
-      header.innerHTML = '<a class="btn btn-secondary btn-sm portal-switch-link" href="/">← Hub</a>';
+      header.innerHTML = '<a class="btn btn-secondary btn-sm portal-switch-link" href="/hub">← Hub</a>';
       header.setAttribute('aria-label', 'Back to hub');
       return;
     }
-    header.innerHTML = '<a class="btn btn-primary btn-sm portal-switch-link" href="/instant" data-portal-switch="instant">Open Instant →</a>';
+    header.innerHTML = '<a class="btn btn-primary btn-sm portal-switch-link" href="/" data-portal-switch="instant">Open Instant →</a>';
     header.setAttribute('aria-label', 'Open Instant portal');
   },
 
@@ -204,7 +209,7 @@ const Dashboard = {
     const instantCta = document.querySelector('[data-portal-cta="instant"]');
     const portal = this._portal || this.getPortal();
     if (instantCta) {
-      instantCta.setAttribute('href', portal === 'instant' ? '#instant-card' : '/instant');
+      instantCta.setAttribute('href', portal === 'instant' ? '#instant-card' : '/');
     }
   },
 
@@ -876,7 +881,8 @@ const Dashboard = {
       const data = await Auth.completeGoogleOAuth();
       this.log('Signed in with Google', 'ok');
       // Clean OAuth params from the URL without a full reload.
-      history.replaceState(null, '', this.readLastPortal() ? `/${this.readLastPortal()}` : '/');
+      const portal = this.readLastPortal();
+      history.replaceState(null, '', portal === 'instant' || !portal ? '/' : `/${portal}`);
       if (data?.needs_pin_setup || data?.has_pin === false || !data?.user?.has_pin) {
         // Defer until dashboard chrome is visible.
         setTimeout(() => {
@@ -6577,7 +6583,7 @@ const Dashboard = {
 
     document.documentElement.classList.toggle('has-session', loggedIn);
 
-    // Root (/) always opens the dashboard. Instant keeps the login gate.
+    // Root (/) is Instant and keeps the login gate. Hub (/hub) stays browsable.
     if (this.isHubGateway()) {
       if (!loggedIn) {
         this.clearCardsCache();

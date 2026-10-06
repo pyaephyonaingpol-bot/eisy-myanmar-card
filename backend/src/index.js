@@ -87,6 +87,10 @@ function sendPortalApp(res, portal) {
 }
 
 app.get('/', (_req, res) => {
+  sendPortalApp(res, 'instant');
+});
+
+app.get('/hub', (_req, res) => {
   sendHtmlFile(res, INDEX_HTML);
 });
 
