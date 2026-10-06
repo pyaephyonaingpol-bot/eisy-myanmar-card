@@ -134,11 +134,12 @@ section('Kripicard 4% markup forced even with drifted settings');
   console.log('ok');
 }
 
-section('i18n no longer advertises legacy TRON withdraw');
+section('i18n describes TRON HD deposits');
 {
   const i18n = read('public/i18n.js');
   assert.ok(!/Withdrawals still use the legacy TRON master wallet/i.test(i18n));
-  assert.ok(i18n.includes('Kripicard within 48 hours') || i18n.includes('paid via Kripicard'));
+  assert.ok(!/Kripicard/.test(i18n), 'customer i18n does not name Kripicard');
+  assert.ok(/TRON HD/i.test(i18n), 'TRON HD deposit copy');
   console.log('ok');
 }
 

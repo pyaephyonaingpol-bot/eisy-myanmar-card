@@ -183,57 +183,26 @@
   </div>
 
   <!-- ═══ TOP UP USDT WALLET MODAL (Instant / Master USDT only) ═══ -->
-  <div id="usdtTopUpModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="usdtTopUpModalTitle" aria-modal="true" data-deposit-provider="kripicard">
+  <div id="usdtTopUpModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="usdtTopUpModalTitle" aria-modal="true" data-deposit-provider="tron-hd">
     <div class="modal-box modal-box-wide">
       <div class="modal-header-row">
         <h3 id="usdtTopUpModalTitle" data-i18n="top_up_wallet">Top Up Wallet</h3>
         <button type="button" id="usdtTopUpModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="deposit_usdt_hint">Top up via Kripicard Deposit: we issue a unique pay-to address and exact amount for your network (e.g. Tron). Your Master Wallet is credited after on-chain confirmation.</p>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="deposit_usdt_hint">Send USDT on TRON (TRC20) to your personal HD deposit address. Your wallet is credited after the transfer confirms.</p>
 
       <div id="depositUsdtPanel" class="deposit-tab-panel">
-        <form id="usdtDepositForm" class="form">
-          <div class="field">
-            <label for="usdtNetwork" data-i18n="deposit_network_label">Network</label>
-            <select id="usdtNetwork" required>
-              <option value="tron" selected>Tron</option>
-            </select>
-            <small class="hint" data-i18n="deposit_network_hint">Each deposit gets a unique address on the selected network.</small>
-          </div>
-          <div class="field">
-            <label for="usdtAmount" data-i18n="amount_usdt">Amount (USDT)</label>
-            <input id="usdtAmount" type="number" step="0.01" min="20" placeholder="20.00" required />
-            <small id="usdtMinHint" class="hint">Minimum deposit: $20.00 USDT</small>
-            <small id="usdtFeeHint" class="hint" data-i18n="deposit_usdt_fee_hint">Kripicard gateway fee is deducted — net credit is confirmed when your pay address is issued</small>
-          </div>
-          <div id="usdtDepositFeePreview" class="reload-preview-box" style="margin-bottom:0.75rem">
-            <h4 data-i18n="deposit_fee_preview">Deposit Fee Preview</h4>
-            <div class="reload-preview-row"><span data-i18n="deposit_preview_gross">Amount to send</span><strong id="usdtDepositPreviewGross">—</strong></div>
-            <div class="reload-preview-row"><span data-i18n="deposit_preview_fee">Gateway Fee</span><strong id="usdtDepositPreviewFee">—</strong></div>
-            <div class="reload-preview-row reload-preview-highlight"><span data-i18n="deposit_preview_net">Net Credited</span><strong id="usdtDepositPreviewNet">—</strong></div>
-          </div>
-          <button type="submit" class="btn btn-primary" id="btnCreateTronDeposit" data-i18n="btn_deposit_tron">Get Pay Address</button>
-        </form>
-        <div id="usdtOrderRefBox" class="ref-box hidden" aria-live="polite">
-          <p class="hint" style="margin:0 0 0.35rem" data-i18n="deposit_usdt_order_label">Deposit Order ID</p>
-          <div class="ref-code" id="usdtOrderIdDisplay">—</div>
-          <button type="button" id="btnCopyUsdtOrderId" class="btn btn-secondary btn-sm" data-i18n="copy_order_id">Copy Order ID</button>
-        </div>
-        <div id="usdtAddressBox" class="usdt-address-box hidden" aria-live="polite" data-kripicard-paybox="1">
-          <p class="usdt-network-label">Send <strong id="usdtPayAmountInline">—</strong> USDT on <strong id="usdtNetworkLabel">Tron</strong> to:</p>
+        <div id="usdtAddressBox" class="usdt-address-box" aria-live="polite" data-tron-hd-paybox="1">
+          <p class="usdt-network-label">Send USDT (TRC20) on <strong id="usdtNetworkLabel">TRON</strong> to:</p>
           <p id="usdtMerchantName" class="usdt-merchant-name hidden"></p>
-          <img id="usdtQrCode" class="usdt-qr hidden" alt="USDT deposit QR code" width="180" height="180" />
+          <img id="usdtQrCode" class="usdt-qr hidden" alt="TRON USDT deposit QR code" width="180" height="180" />
           <div class="usdt-address-display">
-            <span class="usdt-address-label" data-i18n="deposit_address_label">Pay Address</span>
-            <code id="usdtDepositAddress" class="usdt-address-code">—</code>
+            <span class="usdt-address-label" data-i18n="deposit_address_label">TRON deposit address</span>
+            <code id="usdtDepositAddress" class="usdt-address-code">Loading…</code>
             <button type="button" id="btnCopyUsdtAddress" class="btn btn-secondary btn-sm usdt-copy-btn" data-i18n="copy_address">Copy Address</button>
           </div>
-          <div class="reload-preview-box" style="margin-top:0.75rem">
-            <div class="reload-preview-row"><span data-i18n="deposit_send_amount">Exact amount to send</span><strong id="usdtOrderAmount">—</strong></div>
-            <div class="reload-preview-row"><span data-i18n="deposit_pay_network">Network</span><strong id="usdtPayNetworkDisplay">—</strong></div>
-            <div class="reload-preview-row"><span data-i18n="deposit_preview_net">Net Credited</span><strong id="usdtPayNetDisplay">—</strong></div>
-          </div>
-          <p class="status-line" id="usdtOrderStatus" data-i18n="usdt_order_status_pending">Waiting for USDT transfer — verifying automatically…</p>
+          <p class="status-line" id="usdtOrderStatus" data-i18n="tron_hd_deposit_status">This address is yours. Confirmed USDT (TRC20) sent here is credited to your wallet.</p>
+          <p id="tronHdDepositError" class="error-text hidden" role="alert"></p>
         </div>
       </div>
       <pre class="output hidden" id="depositOutput" aria-hidden="true"></pre>
@@ -306,7 +275,7 @@
 
       <div class="sell-usdt-notice" role="note">
         <strong data-i18n="sell_usdt_mmk_notice_title">Processing notice</strong>
-        <p data-i18n="sell_usdt_mmk_notice">Withdrawals are processed via Kripicard within 48 hours.</p>
+        <p data-i18n="sell_usdt_mmk_notice">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
       </div>
 
       <form id="sellUsdtMmkForm" class="form">
@@ -440,30 +409,29 @@
     </div>
   </div>
 
-  <div id="withdrawUsdtModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="withdrawUsdtModalTitle" aria-modal="true" data-payout-system="kripicard" data-processing-hours="48">
+  <div id="withdrawUsdtModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="withdrawUsdtModalTitle" aria-modal="true" data-payout-system="tron">
     <div class="modal-box modal-box-wide">
       <div class="modal-header-row">
         <h3 id="withdrawUsdtModalTitle" data-i18n="withdraw_usdt_title">Withdraw USDT</h3>
         <button type="button" id="withdrawUsdtModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">Withdrawals are processed via Kripicard within 48 hours. Fee is 4% (3% Kripicard network + 1% platform). Crypto (TRC20/BEP20) or bank payout in MMK.</p>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">USDT withdrawals are sent on TRON (TRC20) after review.</p>
 
-      <form id="withdrawUsdtForm" class="form" data-withdraw-provider="kripicard">
+      <form id="withdrawUsdtForm" class="form" data-withdraw-provider="tron">
         <div class="field">
           <label for="withdrawPayoutMethod" data-i18n="withdraw_payout_method">Payout Method</label>
           <select id="withdrawPayoutMethod" required>
-            <option value="crypto" data-i18n="withdraw_method_crypto" selected>USDT Crypto (Kripicard · 48h)</option>
+            <option value="crypto" data-i18n="withdraw_method_crypto" selected>USDT (TRC20)</option>
             <option value="bank" data-i18n="withdraw_method_bank">Bank Account (USDT → MMK)</option>
           </select>
-          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Kripicard crypto payout (TRC20/BEP20). Fee: 4% (3% network + 1% platform). Processed within 48 hours.</small>
+          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Send USDT on TRON (TRC20) to your destination address.</small>
         </div>
 
         <div id="withdrawCryptoFields">
           <div class="field" id="withdrawNetworkField">
             <label for="withdrawNetwork" data-i18n="withdraw_network">Network</label>
-            <select id="withdrawNetwork" data-kripicard-withdraw-network="1">
-              <option value="TRC20" selected>TRC20 (TRON · Kripicard · 48h)</option>
-              <option value="BEP20">BEP20 (BSC · Kripicard · 48h)</option>
+            <select id="withdrawNetwork">
+              <option value="TRC20" selected>TRC20 (TRON)</option>
             </select>
           </div>
           <div class="field">
@@ -495,7 +463,7 @@
             <input id="withdrawUsdtAccountNumber" type="text" placeholder="09… or bank account number" inputmode="tel" autocomplete="off" />
           </div>
           <div class="sell-usdt-notice sell-usdt-notice-compact" role="note">
-            <p data-i18n="sell_usdt_mmk_notice">Withdrawals are processed via Kripicard within 48 hours.</p>
+            <p data-i18n="sell_usdt_mmk_notice">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
           </div>
         </div>
 
@@ -560,7 +528,7 @@
           <input id="withdrawMmkAccountNumber" type="text" required placeholder="09… or bank account number" inputmode="tel" autocomplete="off" />
         </div>
         <div class="sell-usdt-notice sell-usdt-notice-compact" role="note">
-          <p data-i18n="sell_usdt_mmk_notice">Withdrawals are processed via Kripicard within 48 hours.</p>
+          <p data-i18n="sell_usdt_mmk_notice">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
         </div>
         <div class="field">
           <label for="withdrawAmountMmk" data-i18n="withdraw_amount_mmk">Withdrawal Amount (MMK)</label>
@@ -1314,7 +1282,7 @@
               </div>
             </section>
 
-            <section class="panel home-card-purchase" data-mode-shell="instant">
+            <section class="panel home-card-purchase hidden" data-mode-shell="instant" hidden>
               <h2 data-i18n="home_card_purchase_heading_instant">Get Instant Card</h2>
               <p class="hint" data-i18n="home_card_purchase_hint_instant">Master USDT Wallet · Instant Card (No KYC).</p>
               <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
@@ -1425,12 +1393,12 @@
             </section>
           </section>
 
-          <!-- ══ PAGE: Instant (full InstantAppView — USDT Wallet + Kripicard) ══ -->
+          <!-- ══ PAGE: Instant (TRON HD USDT wallet) ══ -->
           <section id="pageInstantCard" class="app-page" data-page="instant-card">
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="nav_instant_card">Instant Card</h2>
-                <p class="page-desc" data-i18n="instant_card_page_desc">No KYC. Fund via Master USDT Wallet (TRC20), then issue Instant Card through Kripicard.</p>
+                <p class="page-desc" data-i18n="instant_card_page_desc">Send USDT (TRC20) to your personal TRON HD deposit address. Your wallet is credited after the transfer confirms.</p>
               </div>
             </div>
             <div id="instantAppPageHost" data-app-view-host="instant"></div>
@@ -1467,7 +1435,7 @@
                   <div class="wallet-hero-value" id="usdtWalletTotalBalance">—</div>
                 </div>
               </div>
-              <p class="wallet-hero-hint" id="usdtWalletMinDepositHint" data-i18n="usdt_wallet_hint">Kripicard deposit (unique pay address) · min $20 · 1 USDT ≈ 1 USD to card (after fee)</p>
+              <p class="wallet-hero-hint" id="usdtWalletMinDepositHint" data-i18n="usdt_wallet_hint">Send USDT (TRC20) to your TRON HD deposit address.</p>
             </section>
 
             <section class="panel" id="usdtEscrowPanel">
@@ -1502,11 +1470,11 @@
             <div class="grid-2">
               <section class="panel">
                 <div class="panel-header-row">
-                  <h2 style="margin:0" data-i18n="usdt_deposit_addresses">Kripicard Deposits</h2>
+                  <h2 style="margin:0" data-i18n="usdt_deposit_addresses">TRON HD deposit</h2>
                   <button type="button" id="btnRefreshUsdtWallet" class="btn btn-secondary btn-sm" data-i18n="refresh">Refresh</button>
                 </div>
-                <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_deposit_addresses_hint">Top up via Kripicard to receive a unique pay address, exact amount, and network (e.g. Tron). Withdrawals are paid via Kripicard within 48 hours (4% markup).</p>
-                <div id="usdtWalletDepositAddresses" class="usdt-wallet-address-list" data-deposit-provider="kripicard"><p class="hint" data-i18n="loading">Loading…</p></div>
+                <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_deposit_addresses_hint">Your personal TRON HD address and QR code. Send USDT on TRC20 only.</p>
+                <div id="usdtWalletDepositAddresses" class="usdt-wallet-address-list" data-deposit-provider="tron-hd"><p class="hint" data-i18n="loading">Loading…</p></div>
               </section>
 
               <section class="panel">
@@ -1825,7 +1793,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261005hubLanding"></script>
+  <script defer src="/i18n.js?v=20261006tronHd"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1845,12 +1813,12 @@
   <script defer src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
   <script defer src="/src/components/instantCardView.js?v=20260928appModes"></script>
-  <script defer src="/src/components/instantAppView.js?v=20260928wallets"></script>
+  <script defer src="/src/components/instantAppView.js?v=20261006tronHd"></script>
   <script defer src="/src/components/index.js?v=20260928appModes"></script>
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20261006instantLanding"></script>
+  <script defer src="/dashboard.js?v=20261006tronHd"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

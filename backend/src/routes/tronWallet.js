@@ -12,7 +12,9 @@ const { requireAuth, requireSensitive } = require('../middleware/auth');
 const { requireWithdrawalsEnabled } = require('../middleware/withdrawalGuard');
 const {
   isTronWalletEnabled,
+  isTronDepositEnabled,
   tronWalletDisabledPayload,
+  tronDepositDisabledPayload,
 } = require('../services/securityFlags');
 const {
   generateUserDepositAddress,
@@ -29,6 +31,12 @@ const router = express.Router();
 function rejectIfDisabled(res) {
   if (isTronWalletEnabled()) return false;
   res.status(410).json(tronWalletDisabledPayload());
+  return true;
+}
+
+function rejectIfDepositsDisabled(res) {
+  if (isTronDepositEnabled()) return false;
+  res.status(410).json(tronDepositDisabledPayload());
   return true;
 }
 
@@ -51,7 +59,7 @@ router.get('/', requireAuth, requireSensitive, async (req, res) => {
 
 /** GET /api/tron/wallet/address — ensure unique TRC-20 deposit address */
 router.get('/address', requireAuth, async (req, res) => {
-  if (rejectIfDisabled(res)) return;
+  if (rejectIfDepositsDisabled(res)) return;
   try {
     const address = await generateUserDepositAddress(req.user.id);
     res.json({ success: true, ...address });
@@ -67,7 +75,7 @@ router.get('/address', requireAuth, async (req, res) => {
 
 /** POST /api/tron/wallet/address — generate / refresh unique TRC-20 deposit address */
 router.post('/address', requireAuth, async (req, res) => {
-  if (rejectIfDisabled(res)) return;
+  if (rejectIfDepositsDisabled(res)) return;
   try {
     const address = await generateUserDepositAddress(req.user.id);
     res.status(address.created ? 201 : 200).json({ success: true, ...address });

@@ -723,7 +723,7 @@ section('UI hub switch surfaces filters + remaining categories');
     /if\s*\(!_skipUnlockGate\)\s*\{[\s\S]*requestHubPurchaseUnlock/.test(dash),
     'Buy always prompts PIN/biometrics before charge'
   );
-  assert.ok(dash.includes('/api/kripicard/services/purchase'), 'purchase API call');
+  assert.ok(!dash.includes('/api/kripicard/services/purchase'), 'customer purchase API removed');
   assert.ok(i18n.includes('pin_unlock_purchase_title'));
   assert.ok(i18n.includes('pin_unlock_biometric'));
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
@@ -764,7 +764,7 @@ section('backend routes + live API client + fee type');
   const feeTypes = fs.readFileSync(path.join(__dirname, '../src/constants/platformFeeTypes.js'), 'utf8');
   const svc = fs.readFileSync(path.join(__dirname, '../src/services/kripicardHubService.js'), 'utf8');
   const api = fs.readFileSync(path.join(__dirname, '../../lib/kripicardHubApi.js'), 'utf8');
-  assert.ok(indexJs.includes('/api/kripicard/services'));
+  assert.ok(!indexJs.includes("app.use('/api/kripicard/services'"), 'hub routes unmounted from the app');
   assert.ok(route.includes("router.post('/purchase'"));
   assert.ok(route.includes("router.get('/categories'"));
   assert.ok(route.includes("/platforms'"));

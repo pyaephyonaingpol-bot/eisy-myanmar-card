@@ -55,22 +55,12 @@ function testDashboardInstantOnly() {
 }
 
 function testHubServiceCategories() {
-  section('Hub switch includes Kripicard service categories + $1 fee');
+  section('Hub catalog is retired; customer app uses TRON HD deposits');
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
-  for (const id of ['sms', 'sim_topup', 'esim', 'gift_cards', 'social_media', 'proxies']) {
-    assert.ok(dash.includes(`'${id}'`), `hub category ${id}`);
-  }
-  assert.ok(!dash.includes("id: 'webhooks'"), 'webhooks removed from hub list');
-  assert.ok(!dash.includes('portal-hub-card-instant'), 'Instant card removed from hub grid');
-  assert.ok(dash.includes('data-portal-switch="instant"') || dash.includes('Open Instant →'), 'Instant stays in top switch');
-  assert.ok(dash.includes('data-hub-service'));
-  assert.ok(dash.includes('hubServiceModal'), 'hub catalog opens in modal');
-  assert.ok(dash.includes('ensureHubServiceModal'));
-  assert.ok(dash.includes('/api/kripicard/services/purchase'));
-  assert.ok(dash.includes('hubPlatformSelect'), 'platform filter select');
-  assert.ok(dash.includes('hubSubcategorySelect'), 'type filter select');
+  assert.ok(!dash.includes('/api/kripicard/services/purchase'), 'purchase API removed from dashboard');
+  assert.ok(dash.includes('/api/tron/wallet/address'), 'TRON HD address loader');
   const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
-  assert.ok(indexJs.includes('/api/kripicard/services'));
+  assert.ok(!indexJs.includes("app.use('/api/kripicard/services'"), 'hub routes unmounted');
   const hubApi = fs.readFileSync(path.join(ROOT, 'lib/kripicardHubApi.js'), 'utf8');
   assert.ok(hubApi.includes("'/services'") || hubApi.includes('/services'));
   assert.ok(hubApi.includes('mapMainServicesToHubCategories'));

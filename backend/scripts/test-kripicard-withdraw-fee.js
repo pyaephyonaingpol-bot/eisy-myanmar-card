@@ -90,8 +90,8 @@ const settingsSrc = fs.readFileSync(path.join(__dirname, '../src/services/settin
 assert.ok(settingsSrc.includes('forcedSettings') || settingsSrc.includes('WITHDRAW_MARKUP_PERCENT'), 'fee math forces markup');
 
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
-assert.ok(html.includes('data-payout-system="kripicard"'));
-assert.ok(html.includes('data-processing-hours="48"'));
-assert.ok(/48 hours/i.test(html));
+assert.ok(html.includes('data-payout-system="tron"'));
+assert.ok(html.includes('value="TRC20"'));
+assert.ok(!/Kripicard/i.test(html));
 
 console.log('Kripicard withdraw fee 4% + 48h — ok');

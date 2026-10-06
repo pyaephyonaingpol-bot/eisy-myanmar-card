@@ -39,7 +39,8 @@ async function main() {
   assert.ok(tronRoutes.includes('createKripicardCryptoDeposit'), 'tron/orders → Kripicard');
   assert.ok(webhook.includes('handleKripicardDepositWebhook'), 'deposit webhook');
   assert.ok(webhook.includes("/kripicard/deposits'"), 'deposits webhook path');
-  assert.ok(indexJs.includes('startKripicardDepositPoller'), 'poller started');
+  assert.ok(!indexJs.includes('startKripicardDepositPoller'), 'kripicard deposit poller is not started');
+  assert.ok(indexJs.includes('startTronOrderPoller'), 'TRON HD deposit poller starts');
   assert.ok(envExample.includes('KRIPICARD_DEPOSITS_CREATE_URL'), 'env documented');
   console.log('ok');
 

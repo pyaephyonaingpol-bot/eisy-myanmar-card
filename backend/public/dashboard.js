@@ -83,7 +83,7 @@ const Dashboard = {
     return text;
   },
 
-  /** Instant is the root and /instant. Hub lives at /hub. */
+  /** Instant is the only customer portal. /hub redirects to /. */
   getPortal() {
     if (window.__EISY_PORTAL__ === 'instant') return 'instant';
     const pathName = String(window.location.pathname || '/').replace(/\/+$/, '') || '/';
@@ -92,8 +92,10 @@ const Dashboard = {
       || pathName === '/instant'
       || pathName === '/auth/callback'
       || pathName.endsWith('/instant.html')
+      || pathName === '/hub'
+      || pathName === '/dashboard'
     ) return 'instant';
-    return null;
+    return 'instant';
   },
 
   portalHref(portal) {
@@ -173,11 +175,11 @@ const Dashboard = {
     const brandTitle = document.querySelector('.sidebar-brand-title');
     if (brandTitle) brandTitle.textContent = 'Eisy Myanmar';
     const brandSub = document.querySelector('.sidebar-brand-sub');
-    if (brandSub) brandSub.textContent = 'Hub · Instant · Kripicard Services';
+    if (brandSub) brandSub.textContent = 'TRON Wallet';
 
     const heading = document.querySelector('.header .page-heading');
     if (heading) {
-      heading.textContent = 'Kripicard Hub';
+      heading.textContent = 'TRON Wallet';
       heading.removeAttribute('data-i18n');
     }
     const subtitle = document.querySelector('.header .subtitle');
@@ -185,7 +187,7 @@ const Dashboard = {
       subtitle.textContent = 'Instant Card plus SMS, eSIM, Gift Cards, and more — $1 processing fee per purchase';
       subtitle.removeAttribute('data-i18n');
     }
-    document.title = 'Eisy Myanmar — Kripicard Hub';
+    document.title = 'Eisy Myanmar — TRON Wallet';
   },
 
   isHubGateway() {
@@ -197,8 +199,8 @@ const Dashboard = {
     if (!header) return;
     const portal = this._portal || this.getPortal();
     if (portal === 'instant') {
-      header.innerHTML = '<a class="btn btn-secondary btn-sm portal-switch-link" href="/hub">← Hub</a>';
-      header.setAttribute('aria-label', 'Back to hub');
+      header.innerHTML = '';
+      header.setAttribute('aria-label', 'TRON wallet');
       return;
     }
     header.innerHTML = '<a class="btn btn-primary btn-sm portal-switch-link" href="/" data-portal-switch="instant">Open Instant →</a>';
@@ -244,8 +246,8 @@ const Dashboard = {
           <em class="portal-hub-fee-chip" data-i18n="hub_processing_fee_chip">+$1.00 fee</em>
         </button>`).join('');
     box.innerHTML = `
-      <h2 data-i18n="portal_hub_heading">Kripicard Hub</h2>
-      <p class="hint" data-i18n="portal_hub_hint">Buy Kripicard services below. Instant Card stays in the top switch. Every service purchase adds a flat $1.00 USD processing fee.</p>
+      <h2 data-i18n="portal_hub_heading">TRON Wallet</h2>
+      <p class="hint" data-i18n="portal_hub_hint">Send USDT (TRC20) to your personal TRON HD deposit address.</p>
       <div class="portal-hub-grid">
         ${catCards}
       </div>`;
@@ -451,14 +453,14 @@ const Dashboard = {
       return;
     }
 
-    if (list) list.innerHTML = '<p class="hint">Loading…</p>';
+    if (list) list.innerHTML = '<p class="hint">Service catalog is unavailable.</p>';
+    this.toast?.('Service catalog is unavailable', 'error');
+    return;
     try {
       const eager = !needsUpstream;
       const qs = this.hubServiceQuery(state, { eager });
-      const data = await Auth.api(
-        'GET',
-        `/api/kripicard/services/${encodeURIComponent(categoryId)}/products${qs}`
-      );
+      const data = null;
+      void qs;
       if (eager) {
         panel._hubFullCatalog = data;
         panel._hubFullCatalogCategory = categoryId;
@@ -525,7 +527,7 @@ const Dashboard = {
       const shownCount = products.length;
       const expectedTotal = data.expected_total != null ? Number(data.expected_total) : null;
       const sourceLabel = data.source === 'live'
-        ? 'Live from Kripicard'
+        ? 'Live catalog'
         : (data.source === 'live-disk' ? 'Cached live catalog' : 'Catalog');
       let countHint = '';
       if (totalCount != null) {
@@ -739,6 +741,8 @@ const Dashboard = {
     triggerBtn,
     _skipUnlockGate = false,
   } = {}) {
+    this.toast?.('Service purchases are unavailable', 'error');
+    return;
     if (!Auth.isLoggedIn?.()) {
       this.toast?.('Sign in to purchase', 'error');
       this.showHubSignIn();
@@ -764,13 +768,12 @@ const Dashboard = {
       triggerBtn.textContent = 'Purchasing…';
     }
     try {
-      const data = await Auth.api('POST', '/api/kripicard/services/purchase', {
-        category_id: categoryId,
-        product_id: productId,
-        product_price_usd: productPriceUsd,
-        recipient_email: recipientEmail || undefined,
-        link: link || undefined,
-      }, { sensitive: true });
+      const data = { message: 'Service purchases are unavailable', quote: null };
+      void categoryId;
+      void productId;
+      void productPriceUsd;
+      void recipientEmail;
+      void link;
       this.toast?.(data.message || 'Purchase completed', 'ok');
       if (data.quote) {
         this.toast?.(
@@ -955,9 +958,14 @@ const Dashboard = {
       });
     });
 
-    document.querySelectorAll('[data-open-usdt-topup]').forEach((btn) => {
-      btn.addEventListener('click', () => this.openUsdtTopUpModal());
-    });
+    if (!this._usdtTopUpBound) {
+      this._usdtTopUpBound = true;
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('[data-open-usdt-topup]')) return;
+        e.preventDefault();
+        this.openUsdtTopUpModal();
+      });
+    }
 
     this._navInitialized = true;
   },
@@ -1794,7 +1802,7 @@ const Dashboard = {
       'ok'
     );
     this.log(
-      `Kripicard deposit completed: ${order?.order_id || order?.kripicard_deposit_id || this._activeTronOrderId}`,
+      `Deposit completed: ${order?.order_id || this._activeTronOrderId || ''}`,
       'ok'
     );
     this.invalidateFetch('wallet', 'deposits', 'transactions');
@@ -1841,48 +1849,91 @@ const Dashboard = {
       this.toast('Sign in to top up your USDT wallet', 'error');
       return;
     }
-    this.loadKripicardDepositNetworks().catch(() => {});
-    this.updateUsdtDepositFeePreview();
     $('usdtTopUpModal')?.classList.remove('hidden');
-    requestAnimationFrame(() => $('usdtAmount')?.focus());
+    this.loadTronHdDepositAddress().catch(() => {});
+  },
+
+  async ensureTronHdDepositAddress() {
+    if (this._tronHdDeposit?.address) return this._tronHdDeposit;
+    if (this._tronHdDepositPromise) return this._tronHdDepositPromise;
+    this._tronHdDepositPromise = (async () => {
+      const data = await Auth.api('GET', '/api/tron/wallet/address');
+      const address = data?.address;
+      if (!address) {
+        const err = new Error(data?.error || 'TRON deposit address is unavailable');
+        err.code = data?.code;
+        throw err;
+      }
+      this._tronHdDeposit = data;
+      return data;
+    })().finally(() => {
+      this._tronHdDepositPromise = null;
+    });
+    return this._tronHdDepositPromise;
+  },
+
+  paintTronHdDeposit(data) {
+    const address = data?.address || '';
+    const network = 'TRON (TRC20)';
+    this.showUsdtDepositAddress(network, address);
+    const errEl = $('tronHdDepositError');
+    if (errEl) {
+      errEl.textContent = '';
+      errEl.classList.add('hidden');
+    }
+    const status = $('usdtOrderStatus');
+    if (status) {
+      const label = (typeof t === 'function' && t('tron_hd_deposit_status'))
+        || 'This address is yours. Confirmed USDT (TRC20) sent here is credited to your wallet.';
+      status.textContent = label;
+    }
+    if (window.EisyComponents?.instantAppView?.paintAddress) {
+      window.EisyComponents.instantAppView.paintAddress(address);
+    }
+    const depositEl = $('usdtWalletDepositAddresses');
+    if (depositEl && address) {
+      depositEl.setAttribute('data-deposit-provider', 'tron-hd');
+      depositEl.innerHTML = `
+        <div class="usdt-wallet-address-card" data-deposit-provider="tron-hd">
+          <div class="usdt-wallet-address-head">
+            <strong>TRON HD deposit</strong>
+            <span class="badge-secure">TRC20 · USDT</span>
+          </div>
+          <img class="usdt-qr" alt="TRON USDT deposit QR code" width="180" height="180"
+            src="/api/qr?size=180&data=${encodeURIComponent(address)}" />
+          <code class="usdt-address-code">${this.escapeHtml(address)}</code>
+          <button type="button" class="btn btn-secondary btn-sm" data-copy-usdt-address="${this.escapeAttr(address)}">Copy Address</button>
+        </div>`;
+    }
+  },
+
+  showTronHdDepositError(message) {
+    const text = message || 'TRON deposit address is unavailable';
+    ['tronHdDepositError', 'instantTronHdError'].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.textContent = text;
+      el.classList.remove('hidden');
+    });
+    const depositEl = $('usdtWalletDepositAddresses');
+    if (depositEl && !this._tronHdDeposit?.address) {
+      depositEl.innerHTML = `<p class="hint err">${this.escapeHtml(text)}</p>`;
+    }
+  },
+
+  async loadTronHdDepositAddress() {
+    try {
+      const data = await this.ensureTronHdDepositAddress();
+      this.paintTronHdDeposit(data);
+      return data;
+    } catch (err) {
+      this.showTronHdDepositError(err.message);
+      throw err;
+    }
   },
 
   async loadKripicardDepositNetworks() {
-    const select = $('usdtNetwork');
-    if (!select) return;
-    try {
-      const data = window.EisyServices?.deposit?.getKripicardNetworks
-        ? await window.EisyServices.deposit.getKripicardNetworks('USDT')
-        : await Auth.api('GET', '/api/deposit/kripicard-networks?currency=USDT');
-      const networks = Array.isArray(data?.networks) ? data.networks : [];
-      this._kripicardDepositNetworks = networks;
-      if (!networks.length) return;
-
-      const prev = select.value || 'tron';
-      select.innerHTML = '';
-      networks.forEach((row) => {
-        const value = String(row.network || '').trim().toLowerCase();
-        if (!value) return;
-        const opt = document.createElement('option');
-        opt.value = value;
-        const label = this.formatKripicardNetworkLabel(value);
-        const min = Number(row.min_amount);
-        opt.textContent = Number.isFinite(min) && min > 0
-          ? `${label} (min $${min})`
-          : label;
-        select.appendChild(opt);
-      });
-      if ([...select.options].some((o) => o.value === prev)) {
-        select.value = prev;
-      } else if ([...select.options].some((o) => o.value === 'tron')) {
-        select.value = 'tron';
-      }
-    } catch (err) {
-      console.warn('[kripicard/networks]', err.message || err);
-      if (!select.options.length) {
-        select.innerHTML = '<option value="tron" selected>Tron</option>';
-      }
-    }
+    return this.loadTronHdDepositAddress().catch(() => {});
   },
 
   closeUsdtTopUpModal() {
@@ -2364,29 +2415,13 @@ const Dashboard = {
         : (this._usdtWalletCache?.escrow_holds || data.escrow_holds)
     );
     if ($('usdtWalletMinDepositHint')) {
-      const kripicardMin = Math.max(20, Number(data.minimum_usdt_deposit) || 20);
       $('usdtWalletMinDepositHint').textContent =
-        `Minimum deposit: $${kripicardMin.toFixed(2)} USDT · Kripicard networks (Tron, BSC, …)`;
+        'Send USDT (TRC20) to your personal TRON HD deposit address.';
     }
 
     const depositEl = $('usdtWalletDepositAddresses');
-    // Only rewrite the deposit list when the payload includes address data.
-    // Balance-only refreshes omit deposit_addresses and must not clear the UI.
-    if (depositEl && Object.prototype.hasOwnProperty.call(data, 'deposit_addresses')) {
-      // Kripicard issues a unique pay_address per deposit — no static HD list.
-      depositEl.innerHTML = `
-        <div class="usdt-wallet-address-card" data-deposit-provider="kripicard">
-          <div class="usdt-wallet-address-head">
-            <strong>Kripicard Deposit</strong>
-            <span class="badge-secure">Unique pay address</span>
-          </div>
-          <p class="hint" style="margin:0.5rem 0">
-            Each top-up creates a unique pay address, exact amount, and network (e.g. Tron).
-            Minimum $20 USDT. Master Wallet is credited after on-chain confirmation.
-          </p>
-          <button type="button" class="btn btn-primary btn-sm" data-open-usdt-topup>Top Up Master Wallet</button>
-        </div>
-      `;
+    if (depositEl) {
+      this.loadTronHdDepositAddress().catch(() => {});
     }
 
     const linkedEl = $('usdtLinkedWalletsList');
@@ -4803,7 +4838,7 @@ const Dashboard = {
     }
     if ($('usdtDepositPreviewFee')) {
       $('usdtDepositPreviewFee').textContent = Number.isFinite(fee)
-        ? (feeBreakdown?.fee_label || `$${fee.toFixed(2)} (Kripicard)`)
+        ? (feeBreakdown?.fee_label || `$${fee.toFixed(2)}`)
         : '—';
     }
     if ($('usdtDepositPreviewNet')) {
@@ -4903,122 +4938,7 @@ const Dashboard = {
     this.updateUsdtDepositFeePreview();
 
     $('btnCreateTronDeposit')?.addEventListener('click', async () => {
-      if (this._tronDepositCreateInFlight || this._activeTronOrderId) return;
-      try {
-        const amountUsdt = parseFloat($('usdtAmount')?.value);
-        if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) {
-          console.warn('[kripicard/deposit] Invalid deposit amount entered:', $('usdtAmount')?.value);
-          this.toast('Enter a valid USDT amount', 'error');
-          return;
-        }
-        const network = String($('usdtNetwork')?.value || 'tron').trim().toLowerCase() || 'tron';
-        const btn = $('btnCreateTronDeposit');
-        this._tronDepositCreateInFlight = true;
-        this.setSubmitBusy(btn, true, {
-          loadingLabel: window.EisyI18n?.t?.('btn_deposit_creating') || 'Issuing pay address…',
-        });
-
-        const body = { amount_usdt: amountUsdt, network, currency: 'USDT' };
-        console.log('[kripicard/deposit] Creating deposit:', body);
-        const data = await (window.EisyServices?.deposit?.createKripicardDeposit
-          ? window.EisyServices.deposit.createKripicardDeposit(body)
-          : window.EisyServices?.deposit?.createTronOrder
-            ? window.EisyServices.deposit.createTronOrder(body)
-            : Auth.api('POST', '/api/deposit/create', body, { sensitive: true }));
-
-        console.log('[kripicard/deposit] Response:', data);
-        const order = data?.order;
-        const payment = data?.payment;
-        const kripicard = data?.kripicard;
-        const payAddress = payment?.deposit_address
-          || order?.deposit_address
-          || kripicard?.pay_address;
-        const orderId = order?.order_id || payment?.order_id;
-        if (!payAddress || !orderId) {
-          throw new Error(data?.error || 'Invalid Kripicard deposit response from server');
-        }
-
-        const networkId = payment?.kripicard_network
-          || order?.network
-          || kripicard?.network
-          || network;
-        const networkLabel = this.formatKripicardNetworkLabel(networkId);
-        const payAmount = Number(
-          payment?.pay_amount
-          ?? payment?.amount_usdt
-          ?? kripicard?.pay_amount
-          ?? order?.amount
-          ?? amountUsdt
-        );
-        const netCredit = Number(data?.fee_breakdown?.net_usdt
-          ?? kripicard?.credited_on_completion_usd);
-
-        this.showUsdtDepositAddress(networkLabel, payAddress);
-        if ($('usdtMerchantName')) {
-          $('usdtMerchantName').textContent = `${payment?.token || kripicard?.pay_currency || 'USDT'} · ${networkLabel}`;
-          $('usdtMerchantName').classList.remove('hidden');
-        }
-        if ($('usdtPayAmountInline')) {
-          $('usdtPayAmountInline').textContent = Number.isFinite(payAmount)
-            ? payAmount.toFixed(2)
-            : '—';
-        }
-        if ($('usdtOrderAmount')) {
-          $('usdtOrderAmount').textContent = Number.isFinite(payAmount)
-            ? `${payAmount.toFixed(2)} USDT`
-            : '—';
-        }
-        if ($('usdtPayNetworkDisplay')) {
-          $('usdtPayNetworkDisplay').textContent = networkLabel;
-        }
-        if ($('usdtPayNetDisplay')) {
-          $('usdtPayNetDisplay').textContent = Number.isFinite(netCredit)
-            ? `$${netCredit.toFixed(2)} USDT`
-            : '—';
-        }
-        if ($('usdtOrderIdDisplay')) {
-          $('usdtOrderIdDisplay').textContent = orderId;
-        }
-        this.applyKripicardDepositFeePreview(data?.fee_breakdown, payAmount);
-        this._activeKripicardDeposit = {
-          order_id: orderId,
-          pay_address: payAddress,
-          pay_amount: payAmount,
-          network: networkId,
-          network_label: networkLabel,
-          kripicard_deposit_id: payment?.kripicard_deposit_id || kripicard?.id || order?.kripicard_deposit_id,
-        };
-
-        $('usdtOrderRefBox')?.classList.remove('hidden');
-        $('usdtAddressBox')?.classList.remove('hidden');
-        this.setUsdtOrderStatus(order?.status || 'PENDING');
-        if ($('usdtAmount')) $('usdtAmount').disabled = true;
-        if ($('usdtNetwork')) $('usdtNetwork').disabled = true;
-
-        this.toast(
-          data.message
-            || `Send exactly ${Number.isFinite(payAmount) ? payAmount.toFixed(2) : amountUsdt.toFixed(2)} USDT on ${networkLabel} to the pay address below`,
-          'ok'
-        );
-        this.startTronOrderPolling(orderId);
-      } catch (err) {
-        console.error('[kripicard/deposit] Create failed:', err);
-        if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
-        this.toast(err.message || 'Kripicard deposit failed', 'error');
-      } finally {
-        this._tronDepositCreateInFlight = false;
-        const btn = $('btnCreateTronDeposit');
-        if (this._activeTronOrderId) {
-          this.setSubmitBusy(btn, false, {
-            idleLabel: window.EisyI18n?.t?.('btn_deposit_tron_waiting') || 'Waiting for payment…',
-          });
-          if (btn) btn.disabled = true;
-        } else {
-          this.setSubmitBusy(btn, false, {
-            idleLabel: window.EisyI18n?.t?.('btn_deposit_tron') || 'Get Pay Address',
-          });
-        }
-      }
+      await this.loadTronHdDepositAddress().catch(() => {});
     });
 
     $('usdtDepositForm')?.addEventListener('submit', async (e) => {
@@ -6745,6 +6665,7 @@ const Dashboard = {
         await self.loadUsdtWalletPage?.(false)?.catch?.(() => {});
         return self.walletUsdt;
       },
+      loadTronHdDeposit: () => self.loadTronHdDepositAddress(),
       onIssued: () => {
         self.loadWallet();
         self.loadUsdtWalletPage?.(true);
@@ -6762,7 +6683,8 @@ const Dashboard = {
   mountInstantAppUi() {
     const comps = (typeof EisyComponents !== 'undefined') ? EisyComponents : null;
     if (!comps?.instantAppView) {
-      return this.mountInstantCardFallbackUi();
+      console.warn('[Dashboard] TRON wallet view not loaded');
+      return;
     }
 
     this.clearCardViewHosts();
@@ -6780,18 +6702,7 @@ const Dashboard = {
   mountInstantCardFallbackUi() {
     const comps = (typeof EisyComponents !== 'undefined') ? EisyComponents : null;
     if (comps?.instantAppView) return this.mountInstantAppUi();
-    if (!comps?.instantCardView) {
-      console.warn('[Dashboard] instant card view not loaded');
-      return;
-    }
-
-    this.clearCardViewHosts();
-    const ctx = this.buildCardViewContexts();
-    const host = $('instantCardPageHost') || $('instantAppPageHost');
-    if (!host) return;
-    comps.instantCardView.mount(host, { replace: true });
-    comps.instantCardView.bind(ctx.instantCtx);
-    comps.instantCardView.activate(ctx.instantCtx);
+    console.warn('[Dashboard] TRON wallet view not loaded');
   },
 
   enterInstantCardPage({ force = false } = {}) {
@@ -7196,15 +7107,14 @@ const Dashboard = {
     );
     const hours = Number(fees.withdraw_processing_hours ?? 48);
     const feeSummary = Number.isFinite(pct)
-      ? `${pct}% (3% Kripicard network + 1% platform)`
-      : '4% Kripicard markup';
+      ? `${pct}% service fee`
+      : 'service fee';
     const pageHint = document.querySelector('[data-i18n="withdraw_usdt_hint"]');
     if (pageHint) {
       delete pageHint.dataset.i18n;
       pageHint.textContent =
-        `Withdrawals are processed via Kripicard within ${hours} hours. `
-        + `Service fee ${feeSummary}. Crypto (TRC20/BEP20) or bank payout in MMK. `
-        + 'MMK → USDT is not available.';
+        `USDT withdrawals are reviewed and sent on TRON (TRC20) within ${hours} hours. `
+        + `Service fee ${feeSummary}.`;
     }
     const methodHint = $('withdrawMethodHint');
     if (methodHint && !methodHint.dataset.i18nKeep) {
@@ -7257,15 +7167,15 @@ const Dashboard = {
         fees.withdrawal_service_fee_percent ?? fees.payment_service_fee_percent ?? 4
       );
       const hours = Number(fees.withdraw_processing_hours ?? 48);
-      const feeSummary = `${pct}% (3% Kripicard + 1% platform)`;
+      const feeSummary = `${pct}% service fee`;
       // Do NOT re-attach data-i18n here — static i18n strings would overwrite the live fee.
       delete methodHint.dataset.i18n;
       if (method === 'crypto') {
         methodHint.textContent =
-          `Kripicard crypto payout (TRC20/BEP20). Fee: ${feeSummary}. Processed within ${hours} hours.`;
+          `TRON (TRC20) payout. Fee: ${feeSummary}. Processed within ${hours} hours.`;
       } else {
         methodHint.textContent =
-          `Convert USDT to MMK at the platform rate via Kripicard. Fee: ${feeSummary}. Bank transfer within ${hours} hours.`;
+          `Convert USDT to MMK at the platform rate. Fee: ${feeSummary}. Bank transfer within ${hours} hours.`;
       }
     }
 
@@ -7343,8 +7253,8 @@ const Dashboard = {
     let feeLabel = 'No service fee';
     if (feeUsdt > 0) {
       if (mode === 'fixed') feeLabel = `fixed $${feeUsdt.toFixed(2)}`;
-      else if (feePercent === 4 || Number(fees.withdraw_markup_percent) === 4) {
-        feeLabel = `4% ($${feeUsdt.toFixed(2)} · 3% Kripicard + 1% platform)`;
+      else if (mode === 'percent' || feePercent === 4 || Number(fees.withdraw_markup_percent) === 4) {
+        feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
       } else if (mode === 'percent') feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
       else if (usedMinimum) feeLabel = `min $${minimumFee.toFixed(2)} (${feePercent}% = $${percentFee.toFixed(2)})`;
       else feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
@@ -7394,11 +7304,11 @@ const Dashboard = {
 
     if ($('withdrawPreviewNetwork')) {
       if (method === 'bank') {
-        $('withdrawPreviewNetwork').textContent = 'Bank (USDT → MMK) · Kripicard · 48h';
+        $('withdrawPreviewNetwork').textContent = 'Bank (USDT → MMK) · 48h';
       } else if (network === 'BEP20') {
-        $('withdrawPreviewNetwork').textContent = 'BEP20 (BSC) · Kripicard · 48h';
+        $('withdrawPreviewNetwork').textContent = 'BEP20 (BSC) · 48h';
       } else {
-        $('withdrawPreviewNetwork').textContent = 'TRC20 · Kripicard · 48h';
+        $('withdrawPreviewNetwork').textContent = 'TRC20 · 48h';
       }
     }
 
@@ -7422,7 +7332,7 @@ const Dashboard = {
     const hours = preview.processing_hours || 48;
     let summary = method === 'bank'
       ? `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} = $${preview.net_usdt.toFixed(2)} USDT → ${Math.round(preview.amount_mmk || 0).toLocaleString()} MMK · processed within ${hours} hours.`
-      : `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} = $${preview.net_usdt.toFixed(2)} via Kripicard (${network}) · processed within ${hours} hours.`;
+      : `Requested $${preview.amount_usdt.toFixed(2)} − ${preview.fee_label} = $${preview.net_usdt.toFixed(2)} on ${network} · processed within ${hours} hours.`;
     if (preview.below_minimum) summary = `Minimum withdrawal is $${preview.minimum_usdt_withdrawal.toFixed(2)} USDT.`;
     if (preview.invalid_net) summary = 'Amount too small after fee.';
     if ($('withdrawPreviewSummary')) $('withdrawPreviewSummary').textContent = summary;

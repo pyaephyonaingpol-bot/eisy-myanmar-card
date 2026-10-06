@@ -90,12 +90,8 @@ app.get('/', (_req, res) => {
   sendPortalApp(res, 'instant');
 });
 
-app.get('/hub', (_req, res) => {
-  sendHtmlFile(res, INDEX_HTML);
-});
-
-app.get('/dashboard', (_req, res) => {
-  sendHtmlFile(res, INDEX_HTML);
+app.get(['/hub', '/dashboard'], (_req, res) => {
+  res.redirect(302, '/');
 });
 
 app.get('/auth/callback', (_req, res) => {
@@ -430,8 +426,7 @@ app.use('/api/kyc', createKycRateLimiter(), require('./routes/kyc'));
 app.use('/api/p2p', require('./routes/p2p'));
 app.use('/api/withdrawal', require('./routes/withdrawal'));
 app.use('/api/withdraw', require('./routes/withdraw'));
-app.use('/api/kripicard/services', require('./routes/kripicardServices'));
-app.use('/api/instant/services', require('./routes/kripicardServices'));
+// Kripicard hub catalog and card-service purchases are removed.
 
 app.use((req, res) => {
   if (req.path.startsWith('/api')) {
@@ -529,16 +524,14 @@ async function start() {
   }, 60 * 1000);
   expiryInterval.unref?.();
 
-  // Legacy TronGrid HD-address poller disabled — deposits use Kripicard Deposit API.
-  if (String(process.env.TRON_ORDER_POLL_ENABLED || 'false').toLowerCase() === 'true') {
+  const { isTronDepositEnabled } = require('./services/securityFlags');
+  const pollTron = String(process.env.TRON_ORDER_POLL_ENABLED || 'true').toLowerCase() !== 'false';
+  if (isTronDepositEnabled() && pollTron) {
     const { startTronOrderPoller } = require('./services/tronOrderService');
     startTronOrderPoller();
   } else {
-    console.log('[tron/orders] TronGrid poll disabled (Kripicard Deposit API is primary)');
+    console.log('[tron/orders] TRON HD deposit poll disabled');
   }
-
-  const { startKripicardDepositPoller } = require('./services/kripicardDepositService');
-  startKripicardDepositPoller();
 
   await new Promise((resolve, reject) => {
     server = app.listen(PORT, '0.0.0.0', () => {
