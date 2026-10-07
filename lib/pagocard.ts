@@ -3,7 +3,9 @@
  *
  * Docs: https://pagocards.com/documentation
  * Auth headers: `publickey` = PAGO_CARD_API_KEY, `secretkey` = PAGO_CARD_SECRET_KEY.
- * Base URL: PAGO_CARD_API_BASE_URL (default https://pagocards.com).
+ * Base URL: PAGO_CARD_API_BASE_URL. Every request is sent to the DigitalOcean
+ * proxy so Pago Card sees the whitelisted server IP.
+ * Default: http://157.245.87.210/api/pago
  *
  * Card numbers and CVVs are returned to the caller when the provider includes
  * them. This module does not log request headers or response bodies.
@@ -15,7 +17,7 @@
  */
 'use strict';
 
-const DEFAULT_BASE_URL = 'https://pagocards.com';
+const DEFAULT_BASE_URL = 'http://157.245.87.210/api/pago';
 const REQUEST_TIMEOUT_MS = 20_000;
 const ATM_PRODUCT_CODE = 'us_493_visa_atm';
 const MIN_INITIAL_LOAD = 10;

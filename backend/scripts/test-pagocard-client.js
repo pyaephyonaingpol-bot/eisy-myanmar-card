@@ -232,6 +232,81 @@ const sampleCard = {
     );
   }
 
+  {
+    const previousBase = process.env.PAGO_CARD_API_BASE_URL;
+    const previousKey = process.env.PAGO_CARD_API_KEY;
+    const previousSecret = process.env.PAGO_CARD_SECRET_KEY;
+    const proxy = 'http://157.245.87.210/api/pago';
+    const calls = [];
+    const fetchImpl = async (url) => {
+      calls.push(String(url));
+      if (String(url).endsWith('/fund')) {
+        return jsonResponse(200, {
+          status: 'success',
+          data: {
+            card_id: 'card_proxy_1',
+            amount: 10000000,
+            display_amount: 10,
+            currency: 'USD',
+            status: 'completed',
+            transaction_id: 'txn_proxy',
+          },
+        });
+      }
+      return jsonResponse(200, {
+        status: 'success',
+        data: { ...sampleCard, card_id: 'card_proxy_1' },
+      });
+    };
+    const bases = [
+      'http://157.245.87.210/api/pago/',
+      'http://157.245.87.210/api/pago/api/v1',
+      'http://157.245.87.210/api/pago',
+      '',
+    ];
+    try {
+      process.env.PAGO_CARD_API_KEY = 'proxy-pub-key';
+      process.env.PAGO_CARD_SECRET_KEY = 'proxy-sec-key';
+      for (const raw of bases) {
+        process.env.PAGO_CARD_API_BASE_URL = raw;
+        calls.length = 0;
+        const api = createPagoCardClient({ fetchImpl });
+        await api.createVirtualCard({
+          productCode: 'us_493_visa_bin_v2',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          email: 'ada@example.com',
+        });
+        await api.getCardDetails('card_proxy_1');
+        await api.getCardBalance('card_proxy_1');
+        await api.topUpCard('card_proxy_1', 10);
+        assert.deepStrictEqual(calls, [
+          `${proxy}/api/v1/cards`,
+          `${proxy}/api/v1/cards/card_proxy_1`,
+          `${proxy}/api/v1/cards/card_proxy_1`,
+          `${proxy}/api/v1/cards/card_proxy_1/fund`,
+        ]);
+      }
+      delete process.env.PAGO_CARD_API_BASE_URL;
+      calls.length = 0;
+      const fallback = createPagoCardClient({ fetchImpl });
+      await fallback.createVirtualCard({
+        productCode: 'us_493_visa_bin_v2',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        email: 'ada@example.com',
+      });
+      assert.strictEqual(calls[0], `${proxy}/api/v1/cards`);
+    } finally {
+      if (previousBase === undefined) delete process.env.PAGO_CARD_API_BASE_URL;
+      else process.env.PAGO_CARD_API_BASE_URL = previousBase;
+      if (previousKey === undefined) delete process.env.PAGO_CARD_API_KEY;
+      else process.env.PAGO_CARD_API_KEY = previousKey;
+      if (previousSecret === undefined) delete process.env.PAGO_CARD_SECRET_KEY;
+      else process.env.PAGO_CARD_SECRET_KEY = previousSecret;
+    }
+  }
+
   console.log('Pago Card client checks passed');
 })().catch((err) => {
   console.error(err);
