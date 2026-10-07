@@ -26,9 +26,20 @@ function stripTypes(source) {
 
 let cached = null;
 
+function pagoCardSourcePath() {
+  const candidates = [
+    path.join(__dirname, '../../../lib/pagocard.ts'),
+    path.join(process.cwd(), 'lib/pagocard.ts'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  throw new Error('Pago Card client source lib/pagocard.ts is not in the server bundle');
+}
+
 function loadPagoCardClient() {
   if (cached) return cached;
-  const file = path.join(__dirname, '../../../lib/pagocard.ts');
+  const file = pagoCardSourcePath();
   const source = stripTypes(fs.readFileSync(file, 'utf8'));
   const loaded = new Module(file, module);
   loaded.filename = file;
