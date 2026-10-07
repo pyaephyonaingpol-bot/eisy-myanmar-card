@@ -1,5 +1,5 @@
 /**
- * Instant portal routes (Kripicard + Master Wallet).
+ * Instant portal routes (TRON HD wallet).
  * Legacy /business and /standard redirect to /instant.
  */
 'use strict';
@@ -57,12 +57,9 @@ function testDashboardInstantOnly() {
 function testHubServiceCategories() {
   section('Hub catalog is retired; customer app uses TRON HD deposits');
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
-  assert.ok(!dash.includes('/api/kripicard/services/purchase'), 'purchase API removed from dashboard');
   assert.ok(dash.includes('/api/tron/wallet/address'), 'TRON HD address loader');
   const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
-  assert.ok(!indexJs.includes("app.use('/api/kripicard/services'"), 'hub routes unmounted');
-  assert.ok(!fs.existsSync(path.join(ROOT, 'lib/kripicardHubApi.js')), 'hub API client removed');
-  assert.ok(!fs.existsSync(path.join(ROOT, 'lib/kripicard.js')), 'card API client removed');
+  assert.ok(!/app\.use\(\s*['"]\/api\/[^'"]*services['"]/.test(indexJs), 'hub service routes unmounted');
   const css = fs.readFileSync(path.join(ROOT, 'backend/public/styles.css'), 'utf8');
   assert.ok(css.includes('hub-service-modal-box'));
   console.log('ok');

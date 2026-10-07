@@ -424,7 +424,6 @@ app.use('/api/kyc', createKycRateLimiter(), require('./routes/kyc'));
 app.use('/api/p2p', require('./routes/p2p'));
 app.use('/api/withdrawal', require('./routes/withdrawal'));
 app.use('/api/withdraw', require('./routes/withdraw'));
-// Kripicard hub catalog and card-service purchases are removed.
 
 app.use((req, res) => {
   if (req.path.startsWith('/api')) {

@@ -11,19 +11,6 @@ const {
 } = require('../services/stripeWebhookService');
 const router = express.Router();
 
-function retiredCardWebhook(_req, res) {
-  return res.status(410).json({
-    received: false,
-    error: 'Card provider webhooks are no longer accepted.',
-    code: 'CARD_PROVIDER_REMOVED',
-  });
-}
-
-router.post('/kripicard', retiredCardWebhook);
-router.post('/kripicard/collections', retiredCardWebhook);
-router.post('/kripicard/payments', retiredCardWebhook);
-router.post('/kripicard/deposits', retiredCardWebhook);
-
 /**
  * Binance Pay webhook — notify on PAY_SUCCESS and credit user wallet (net after fee).
  * Responds with Binance-required { returnCode: "SUCCESS" }.

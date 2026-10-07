@@ -77,9 +77,6 @@ function requireListenerOrAdmin(req, res, next) {
 /** POST /api/deposit/create — retired. Deposits use the TRON HD address. */
 router.post('/create', requireAuth, requireSensitive, (_req, res) => depositUseTronHd(res));
 
-router.get('/kripicard-networks', requireAuth, (_req, res) => depositUseTronHd(res));
-router.post('/kripicard-collection', requireAuth, requireSensitive, (_req, res) => depositUseTronHd(res));
-
 router.post('/request', requireAuth, requireSensitive, async (req, res) => {
   try {
     const depositType = (req.body.deposit_type || 'usdt').toLowerCase();

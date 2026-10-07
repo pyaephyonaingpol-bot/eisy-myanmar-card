@@ -59,7 +59,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
   const withdrawalFees = await getWithdrawalFeeSettings();
   assert.strictEqual(withdrawalFees.withdrawal_service_fee_mode, 'percent');
   assert.strictEqual(withdrawalFees.payment_service_fee_mode, 'percent');
-  // Runtime fee API always exposes the forced Kripicard 4% markup.
+  // Runtime fee API always exposes the forced 4% markup.
   assert.strictEqual(withdrawalFees.payment_service_fee_percent, 4);
   assert.strictEqual(withdrawalFees.withdrawal_service_fee_percent, 4);
 
@@ -67,7 +67,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
   assert.strictEqual(depositBreakdown.fee_usdt, 0, 'deposit fee off => zero fee');
 
   const withdrawalBreakdown = calculateWithdrawalBreakdown(100, 'BANK', withdrawalFees);
-  assert.strictEqual(withdrawalBreakdown.fee_usdt, 4, 'withdrawal forced to Kripicard 4% markup');
+  assert.strictEqual(withdrawalBreakdown.fee_usdt, 4, 'withdrawal forced to the 4% markup');
   assert.strictEqual(withdrawalBreakdown.network_fee_usdt, 3);
   assert.strictEqual(withdrawalBreakdown.platform_margin_usdt, 1);
 

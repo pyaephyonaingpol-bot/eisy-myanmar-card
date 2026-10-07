@@ -1,4 +1,4 @@
--- Allow Kripicard Hub service processing fees in platform_fee_events.
+-- Allow hub service processing fees in platform_fee_events.
 INSERT OR IGNORE INTO app_settings (key, value, updated_at)
 VALUES ('platform_revenue_hub_service_usdt', '0', datetime('now'));
 

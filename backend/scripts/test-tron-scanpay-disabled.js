@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Assert Tron Wallet + Scan Pay are disabled/hidden (UI + backend guards),
- * and Kripicard 4% withdrawal markup remains forced active.
+ * and the 4% withdrawal markup remains forced active.
  */
 'use strict';
 
@@ -88,7 +88,7 @@ section('backend routes guard Tron Wallet + Scan Pay');
 
   const withdraw = read('src/routes/withdraw.js');
   assert.ok(withdraw.includes('isTronWalletEnabled'), 'legacy /api/withdraw gated');
-  assert.ok(withdraw.includes('/api/withdrawal/usdt'), 'points clients to Kripicard withdraw');
+  assert.ok(withdraw.includes('/api/withdrawal/usdt'), 'points clients to the platform withdraw route');
 
   const auth = read('src/services/authService.js');
   assert.ok(auth.includes('isTronWalletEnabled()'), 'auth skips HD provision when disabled');
@@ -138,7 +138,6 @@ section('i18n describes TRON HD deposits');
 {
   const i18n = read('public/i18n.js');
   assert.ok(!/Withdrawals still use the legacy TRON master wallet/i.test(i18n));
-  assert.ok(!/Kripicard/.test(i18n), 'customer i18n does not name Kripicard');
   assert.ok(/TRON HD/i.test(i18n), 'TRON HD deposit copy');
   console.log('ok');
 }

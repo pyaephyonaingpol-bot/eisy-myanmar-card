@@ -126,7 +126,7 @@ async function testSettingsAndBreakdown() {
   });
 
   const settings = await getWithdrawalFeeSettings();
-  // Kripicard policy forces 4% markup regardless of admin percent writes.
+  // Platform policy forces 4% markup regardless of admin percent writes.
   assert.strictEqual(settings.payment_service_fee_percent, 4);
   assert.strictEqual(settings.withdrawal_service_fee_percent, 4);
   assert.strictEqual(settings.minimum_usdt_withdrawal, 25);
@@ -148,7 +148,7 @@ async function testSettingsAndBreakdown() {
   assert.strictEqual(bankBreakdown.platform_margin_usdt, 1);
 
   const trc20Breakdown = calculateWithdrawalBreakdown(100, 'TRC20', settings);
-  assert.strictEqual(trc20Breakdown.fee_usdt, 4, 'TRC20 uses forced Kripicard 4% markup');
+  assert.strictEqual(trc20Breakdown.fee_usdt, 4, 'TRC20 uses the forced 4% markup');
   assert.ok(trc20Breakdown.fee_label.includes('4%'), 'TRC20 fee label shows 4%');
 
   const staleSettings = {

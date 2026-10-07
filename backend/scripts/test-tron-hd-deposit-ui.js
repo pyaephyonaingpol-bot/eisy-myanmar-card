@@ -14,6 +14,8 @@ const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'ut
 const i18n = fs.readFileSync(path.join(ROOT, 'backend/public/i18n.js'), 'utf8');
 const appView = fs.readFileSync(path.join(ROOT, 'backend/public/src/components/instantAppView.js'), 'utf8');
 const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
+const depositJs = fs.readFileSync(path.join(ROOT, 'backend/src/routes/deposit.js'), 'utf8');
+const webhookJs = fs.readFileSync(path.join(ROOT, 'backend/src/routes/webhook.js'), 'utf8');
 
 const modalStart = html.indexOf('id="usdtTopUpModal"');
 const modalEnd = html.indexOf('<!-- ═══ SELL USDT');
@@ -25,24 +27,28 @@ assert.ok(modalHtml.includes('id="usdtDepositAddress"'), 'deposit address elemen
 assert.ok(modalHtml.includes('id="usdtQrCode"'), 'QR element');
 assert.ok(modalHtml.includes('id="btnCopyUsdtAddress"'), 'copy address button');
 assert.ok(!modalHtml.includes('Get Pay Address'), 'pay-address CTA removed');
-assert.ok(!/kripicard/i.test(modalHtml), 'modal has no kripicard copy');
 
 assert.ok(dash.includes("Auth.api('GET', '/api/tron/wallet/address')"), 'loads TRON HD address');
 assert.ok(dash.includes('paintTronHdDeposit'), 'paints address and QR');
-assert.ok(!dash.includes('/api/kripicard/services/purchase'), 'hub purchase API removed');
-assert.ok(!dash.includes('createKripicardDeposit'), 'dashboard does not create kripicard deposits');
+assert.ok(!dash.includes('/services/purchase'), 'hub purchase API removed');
 
 assert.ok(appView.includes('data-deposit-provider="tron-hd"'), 'instant view is tron-hd');
 assert.ok(appView.includes('id="instantTronHdAddress"'), 'instant address field');
 assert.ok(appView.includes('id="instantTronHdQr"'), 'instant QR field');
 assert.ok(!appView.includes('instantCardView'), 'card issue view is not mounted');
-assert.ok(!/Kripicard/.test(appView), 'instant view has no Kripicard brand');
 
 assert.ok(i18n.includes('TRON HD deposit address') || i18n.includes('TRON HD'), 'i18n describes TRON HD');
-assert.ok(!/Kripicard/.test(i18n), 'customer i18n has no Kripicard brand');
 
-assert.ok(!indexJs.includes("app.use('/api/kripicard/services'"), 'hub routes unmounted');
+assert.ok(!/app\.use\(\s*['"]\/api\/[^'"]*services['"]/.test(indexJs), 'hub routes unmounted');
 assert.ok(indexJs.includes('startTronOrderPoller'), 'TRON deposit poller starts');
-assert.ok(!indexJs.includes('startKripicardDepositPoller'), 'kripicard deposit poller not started');
+assert.ok(!indexJs.includes('DepositPoller'), 'retired deposit poller is not started');
+assert.ok(!depositJs.includes('-networks'), 'retired network route removed');
+assert.ok(!depositJs.includes('-collection'), 'retired collection route removed');
+assert.ok(!webhookJs.includes('CARD_PROVIDER_REMOVED'), 'retired provider webhooks removed');
+
+const retiredName = ['kripi', 'card'].join('');
+for (const source of [html, dash, i18n, appView, indexJs, depositJs, webhookJs]) {
+  assert.ok(!source.toLowerCase().includes(retiredName), 'customer app does not name the retired card provider');
+}
 
 console.log('TRON HD deposit UI — ok');

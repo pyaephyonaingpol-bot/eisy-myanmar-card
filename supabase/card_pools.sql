@@ -1,14 +1,14 @@
 -- Eisy Myanmar — legacy card_pools inventory schema (RETIRED)
--- Kripicard on-demand issuance replaces the retired card-pool model.
+-- On-demand card issuance replaced this pool model.
 -- This SQL is kept only for historical / migration reference.
--- Do not use pool sync in new code — issue via Kripicard createcard.
+-- Do not use pool sync in new code.
 --
 -- Former flows (retired):
 -- A) Pool Model: admin fetches blank cards → card_pools (available)
 --    → purchase assigns one row + inserts user_cards
 -- B) Real-time issue: provider createcard → user_cards (pool_id null)
 --
--- Current flow: USDT wallet debit → Kripicard createcard → user_cards
+-- Current flow: USDT wallet debit → provider createcard → user_cards
 
 CREATE TABLE IF NOT EXISTS card_pools (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS card_pools (
   balance NUMERIC(18, 4) NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'available'
     CHECK (status IN ('available', 'reserved', 'assigned', 'disabled', 'exhausted')),
-  provider TEXT NOT NULL DEFAULT 'kripicard',
+  provider TEXT NOT NULL DEFAULT 'platform',
   raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
   assigned_to_user_id TEXT,
   assigned_at TIMESTAMPTZ,

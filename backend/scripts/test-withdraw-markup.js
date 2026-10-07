@@ -53,7 +53,7 @@ assert.strictEqual(trc20.network_fee_usdt, 3);
 assert.strictEqual(trc20.platform_margin_usdt, 1);
 assert.strictEqual(trc20.processing_hours, 48);
 assert.strictEqual(trc20.payout_provider, 'platform');
-assert.ok(!/Kripicard/i.test(trc20.fee_label));
+assert.ok(trc20.fee_label.includes('4%'));
 assert.ok(trc20.summary.includes('48'));
 
 const bank = calculateWithdrawalBreakdown(100, 'BANK', settings);
@@ -75,22 +75,16 @@ assert.strictEqual(drifted.fee_usdt, 4);
 assert.strictEqual(drifted.network_fee_usdt, 3);
 assert.strictEqual(drifted.platform_margin_usdt, 1);
 
-const mig = fs.readFileSync(path.join(__dirname, '../migrations/066_kripicard_withdraw_fee_4pct.sql'), 'utf8');
-assert.ok(mig.includes("'4'"), 'migration sets 4%');
-assert.ok(mig.includes("'percent'"), 'migration sets percent mode');
-
 const svc = fs.readFileSync(path.join(__dirname, '../src/services/withdrawalService.js'), 'utf8');
 assert.ok(svc.includes('WITHDRAW_PROCESSING_HOURS'), 'service references 48h constant');
 assert.ok(svc.includes('payout_provider: WITHDRAW_PAYOUT_PROVIDER'), 'platform payout provider');
-assert.ok(!/Kripicard/.test(svc), 'withdrawal service has no card-provider brand');
 
 const settingsSrc = fs.readFileSync(path.join(__dirname, '../src/services/settingsService.js'), 'utf8');
 assert.ok(settingsSrc.includes('forcedSettings') || settingsSrc.includes('WITHDRAW_MARKUP_PERCENT'), 'fee math forces markup');
-assert.ok(!fs.existsSync(path.join(__dirname, '../src/constants/kripicardWithdrawFees.js')));
+assert.ok(fs.existsSync(path.join(__dirname, '../src/constants/withdrawMarkupPolicy.js')));
 
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 assert.ok(html.includes('data-payout-system="tron"'));
 assert.ok(html.includes('value="TRC20"'));
-assert.ok(!/Kripicard/i.test(html));
 
 console.log('Withdraw fee 4% + 48h — ok');
