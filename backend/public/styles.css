@@ -5047,4 +5047,45 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   letter-spacing: 0.01em;
 }
 
+.pago-card-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.pago-card-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+}
+
+.pago-card-row strong {
+  margin-right: 0.5rem;
+}
+
+.pago-card-details {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.pago-card-details div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.pago-card-details dt {
+  color: var(--muted, #8b93a7);
+}
+
+.pago-card-details dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 

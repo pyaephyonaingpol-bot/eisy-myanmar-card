@@ -54,12 +54,27 @@ CREATE TABLE IF NOT EXISTS card_applications (
   pricing JSONB DEFAULT '{}'::jsonb,
   metadata JSONB DEFAULT '{}'::jsonb,
   deposit_id TEXT,
+  pago_card_id TEXT,
+  pago_status TEXT,
+  product_code TEXT,
+  brand TEXT,
+  last_four TEXT,
+  expiry_month TEXT,
+  expiry_year TEXT,
+  currency TEXT DEFAULT 'USD',
+  balance_display_usd NUMERIC(18, 4),
+  balance_amount BIGINT,
+  balance_currency TEXT,
+  provider TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_card_applications_user ON card_applications(user_id);
 CREATE INDEX IF NOT EXISTS idx_card_applications_status ON card_applications(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_card_applications_pago_card_id
+  ON card_applications (pago_card_id)
+  WHERE pago_card_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS card_reload_requests (
   id TEXT PRIMARY KEY,
@@ -74,6 +89,9 @@ CREATE TABLE IF NOT EXISTS card_reload_requests (
   status TEXT NOT NULL DEFAULT 'pending',
   pricing JSONB DEFAULT '{}'::jsonb,
   metadata JSONB DEFAULT '{}'::jsonb,
+  pago_card_id TEXT,
+  pago_transaction_id TEXT,
+  provider TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

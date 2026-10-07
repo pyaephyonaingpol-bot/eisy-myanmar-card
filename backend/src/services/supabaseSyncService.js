@@ -415,7 +415,7 @@ async function syncCardApplication(card, user, extra = {}) {
   const displayStatus = extra.display_status
     || (card.status === 'pending' ? 'PENDING_ISSUANCE' : String(card.status || '').toUpperCase());
 
-  return upsertRow('card_applications', {
+  const base = {
     id: String(card.id),
     user_id: String(card.user_id),
     user_email: u?.email || null,
@@ -428,7 +428,26 @@ async function syncCardApplication(card, user, extra = {}) {
     deposit_id: extra.deposit_id ? String(extra.deposit_id) : (metadata.deposit_id ? String(metadata.deposit_id) : null),
     created_at: card.created_at || nowIso(),
     updated_at: card.updated_at || nowIso(),
-  });
+  };
+  const withPago = {
+    ...base,
+    pago_card_id: card.pago_card_id || metadata.pago_card_id || null,
+    pago_status: card.pago_status || metadata.pago_status || null,
+    product_code: card.product_code || metadata.product_code || null,
+    brand: card.brand || metadata.brand || null,
+    last_four: card.last_four || null,
+    expiry_month: card.expiry_month || null,
+    expiry_year: card.expiry_year || null,
+    currency: card.currency || 'USD',
+    balance_display_usd: card.balance_display_usd != null ? Number(card.balance_display_usd) : null,
+    balance_amount: card.balance_amount != null ? Number(card.balance_amount) : null,
+    balance_currency: card.balance_currency || null,
+    provider: card.provider || (card.pago_card_id ? 'pago' : null),
+  };
+  const synced = await upsertRow('card_applications', withPago);
+  if (synced) return synced;
+  // Older projects have not run supabase/pago_card_columns.sql yet.
+  return upsertRow('card_applications', base);
 }
 
 async function syncCardReload(reload, user) {
