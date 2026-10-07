@@ -36,7 +36,8 @@ function mapCardForClient(c) {
   const pending = isPendingCardRecord(c);
   const status = resolveClientCardStatus(c);
   const digits = pending ? '' : String(c.card_number || '').replace(/\s/g, '');
-  const last4 = digits.length >= 4 ? digits.slice(-4) : '????';
+  const storedLast4 = String(c.last_four || '').replace(/\D/g, '').slice(-4);
+  const last4 = storedLast4 || (digits.length >= 4 ? digits.slice(-4) : '????');
 
   return {
     id: c.id,
@@ -49,10 +50,17 @@ function mapCardForClient(c) {
     status_reason: c.status_reason || null,
     request_status: metadata.request_status || (pending ? 'pending_approval' : 'approved'),
     is_primary: Boolean(c.is_primary),
-    balance_usd: metadata.balance_usd ?? null,
-    // Bitnob / Standard providers are retired — never expose them to clients.
+    balance_usd: c.balance_display_usd ?? metadata.balance_usd ?? null,
+    pago_card_id: c.pago_card_id || metadata.pago_card_id || null,
+    product_code: c.product_code || metadata.product_code || null,
+    brand: c.brand || metadata.brand || null,
+    pago_status: c.pago_status || metadata.pago_status || null,
+    currency: c.balance_currency || c.currency || 'USD',
     provider: (() => {
-      const p = String(metadata.provider || '').toLowerCase();
+      if (c.pago_card_id || metadata.pago_card_id || c.provider === 'pago' || metadata.provider === 'pago') {
+        return 'pago';
+      }
+      const p = String(metadata.provider || c.provider || '').toLowerCase();
       if (!p || p === 'bitnob' || p === 'bitnod' || p === 'standard') return null;
       return 'legacy';
     })(),
@@ -323,12 +331,121 @@ router.get('/card', requireAuth, requireSensitive, async (req, res) => {
   }
 });
 
-router.post('/card/reload', requireAuth, requireSensitive, (_req, res) => {
-  res.status(410).json({
+function sendPagoError(res, err, fallback) {
+  const status = err.code === 'INSUFFICIENT_USDT_BALANCE'
+    ? 400
+    : (err.status || 500);
+  res.status(status).json({
     success: false,
-    error: 'Virtual card funding is no longer available.',
-    code: 'CARD_FEATURES_REMOVED',
+    error: err.message || fallback,
+    code: err.code || 'PAGO_ERROR',
+    pago_card_id: err.pago_card_id || undefined,
   });
+}
+
+router.post('/cards/request', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    const { issuePagoCardForUser, PAGO_PRODUCTS } = require('../services/pagoCardService');
+    const result = await issuePagoCardForUser({
+      userId: req.user.id,
+      productCode: req.body?.product_code,
+      firstName: req.body?.first_name,
+      lastName: req.body?.last_name,
+      email: req.body?.email,
+      initialLoad: req.body?.initial_load,
+    });
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === Number(result.card?.id)) || null;
+    res.status(201).json({
+      success: true,
+      message: 'Your virtual card is ready.',
+      products: PAGO_PRODUCTS,
+      debited_usdt: result.debited_usdt,
+      card,
+      ...payload,
+    });
+  } catch (err) {
+    console.error('[user/cards/request]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to request a virtual card');
+  }
+});
+
+router.get('/cards/products', requireAuth, (_req, res) => {
+  const { PAGO_PRODUCTS } = require('../services/pagoCardService');
+  res.json({ products: PAGO_PRODUCTS });
+});
+
+router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const { refreshPagoCard } = require('../services/pagoCardService');
+    await refreshPagoCard(req.user.id, cardId);
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId);
+    if (!card) return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
+    res.json({ card, ...payload });
+  } catch (err) {
+    console.error('[user/cards/detail]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to load card details');
+  }
+});
+
+router.post('/cards/:id/topup', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const amount = req.body?.amount_usdt ?? req.body?.amount ?? req.body?.top_up_usd;
+    const { topUpPagoCard } = require('../services/pagoCardService');
+    const result = await topUpPagoCard({
+      userId: req.user.id,
+      localCardId: cardId,
+      amountUsd: amount,
+    });
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId) || null;
+    res.json({
+      success: true,
+      message: `Card topped up with $${Number(result.funded_usd).toFixed(2)}. Wallet debit ${Number(result.debited_usdt).toFixed(2)} USDT.`,
+      debited_usdt: result.debited_usdt,
+      funded_usd: result.funded_usd,
+      reload_fee_usd: result.reload_fee_usd,
+      transaction_id: result.transaction_id,
+      card,
+      ...payload,
+    });
+  } catch (err) {
+    console.error('[user/cards/topup]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to top up the card');
+  }
+});
+
+router.post('/card/reload', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    const cardId = parseInt(req.body?.card_id, 10);
+    const amount = req.body?.amount_usdt ?? req.body?.amount ?? req.body?.top_up_usd;
+    const { topUpPagoCard } = require('../services/pagoCardService');
+    const result = await topUpPagoCard({
+      userId: req.user.id,
+      localCardId: cardId,
+      amountUsd: amount,
+    });
+    res.json({
+      success: true,
+      message: `Card topped up with $${Number(result.funded_usd).toFixed(2)}. Wallet debit ${Number(result.debited_usdt).toFixed(2)} USDT.`,
+      debited_usdt: result.debited_usdt,
+      funded_usd: result.funded_usd,
+      reload_fee_usd: result.reload_fee_usd,
+      transaction_id: result.transaction_id,
+    });
+  } catch (err) {
+    console.error('[user/card/reload]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to top up the card');
+  }
 });
 
 router.get('/transactions', requireAuth, async (req, res) => {

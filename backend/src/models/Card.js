@@ -299,20 +299,231 @@ const Card = {
     return row;
   },
 
+  async findByPagoCardId(pagoCardId) {
+    const id = String(pagoCardId || '').trim();
+    if (!id) return null;
+    const db = getDb();
+    return db.get(`
+      SELECT * FROM ${this.TABLE}
+      WHERE pago_card_id = ?
+      ORDER BY updated_at DESC, id DESC
+      LIMIT 1
+    `, id);
+  },
+
   /**
    * Find a local cards_v2 row by provider card id stored in metadata.
    */
   async findByProviderCardId(providerCardId) {
     const id = String(providerCardId || '').trim();
     if (!id) return null;
+    const byColumn = await this.findByPagoCardId(id);
+    if (byColumn) return byColumn;
     const db = getDb();
     return db.get(`
       SELECT * FROM ${this.TABLE}
-      WHERE json_extract(metadata, '$.provider_card_id') = ?
+      WHERE json_extract(metadata, '$.pago_card_id') = ?
+         OR json_extract(metadata, '$.provider_card_id') = ?
          OR json_extract(metadata, '$.card_id') = ?
       ORDER BY updated_at DESC, id DESC
       LIMIT 1
-    `, id, id);
+    `, id, id, id);
+  },
+
+  async createFromPago({
+    userId,
+    pagoCardId,
+    productCode,
+    brand,
+    status = 'active',
+    pagoStatus,
+    cardNumber,
+    expDate,
+    cvv,
+    cardHolderName,
+    lastFour,
+    expiryMonth,
+    expiryYear,
+    balanceDisplayUsd,
+    balanceAmount,
+    balanceCurrency,
+    email,
+    metadata,
+  }) {
+    const existing = await this.findByPagoCardId(pagoCardId);
+    if (existing && Number(existing.user_id) === Number(userId)) {
+      return this.updateFromPago(existing.id, {
+        productCode,
+        brand,
+        status,
+        pagoStatus,
+        cardNumber,
+        expDate,
+        cvv,
+        cardHolderName,
+        lastFour,
+        expiryMonth,
+        expiryYear,
+        balanceDisplayUsd,
+        balanceAmount,
+        balanceCurrency,
+        email,
+        metadata,
+      });
+    }
+
+    const db = getDb();
+    const siblings = await this.findByUserId(userId);
+    const isPrimary = !siblings.some((row) => Number(row.is_primary) === 1);
+    const last4 = String(lastFour || '').replace(/\D/g, '').slice(-4);
+    const digits = String(cardNumber || '').replace(/\s/g, '');
+    const storedNumber = digits || (last4 ? `************${last4}` : `PAGO-${pagoCardId}`);
+    const storedExp = expDate || [expiryMonth, expiryYear].filter(Boolean).join('/') || '—';
+    const storedCvv = cvv || '—';
+    const meta = {
+      provider: 'pago',
+      pago_card_id: pagoCardId,
+      product_code: productCode || null,
+      brand: brand || null,
+      pago_status: pagoStatus || null,
+      balance_usd: balanceDisplayUsd ?? null,
+      email: email || null,
+      ...(metadata && typeof metadata === 'object' ? metadata : {}),
+    };
+
+    await db.run('BEGIN');
+    try {
+      if (isPrimary) {
+        await db.run(
+          `UPDATE ${this.TABLE} SET is_primary = 0, updated_at = datetime('now') WHERE user_id = ?`,
+          userId
+        );
+      }
+      const result = await db.run(`
+        INSERT INTO ${this.TABLE} (
+          user_id, card_number, exp_date, cvv, card_holder_name,
+          card_type, currency, status, is_primary, metadata,
+          pago_card_id, pago_status, product_code, brand, last_four,
+          expiry_month, expiry_year, balance_display_usd, balance_amount, balance_currency,
+          provider, activated_at, updated_at
+        ) VALUES (
+          ?, ?, ?, ?, ?,
+          'virtual', ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          'pago', CASE WHEN ? = 'active' THEN datetime('now') ELSE NULL END, datetime('now')
+        )
+      `,
+        userId, storedNumber, storedExp, storedCvv, cardHolderName || 'Card Holder',
+        balanceCurrency || 'USD', status, isPrimary ? 1 : 0, JSON.stringify(meta),
+        pagoCardId, pagoStatus || null, productCode || null, brand || null, last4 || null,
+        expiryMonth || null, expiryYear || null,
+        balanceDisplayUsd ?? null, balanceAmount ?? null, balanceCurrency || null,
+        status);
+
+      await db.run('COMMIT');
+      const row = await this.findById(result.lastID);
+      syncCardApplication(row).catch((err) => console.warn('[supabase] card sync:', err.message));
+      return row;
+    } catch (err) {
+      await db.run('ROLLBACK');
+      if (/pago_card_id/i.test(String(err.message || ''))) {
+        return this.findByPagoCardId(pagoCardId);
+      }
+      throw err;
+    }
+  },
+
+  async updateFromPago(id, {
+    productCode,
+    brand,
+    status,
+    pagoStatus,
+    cardNumber,
+    expDate,
+    cvv,
+    cardHolderName,
+    lastFour,
+    expiryMonth,
+    expiryYear,
+    balanceDisplayUsd,
+    balanceAmount,
+    balanceCurrency,
+    email,
+    metadata,
+  } = {}) {
+    const db = getDb();
+    const existing = await this.findById(id);
+    if (!existing) return null;
+
+    let current = {};
+    try {
+      current = existing.metadata ? JSON.parse(existing.metadata) : {};
+    } catch (_) {
+      current = {};
+    }
+    const last4 = String(lastFour || existing.last_four || '').replace(/\D/g, '').slice(-4);
+    const digits = String(cardNumber || '').replace(/\s/g, '');
+    const nextMeta = {
+      ...current,
+      provider: 'pago',
+      pago_card_id: existing.pago_card_id || current.pago_card_id || null,
+      product_code: productCode || existing.product_code || current.product_code || null,
+      brand: brand || existing.brand || current.brand || null,
+      pago_status: pagoStatus || existing.pago_status || null,
+      balance_usd: balanceDisplayUsd ?? current.balance_usd ?? null,
+      email: email || current.email || null,
+      ...(metadata && typeof metadata === 'object' ? metadata : {}),
+    };
+
+    await db.run(`
+      UPDATE ${this.TABLE}
+      SET card_number = COALESCE(?, card_number),
+          exp_date = COALESCE(?, exp_date),
+          cvv = COALESCE(?, cvv),
+          card_holder_name = COALESCE(?, card_holder_name),
+          status = COALESCE(?, status),
+          metadata = ?,
+          pago_status = COALESCE(?, pago_status),
+          product_code = COALESCE(?, product_code),
+          brand = COALESCE(?, brand),
+          last_four = COALESCE(?, last_four),
+          expiry_month = COALESCE(?, expiry_month),
+          expiry_year = COALESCE(?, expiry_year),
+          balance_display_usd = COALESCE(?, balance_display_usd),
+          balance_amount = COALESCE(?, balance_amount),
+          balance_currency = COALESCE(?, balance_currency),
+          provider = 'pago',
+          currency = COALESCE(?, currency),
+          activated_at = CASE
+            WHEN ? = 'active' AND activated_at IS NULL THEN datetime('now')
+            ELSE activated_at
+          END,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `,
+      digits || null,
+      expDate || null,
+      cvv || null,
+      cardHolderName || null,
+      status || null,
+      JSON.stringify(nextMeta),
+      pagoStatus || null,
+      productCode || null,
+      brand || null,
+      last4 || null,
+      expiryMonth || null,
+      expiryYear || null,
+      balanceDisplayUsd ?? null,
+      balanceAmount ?? null,
+      balanceCurrency || null,
+      balanceCurrency || null,
+      status || existing.status,
+      id);
+
+    const row = await this.findById(id);
+    syncCardApplication(row).catch((err) => console.warn('[supabase] card sync:', err.message));
+    return row;
   },
 
   /**
