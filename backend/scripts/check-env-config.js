@@ -43,6 +43,14 @@ const GROUPS = [
     ],
   },
   {
+    title: 'Pago Card',
+    keys: [
+      ['PAGO_CARD_API_BASE_URL', ['PAGO_CARD_API_BASE_URL']],
+      ['PAGO_CARD_API_KEY', ['PAGO_CARD_API_KEY']],
+      ['PAGO_CARD_SECRET_KEY', ['PAGO_CARD_SECRET_KEY']],
+    ],
+  },
+  {
     title: 'Database',
     keys: [
       ['DATABASE_URL', ['DATABASE_URL', 'TURSO_DATABASE_URL', 'LIBSQL_URL']],
