@@ -83,6 +83,7 @@
     "test:admin-mmk-tx-schema-drift": "node scripts/test-admin-mmk-tx-schema-drift.js",
     "test:payment-gateway-cleanup": "node scripts/test-payment-gateway-cleanup.js",
     "test:withdraw-markup": "node scripts/test-withdraw-markup.js",
+    "test:pagocard": "node --experimental-strip-types scripts/test-pagocard-client.js",
     "test:p2p-true-escrow": "node scripts/test-p2p-true-escrow.js",
     "test:p2p-mmk-escrow-ledger": "node scripts/test-p2p-mmk-escrow-ledger.js",
     "test:escrow-hold-backfill": "node scripts/test-escrow-hold-backfill.js"
