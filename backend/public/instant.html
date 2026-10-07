@@ -900,7 +900,7 @@
           alt="Eisy Myanmar"
         />
         <h1 class="auth-brand-title">Eisy Myanmar</h1>
-        <p class="subtitle auth-brand-sub">Secure Virtual Card Platform</p>
+        <p class="subtitle auth-brand-sub">USDT wallet on TRON</p>
       </div>
 
       <div id="devOtpBanner" class="dev-otp-banner hidden" role="alert">
@@ -1093,7 +1093,7 @@
           </button>
           <button type="button" class="nav-item" data-page="instant-card" data-mode-nav="instant">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            <span data-i18n="nav_instant_card">Instant Card</span>
+            <span data-i18n="nav_instant_card">TRON Wallet</span>
           </button>
           <button type="button" class="nav-item" data-page="deposits" data-instant-only>
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -1190,7 +1190,7 @@
         <main class="app-content">
           <!-- Hidden titles for page heading sync -->
           <span class="hidden" data-page-title="home" data-i18n="nav_dashboard">Dashboard</span>
-          <span class="hidden" data-page-title="instant-card" data-i18n="nav_instant_card">Instant Card</span>
+          <span class="hidden" data-page-title="instant-card" data-i18n="nav_instant_card">TRON Wallet</span>
           <span class="hidden" data-page-title="deposits" data-instant-only data-i18n="deposits_page_title">Deposit &amp; Reload History</span>
           <span class="hidden" data-page-title="usdt-wallet" data-instant-only data-i18n="usdt_wallet_page_title">USDT Wallet</span>
           <span class="hidden" data-page-title="p2p" data-instant-only data-i18n="nav_p2p">P2P Express</span>
@@ -1237,7 +1237,7 @@
                 <h2 style="margin:0" data-i18n="active_requests">Active Requests</h2>
                 <button type="button" class="btn btn-secondary btn-sm" data-goto="deposits" data-i18n="view_history">View History</button>
               </div>
-              <p class="hint" style="margin-bottom:0.75rem" data-i18n="active_requests_hint">Track card and deposit requests awaiting admin approval.</p>
+              <p class="hint" style="margin-bottom:0.75rem" data-i18n="active_requests_hint">Track deposit requests awaiting confirmation.</p>
               <div id="pendingRequestsList" class="data-table-wrap"><p class="hint" data-i18n="loading_requests">Loading requests…</p></div>
             </section>
           </section>
@@ -1246,7 +1246,7 @@
           <section id="pageInstantCard" class="app-page" data-page="instant-card">
             <div class="page-header">
               <div>
-                <h2 class="page-heading" data-i18n="nav_instant_card">Instant Card</h2>
+                <h2 class="page-heading" data-i18n="nav_instant_card">TRON Wallet</h2>
                 <p class="page-desc" data-i18n="instant_card_page_desc">Send USDT (TRC20) to your personal TRON HD deposit address. Your wallet is credited after the transfer confirms.</p>
               </div>
             </div>
@@ -1258,7 +1258,7 @@
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="usdt_wallet_page_title">USDT Wallet</h2>
-                <p class="page-desc" data-i18n="usdt_wallet_page_desc">View your platform balance, copy deposit addresses (TRC20 / BEP20 / ERC20), link external wallets, and track USDT activity.</p>
+                <p class="page-desc" data-i18n="usdt_wallet_page_desc">View your platform balance, copy your TRON HD deposit address, and track USDT activity.</p>
               </div>
               <div class="action-row">
                 <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="btn_top_up_usdt">Top Up USDT</button>
@@ -1633,7 +1633,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261006removeCards"></script>
+  <script defer src="/i18n.js?v=20261007tronHd"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1655,7 +1655,7 @@
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20261006removeCards"></script>
+  <script defer src="/dashboard.js?v=20261007tronHd"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

@@ -183,7 +183,7 @@ const Dashboard = {
     }
     const subtitle = document.querySelector('.header .subtitle');
     if (subtitle) {
-      subtitle.textContent = 'Instant Card plus SMS, eSIM, Gift Cards, and more — $1 processing fee per purchase';
+      subtitle.textContent = 'Send USDT (TRC20) to your TRON HD deposit address.';
       subtitle.removeAttribute('data-i18n');
     }
     document.title = 'Eisy Myanmar — TRON Wallet';
@@ -215,15 +215,7 @@ const Dashboard = {
   },
 
   getHubServiceCategories() {
-    // Instant is available via the top header switch — keep Hub list service-only.
-    return [
-      { id: 'sms', slug: 'sms', titleKey: 'hub_cat_sms_title', descKey: 'hub_cat_sms_desc', title: 'SMS', desc: 'Temporary numbers for SMS verification' },
-      { id: 'sim_topup', slug: 'sim-top-up', titleKey: 'hub_cat_sim_topup_title', descKey: 'hub_cat_sim_topup_desc', title: 'SIM Top-Up', desc: 'Mobile airtime top-ups worldwide' },
-      { id: 'esim', slug: 'esim', titleKey: 'hub_cat_esim_title', descKey: 'hub_cat_esim_desc', title: 'eSIM', desc: 'Global data eSIM packages' },
-      { id: 'gift_cards', slug: 'gift-cards', titleKey: 'hub_cat_gift_cards_title', descKey: 'hub_cat_gift_cards_desc', title: 'Gift Cards', desc: 'Digital gift cards from top brands' },
-      { id: 'social_media', slug: 'social-media', titleKey: 'hub_cat_social_media_title', descKey: 'hub_cat_social_media_desc', title: 'Social Media', desc: 'Social account tools and boosts' },
-      { id: 'proxies', slug: 'proxies', titleKey: 'hub_cat_proxies_title', descKey: 'hub_cat_proxies_desc', title: 'Proxies', desc: 'Residential and datacenter proxies' },
-    ];
+    return [];
   },
 
   renderPortalHubChooser() {
@@ -334,7 +326,8 @@ const Dashboard = {
     }
   },
 
-  async openHubServiceCategory(categoryId) {
+  async openHubServiceCategory() {
+    return;
     const modal = this.ensureHubServiceModal();
     if (!modal) return;
     modal._hubState = {
@@ -452,8 +445,6 @@ const Dashboard = {
       return;
     }
 
-    if (list) list.innerHTML = '<p class="hint">Service catalog is unavailable.</p>';
-    this.toast?.('Service catalog is unavailable', 'error');
     return;
     try {
       const eager = !needsUpstream;
@@ -740,7 +731,6 @@ const Dashboard = {
     triggerBtn,
     _skipUnlockGate = false,
   } = {}) {
-    this.toast?.('Service purchases are unavailable', 'error');
     return;
     if (!Auth.isLoggedIn?.()) {
       this.toast?.('Sign in to purchase', 'error');

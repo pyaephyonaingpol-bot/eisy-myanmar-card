@@ -14,7 +14,7 @@ const indexHtml = fs.readFileSync(path.join(root, 'backend/public/index.html'), 
 const dash = fs.readFileSync(path.join(root, 'backend/public/dashboard.js'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'backend/src/index.js'), 'utf8');
 
-assert.ok(indexHtml.includes('dashboard.js?v=20261006removeCards'), 'dashboard cache bust');
+assert.ok(indexHtml.includes('dashboard.js?v=20261007tronHd'), 'dashboard cache bust');
 assert.ok(dash.includes("pathName === '/'"), 'root path selects Instant');
 assert.ok(dash.includes("pathName === '/auth/callback'"), 'OAuth callback keeps the Instant document');
 assert.ok(!dash.includes('href="/hub"'), 'Instant header does not link to the hub');
