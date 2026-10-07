@@ -210,10 +210,11 @@ async function pagoRequest<T>(
   options: { body?: unknown; idempotencyKey?: string } = {}
 ): Promise<T> {
   const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
     publickey: config.apiKey,
     secretkey: config.secretKey,
   };
-  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
 
   let response: Response;
@@ -239,8 +240,13 @@ async function pagoRequest<T>(
     try {
       payload = JSON.parse(text) as PagoEnvelope<T>;
     } catch {
-      throw new PagoCardError('Pago Card returned a non-JSON response', {
-        status: response.status,
+      const status = response.status;
+      const proxyDown = status === 502 || status === 503 || status === 504;
+      const message = proxyDown
+        ? `Pago proxy ${config.baseUrl} returned HTTP ${status} instead of JSON. The proxy could not reach Pago Card.`
+        : `Pago Card returned a non-JSON response (HTTP ${status}).`;
+      throw new PagoCardError(redact(message, [config.apiKey, config.secretKey]), {
+        status,
         code: 'PAGO_BAD_RESPONSE',
       });
     }
