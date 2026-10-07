@@ -7,6 +7,11 @@
  *
  * Card numbers and CVVs are returned to the caller when the provider includes
  * them. This module does not log request headers or response bodies.
+ *
+ * createVirtualCard(cardholderData) issues a card.
+ * getCardDetails(cardId) returns number, CVV, and expiry when the provider sends them.
+ * getCardBalance(cardId) reads the current balance.
+ * topUpCard(cardId, amount) funds the card with USD already taken from the platform balance.
  */
 'use strict';
 
@@ -67,6 +72,24 @@ export interface CreateCardInput {
   email: string;
   /** USD. Optional. Min 10, max 2500. Not allowed for us_493_visa_atm. */
   initial_load?: number;
+  idempotencyKey?: string;
+}
+
+/** Cardholder payload for createVirtualCard. Snake_case and camelCase are both accepted. */
+export interface CardholderData {
+  product_code?: PagoCardProductCode;
+  productCode?: PagoCardProductCode;
+  first_name?: string;
+  firstName?: string;
+  last_name?: string;
+  lastName?: string;
+  name?: string;
+  cardholder_name?: string;
+  cardholderName?: string;
+  email?: string;
+  /** USD. Optional. Min 10, max 2500. Not allowed for us_493_visa_atm. */
+  initial_load?: number;
+  initialLoad?: number;
   idempotencyKey?: string;
 }
 
@@ -240,6 +263,34 @@ async function pagoRequest<T>(
   return payload.data;
 }
 
+function normalizeCardholder(input: CardholderData | null | undefined): CreateCardInput {
+  if (!input || typeof input !== 'object') {
+    throw new PagoCardError('cardholderData is required', {
+      status: 400,
+      code: 'VALIDATION_ERROR',
+      details: { cardholderData: ['cardholderData is required'] },
+    });
+  }
+  let firstName = String(input.first_name || input.firstName || '').trim();
+  let lastName = String(input.last_name || input.lastName || '').trim();
+  if (!firstName || !lastName) {
+    const full = String(input.name || input.cardholder_name || input.cardholderName || '').trim();
+    const parts = full.split(/\s+/).filter(Boolean);
+    if (!firstName && parts.length) firstName = parts[0];
+    if (!lastName && parts.length > 1) lastName = parts.slice(1).join(' ');
+  }
+  const rawLoad = input.initial_load ?? input.initialLoad;
+  const initialLoad = rawLoad == null || String(rawLoad).trim() === '' ? undefined : Number(rawLoad);
+  return {
+    product_code: String(input.product_code || input.productCode || '').trim(),
+    first_name: firstName,
+    last_name: lastName,
+    email: String(input.email || '').trim(),
+    initial_load: initialLoad,
+    idempotencyKey: input.idempotencyKey,
+  };
+}
+
 function createPagoCardClient(options: PagoCardClientOptions = {}) {
   async function createCard(input: CreateCardInput): Promise<PagoCard> {
     const config = resolveConfig(options);
@@ -290,6 +341,10 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     });
   }
 
+  function createVirtualCard(cardholderData: CardholderData): Promise<PagoCard> {
+    return createCard(normalizeCardholder(cardholderData));
+  }
+
   async function getCardDetails(cardId: string): Promise<PagoCard> {
     const config = resolveConfig(options);
     const id = requireText(cardId, 'card_id');
@@ -307,11 +362,26 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     return card.balance;
   }
 
-  async function topUpCard(input: TopUpCardInput): Promise<PagoCardFundResult> {
+  /**
+   * Fund a card. `amount` is the USD taken from the platform USDT balance.
+   * Accepts topUpCard(cardId, amount) or topUpCard({ cardId, amount }).
+   */
+  async function topUpCard(
+    cardIdOrInput: string | TopUpCardInput,
+    amount?: number,
+    extra: { idempotencyKey?: string } = {}
+  ): Promise<PagoCardFundResult> {
     const config = resolveConfig(options);
-    const cardId = requireText(input?.cardId, 'card_id');
-    const amount = truncateUsd(Number(input?.amount));
-    if (!Number.isFinite(amount) || amount < MIN_TOP_UP) {
+    const input: TopUpCardInput = typeof cardIdOrInput === 'object' && cardIdOrInput !== null
+      ? cardIdOrInput
+      : {
+        cardId: String(cardIdOrInput || ''),
+        amount: Number(amount),
+        idempotencyKey: extra.idempotencyKey,
+      };
+    const cardId = requireText(input.cardId, 'card_id');
+    const fundAmount = truncateUsd(Number(input.amount));
+    if (!Number.isFinite(fundAmount) || fundAmount < MIN_TOP_UP) {
       throw new PagoCardError(`amount must be at least ${MIN_TOP_UP} USD`, {
         status: 400,
         code: 'VALIDATION_ERROR',
@@ -323,13 +393,14 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
       'POST',
       `/api/v1/cards/${encodeURIComponent(cardId)}/fund`,
       {
-        body: { amount },
+        body: { amount: fundAmount },
         idempotencyKey: input.idempotencyKey,
       }
     );
   }
 
   return {
+    createVirtualCard,
     createCard,
     getCardDetails,
     getCardBalance,
@@ -337,8 +408,12 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
   };
 }
 
+function createVirtualCard(cardholderData: CardholderData): Promise<PagoCard> {
+  return createPagoCardClient().createVirtualCard(cardholderData);
+}
+
 function createCard(input: CreateCardInput): Promise<PagoCard> {
-  return createPagoCardClient().createCard(input);
+  return createVirtualCard(input);
 }
 
 function getCardDetails(cardId: string): Promise<PagoCard> {
@@ -349,13 +424,18 @@ function getCardBalance(cardId: string): Promise<PagoCardBalance> {
   return createPagoCardClient().getCardBalance(cardId);
 }
 
-function topUpCard(input: TopUpCardInput): Promise<PagoCardFundResult> {
-  return createPagoCardClient().topUpCard(input);
+function topUpCard(
+  cardIdOrInput: string | TopUpCardInput,
+  amount?: number,
+  extra?: { idempotencyKey?: string }
+): Promise<PagoCardFundResult> {
+  return createPagoCardClient().topUpCard(cardIdOrInput, amount, extra);
 }
 
 module.exports = {
   PagoCardError,
   createPagoCardClient,
+  createVirtualCard,
   createCard,
   getCardDetails,
   getCardBalance,

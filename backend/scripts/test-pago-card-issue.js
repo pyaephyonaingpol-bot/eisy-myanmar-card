@@ -103,15 +103,15 @@ async function run() {
 
   let calls = 0;
   const client = {
-    async createCard(input) {
+    async createVirtualCard(input) {
       calls += 1;
       assert.strictEqual(input.product_code, 'us_493_visa_bin_v2');
       assert.strictEqual(input.initial_load, 10.12);
       return sampleCard();
     },
-    async topUpCard(input) {
-      assert.strictEqual(input.cardId, 'card_pago_1');
-      assert.ok(input.amount >= 5);
+    async topUpCard(cardId, amount) {
+      assert.strictEqual(cardId, 'card_pago_1');
+      assert.ok(amount >= 5);
       return {
         card_id: 'card_pago_1',
         amount: 5_000_000,
@@ -142,7 +142,7 @@ async function run() {
   assert.strictEqual(await balanceOf(user.id), 89.88);
 
   const failing = {
-    async createCard() {
+    async createVirtualCard() {
       const err = new Error('provider down');
       err.code = 'PAGO_REQUEST_FAILED';
       err.status = 502;

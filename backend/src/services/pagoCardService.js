@@ -182,7 +182,7 @@ async function issuePagoCardForUser({
 
   let created;
   try {
-    created = await getClient(deps).createCard({
+    created = await getClient(deps).createVirtualCard({
       product_code: product,
       first_name: names.first_name,
       last_name: names.last_name,
@@ -299,11 +299,11 @@ async function topUpPagoCard({ userId, localCardId, amountUsd }, deps = {}) {
 
   let funded;
   try {
-    funded = await getClient(deps).topUpCard({
-      cardId: card.pago_card_id,
-      amount: fundAmount,
-      idempotencyKey: `pago-fund-${userId}-${card.id}-${crypto.randomBytes(6).toString('hex')}`,
-    });
+    funded = await getClient(deps).topUpCard(
+      card.pago_card_id,
+      fundAmount,
+      { idempotencyKey: `pago-fund-${userId}-${card.id}-${crypto.randomBytes(6).toString('hex')}` }
+    );
   } catch (err) {
     await refundUsdt(userId, pricing.deposit_usdt, 'Refund Pago Card top-up');
     rethrowPago(err);
