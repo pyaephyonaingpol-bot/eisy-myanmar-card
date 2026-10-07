@@ -827,7 +827,8 @@ const Dashboard = {
     try {
       this.bindChangePasswordForm();
       this.bindProfileForm();
-      this.bindDashboardForms();
+      this.bindPagoCardUi();
+    this.bindDashboardForms();
       this.initSupabase().catch((err) => console.warn('[Dashboard] Supabase init:', err.message));
       this.bindCardCopyButtons();
       this.bindCardSelector();
@@ -1170,9 +1171,8 @@ const Dashboard = {
         this.loadWallet({ force: false });
       }
       if (page === 'cards') {
-        if (typeof AppNav !== 'undefined') {
-          AppNav.navigate(this.portalDefaultPage(), { pushHash: true, replace: true });
-        }
+        this.prefillPagoCardRequest();
+        this.loadAllCards({ forceRefresh: force, silent: false });
       }
       if (page === 'instant-card') {
         this.enterInstantCardPage({ force });
@@ -5113,6 +5113,8 @@ const Dashboard = {
     const thumbs = $('cardThumbnails');
     const select = $('cardSelect');
 
+    if (!section || !thumbs || !select) return;
+
     if (!this.allCards.length) {
       section.classList.add('hidden');
       return;
@@ -5409,7 +5411,8 @@ const Dashboard = {
     const pillCls = this.cardStatusPillClass(card);
     const canRevealDetails = active && Boolean(card?.card_number);
 
-    $('cardDetailsTitle').textContent = card ? `— ${card.label}` : '';
+    const detailsTitle = $('cardDetailsTitle');
+    if (detailsTitle) detailsTitle.textContent = card ? `— ${card.label}` : '';
 
     const statusDisplay = $('cardStatusDisplay');
     if (statusDisplay) {
@@ -7821,18 +7824,16 @@ const Dashboard = {
       }
 
       try {
-        const data = await Auth.api('POST', '/api/user/card/reload', {
-          card_id: cardId,
-          pay_from_wallet: true,
-          wallet_type: 'usdt',
+        const data = await Auth.api('POST', `/api/user/cards/${cardId}/topup`, {
           amount_usdt: preview.top_up_usd,
         }, { sensitive: true });
 
-        const msg = data.message || 'Reload request submitted! Pending admin approval.';
+        const msg = data.message || 'Card topped up.';
         this.toast(msg, 'ok');
         this.log(msg, 'ok');
         this.closeReloadModalAndReset();
         this.loadWallet();
+        this.loadAllCards({ forceRefresh: true, preserveSelection: true, silent: true });
         this.loadReloadHistory();
         this.loadDepositHistory();
         this.loadTransactions();
@@ -8352,6 +8353,155 @@ const Dashboard = {
     }, { force });
   },
 
+  bindPagoCardUi() {
+    if (this._pagoCardBound) return;
+    this._pagoCardBound = true;
+    $('pagoCardRequestForm')?.addEventListener('submit', (e) => this.submitPagoCardRequest(e));
+    $('pagoCardTopupForm')?.addEventListener('submit', (e) => this.submitPagoCardTopup(e));
+    $('pagoCardList')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-pago-view]');
+      if (!btn) return;
+      this.openPagoCardDetail(btn.getAttribute('data-pago-view'));
+    });
+  },
+
+  prefillPagoCardRequest() {
+    const email = $('pagoCardEmail');
+    if (email && !email.value && Auth.user?.email) email.value = Auth.user.email;
+    const parts = String(Auth.user?.name || '').trim().split(/\s+/).filter(Boolean);
+    const first = $('pagoCardFirstName');
+    const last = $('pagoCardLastName');
+    if (first && !first.value && parts[0]) first.value = parts[0];
+    if (last && !last.value && parts.length > 1) last.value = parts.slice(1).join(' ');
+  },
+
+  renderPagoCardList() {
+    const list = $('pagoCardList');
+    if (!list) return;
+    const empty = $('pagoCardEmpty');
+    const cards = this.allCards || [];
+    if (!cards.length) {
+      list.innerHTML = '';
+      empty?.classList.remove('hidden');
+      $('pagoCardDetailPanel')?.classList.add('hidden');
+      return;
+    }
+    empty?.classList.add('hidden');
+    list.innerHTML = cards.map((card) => {
+      const brand = this.escapeHtml(card.brand || card.product_code || 'Pago Card');
+      const last4 = this.escapeHtml(card.last4 || '????');
+      const status = this.escapeHtml(card.display_status || card.status || '');
+      const balance = card.balance_usd == null ? '—' : this.escapeHtml(Number(card.balance_usd).toFixed(2));
+      return `<article class="pago-card-row">
+        <div><strong>${brand}</strong><span>•••• ${last4}</span></div>
+        <div><span class="hint">${status}</span> · $${balance}</div>
+        <button type="button" class="btn btn-secondary btn-sm" data-pago-view="${card.id}" data-i18n="pago_view">View details</button>
+      </article>`;
+    }).join('');
+    if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(list);
+  },
+
+  showPagoCardDetail(card) {
+    const panel = $('pagoCardDetailPanel');
+    if (!panel || !card) return;
+    panel.classList.remove('hidden');
+    panel.dataset.cardId = String(card.id);
+    const brand = card.brand || card.product_code || 'Pago Card';
+    if ($('pagoCardDetailSummary')) {
+      $('pagoCardDetailSummary').textContent = `${brand} · •••• ${card.last4 || '????'}`;
+    }
+    if ($('pagoCardDetailStatus')) $('pagoCardDetailStatus').textContent = card.display_status || card.status || '—';
+    if ($('pagoCardDetailBalance')) {
+      $('pagoCardDetailBalance').textContent = card.balance_usd == null
+        ? '—'
+        : `$${Number(card.balance_usd).toFixed(2)}`;
+    }
+    const number = card.card_number ? this.formatCardNumber(card.card_number) : '—';
+    if ($('pagoCardDetailNumber')) $('pagoCardDetailNumber').textContent = number;
+    if ($('pagoCardDetailExpiry')) $('pagoCardDetailExpiry').textContent = card.exp_date || '—';
+    if ($('pagoCardDetailCvv')) $('pagoCardDetailCvv').textContent = card.cvv || '—';
+  },
+
+  async openPagoCardDetail(cardId, fallback) {
+    const local = (this.allCards || []).find((card) => String(card.id) === String(cardId)) || fallback;
+    if (local) this.showPagoCardDetail(local);
+    try {
+      const data = await Auth.api('GET', `/api/user/cards/${cardId}`, null, { sensitive: true });
+      const card = data.card || (data.cards || []).find((item) => String(item.id) === String(cardId));
+      if (Array.isArray(data.cards)) {
+        this.allCards = this.filterVisibleCards(data.cards);
+        this.renderPagoCardList();
+      }
+      if (card) this.showPagoCardDetail(card);
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      else this.toast(err.message || 'Could not refresh card details', 'error');
+    }
+  },
+
+  async submitPagoCardRequest(e) {
+    e.preventDefault();
+    const btn = $('pagoCardRequestSubmit');
+    if (btn) btn.disabled = true;
+    try {
+      const initial = $('pagoCardInitialLoad')?.value.trim();
+      const data = await Auth.api('POST', '/api/user/cards/request', {
+        product_code: $('pagoCardProduct')?.value,
+        first_name: $('pagoCardFirstName')?.value.trim(),
+        last_name: $('pagoCardLastName')?.value.trim(),
+        email: $('pagoCardEmail')?.value.trim(),
+        initial_load: initial || undefined,
+      }, { sensitive: true });
+      this.toast(data.message || 'Your virtual card is ready.', 'ok');
+      if ($('pagoCardInitialLoad')) $('pagoCardInitialLoad').value = '';
+      if (Array.isArray(data.cards)) this.allCards = this.filterVisibleCards(data.cards);
+      this.renderPagoCardList();
+      this.loadWallet();
+      const card = data.card || (this.allCards || [])[0];
+      if (card) this.showPagoCardDetail(card);
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      this.toast(err.message || 'Card request failed', 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  },
+
+  async submitPagoCardTopup(e) {
+    e.preventDefault();
+    const panel = $('pagoCardDetailPanel');
+    const cardId = panel?.dataset.cardId;
+    const amount = $('pagoTopupAmount')?.value;
+    if (!cardId) {
+      this.toast('Choose a card first', 'error');
+      return;
+    }
+    const btn = $('pagoCardTopupSubmit');
+    if (btn) btn.disabled = true;
+    try {
+      const data = await Auth.api('POST', `/api/user/cards/${cardId}/topup`, {
+        amount_usdt: amount,
+      }, { sensitive: true });
+      this.toast(data.message || 'Card topped up.', 'ok');
+      if ($('pagoTopupAmount')) $('pagoTopupAmount').value = '';
+      if (Array.isArray(data.cards)) this.allCards = this.filterVisibleCards(data.cards);
+      this.renderPagoCardList();
+      this.loadWallet();
+      const card = data.card || (this.allCards || []).find((item) => String(item.id) === String(cardId));
+      if (card) this.showPagoCardDetail(card);
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
+        this.toast(err.message, 'error');
+        this.openUsdtTopUpModal();
+        return;
+      }
+      this.toast(err.message || 'Top-up failed', 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  },
+
   async loadAllCards({ preserveSelection = false, silent = false, forceRefresh = false } = {}) {
     if (!Auth.isLoggedIn()) return;
 
@@ -8438,6 +8588,7 @@ const Dashboard = {
         if ($('cardBalanceDisplay')) $('cardBalanceDisplay').textContent = '—';
         if ($('sumCard')) $('sumCard').textContent = 'No card';
         this.updateCardStatusSummary(null);
+        this.renderPagoCardList();
         if (!silent) {
           showOutput('viewCardOutput', { message: 'No cards yet — request a virtual card below.' });
         }
@@ -8449,9 +8600,14 @@ const Dashboard = {
 
       // Avoid tearing down the Cards UI on silent polls when nothing changed
       if (!unchanged || forceRefresh || !silent) {
-        this.renderCardSelector();
-        this.renderActiveCard(this.allCards[this.activeCardIndex]);
-        this.populateReloadCardSelect();
+        try {
+          this.renderCardSelector();
+          this.renderActiveCard(this.allCards[this.activeCardIndex]);
+          this.populateReloadCardSelect();
+        } catch (err) {
+          console.warn('[Dashboard] legacy card chrome skipped:', err.message);
+        }
+        this.renderPagoCardList();
       }
 
       if (this._scheduleCardsPoll) this._scheduleCardsPoll();

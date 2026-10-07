@@ -16,7 +16,7 @@ const dash = fs.readFileSync(path.join(root, 'backend/public/dashboard.js'), 'ut
 const server = fs.readFileSync(path.join(root, 'backend/src/index.js'), 'utf8');
 const i18n = fs.readFileSync(path.join(root, 'backend/public/i18n.js'), 'utf8');
 
-assert.ok(indexHtml.includes('dashboard.js?v=20261007dashboardHome'), 'dashboard cache bust');
+assert.ok(indexHtml.includes('dashboard.js?v=20261007pagoCards'), 'dashboard cache bust');
 assert.ok(indexHtml.includes('<title>Eisymyanmar</title>'), 'document title is Eisymyanmar');
 assert.ok(indexHtml.includes('class="sidebar-brand-title">Eisymyanmar<'), 'sidebar brand is Eisymyanmar');
 assert.ok(indexHtml.includes('class="auth-brand-title">Eisymyanmar<'), 'login header brand is Eisymyanmar');

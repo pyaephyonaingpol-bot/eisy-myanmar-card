@@ -143,7 +143,7 @@
         <h3 id="reloadCardModalTitle" data-i18n="reload_modal_title">Reload / Top-Up Card</h3>
         <button type="button" id="reloadCardModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="reload_modal_hint">Pay from your USDT wallet (1 USDT ≈ 1 USD). Funds are added to your selected card after admin approval.</p>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="reload_modal_hint">Pay from your USDT wallet (1 USDT ≈ 1 USD). The top-up is sent to the selected Pago Card.</p>
 
       <form id="reloadCardForm" class="form">
         <div class="field">
@@ -1095,6 +1095,10 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
             <span data-i18n="nav_instant_card">TRON Wallet</span>
           </button>
+          <button type="button" class="nav-item" data-page="cards">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+            <span data-i18n="nav_my_cards">My Cards</span>
+          </button>
           <button type="button" class="nav-item" data-page="deposits" data-instant-only>
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             <span data-i18n="nav_deposits">Deposit &amp; History</span>
@@ -1191,6 +1195,7 @@
           <!-- Hidden titles for page heading sync -->
           <span class="hidden" data-page-title="home" data-i18n="nav_dashboard">Dashboard</span>
           <span class="hidden" data-page-title="instant-card" data-i18n="nav_instant_card">TRON Wallet</span>
+          <span class="hidden" data-page-title="cards" data-i18n="nav_my_cards">My Cards</span>
           <span class="hidden" data-page-title="deposits" data-instant-only data-i18n="deposits_page_title">Deposit &amp; Reload History</span>
           <span class="hidden" data-page-title="usdt-wallet" data-instant-only data-i18n="usdt_wallet_page_title">USDT Wallet</span>
           <span class="hidden" data-page-title="p2p" data-instant-only data-i18n="nav_p2p">P2P Express</span>
@@ -1212,6 +1217,7 @@
                     <span class="wallet-actions-label" data-i18n="wallet_actions_label">Wallet actions</span>
                     <div class="wallet-hero-actions-row">
                       <button type="button" class="btn btn-secondary btn-sm" data-goto="usdt-wallet" data-i18n="btn_manage_usdt_wallet">Manage Wallet</button>
+                      <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="nav_my_cards">My Cards</button>
                       <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="btn_top_up_usdt">Top Up USDT</button>
                       <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdt" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
                       <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawUsdt" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
@@ -1251,6 +1257,75 @@
               </div>
             </div>
             <div id="instantAppPageHost" data-app-view-host="instant"></div>
+          </section>
+
+          <section id="pageCards" class="app-page" data-page="cards">
+            <div class="page-header">
+              <div>
+                <h2 class="page-heading" data-i18n="nav_my_cards">My Cards</h2>
+                <p class="page-desc" data-i18n="cards_page_desc">View card status, reveal details when needed, and reload your virtual cards.</p>
+              </div>
+            </div>
+
+            <section class="panel">
+              <h2 data-i18n="pago_cards_heading">Your virtual cards</h2>
+              <div id="pagoCardList" class="pago-card-list"></div>
+              <p id="pagoCardEmpty" class="hint" data-i18n="pago_cards_empty">No virtual cards yet. Request one below.</p>
+            </section>
+
+            <section class="panel hidden" id="pagoCardDetailPanel">
+              <h2 data-i18n="pago_detail_heading">Card details</h2>
+              <p id="pagoCardDetailSummary" class="hint"></p>
+              <dl class="pago-card-details">
+                <div><dt data-i18n="pago_status">Status</dt><dd id="pagoCardDetailStatus">—</dd></div>
+                <div><dt data-i18n="pago_balance">Balance</dt><dd id="pagoCardDetailBalance">—</dd></div>
+                <div><dt data-i18n="pago_reveal_number">Card number</dt><dd id="pagoCardDetailNumber">—</dd></div>
+                <div><dt data-i18n="card_expiry">Expiry</dt><dd id="pagoCardDetailExpiry">—</dd></div>
+                <div><dt data-i18n="pago_reveal_cvv">CVV</dt><dd id="pagoCardDetailCvv">—</dd></div>
+              </dl>
+              <form id="pagoCardTopupForm" class="form">
+                <h3 data-i18n="pago_topup_heading">Top up this card</h3>
+                <p class="hint" data-i18n="pago_topup_hint">Minimum $5. Your USDT wallet is charged the amount plus the card reload fee.</p>
+                <div class="field">
+                  <label for="pagoTopupAmount" data-i18n="topup_amount_usdt">Top-Up Amount (USDT)</label>
+                  <input id="pagoTopupAmount" type="number" min="5" step="0.01" placeholder="20.00" required />
+                </div>
+                <button type="submit" class="btn btn-primary" id="pagoCardTopupSubmit" data-i18n="pago_topup_submit">Top up</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <h2 data-i18n="pago_request_heading">Request a virtual card</h2>
+              <p class="hint" data-i18n="pago_request_hint">Cards are issued by Pago Card. An optional starting balance (USD 10–2500) is taken from your USDT wallet. Visa ATM cards do not take a starting balance.</p>
+              <form id="pagoCardRequestForm" class="form">
+                <div class="field">
+                  <label for="pagoCardProduct" data-i18n="pago_product_label">Card product</label>
+                  <select id="pagoCardProduct" required>
+                    <option value="us_493_visa_bin_v2">Visa (493)</option>
+                    <option value="us_404_visa_bin">Visa (404)</option>
+                    <option value="536_master">Mastercard</option>
+                    <option value="us_493_visa_atm">Visa ATM</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="pagoCardFirstName" data-i18n="pago_first_name">First name</label>
+                  <input id="pagoCardFirstName" type="text" autocomplete="given-name" required />
+                </div>
+                <div class="field">
+                  <label for="pagoCardLastName" data-i18n="pago_last_name">Last name</label>
+                  <input id="pagoCardLastName" type="text" autocomplete="family-name" required />
+                </div>
+                <div class="field">
+                  <label for="pagoCardEmail" data-i18n="pago_email">Email</label>
+                  <input id="pagoCardEmail" type="email" autocomplete="email" required />
+                </div>
+                <div class="field">
+                  <label for="pagoCardInitialLoad" data-i18n="pago_initial_load">Starting balance (USD, optional)</label>
+                  <input id="pagoCardInitialLoad" type="number" min="10" max="2500" step="0.01" placeholder="10.00" />
+                </div>
+                <button type="submit" class="btn btn-primary" id="pagoCardRequestSubmit" data-i18n="pago_request_submit">Request card</button>
+              </form>
+            </section>
           </section>
 
           <!-- ══ PAGE: USDT Wallet (Instant / Master USDT only) ══ -->
@@ -1633,7 +1708,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261007tronHd"></script>
+  <script defer src="/i18n.js?v=20261007pagoCards"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1655,7 +1730,7 @@
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20261007dashboardHome"></script>
+  <script defer src="/dashboard.js?v=20261007pagoCards"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

@@ -95,12 +95,12 @@ const sampleCard = {
       message: 'Card created successfully.',
       data: sampleCard,
     }));
-    const card = await api.createCard({
-      product_code: 'us_493_visa_bin_v2',
-      first_name: 'Ada',
-      last_name: 'Lovelace',
+    const card = await api.createVirtualCard({
+      productCode: 'us_493_visa_bin_v2',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
       email: 'ada@example.com',
-      initial_load: 10.129,
+      initialLoad: 10.129,
       idempotencyKey: 'idem-1',
     });
     assert.strictEqual(card.card_id, 'card_test_1');
@@ -189,10 +189,14 @@ const sampleCard = {
         transaction_id: 'txn_1',
       },
     }));
-    const funded = await api.topUpCard({ cardId: 'card_test_1', amount: 55.175678 });
+    const funded = await api.topUpCard('card_test_1', 55.175678);
     assert.strictEqual(funded.transaction_id, 'txn_1');
     assert.strictEqual(calls[0].url, 'https://pagocards.example/api/v1/cards/card_test_1/fund');
     assert.deepStrictEqual(JSON.parse(calls[0].init.body), { amount: 55.17 });
+    calls.length = 0;
+    await api.topUpCard({ cardId: 'card_test_1', amount: 10, idempotencyKey: 'fund-1' });
+    assert.strictEqual(calls[0].init.headers['Idempotency-Key'], 'fund-1');
+    assert.deepStrictEqual(JSON.parse(calls[0].init.body), { amount: 10 });
     await assert.rejects(
       () => api.topUpCard({ cardId: 'card_test_1', amount: 4.99 }),
       (err) => err.code === 'VALIDATION_ERROR'

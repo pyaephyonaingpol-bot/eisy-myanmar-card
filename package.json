@@ -14,6 +14,7 @@
     "test:tron-hd-deposit-ui": "node backend/scripts/test-tron-hd-deposit-ui.js",
     "test:withdraw-markup": "node backend/scripts/test-withdraw-markup.js",
     "test:pagocard": "node --experimental-strip-types backend/scripts/test-pagocard-client.js",
+    "test:pago-card-issue": "node backend/scripts/test-pago-card-issue.js",
     "test:tron-scanpay-disabled": "node backend/scripts/test-tron-scanpay-disabled.js",
     "test:p2p-true-escrow": "node backend/scripts/test-p2p-true-escrow.js",
     "test:p2p-mmk-escrow-ledger": "node backend/scripts/test-p2p-mmk-escrow-ledger.js",
