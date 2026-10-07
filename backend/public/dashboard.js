@@ -6365,7 +6365,7 @@ const Dashboard = {
   },
 
   /**
-   * Hub (/) landing: Instant is the first screen.
+   * Legacy hub screen. Returns immediately because the hub gateway is off.
    * Sign-in stays available from Account, not as a full-page wall.
    */
   presentHubHome() {
