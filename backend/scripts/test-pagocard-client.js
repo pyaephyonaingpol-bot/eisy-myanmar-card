@@ -236,7 +236,7 @@ const sampleCard = {
     const previousBase = process.env.PAGO_CARD_API_BASE_URL;
     const previousKey = process.env.PAGO_CARD_API_KEY;
     const previousSecret = process.env.PAGO_CARD_SECRET_KEY;
-    const proxy = 'http://157.245.87.210/api/pago';
+    const proxy = 'http://165.245.208.221/api/pago';
     const calls = [];
     const fetchImpl = async (url) => {
       calls.push(String(url));
@@ -259,9 +259,9 @@ const sampleCard = {
       });
     };
     const bases = [
-      'http://157.245.87.210/api/pago/',
-      'http://157.245.87.210/api/pago/api/v1',
-      'http://157.245.87.210/api/pago',
+      'http://165.245.208.221/api/pago/',
+      'http://165.245.208.221/api/pago/api/v1',
+      'http://165.245.208.221/api/pago',
       '',
     ];
     try {
