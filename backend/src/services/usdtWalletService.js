@@ -115,7 +115,7 @@ async function provisionCustodialAddress(userId, network, settings) {
     try {
       const { isTronWalletEnabled } = require('./securityFlags');
       if (!isTronWalletEnabled()) {
-        // Per-user HD TRON deposit addresses retired — Kripicard issues pay_address per top-up.
+        // HD TRC20 rows are provisioned by GET /api/tron/wallet/address, not this path.
         return null;
       }
       const { ensureUserTronDepositAddress } = require('./tronDepositAddressService');

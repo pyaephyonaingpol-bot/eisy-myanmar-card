@@ -158,7 +158,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
   const {
     WITHDRAW_PAYOUT_PROVIDER,
     WITHDRAW_PROCESSING_HOURS,
-  } = require('../constants/kripicardWithdrawFees');
+  } = require('../constants/withdrawMarkupPolicy');
 
   if (requestedAmount < settings.minimum_usdt_withdrawal) {
     throw new Error(`Minimum withdrawal is ${formatUsdt(settings.minimum_usdt_withdrawal)}`);
@@ -166,7 +166,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
 
   if (breakdown.net_usdt <= 0) {
     throw new Error(
-      `Amount too small — after ${formatUsdt(breakdown.fee_usdt)} Kripicard markup, nothing would be sent. Increase the amount.`
+      `Amount too small — after ${formatUsdt(breakdown.fee_usdt)} service fee, nothing would be sent. Increase the amount.`
     );
   }
 
@@ -189,7 +189,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
 
   try {
     await debitUsdt(userId, breakdown.amount_usdt, {
-      description: `USDT withdrawal ${refCode} — ${formatUsdt(breakdown.net_usdt)} net via Kripicard (${normalizedNetwork}, fee ${formatUsdt(breakdown.fee_usdt)}, ${WITHDRAW_PROCESSING_HOURS}h processing)`,
+      description: `USDT withdrawal ${refCode} — ${formatUsdt(breakdown.net_usdt)} net (${normalizedNetwork}, fee ${formatUsdt(breakdown.fee_usdt)}, ${WITHDRAW_PROCESSING_HOURS}h processing)`,
       referenceType: 'usdt_withdrawal',
       referenceId: withdrawal.id,
       createdBy: 'user',
@@ -202,7 +202,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
         wallet_address: walletAddress,
         fee_usdt: breakdown.fee_usdt,
         net_usdt: breakdown.net_usdt,
-        kripicard_network_fee_usdt: breakdown.kripicard_network_fee_usdt,
+        network_fee_usdt: breakdown.network_fee_usdt,
         platform_margin_usdt: breakdown.platform_margin_usdt,
         markup_percent: breakdown.markup_percent,
         processing_hours: WITHDRAW_PROCESSING_HOURS,
@@ -220,7 +220,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     try {
       await creditPlatformUsdtRevenue(breakdown.fee_usdt, {
         feeType: PLATFORM_FEE_TYPES.WITHDRAWAL,
-        description: `USDT withdrawal fee — ${refCode} (Kripicard ${normalizedNetwork}, ${formatUsdt(breakdown.fee_usdt)})`,
+        description: `USDT withdrawal fee — ${refCode} (${normalizedNetwork}, ${formatUsdt(breakdown.fee_usdt)})`,
         referenceType: 'usdt_withdrawal_requests',
         referenceId: withdrawal.id,
         relatedUserId: userId,
@@ -231,7 +231,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
           ref_code: refCode,
           fee_type: breakdown.fee_type,
           requested_amount: breakdown.amount_usdt,
-          kripicard_network_fee_usdt: breakdown.kripicard_network_fee_usdt,
+          network_fee_usdt: breakdown.network_fee_usdt,
           platform_margin_usdt: breakdown.platform_margin_usdt,
         },
       });
@@ -240,11 +240,11 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     }
   }
 
-  // Kripicard withdrawals are queued for processing within 48 hours.
+  // Withdrawals are queued for processing within 48 hours.
   // Auto on-chain master-wallet send remains opt-in via AUTO_ONCHAIN_WITHDRAWALS.
   await UsdtWithdrawal.updateStatus(withdrawal.id, {
     status: 'pending',
-    adminNote: `Kripicard payout queued — process within ${WITHDRAW_PROCESSING_HOURS} hours (${normalizedNetwork})`,
+    adminNote: `Payout queued — process within ${WITHDRAW_PROCESSING_HOURS} hours (${normalizedNetwork})`,
   }).catch(() => {});
 
   if (normalizedNetwork === 'TRC20' && isAutoOnchainWithdrawalEnabled()) {
@@ -309,13 +309,13 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     };
   }
 
-  // TRC20 / BEP20: Kripicard payout queue — processed within 48 hours (no hot-wallet send unless AUTO_ONCHAIN).
+  // TRC20 / BEP20: payout queue — processed within 48 hours (no hot-wallet send unless AUTO_ONCHAIN).
   const refreshed = await UsdtWithdrawal.findById(withdrawal.id);
   return {
     withdrawal: refreshed,
     breakdown,
     payout: null,
-    message: `Withdrawal ${refCode} submitted via Kripicard. ${formatUsdt(breakdown.net_usdt)} USDT will be sent to your ${normalizedNetwork} address within ${WITHDRAW_PROCESSING_HOURS} hours (4% markup: 3% Kripicard network + 1% platform).`,
+    message: `Withdrawal ${refCode} submitted. ${formatUsdt(breakdown.net_usdt)} USDT will be sent to your ${normalizedNetwork} address within ${WITHDRAW_PROCESSING_HOURS} hours (4% markup: 3% network + 1% platform).`,
   };
 }
 
@@ -413,7 +413,7 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
   return {
     withdrawal,
     breakdown,
-    message: `Withdrawal ${refCode} submitted via Kripicard. ${formatMmk(breakdown.amount_mmk)} will be transferred to your ${bank.bankName} account within 48 hours. Rate 1 USDT = ${Number(breakdown.exchange_rate).toLocaleString()} MMK.`,
+    message: `Withdrawal ${refCode} submitted. ${formatMmk(breakdown.amount_mmk)} will be transferred to your ${bank.bankName} account within 48 hours. Rate 1 USDT = ${Number(breakdown.exchange_rate).toLocaleString()} MMK.`,
   };
 }
 

@@ -1,5 +1,5 @@
 -- HISTORICAL (retired): dual-wallet Bitnob ledger for the old Standard Card pipeline.
--- Superseded by 063_drop_bitnob_schema.sql — card creation/deposits are Kripicard-only.
+-- Superseded by 063_drop_bitnob_schema.sql — card creation uses the local ledger only.
 -- Kept only so existing databases can replay migration history.
 
 ALTER TABLE users ADD COLUMN balance_bitnob_usdt REAL NOT NULL DEFAULT 0;

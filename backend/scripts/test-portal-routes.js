@@ -1,5 +1,5 @@
 /**
- * Instant portal routes (Kripicard + Master Wallet).
+ * Instant portal routes (TRON HD wallet).
  * Legacy /business and /standard redirect to /instant.
  */
 'use strict';
@@ -55,28 +55,11 @@ function testDashboardInstantOnly() {
 }
 
 function testHubServiceCategories() {
-  section('Hub switch includes Kripicard service categories + $1 fee');
+  section('Hub catalog is retired; customer app uses TRON HD deposits');
   const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
-  for (const id of ['sms', 'sim_topup', 'esim', 'gift_cards', 'social_media', 'proxies']) {
-    assert.ok(dash.includes(`'${id}'`), `hub category ${id}`);
-  }
-  assert.ok(!dash.includes("id: 'webhooks'"), 'webhooks removed from hub list');
-  assert.ok(!dash.includes('portal-hub-card-instant'), 'Instant card removed from hub grid');
-  assert.ok(dash.includes('data-portal-switch="instant"') || dash.includes('Open Instant →'), 'Instant stays in top switch');
-  assert.ok(dash.includes('data-hub-service'));
-  assert.ok(dash.includes('hubServiceModal'), 'hub catalog opens in modal');
-  assert.ok(dash.includes('ensureHubServiceModal'));
-  assert.ok(dash.includes('/api/kripicard/services/purchase'));
-  assert.ok(dash.includes('hubPlatformSelect'), 'platform filter select');
-  assert.ok(dash.includes('hubSubcategorySelect'), 'type filter select');
+  assert.ok(dash.includes('/api/tron/wallet/address'), 'TRON HD address loader');
   const indexJs = fs.readFileSync(path.join(ROOT, 'backend/src/index.js'), 'utf8');
-  assert.ok(indexJs.includes('/api/kripicard/services'));
-  const hubApi = fs.readFileSync(path.join(ROOT, 'lib/kripicardHubApi.js'), 'utf8');
-  assert.ok(hubApi.includes("'/services'") || hubApi.includes('/services'));
-  assert.ok(hubApi.includes('mapMainServicesToHubCategories'));
-  assert.ok(hubApi.includes('fetchModuleCatalog'));
-  assert.ok(hubApi.includes('/esim/packages') && hubApi.includes('/gifts/packages'));
-  assert.ok(dash.includes("category.id === 'esim'") && dash.includes("category.id === 'gift_cards'"));
+  assert.ok(!/app\.use\(\s*['"]\/api\/[^'"]*services['"]/.test(indexJs), 'hub service routes unmounted');
   const css = fs.readFileSync(path.join(ROOT, 'backend/public/styles.css'), 'utf8');
   assert.ok(css.includes('hub-service-modal-box'));
   console.log('ok');

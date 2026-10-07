@@ -8,7 +8,8 @@
  *   WITHDRAWALS_PAUSED=true|false   (default: true)
  *   AUTO_ONCHAIN_WITHDRAWALS=true|false  (default: false — admin must approve)
  *   MASTER_WALLET_TRANSFERS_PAUSED=true|false  (default: follows WITHDRAWALS_PAUSED)
- *   TRON_WALLET_ENABLED=true|false  (default: false — per-user TRON HD wallet retired)
+ *   TRON_WALLET_ENABLED=true|false  (default: false — master-wallet sends stay off)
+ *   TRON_DEPOSITS_ENABLED=true|false (default: true — per-user TRON HD deposit addresses)
  *   SCAN_PAY_ENABLED=true|false    (default: false — Scan Pay retired)
  */
 
@@ -83,12 +84,20 @@ function assertMasterWalletTransfersAllowed(action = 'transfer') {
 }
 
 /**
- * Per-user TRON HD wallet API + auto-provisioning.
- * Default OFF — deposits use Kripicard; withdrawals use Kripicard 4% markup queue.
+ * Per-user TRON HD wallet sends (withdraw from master wallet).
+ * Default OFF — on-chain sends stay paused unless explicitly enabled.
  * Admin HD sweep / master-wallet tools are separate and remain available.
  */
 function isTronWalletEnabled() {
   return envFlag('TRON_WALLET_ENABLED', false);
+}
+
+/**
+ * Per-user TRON HD deposit addresses and QR funding.
+ * Default ON. Set TRON_DEPOSITS_ENABLED=false to hide address provisioning.
+ */
+function isTronDepositEnabled() {
+  return envFlag('TRON_DEPOSITS_ENABLED', true);
 }
 
 /** User Scan Pay (QR → wallet debit). Default OFF. */
@@ -111,7 +120,15 @@ function featureDisabledPayload(feature, message, extra = {}) {
 function tronWalletDisabledPayload(extra = {}) {
   return featureDisabledPayload(
     'tron_wallet',
-    'Per-user TRON wallet is disabled. Use Kripicard deposits and Kripicard withdrawals instead.',
+    'TRON wallet sends are disabled.',
+    extra
+  );
+}
+
+function tronDepositDisabledPayload(extra = {}) {
+  return featureDisabledPayload(
+    'tron_deposits',
+    'TRON HD deposits are disabled.',
     extra
   );
 }
@@ -119,7 +136,7 @@ function tronWalletDisabledPayload(extra = {}) {
 function scanPayDisabledPayload(extra = {}) {
   return featureDisabledPayload(
     'scan_pay',
-    'Scan Pay is disabled. Use Withdraw USDT (Kripicard) to send funds.',
+    'Scan Pay is disabled. Use Withdraw USDT to send funds.',
     extra
   );
 }
@@ -129,6 +146,15 @@ function assertTronWalletEnabled() {
   const err = new Error(tronWalletDisabledPayload().error);
   err.code = 'FEATURE_DISABLED';
   err.feature = 'tron_wallet';
+  err.status = 410;
+  throw err;
+}
+
+function assertTronDepositEnabled() {
+  if (isTronDepositEnabled()) return;
+  const err = new Error(tronDepositDisabledPayload().error);
+  err.code = 'FEATURE_DISABLED';
+  err.feature = 'tron_deposits';
   err.status = 410;
   throw err;
 }
@@ -164,6 +190,7 @@ function getSecurityStatus() {
     auto_onchain_withdrawals: isAutoOnchainWithdrawalEnabled(),
     master_wallet_transfers_paused: areMasterWalletTransfersPaused(),
     tron_wallet_enabled: isTronWalletEnabled(),
+    tron_deposits_enabled: isTronDepositEnabled(),
     scan_pay_enabled: isScanPayEnabled(),
     sensitive_data_encryption,
     stripe_webhook,
@@ -180,11 +207,14 @@ module.exports = {
   assertWithdrawalsNotPaused,
   assertMasterWalletTransfersAllowed,
   isTronWalletEnabled,
+  isTronDepositEnabled,
   isScanPayEnabled,
   featureDisabledPayload,
   tronWalletDisabledPayload,
+  tronDepositDisabledPayload,
   scanPayDisabledPayload,
   assertTronWalletEnabled,
+  assertTronDepositEnabled,
   assertScanPayEnabled,
   getSecurityStatus,
 };

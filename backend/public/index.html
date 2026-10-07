@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
-  <title>Eisy Myanmar</title>
+  <title>Eisymyanmar</title>
   <meta name="description" content="Eisy Myanmar digital wallet, virtual cards, and USDT payments." />
   <meta name="theme-color" content="#0F172A" />
   <meta name="color-scheme" content="dark" />
@@ -108,7 +108,7 @@
 
   <div id="appBootSplash" role="status" aria-live="polite" aria-busy="true">
     <img class="boot-splash-logo" src="/brand/logo-icon.png" width="64" height="64" alt="" />
-    <div class="boot-splash-brand">Eisy Myanmar</div>
+    <div class="boot-splash-brand">Eisymyanmar</div>
     <div class="boot-splash-spinner" aria-hidden="true"></div>
     <div class="boot-splash-hint">Loading…</div>
   </div>
@@ -181,115 +181,29 @@
   </div>
 
   <!-- ═══ TOP UP USDT WALLET MODAL (Instant / Master USDT only) ═══ -->
-  <div id="usdtTopUpModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="usdtTopUpModalTitle" aria-modal="true" data-deposit-provider="kripicard">
+  <div id="usdtTopUpModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="usdtTopUpModalTitle" aria-modal="true" data-deposit-provider="tron-hd">
     <div class="modal-box modal-box-wide">
       <div class="modal-header-row">
         <h3 id="usdtTopUpModalTitle" data-i18n="top_up_wallet">Top Up Wallet</h3>
         <button type="button" id="usdtTopUpModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="deposit_usdt_hint">Top up via Kripicard Deposit: we issue a unique pay-to address and exact amount for your network (e.g. Tron). Your Master Wallet is credited after on-chain confirmation.</p>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="deposit_usdt_hint">Send USDT on TRON (TRC20) to your personal HD deposit address. Your wallet is credited after the transfer confirms.</p>
 
       <div id="depositUsdtPanel" class="deposit-tab-panel">
-        <form id="usdtDepositForm" class="form">
-          <div class="field">
-            <label for="usdtNetwork" data-i18n="deposit_network_label">Network</label>
-            <select id="usdtNetwork" required>
-              <option value="tron" selected>Tron</option>
-            </select>
-            <small class="hint" data-i18n="deposit_network_hint">Each deposit gets a unique address on the selected network.</small>
-          </div>
-          <div class="field">
-            <label for="usdtAmount" data-i18n="amount_usdt">Amount (USDT)</label>
-            <input id="usdtAmount" type="number" step="0.01" min="20" placeholder="20.00" required />
-            <small id="usdtMinHint" class="hint">Minimum deposit: $20.00 USDT</small>
-            <small id="usdtFeeHint" class="hint" data-i18n="deposit_usdt_fee_hint">Kripicard gateway fee is deducted — net credit is confirmed when your pay address is issued</small>
-          </div>
-          <div id="usdtDepositFeePreview" class="reload-preview-box" style="margin-bottom:0.75rem">
-            <h4 data-i18n="deposit_fee_preview">Deposit Fee Preview</h4>
-            <div class="reload-preview-row"><span data-i18n="deposit_preview_gross">Amount to send</span><strong id="usdtDepositPreviewGross">—</strong></div>
-            <div class="reload-preview-row"><span data-i18n="deposit_preview_fee">Gateway Fee</span><strong id="usdtDepositPreviewFee">—</strong></div>
-            <div class="reload-preview-row reload-preview-highlight"><span data-i18n="deposit_preview_net">Net Credited</span><strong id="usdtDepositPreviewNet">—</strong></div>
-          </div>
-          <button type="submit" class="btn btn-primary" id="btnCreateTronDeposit" data-i18n="btn_deposit_tron">Get Pay Address</button>
-        </form>
-        <div id="usdtOrderRefBox" class="ref-box hidden" aria-live="polite">
-          <p class="hint" style="margin:0 0 0.35rem" data-i18n="deposit_usdt_order_label">Deposit Order ID</p>
-          <div class="ref-code" id="usdtOrderIdDisplay">—</div>
-          <button type="button" id="btnCopyUsdtOrderId" class="btn btn-secondary btn-sm" data-i18n="copy_order_id">Copy Order ID</button>
-        </div>
-        <div id="usdtAddressBox" class="usdt-address-box hidden" aria-live="polite" data-kripicard-paybox="1">
-          <p class="usdt-network-label">Send <strong id="usdtPayAmountInline">—</strong> USDT on <strong id="usdtNetworkLabel">Tron</strong> to:</p>
+        <div id="usdtAddressBox" class="usdt-address-box" aria-live="polite" data-tron-hd-paybox="1">
+          <p class="usdt-network-label">Send USDT (TRC20) on <strong id="usdtNetworkLabel">TRON</strong> to:</p>
           <p id="usdtMerchantName" class="usdt-merchant-name hidden"></p>
-          <img id="usdtQrCode" class="usdt-qr hidden" alt="USDT deposit QR code" width="180" height="180" />
+          <img id="usdtQrCode" class="usdt-qr hidden" alt="TRON USDT deposit QR code" width="180" height="180" />
           <div class="usdt-address-display">
-            <span class="usdt-address-label" data-i18n="deposit_address_label">Pay Address</span>
-            <code id="usdtDepositAddress" class="usdt-address-code">—</code>
+            <span class="usdt-address-label" data-i18n="deposit_address_label">TRON deposit address</span>
+            <code id="usdtDepositAddress" class="usdt-address-code">Loading…</code>
             <button type="button" id="btnCopyUsdtAddress" class="btn btn-secondary btn-sm usdt-copy-btn" data-i18n="copy_address">Copy Address</button>
           </div>
-          <div class="reload-preview-box" style="margin-top:0.75rem">
-            <div class="reload-preview-row"><span data-i18n="deposit_send_amount">Exact amount to send</span><strong id="usdtOrderAmount">—</strong></div>
-            <div class="reload-preview-row"><span data-i18n="deposit_pay_network">Network</span><strong id="usdtPayNetworkDisplay">—</strong></div>
-            <div class="reload-preview-row"><span data-i18n="deposit_preview_net">Net Credited</span><strong id="usdtPayNetDisplay">—</strong></div>
-          </div>
-          <p class="status-line" id="usdtOrderStatus" data-i18n="usdt_order_status_pending">Waiting for USDT transfer — verifying automatically…</p>
+          <p class="status-line" id="usdtOrderStatus" data-i18n="tron_hd_deposit_status">This address is yours. Confirmed USDT (TRC20) sent here is credited to your wallet.</p>
+          <p id="tronHdDepositError" class="error-text hidden" role="alert"></p>
         </div>
       </div>
       <pre class="output hidden" id="depositOutput" aria-hidden="true"></pre>
-    </div>
-  </div>
-
-  <!-- ═══ CARD DETAIL MODAL ═══ -->
-  <div id="cardDetailModal" class="modal hidden" role="dialog" aria-labelledby="cardDetailModalTitle" aria-modal="true">
-    <div class="modal-box modal-box-wide card-detail-modal-box">
-      <div class="modal-header-row">
-        <h3 id="cardDetailModalTitle" data-i18n="card_detail_modal_title">Card Details</h3>
-        <button type="button" id="cardDetailModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
-      </div>
-
-      <div id="cardDetailPreview" class="card-detail-preview" aria-hidden="true">
-        <div class="card-detail-preview-top">
-          <span class="card-detail-brand">EISY MYANMAR</span>
-          <span id="cardDetailStatusPill" class="card-status-pill">—</span>
-        </div>
-        <div id="cardDetailNumber" class="card-detail-number">•••• •••• •••• ••••</div>
-        <div class="card-detail-preview-meta">
-          <div><small data-i18n="name_on_card">Name on Card</small><strong id="cardDetailHolder">—</strong></div>
-          <div><small>EXP</small><strong id="cardDetailExp">—</strong></div>
-          <div><small>CVV</small><strong id="cardDetailCvv">—</strong></div>
-        </div>
-      </div>
-
-      <div class="card-detail-grid" id="cardDetailGrid">
-        <div class="card-detail-item">
-          <span class="label" data-i18n="status">Status</span>
-          <span class="value" id="cardDetailStatus">—</span>
-        </div>
-        <div class="card-detail-item">
-          <span class="label" data-i18n="card_balance">Balance</span>
-          <span class="value" id="cardDetailBalance">—</span>
-        </div>
-        <div class="card-detail-item">
-          <span class="label" data-i18n="selected_card">Selected Card</span>
-          <span class="value" id="cardDetailLabel">—</span>
-        </div>
-        <div class="card-detail-item">
-          <span class="label" data-i18n="card_created">Created</span>
-          <span class="value" id="cardDetailCreated">—</span>
-        </div>
-      </div>
-      <p id="cardDetailStatusReason" class="hint card-detail-reason hidden"></p>
-      <p id="cardDetailError" class="error-text hidden" role="alert"></p>
-
-      <div class="card-detail-actions">
-        <button type="button" id="cardDetailRevealBtn" class="btn btn-secondary btn-sm" data-i18n="show_card_details">Show Card Details</button>
-        <button type="button" id="cardDetailReloadBtn" class="btn btn-primary btn-sm" data-i18n="top_up_reload_card">Top Up / Reload Card</button>
-        <button type="button" id="cardDetailDeleteBtn" class="btn btn-reject btn-sm" data-i18n="btn_delete_card">Delete Card</button>
-      </div>
-      <div id="cardDetailCopyActions" class="card-detail-copy-actions hidden">
-        <button type="button" id="cardDetailCopyNumber" class="btn btn-secondary btn-sm" data-i18n="copy_card_number">Copy Card Number</button>
-        <button type="button" id="cardDetailCopyAll" class="btn btn-secondary btn-sm" data-i18n="copy_all_details">Copy All Details</button>
-      </div>
-      <p class="hint" style="margin-top:0.75rem" data-i18n="card_delete_hint">Removes this card from My Cards. Pending requests are cancelled; issued cards stay in records for history.</p>
     </div>
   </div>
 
@@ -304,7 +218,7 @@
 
       <div class="sell-usdt-notice" role="note">
         <strong data-i18n="sell_usdt_mmk_notice_title">Processing notice</strong>
-        <p data-i18n="sell_usdt_mmk_notice">Withdrawals are processed via Kripicard within 48 hours.</p>
+        <p data-i18n="sell_usdt_mmk_notice">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
       </div>
 
       <form id="sellUsdtMmkForm" class="form">
@@ -438,30 +352,29 @@
     </div>
   </div>
 
-  <div id="withdrawUsdtModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="withdrawUsdtModalTitle" aria-modal="true" data-payout-system="kripicard" data-processing-hours="48">
+  <div id="withdrawUsdtModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="withdrawUsdtModalTitle" aria-modal="true" data-payout-system="tron">
     <div class="modal-box modal-box-wide">
       <div class="modal-header-row">
         <h3 id="withdrawUsdtModalTitle" data-i18n="withdraw_usdt_title">Withdraw USDT</h3>
         <button type="button" id="withdrawUsdtModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">Withdrawals are processed via Kripicard within 48 hours. Fee is 4% (3% Kripicard network + 1% platform). Crypto (TRC20/BEP20) or bank payout in MMK.</p>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">USDT withdrawals are sent on TRON (TRC20) after review.</p>
 
-      <form id="withdrawUsdtForm" class="form" data-withdraw-provider="kripicard">
+      <form id="withdrawUsdtForm" class="form" data-withdraw-provider="tron">
         <div class="field">
           <label for="withdrawPayoutMethod" data-i18n="withdraw_payout_method">Payout Method</label>
           <select id="withdrawPayoutMethod" required>
-            <option value="crypto" data-i18n="withdraw_method_crypto" selected>USDT Crypto (Kripicard · 48h)</option>
+            <option value="crypto" data-i18n="withdraw_method_crypto" selected>USDT (TRC20)</option>
             <option value="bank" data-i18n="withdraw_method_bank">Bank Account (USDT → MMK)</option>
           </select>
-          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Kripicard crypto payout (TRC20/BEP20). Fee: 4% (3% network + 1% platform). Processed within 48 hours.</small>
+          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Send USDT on TRON (TRC20) to your destination address.</small>
         </div>
 
         <div id="withdrawCryptoFields">
           <div class="field" id="withdrawNetworkField">
             <label for="withdrawNetwork" data-i18n="withdraw_network">Network</label>
-            <select id="withdrawNetwork" data-kripicard-withdraw-network="1">
-              <option value="TRC20" selected>TRC20 (TRON · Kripicard · 48h)</option>
-              <option value="BEP20">BEP20 (BSC · Kripicard · 48h)</option>
+            <select id="withdrawNetwork">
+              <option value="TRC20" selected>TRC20 (TRON)</option>
             </select>
           </div>
           <div class="field">
@@ -493,7 +406,7 @@
             <input id="withdrawUsdtAccountNumber" type="text" placeholder="09… or bank account number" inputmode="tel" autocomplete="off" />
           </div>
           <div class="sell-usdt-notice sell-usdt-notice-compact" role="note">
-            <p data-i18n="sell_usdt_mmk_notice">Withdrawals are processed via Kripicard within 48 hours.</p>
+            <p data-i18n="sell_usdt_mmk_notice">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
           </div>
         </div>
 
@@ -558,7 +471,7 @@
           <input id="withdrawMmkAccountNumber" type="text" required placeholder="09… or bank account number" inputmode="tel" autocomplete="off" />
         </div>
         <div class="sell-usdt-notice sell-usdt-notice-compact" role="note">
-          <p data-i18n="sell_usdt_mmk_notice">Withdrawals are processed via Kripicard within 48 hours.</p>
+          <p data-i18n="sell_usdt_mmk_notice">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
         </div>
         <div class="field">
           <label for="withdrawAmountMmk" data-i18n="withdraw_amount_mmk">Withdrawal Amount (MMK)</label>
@@ -982,10 +895,10 @@
           src="/brand/logo-icon.png"
           width="56"
           height="56"
-          alt="Eisy Myanmar"
+          alt="Eisymyanmar"
         />
-        <h1 class="auth-brand-title">Eisy Myanmar</h1>
-        <p class="subtitle auth-brand-sub">Secure Virtual Card Platform</p>
+        <h1 class="auth-brand-title">Eisymyanmar</h1>
+        <p class="subtitle auth-brand-sub">USDT wallet on TRON</p>
       </div>
 
       <div id="devOtpBanner" class="dev-otp-banner hidden" role="alert">
@@ -1157,7 +1070,7 @@
             aria-label="Close menu"
             aria-controls="userSidebar"
           >✕</button>
-          <a class="brand-link brand-link-sidebar" href="#home" data-goto="home" aria-label="Eisy Myanmar home">
+          <a class="brand-link brand-link-sidebar" href="#home" data-goto="home" aria-label="Eisymyanmar home">
             <img
               class="brand-logo brand-logo-icon brand-logo-sidebar"
               src="/brand/logo-icon.png"
@@ -1166,7 +1079,7 @@
               height="40"
             />
             <span class="sidebar-brand-copy">
-              <span class="sidebar-brand-title">Eisy Myanmar</span>
+              <span class="sidebar-brand-title">Eisymyanmar</span>
             </span>
           </a>
         </div>
@@ -1176,13 +1089,9 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"/></svg>
             <span data-i18n="nav_dashboard">Dashboard</span>
           </button>
-          <button type="button" class="nav-item" data-page="cards">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
-            <span data-i18n="nav_my_cards">My Cards</span>
-          </button>
           <button type="button" class="nav-item" data-page="instant-card" data-mode-nav="instant">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            <span data-i18n="nav_instant_card">Instant Card</span>
+            <span data-i18n="nav_instant_card">TRON Wallet</span>
           </button>
           <button type="button" class="nav-item" data-page="deposits" data-instant-only>
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -1222,11 +1131,11 @@
           <div class="header-inner">
             <div class="header-brand-row">
               <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Open menu" aria-expanded="false" aria-controls="userSidebar">☰</button>
-              <a class="brand-link header-logo-mobile" href="#home" data-goto="home" aria-label="Eisy Myanmar home">
+              <a class="brand-link header-logo-mobile" href="#home" data-goto="home" aria-label="Eisymyanmar home">
                 <img
                   class="brand-logo brand-logo-icon"
                   src="/brand/logo-icon.png"
-                  alt="Eisy Myanmar"
+                  alt="Eisymyanmar"
                   width="32"
                   height="32"
                 />
@@ -1279,8 +1188,7 @@
         <main class="app-content">
           <!-- Hidden titles for page heading sync -->
           <span class="hidden" data-page-title="home" data-i18n="nav_dashboard">Dashboard</span>
-          <span class="hidden" data-page-title="cards" data-i18n="nav_my_cards">My Cards</span>
-          <span class="hidden" data-page-title="instant-card" data-i18n="nav_instant_card">Instant Card</span>
+          <span class="hidden" data-page-title="instant-card" data-i18n="nav_instant_card">TRON Wallet</span>
           <span class="hidden" data-page-title="deposits" data-instant-only data-i18n="deposits_page_title">Deposit &amp; Reload History</span>
           <span class="hidden" data-page-title="usdt-wallet" data-instant-only data-i18n="usdt_wallet_page_title">USDT Wallet</span>
           <span class="hidden" data-page-title="p2p" data-instant-only data-i18n="nav_p2p">P2P Express</span>
@@ -1297,7 +1205,7 @@
                 <div class="wallet-hero-card usdt" id="walletHeroUsdt" data-mode-shell="instant">
                   <div class="wallet-hero-label" data-i18n="header_usdt_wallet">Master USDT Wallet</div>
                   <div class="wallet-hero-value" id="sumBalanceUsdt">—</div>
-                  <p class="wallet-hero-hint" data-i18n="usdt_wallet_hint">TRC20 deposit · Instant Card funding only</p>
+                  <p class="wallet-hero-hint" data-i18n="usdt_wallet_hint">USDT (TRC20) sent to your TRON HD address is credited here.</p>
                   <div class="wallet-hero-actions" role="group" aria-label="Master USDT wallet actions">
                     <span class="wallet-actions-label" data-i18n="wallet_actions_label">Wallet actions</span>
                     <div class="wallet-hero-actions-row">
@@ -1312,14 +1220,6 @@
               </div>
             </section>
 
-            <section class="panel home-card-purchase" data-mode-shell="instant">
-              <h2 data-i18n="home_card_purchase_heading_instant">Get Instant Card</h2>
-              <p class="hint" data-i18n="home_card_purchase_hint_instant">Master USDT Wallet · Instant Card (No KYC).</p>
-              <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
-                <button type="button" class="btn btn-primary btn-sm" data-goto="instant-card" data-i18n="nav_instant_card">Instant Card</button>
-                <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="nav_my_cards">My Cards</button>
-              </div>
-            </section>
             <section class="panel">
               <h2 data-i18n="todays_exchange_rate">Today's Exchange Rate</h2>
               <p id="homeRateSummary" class="hint" data-i18n="loading">Loading rate…</p>
@@ -1335,100 +1235,17 @@
                 <h2 style="margin:0" data-i18n="active_requests">Active Requests</h2>
                 <button type="button" class="btn btn-secondary btn-sm" data-goto="deposits" data-i18n="view_history">View History</button>
               </div>
-              <p class="hint" style="margin-bottom:0.75rem" data-i18n="active_requests_hint">Track card and deposit requests awaiting admin approval.</p>
+              <p class="hint" style="margin-bottom:0.75rem" data-i18n="active_requests_hint">Track deposit requests awaiting confirmation.</p>
               <div id="pendingRequestsList" class="data-table-wrap"><p class="hint" data-i18n="loading_requests">Loading requests…</p></div>
             </section>
           </section>
 
-          <!-- ══ PAGE: My Cards ══ -->
-          <section id="pageCards" class="app-page" data-page="cards">
-            <div class="page-header">
-              <div>
-                <h2 class="page-heading" data-i18n="nav_my_cards">My Cards</h2>
-                <p class="page-desc" data-i18n="cards_page_desc">View card status, reveal details when needed, and reload your virtual cards.</p>
-              </div>
-            </div>
-
-            <section class="panel summary-panel">
-              <div id="cardSelectorSection" class="card-selector-section hidden">
-                <div class="card-selector-header">
-                  <label class="card-selector-label" for="cardSelect" data-i18n="your_virtual_cards">Your Virtual Cards</label>
-                  <div class="card-nav-buttons">
-                    <button type="button" id="btnPrevCard" class="btn btn-secondary btn-sm" data-i18n-title="prev_card" title="Previous card" data-i18n="prev_card">‹ Prev</button>
-                    <span id="cardIndexLabel" class="card-index-label">1 / 1</span>
-                    <button type="button" id="btnNextCard" class="btn btn-secondary btn-sm" data-i18n-title="next_card" title="Next card" data-i18n="next_card">Next ›</button>
-                  </div>
-                </div>
-                <select id="cardSelect" class="card-select" aria-label="Select virtual card"></select>
-                <div id="cardThumbnails" class="card-thumbnails" role="tablist" aria-label="Card previews"></div>
-              </div>
-            </section>
-
-            <div class="grid-2">
-              <section class="panel card-apply-panel">
-                <div id="cardsApplyCta" class="cards-apply-cta">
-                  <h2 data-i18n="cards_apply_heading">Get a new card</h2>
-                  <p class="hint" data-i18n="cards_apply_hint">Issue Instant Card from your Master USDT Wallet (TRC20).</p>
-                  <div class="action-row cards-apply-cta-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
-                    <a class="btn btn-primary btn-sm" href="/instant" data-portal-cta="instant" data-i18n="nav_instant_card">Instant Card</a>
-                  </div>
-                </div>
-                <details style="margin-top:1rem" class="hint" data-instant-only>
-                  <summary>Demo: self-issue card (dev only)</summary>
-                  <form id="issueCardForm" class="form" style="margin-top:0.75rem">
-                    <div class="field"><label>Card Number</label><input id="cardNumber" value="4532 8765 4321 0987" /></div>
-                    <div class="field-row">
-                      <div class="field"><label>Expiry</label><input id="expDate" value="12/28" /></div>
-                      <div class="field"><label>CVV</label><input id="cvv" value="456" /></div>
-                    </div>
-                    <div class="field"><label>Holder</label><input id="holderName" value="DEMO USER" /></div>
-                    <button type="submit" class="btn btn-secondary">Issue / Update Card (Demo)</button>
-                  </form>
-                </details>
-                <pre class="output hidden" id="issueCardOutput" aria-hidden="true" data-instant-only></pre>
-              </section>
-
-              <section class="panel">
-                <h2><span data-i18n="virtual_card">Virtual Card</span> <span id="cardDetailsTitle" class="card-details-subtitle"></span></h2>
-                <div id="cardStatusHero" class="card-status-hero">
-                  <div class="card-status-hero-main">
-                    <span class="label" data-i18n="status">Status</span>
-                    <span id="cardStatusDisplay" class="card-status-pill">—</span>
-                  </div>
-                  <div class="card-status-hero-aside">
-                    <div id="cardLast4Display" class="card-status-last4">—</div>
-                    <div id="cardBalanceDisplay" class="card-status-balance">—</div>
-                  </div>
-                </div>
-                <div class="card-action-bar">
-                  <button type="button" id="btnShowCardDetails" class="btn btn-secondary btn-sm" disabled data-i18n="show_card_details">Show Card Details</button>
-                  <button type="button" id="btnReloadSelectedCard" class="btn btn-primary btn-sm" data-i18n="top_up_reload_card">Top Up / Reload Card</button>
-                  <button id="btnLoadCard" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
-                </div>
-                <div id="cardStatusAlert" class="card-status-alert hidden" role="alert"></div>
-                <div id="cardPendingNotice" class="card-pending-notice hidden">
-                  <p data-i18n="card_pending_notice">This card request is pending admin approval. You'll receive your card number once issued.</p>
-                </div>
-                <pre class="output hidden" id="viewCardOutput" aria-hidden="true"></pre>
-              </section>
-            </div>
-
-            <section class="panel">
-              <div class="section-toolbar">
-                <h2 style="margin:0" data-i18n="card_reload_history">Card Reload History</h2>
-                <button type="button" id="btnLoadCardReloads" class="btn btn-secondary btn-sm" data-i18n="btn_refresh">Refresh</button>
-              </div>
-              <p class="hint" style="margin-bottom:0.75rem" data-i18n="card_reload_history_hint">Top-up requests to your virtual card — wallet funds are held until admin approves.</p>
-              <div id="cardsReloadHistoryTable" class="data-table-wrap"><p class="hint" data-i18n="loading_reload_history">Loading reload history…</p></div>
-            </section>
-          </section>
-
-          <!-- ══ PAGE: Instant (full InstantAppView — USDT Wallet + Kripicard) ══ -->
+          <!-- ══ PAGE: Instant (TRON HD USDT wallet) ══ -->
           <section id="pageInstantCard" class="app-page" data-page="instant-card">
             <div class="page-header">
               <div>
-                <h2 class="page-heading" data-i18n="nav_instant_card">Instant Card</h2>
-                <p class="page-desc" data-i18n="instant_card_page_desc">No KYC. Fund via Master USDT Wallet (TRC20), then issue Instant Card through Kripicard.</p>
+                <h2 class="page-heading" data-i18n="nav_instant_card">TRON Wallet</h2>
+                <p class="page-desc" data-i18n="instant_card_page_desc">Send USDT (TRC20) to your personal TRON HD deposit address. Your wallet is credited after the transfer confirms.</p>
               </div>
             </div>
             <div id="instantAppPageHost" data-app-view-host="instant"></div>
@@ -1439,7 +1256,7 @@
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="usdt_wallet_page_title">USDT Wallet</h2>
-                <p class="page-desc" data-i18n="usdt_wallet_page_desc">View your platform balance, copy deposit addresses (TRC20 / BEP20 / ERC20), link external wallets, and track USDT activity.</p>
+                <p class="page-desc" data-i18n="usdt_wallet_page_desc">View your platform balance, copy your TRON HD deposit address, and track USDT activity.</p>
               </div>
               <div class="action-row">
                 <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="btn_top_up_usdt">Top Up USDT</button>
@@ -1465,7 +1282,7 @@
                   <div class="wallet-hero-value" id="usdtWalletTotalBalance">—</div>
                 </div>
               </div>
-              <p class="wallet-hero-hint" id="usdtWalletMinDepositHint" data-i18n="usdt_wallet_hint">Kripicard deposit (unique pay address) · min $20 · 1 USDT ≈ 1 USD to card (after fee)</p>
+              <p class="wallet-hero-hint" id="usdtWalletMinDepositHint" data-i18n="usdt_wallet_hint">Send USDT (TRC20) to your TRON HD deposit address.</p>
             </section>
 
             <section class="panel" id="usdtEscrowPanel">
@@ -1500,11 +1317,11 @@
             <div class="grid-2">
               <section class="panel">
                 <div class="panel-header-row">
-                  <h2 style="margin:0" data-i18n="usdt_deposit_addresses">Kripicard Deposits</h2>
+                  <h2 style="margin:0" data-i18n="usdt_deposit_addresses">TRON HD deposit</h2>
                   <button type="button" id="btnRefreshUsdtWallet" class="btn btn-secondary btn-sm" data-i18n="refresh">Refresh</button>
                 </div>
-                <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_deposit_addresses_hint">Top up via Kripicard to receive a unique pay address, exact amount, and network (e.g. Tron). Withdrawals are paid via Kripicard within 48 hours (4% markup).</p>
-                <div id="usdtWalletDepositAddresses" class="usdt-wallet-address-list" data-deposit-provider="kripicard"><p class="hint" data-i18n="loading">Loading…</p></div>
+                <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_deposit_addresses_hint">Your personal TRON HD address and QR code. Send USDT on TRC20 only.</p>
+                <div id="usdtWalletDepositAddresses" class="usdt-wallet-address-list" data-deposit-provider="tron-hd"><p class="hint" data-i18n="loading">Loading…</p></div>
               </section>
 
               <section class="panel">
@@ -1669,12 +1486,6 @@
               </div>
             </div>
 
-            <section class="panel">
-              <h2>Sample New Card Cost</h2>
-              <p class="hint" style="margin-bottom:0.75rem">Example breakdown at the minimum deposit amount.</p>
-              <div id="ratesSampleBreakdown" class="pricing-breakdown"></div>
-              <button type="button" class="btn btn-primary btn-sm" data-goto="cards">Apply for a Card</button>
-            </section>
           </section>
 
           <!-- ══ PAGE: Profile ══ -->
@@ -1682,7 +1493,7 @@
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="nav_profile">Profile</h2>
-                <p class="page-desc" data-i18n="profile_page_desc">Your account details, contact info, and selected card status.</p>
+                <p class="page-desc" data-i18n="profile_page_desc">Your account details and contact info.</p>
               </div>
             </div>
 
@@ -1692,11 +1503,8 @@
                 <div class="summary-item"><span class="label" data-i18n="name">Name</span><span class="value" id="sumName">—</span></div>
                 <div class="summary-item"><span class="label" data-i18n="email">Email</span><span class="value" id="sumEmail">—</span></div>
                 <div class="summary-item"><span class="label" data-i18n="phone">Phone</span><span class="value" id="sumPhone">—</span></div>
-                <div class="summary-item"><span class="label" data-i18n="selected_card">Selected Card</span><span class="value" id="sumCard">—</span></div>
-                <div class="summary-item highlight"><span class="label" data-i18n="card_status">Card Status</span><span class="value" id="sumCardStatus">—</span></div>
               </div>
               <div class="action-row" style="margin-top:1rem">
-                <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="view_my_cards">View My Cards</button>
                 <button type="button" class="btn btn-secondary btn-sm" data-goto="settings" data-i18n="nav_settings">Settings &amp; Security</button>
               </div>
             </section>
@@ -1823,14 +1631,12 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261005hubLanding"></script>
+  <script defer src="/i18n.js?v=20261007tronHd"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
   <script defer src="/src/services/usdtWalletApi.js?v=20260909walletPerf"></script>
   <script defer src="/src/services/withdrawalApi.js?v=20260817m2"></script>
-  <script defer src="/src/services/cardsApi.js?v=20260928cardViews"></script>
-  <script defer src="/src/services/instantCardApi.js?v=20260928cardViews"></script>
   <script defer src="/src/services/accountApi.js?v=20260823profile"></script>
   <script defer src="/src/services/p2pApi.js?v=20260819p2p"></script>
   <script defer src="/src/services/index.js?v=20260817m2"></script>
@@ -1842,13 +1648,12 @@
   <script defer src="/src/components/depositFeePreview.js?v=20260817m2"></script>
   <script defer src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
-  <script defer src="/src/components/instantCardView.js?v=20260928appModes"></script>
-  <script defer src="/src/components/instantAppView.js?v=20260928wallets"></script>
+  <script defer src="/src/components/instantAppView.js?v=20261006removeCards"></script>
   <script defer src="/src/components/index.js?v=20260928appModes"></script>
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20261005hubLanding"></script>
+  <script defer src="/dashboard.js?v=20261007dashboardHome"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

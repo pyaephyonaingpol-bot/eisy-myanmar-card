@@ -3,16 +3,18 @@
  *
  * Mounted at /api/tron/wallet
  *
- * DISABLED by default (TRON_WALLET_ENABLED=false). Deposits use Kripicard;
- * withdrawals use the Kripicard 4% markup queue. Sync-deposits remains available
- * for ops recovery of legacy HD addresses when authorized.
+ * Deposit address provisioning is on by default (TRON_DEPOSITS_ENABLED).
+ * Master-wallet sends stay off (TRON_WALLET_ENABLED=false). Withdrawals use
+ * the 4% markup queue. Sync-deposits remains available for ops recovery.
  */
 const express = require('express');
 const { requireAuth, requireSensitive } = require('../middleware/auth');
 const { requireWithdrawalsEnabled } = require('../middleware/withdrawalGuard');
 const {
   isTronWalletEnabled,
+  isTronDepositEnabled,
   tronWalletDisabledPayload,
+  tronDepositDisabledPayload,
 } = require('../services/securityFlags');
 const {
   generateUserDepositAddress,
@@ -29,6 +31,12 @@ const router = express.Router();
 function rejectIfDisabled(res) {
   if (isTronWalletEnabled()) return false;
   res.status(410).json(tronWalletDisabledPayload());
+  return true;
+}
+
+function rejectIfDepositsDisabled(res) {
+  if (isTronDepositEnabled()) return false;
+  res.status(410).json(tronDepositDisabledPayload());
   return true;
 }
 
@@ -51,7 +59,7 @@ router.get('/', requireAuth, requireSensitive, async (req, res) => {
 
 /** GET /api/tron/wallet/address — ensure unique TRC-20 deposit address */
 router.get('/address', requireAuth, async (req, res) => {
-  if (rejectIfDisabled(res)) return;
+  if (rejectIfDepositsDisabled(res)) return;
   try {
     const address = await generateUserDepositAddress(req.user.id);
     res.json({ success: true, ...address });
@@ -67,7 +75,7 @@ router.get('/address', requireAuth, async (req, res) => {
 
 /** POST /api/tron/wallet/address — generate / refresh unique TRC-20 deposit address */
 router.post('/address', requireAuth, async (req, res) => {
-  if (rejectIfDisabled(res)) return;
+  if (rejectIfDepositsDisabled(res)) return;
   try {
     const address = await generateUserDepositAddress(req.user.id);
     res.status(address.created ? 201 : 200).json({ success: true, ...address });

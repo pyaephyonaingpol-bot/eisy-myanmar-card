@@ -3,10 +3,9 @@
  * Root vercel.json rewrites all traffic here when the Git project root is the monorepo.
  *
  * Compatible with:
- * - POST /api/deposit/create (Kripicard Deposit API — unique pay address)
- * - POST /api/deposit/request (same Kripicard Deposit API)
- * - POST /api/tron/orders (compat → Kripicard Deposit API)
- * - POST /api/webhook/kripicard[/deposits|/collections|/payments] (deposit.completed → Master Wallet)
+ * - GET /api/tron/wallet/address (per-user TRON HD deposit address)
+ * - POST /api/deposit/create and /api/tron/orders return 410 (use the HD address)
+ * - Retired card-provider webhooks return 410
  */
 require('../src/lib/loadEnv');
 const { initDb, getDb } = require('../src/db');

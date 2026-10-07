@@ -73,7 +73,6 @@ function sendPortalApp(res, portal) {
     return res.status(500).send(`Dashboard missing. Expected: ${INDEX_HTML}`);
   }
   let html = fs.readFileSync(INDEX_HTML, 'utf8');
-  const label = 'Instant';
   const inject = `<script>window.__EISY_PORTAL__=${JSON.stringify(portal)};</script>`;
   html = html.replace(/<head([^>]*)>/i, (m) => `${m}\n  ${inject}`);
   html = html.replace(/<html([^>]*)>/i, (m, attrs = '') => (
@@ -81,17 +80,17 @@ function sendPortalApp(res, portal) {
       ? m
       : `<html${attrs} data-eisy-portal="${portal}">`
   ));
-  html = html.replace(/<title>[^<]*<\/title>/i, `<title>Eisy Myanmar — ${label}</title>`);
+  html = html.replace(/<title>[^<]*<\/title>/i, '<title>Eisymyanmar</title>');
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.type('html').send(html);
 }
 
 app.get('/', (_req, res) => {
-  sendHtmlFile(res, INDEX_HTML);
+  sendPortalApp(res, 'instant');
 });
 
-app.get('/dashboard', (_req, res) => {
-  sendHtmlFile(res, INDEX_HTML);
+app.get(['/hub', '/dashboard'], (_req, res) => {
+  res.redirect(302, '/');
 });
 
 app.get('/auth/callback', (_req, res) => {
@@ -102,7 +101,7 @@ app.get(['/instant', '/instant.html'], (_req, res) => {
   sendPortalApp(res, 'instant');
 });
 
-// Legacy Business/Standard portal URLs → Instant (Kripicard + Master Wallet only).
+// Legacy Business/Standard portal URLs → Instant (TRON HD wallet).
 app.get(['/business', '/business.html', '/standard', '/standard.html'], (_req, res) => {
   res.redirect(302, '/instant');
 });
@@ -149,7 +148,6 @@ function sendAdminPipeline(res, pipeline) {
     return res.status(500).send(`Admin missing. Expected: ${adminHtml}`);
   }
   let html = fs.readFileSync(adminHtml, 'utf8');
-  const label = 'Instant Admin';
   const inject = `<script>window.__EISY_ADMIN_PIPELINE__=${JSON.stringify(pipeline)};</script>`;
   if (!html.includes('__EISY_ADMIN_PIPELINE__')) {
     html = html.replace(/<head([^>]*)>/i, (m) => `${m}\n  ${inject}`);
@@ -164,7 +162,7 @@ function sendAdminPipeline(res, pipeline) {
       ? m.replace(/data-admin-pipeline="[^"]*"/, `data-admin-pipeline="${pipeline}"`)
       : `<html${attrs} data-admin-pipeline="${pipeline}">`
   ));
-  html = html.replace(/<title>[^<]*<\/title>/i, `<title>Eisy Myanmar — ${label}</title>`);
+  html = html.replace(/<title>[^<]*<\/title>/i, '<title>Eisymyanmar</title>');
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.type('html').send(html);
 }
@@ -426,8 +424,6 @@ app.use('/api/kyc', createKycRateLimiter(), require('./routes/kyc'));
 app.use('/api/p2p', require('./routes/p2p'));
 app.use('/api/withdrawal', require('./routes/withdrawal'));
 app.use('/api/withdraw', require('./routes/withdraw'));
-app.use('/api/kripicard/services', require('./routes/kripicardServices'));
-app.use('/api/instant/services', require('./routes/kripicardServices'));
 
 app.use((req, res) => {
   if (req.path.startsWith('/api')) {
@@ -525,16 +521,14 @@ async function start() {
   }, 60 * 1000);
   expiryInterval.unref?.();
 
-  // Legacy TronGrid HD-address poller disabled — deposits use Kripicard Deposit API.
-  if (String(process.env.TRON_ORDER_POLL_ENABLED || 'false').toLowerCase() === 'true') {
+  const { isTronDepositEnabled } = require('./services/securityFlags');
+  const pollTron = String(process.env.TRON_ORDER_POLL_ENABLED || 'true').toLowerCase() !== 'false';
+  if (isTronDepositEnabled() && pollTron) {
     const { startTronOrderPoller } = require('./services/tronOrderService');
     startTronOrderPoller();
   } else {
-    console.log('[tron/orders] TronGrid poll disabled (Kripicard Deposit API is primary)');
+    console.log('[tron/orders] TRON HD deposit poll disabled');
   }
-
-  const { startKripicardDepositPoller } = require('./services/kripicardDepositService');
-  startKripicardDepositPoller();
 
   await new Promise((resolve, reject) => {
     server = app.listen(PORT, '0.0.0.0', () => {

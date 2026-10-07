@@ -43,12 +43,13 @@ router.get('/balance', requireAuth, requireSensitive, async (req, res) => {
 router.post('/provision', requireAuth, async (req, res) => {
   try {
     const { isTronWalletEnabled, tronWalletDisabledPayload } = require('../services/securityFlags');
-    // Custodial HD TRC20 provisioning is part of the retired Tron Wallet flow.
-    // Deposits now use Kripicard unique pay addresses — refuse new HD provisioning.
+    // This legacy provision path stays gated by the master-wallet flag.
+    // Customer deposits use GET /api/tron/wallet/address (TRON_DEPOSITS_ENABLED).
     if (!isTronWalletEnabled()) {
       return res.status(410).json({
         ...tronWalletDisabledPayload(),
-        error: 'Custodial TRON deposit addresses are disabled. Top up via Kripicard instead.',
+        error: 'Use GET /api/tron/wallet/address for your TRON HD deposit address.',
+        code: 'DEPOSIT_USE_TRON_HD',
       });
     }
     const addresses = await provisionCustodialAddresses(req.user.id);

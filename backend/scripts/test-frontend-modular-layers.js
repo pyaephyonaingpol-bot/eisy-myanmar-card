@@ -55,7 +55,6 @@ function main() {
     'src/services/depositApi.js',
     'src/services/usdtWalletApi.js',
     'src/services/withdrawalApi.js',
-    'src/services/cardsApi.js',
     'src/services/accountApi.js',
     'src/services/p2pApi.js',
     'src/services/index.js',

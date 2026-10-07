@@ -10,7 +10,7 @@ const path = require('path');
 const PUBLIC = path.join(__dirname, '../public');
 const INDEX = path.join(PUBLIC, 'index.html');
 
-function writePortal(portal, label) {
+function writePortal(portal) {
   if (!fs.existsSync(INDEX)) {
     throw new Error(`Missing ${INDEX}`);
   }
@@ -25,10 +25,10 @@ function writePortal(portal, label) {
     }
     return `<html${attrs} data-eisy-portal="${portal}">`;
   });
-  html = html.replace(/<title>[^<]*<\/title>/i, `<title>Eisy Myanmar — ${label}</title>`);
+  html = html.replace(/<title>[^<]*<\/title>/i, '<title>Eisymyanmar</title>');
   const out = path.join(PUBLIC, `${portal}.html`);
   fs.writeFileSync(out, html);
   console.log(`[write-portal-html] wrote ${out}`);
 }
 
-writePortal('instant', 'Instant');
+writePortal('instant');

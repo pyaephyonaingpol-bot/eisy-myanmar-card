@@ -1,7 +1,7 @@
 /**
- * Instant App View — Master USDT Wallet + Instant Card only.
- * Deposits: Kripicard Deposit API (unique pay_address / pay_amount / network).
- * Withdrawals: Kripicard payout with 4% markup · processed within 48 hours.
+ * Instant App View — Master USDT Wallet funded by the per-user TRON HD address.
+ * Deposits: GET /api/tron/wallet/address → address + QR.
+ * Card issuing and hub catalog purchases are not mounted here.
  */
 (function (root) {
   'use strict';
@@ -9,41 +9,43 @@
   root.EisyComponents = root.EisyComponents || {};
 
   const MODE = 'instant';
-  const PROVIDER = 'kripicard';
+  const PROVIDER = 'tron-hd';
 
   const TEMPLATE = `
-<div id="instantAppView" class="app-mode-view" data-app-mode="instant" data-provider="kripicard" data-wallet="usdt">
+<div id="instantAppView" class="app-mode-view" data-app-mode="instant" data-provider="tron-hd" data-wallet="usdt" data-deposit-provider="tron-hd">
   <section class="panel app-mode-wallet-panel">
-    <h2 data-i18n="instant_app_wallet_heading">Master USDT Wallet (Instant)</h2>
-    <p class="hint" data-i18n="instant_app_wallet_desc">Internal Master USDT balance. Top up via Kripicard (unique pay address), then issue Instant Card (No KYC). Withdrawals are paid via Kripicard within 48 hours.</p>
+    <h2 data-i18n="instant_app_wallet_heading">Master USDT Wallet</h2>
+    <p class="hint" data-i18n="instant_app_wallet_desc">Internal USDT balance. Top up by sending USDT (TRC20) to your TRON HD deposit address.</p>
     <div class="wallet-pay-hint ok" style="margin-bottom:0.75rem">
       <span data-i18n="instant_usdt_wallet_balance_label">Master USDT Wallet</span>:
       <strong id="instantAppUsdtBalance">—</strong>
     </div>
-    <div class="field" style="margin-bottom:0.5rem" data-deposit-provider="kripicard">
-      <label data-i18n="instant_kripicard_deposit_label">Kripicard deposit</label>
-      <p class="hint" id="instantAppDepositHint" data-i18n="instant_kripicard_deposit_hint" style="margin:0.35rem 0 0">
-        Each top-up issues a unique pay address, exact amount, and network (e.g. Tron). Min $20 USDT.
+    <div class="field" style="margin-bottom:0.75rem" data-deposit-provider="tron-hd">
+      <label data-i18n="instant_tron_hd_deposit_label">TRON HD deposit</label>
+      <p class="hint" id="instantAppDepositHint" data-i18n="instant_tron_hd_deposit_hint" style="margin:0.35rem 0 0.75rem">
+        Send USDT on TRON (TRC20) to the address below. Your wallet is credited after confirmation.
       </p>
+      <div class="usdt-address-box" id="instantTronHdBox" data-tron-hd-paybox="1">
+        <img id="instantTronHdQr" class="usdt-qr hidden" alt="TRON USDT deposit QR code" width="180" height="180" />
+        <div class="usdt-address-display">
+          <span class="usdt-address-label" data-i18n="deposit_address_label">TRON deposit address</span>
+          <code id="instantTronHdAddress" class="usdt-address-code">Loading…</code>
+          <button type="button" class="btn btn-secondary btn-sm usdt-copy-btn" id="btnCopyInstantTronHd" data-i18n="copy_address">Copy Address</button>
+        </div>
+        <p class="status-line" data-i18n="tron_hd_deposit_status">This address is yours. Confirmed USDT (TRC20) sent here is credited to your wallet.</p>
+        <p id="instantTronHdError" class="error-text hidden" role="alert"></p>
+      </div>
     </div>
     <div class="action-row" style="display:flex;flex-wrap:wrap;gap:0.5rem">
       <button type="button" class="btn btn-primary btn-sm" data-open-usdt-topup data-i18n="top_up_usdt_wallet">Top up Master Wallet</button>
-      <button type="button" class="btn btn-secondary btn-sm" id="btnInstantAppWithdraw" data-i18n="btn_withdraw_usdt" data-payout-system="kripicard">Withdraw USDT</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="btnInstantAppWithdraw" data-i18n="btn_withdraw_usdt" data-payout-system="tron">Withdraw USDT</button>
     </div>
-    <p class="hint" style="margin-top:0.65rem" data-i18n="instant_withdraw_legacy_hint">Withdrawals are paid via Kripicard within 48 hours (4% markup: 3% network + 1% platform).</p>
-  </section>
-
-  <section class="panel app-mode-card-panel">
-    <div id="instantAppCardHost" data-instant-card-host></div>
+    <p class="hint" style="margin-top:0.65rem" data-i18n="instant_withdraw_legacy_hint">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
   </section>
 </div>`.trim();
 
   function $(id) {
     return typeof document !== 'undefined' ? document.getElementById(id) : null;
-  }
-
-  function cardView() {
-    return root.EisyComponents && root.EisyComponents.instantCardView;
   }
 
   function renderBalance(ctx) {
@@ -54,17 +56,46 @@
     el.textContent = format(bal);
   }
 
-  /** @deprecated Static HD TRC20 addresses retired — use Top up (Kripicard). */
+  function paintAddress(address) {
+    const code = $('instantTronHdAddress');
+    if (code) {
+      code.textContent = address || '—';
+      code.title = address || '';
+    }
+    const qr = $('instantTronHdQr');
+    if (qr && address) {
+      qr.src = `/api/qr?size=180&data=${encodeURIComponent(address)}`;
+      qr.alt = 'TRON USDT deposit QR code';
+      qr.classList.remove('hidden');
+    }
+    const err = $('instantTronHdError');
+    if (err && address) {
+      err.textContent = '';
+      err.classList.add('hidden');
+    }
+  }
+
   async function loadTrc20Deposit(ctx) {
     const hint = $('instantAppDepositHint');
-    if (hint && !hint.dataset.i18nKeep) {
-      hint.textContent = typeof ctx.t === 'function'
-        ? (ctx.t('instant_kripicard_deposit_hint') || hint.textContent)
-        : hint.textContent;
+    if (hint && typeof ctx.t === 'function') {
+      const next = ctx.t('instant_tron_hd_deposit_hint');
+      if (next) hint.textContent = next;
     }
     if (typeof ctx.refreshUsdtWallet === 'function') {
       await ctx.refreshUsdtWallet().catch(() => {});
       renderBalance(ctx);
+    }
+    try {
+      if (typeof ctx.loadTronHdDeposit === 'function') {
+        const data = await ctx.loadTronHdDeposit();
+        if (data?.address) paintAddress(data.address);
+      }
+    } catch (err) {
+      const errEl = $('instantTronHdError');
+      if (errEl) {
+        errEl.textContent = err.message || 'TRON deposit address is unavailable';
+        errEl.classList.remove('hidden');
+      }
     }
     return null;
   }
@@ -87,16 +118,6 @@
     if (host) host.innerHTML = '';
   }
 
-  function hideNestedWalletChrome() {
-    const host = $('instantAppCardHost');
-    if (!host) return;
-    host.querySelector('#instantWalletBalanceHint')?.classList.add('hidden');
-    host.querySelectorAll('[data-open-usdt-topup]').forEach((btn) => {
-      const wrap = btn.closest('p.hint') || btn;
-      wrap.classList?.add?.('hidden');
-    });
-  }
-
   function bind(ctx = {}) {
     const rootEl = $('instantAppView');
     if (!rootEl || rootEl.dataset.bound === '1') return;
@@ -105,15 +126,16 @@
     $('btnInstantAppWithdraw')?.addEventListener('click', () => {
       ctx.openUsdtWithdraw?.();
     });
-    // Top-up CTAs use [data-open-usdt-topup] — bound globally by Dashboard.bindUsdtTopUpModal.
-
-    const cardHost = $('instantAppCardHost');
-    const card = cardView();
-    if (card && cardHost) {
-      card.mount(cardHost, { replace: true });
-      card.bind(ctx);
-      hideNestedWalletChrome();
-    }
+    $('btnCopyInstantTronHd')?.addEventListener('click', async () => {
+      const addr = $('instantTronHdAddress')?.textContent?.trim();
+      if (!addr || addr === '—' || addr === 'Loading…') return;
+      try {
+        await navigator.clipboard.writeText(addr);
+        ctx.toast?.('Address copied', 'ok');
+      } catch (_) {
+        ctx.toast?.('Could not copy address', 'error');
+      }
+    });
   }
 
   async function activate(ctx = {}) {
@@ -122,16 +144,10 @@
     }
     renderBalance(ctx);
     await loadTrc20Deposit(ctx);
-    const card = cardView();
-    if (card) {
-      await card.activate(ctx);
-      hideNestedWalletChrome();
-    }
     renderBalance(ctx);
   }
 
   function deactivate() {
-    cardView()?.deactivate?.();
     unmount();
   }
 
@@ -146,5 +162,6 @@
     deactivate,
     renderBalance,
     loadTrc20Deposit,
+    paintAddress,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

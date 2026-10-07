@@ -7,12 +7,11 @@
   const LEGACY_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.ADMIN_KEY_LEGACY) || 'eisy_admin_key';
   const PIPELINE_STORAGE_KEY = 'eisy_last_admin_pipeline';
 
-  /** Instant admin pages (Kripicard + Master Wallet / TRON). */
+  /** Instant admin pages (Master Wallet / TRON). */
   const INSTANT_ADMIN_PAGES = new Set([
     'overview',
     'deposits',
     'mmk-withdrawals',
-    'cards',
     'kyc-requests',
     'users',
     'transactions',
@@ -105,20 +104,20 @@
       $('adminPipelineHub')?.remove();
 
       const loginTitle = $('adminLoginTitle');
-      if (loginTitle) loginTitle.textContent = 'Instant Admin';
+      if (loginTitle) loginTitle.textContent = 'Eisymyanmar';
       const loginSub = $('adminLoginSubtitle');
       if (loginSub) {
-        loginSub.textContent = 'USDT wallets · TRC20 · Instant Card · P2P · MMK';
+        loginSub.textContent = 'USDT wallets · TRC20 · P2P · MMK';
       }
 
       this.renderPipelineSwitcher();
       this.applyPipelineCopy();
 
       const brandTitle = document.querySelector('.sidebar-brand-title');
-      if (brandTitle) brandTitle.textContent = 'Instant Admin';
+      if (brandTitle) brandTitle.textContent = 'Eisymyanmar';
       const brandSub = document.querySelector('.sidebar-brand-sub');
-      if (brandSub) brandSub.textContent = 'USDT · TRC20 · Instant Card · P2P · MMK';
-      document.title = 'Eisy Myanmar — Instant Admin';
+      if (brandSub) brandSub.textContent = 'USDT · TRC20 · P2P · MMK';
+      document.title = 'Eisymyanmar';
 
       const userApp = $('adminUserAppLink');
       if (userApp) userApp.setAttribute('href', '/instant');
@@ -127,31 +126,14 @@
     },
 
     applyPipelineCopy() {
-      const cardsLabel = document.querySelector('[data-admin-cards-label]');
-      if (cardsLabel) {
-        cardsLabel.textContent = 'Instant Cards';
-        cardsLabel.removeAttribute('data-i18n');
-      }
-      const cardsHeading = $('adminCardsHeading');
-      if (cardsHeading) {
-        cardsHeading.textContent = 'Instant Card Management';
-        cardsHeading.removeAttribute('data-i18n');
-      }
-      const cardsHint = $('adminCardsHint');
-      if (cardsHint) {
-        cardsHint.textContent = 'Internal USDT wallet · Kripicard / Instant Card issuance and reloads.';
-        cardsHint.removeAttribute('data-i18n');
-      }
       const usersHeading = $('adminUsersHeading');
       if (usersHeading) {
         usersHeading.textContent = 'Users & Internal USDT Wallets';
       }
       const usersHint = $('adminUsersHint');
       if (usersHint) {
-        usersHint.textContent = 'Manage internal USDT wallet balances used for Instant Card, P2P, and TRC20 flows.';
+        usersHint.textContent = 'Manage internal USDT wallet balances used for P2P and TRC20 flows.';
       }
-      const pageTitle = document.querySelector('[data-page-title="cards"]');
-      if (pageTitle) pageTitle.textContent = 'Instant Cards';
     },
 
     renderPipelineSwitcher() {
@@ -170,12 +152,12 @@
       if (!box) return;
       box.classList.remove('hidden');
       box.innerHTML = `
-        <h2 style="margin:0 0 0.5rem">Instant Admin</h2>
-        <p class="hint" style="margin:0 0 1rem">Manage Master USDT wallets, TRC20 deposits, Instant Card (Kripicard), P2P, and MMK withdrawals.</p>
+        <h2 style="margin:0 0 0.5rem">Eisymyanmar</h2>
+        <p class="hint" style="margin:0 0 1rem">Manage Master USDT wallets, TRC20 deposits, P2P, and MMK withdrawals.</p>
         <div class="portal-hub-grid">
           <a class="portal-hub-card" href="/admin/instant">
             <strong>Open Instant Admin</strong>
-            <span>Internal USDT wallets, TRC20 deposits, Instant Card, P2P, MMK withdrawals, KYC</span>
+            <span>Internal USDT wallets, TRC20 deposits, P2P, MMK withdrawals, KYC</span>
           </a>
         </div>
       `;
@@ -268,7 +250,7 @@
           el.style.display = 'none';
         });
         const heading = document.querySelector('.header .page-heading');
-        if (heading) heading.textContent = 'Instant Admin';
+        if (heading) heading.textContent = 'Eisymyanmar';
         const subtitle = document.querySelector('.header .subtitle');
         if (subtitle) subtitle.textContent = 'Open Instant Admin to manage wallets, cards, and KYC';
       }
@@ -646,7 +628,6 @@
 
     loadOverview() {
       if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
-      if (this.hasPermission('cards')) this.checkKripicardBalance();
       if (this.hasPermission('withdrawal_rates_read')) this.loadWithdrawalRates();
     },
 
@@ -724,9 +705,6 @@
       });
       document.querySelectorAll('[data-master-wallet-refresh]').forEach((btn) => {
         btn.addEventListener('click', () => this.checkMasterWalletBalance({ force: true }));
-      });
-      document.querySelectorAll('[data-kripicard-balance-refresh]').forEach((btn) => {
-        btn.addEventListener('click', () => this.checkKripicardBalance({ force: true }));
       });
       document.querySelectorAll('[data-tron-deposit-sweep]').forEach((btn) => {
         btn.addEventListener('click', () => this.runTronDepositSweep({ triggerBtn: btn }));
@@ -1375,9 +1353,6 @@
       if (pageOk('admins') && this.hasPermission('manage_admins')) tasks.push(this.loadAdmins());
       if (pageOk('overview') && (this.hasPermission('overview') || this.hasPermission('master_wallet'))) {
         tasks.push(this.checkMasterWalletBalance());
-      }
-      if (pageOk('overview') && this.hasPermission('cards')) {
-        tasks.push(this.checkKripicardBalance());
       }
       if (pageOk('overview') && this.hasPermission('withdrawal_rates_read')) {
         tasks.push(this.loadWithdrawalRates());
@@ -3033,116 +3008,6 @@
       })();
 
       return this._masterWalletBalanceInFlight;
-    },
-
-    renderKripicardBalance(balance) {
-      const el = $('kripicardBalanceStatus');
-      if (!el) return;
-      const usd = Number(balance?.balance_usd);
-      const checked = balance?.checked_at
-        ? new Date(balance.checked_at).toLocaleString()
-        : new Date().toLocaleString();
-      const display = Number.isFinite(usd)
-        ? usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-        : '—';
-      el.innerHTML =
-        '<div class="sa-balance-row">' +
-          '<div class="sa-balance">' +
-            '<span class="sa-balance-label">Kripicard balance (USD)</span>' +
-            '<div class="sa-balance-value usdt">$ ' + this.esc(display) + '</div>' +
-            '<div class="sa-balance-meta">Live Instant Card provider float</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="sa-wallet-footer">Updated ' + this.esc(checked) + '</div>';
-
-      const alertEl = $('kripicardBalanceAlert');
-      if (alertEl) {
-        alertEl.classList.add('hidden');
-        alertEl.textContent = '';
-      }
-    },
-
-    async checkKripicardBalance(opts = {}) {
-      if (!this.hasPermission('cards') && !opts.force) return;
-      const statusEl = $('kripicardBalanceStatus');
-      if (!statusEl) return;
-
-      if (this._kripicardBalanceInFlight) {
-        return this._kripicardBalanceInFlight;
-      }
-
-      const buttons = Array.from(document.querySelectorAll('[data-kripicard-balance-refresh], #btnRefreshKripicardBalance'));
-      const prev = buttons.map((b) => ({
-        html: b.innerHTML,
-        disabled: b.disabled,
-      }));
-      buttons.forEach((b) => {
-        b.disabled = true;
-        b.classList.add('is-busy');
-        b.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>Refreshing…</span>';
-      });
-      statusEl.innerHTML =
-        '<p class="sa-balance-loading hint">' +
-          '<span class="btn-spinner" aria-hidden="true"></span>' +
-          '<span>Fetching Kripicard balance…</span>' +
-        '</p>';
-      const alertEl = $('kripicardBalanceAlert');
-      if (alertEl) {
-        alertEl.classList.add('hidden');
-        alertEl.textContent = '';
-      }
-
-      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const CLIENT_TIMEOUT_MS = 20000;
-      const timer = controller
-        ? setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS)
-        : null;
-
-      this._kripicardBalanceInFlight = (async () => {
-        try {
-          const res = await fetch('/api/admin/kripicard-balance', {
-            method: 'GET',
-            headers: this.headers(),
-            signal: controller ? controller.signal : undefined,
-          });
-          let data = {};
-          try {
-            data = await res.json();
-          } catch (_) {
-            data = {};
-          }
-          if (res.status === 401) {
-            this.clearSession();
-            this.showLogin();
-            throw new Error(data.error || 'Admin session expired — please sign in again');
-          }
-          if (!res.ok) {
-            throw new Error(data.error || res.statusText || ('HTTP ' + res.status));
-          }
-          this.renderKripicardBalance(data.balance || {});
-          if (opts.force) this.showAdminToast('Kripicard balance updated', 'ok');
-        } catch (err) {
-          const raw = err.name === 'AbortError'
-            ? 'Kripicard balance request timed out — check KRIPICARD_API_KEY / KRIPICARD_BALANCE_URL'
-            : (err.message || 'Failed to load Kripicard balance');
-          const msg = this.esc(raw);
-          statusEl.innerHTML = '<p class="hint" style="margin:0;color:#ef4444">' + msg + '</p>';
-          if (alertEl) {
-            alertEl.classList.remove('hidden');
-            alertEl.innerHTML = '<strong>Could not load Kripicard balance</strong> — ' + msg;
-          }
-        } finally {
-          if (timer) clearTimeout(timer);
-          buttons.forEach((b, i) => {
-            b.disabled = prev[i].disabled;
-            b.classList.remove('is-busy');
-            b.innerHTML = prev[i].html;
-          });
-          this._kripicardBalanceInFlight = null;
-        }
-      })();
-
-      return this._kripicardBalanceInFlight;
     },
 
     setTronSweepStatus(message, { error = false } = {}) {
