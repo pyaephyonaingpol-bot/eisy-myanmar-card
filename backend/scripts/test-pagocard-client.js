@@ -109,6 +109,9 @@ const sampleCard = {
     assert.strictEqual(calls[0].init.method, 'POST');
     assert.strictEqual(calls[0].init.headers.publickey, 'pub-test-key');
     assert.strictEqual(calls[0].init.headers.secretkey, 'sec-test-key');
+    assert.strictEqual(calls[0].init.headers.Accept, 'application/json');
+    assert.strictEqual(calls[0].init.headers['Content-Type'], 'application/json');
+    assert.strictEqual(calls[0].init.headers.Authorization, undefined);
     assert.strictEqual(calls[0].init.headers['Idempotency-Key'], 'idem-1');
     assert.deepStrictEqual(JSON.parse(calls[0].init.body), {
       product_code: 'us_493_visa_bin_v2',
@@ -171,6 +174,9 @@ const sampleCard = {
     assert.strictEqual(details.last_four, '4242');
     assert.strictEqual(calls[0].url, 'https://pagocards.example/api/v1/cards/card%20test%2F1');
     assert.strictEqual(calls[0].init.method, 'GET');
+    assert.strictEqual(calls[0].init.headers.publickey, 'pub-test-key');
+    assert.strictEqual(calls[0].init.headers.secretkey, 'sec-test-key');
+    assert.strictEqual(calls[0].init.headers['Content-Type'], 'application/json');
     assert.strictEqual(calls[0].init.body, undefined);
     const balance = await api.getCardBalance('card_test_1');
     assert.deepStrictEqual(balance, { amount: 12000000, display_amount: 12, currency: 'USD' });
@@ -229,6 +235,33 @@ const sampleCard = {
     await assert.rejects(
       () => api.getCardDetails('card_test_1'),
       (err) => err.code === 'PAGO_NETWORK' && !err.message.includes('pub-test-key')
+    );
+  }
+
+  {
+    const { api } = clientWith(async () => ({
+      ok: false,
+      status: 502,
+      async text() {
+        return '<html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>';
+      },
+    }));
+    await assert.rejects(
+      () => api.createVirtualCard({
+        productCode: 'us_493_visa_bin_v2',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        email: 'ada@example.com',
+      }),
+      (err) => {
+        assert.ok(err instanceof PagoCardError);
+        assert.strictEqual(err.status, 502);
+        assert.strictEqual(err.code, 'PAGO_BAD_RESPONSE');
+        assert.ok(err.message.includes('HTTP 502'));
+        assert.ok(err.message.includes('https://pagocards.example'));
+        assert.ok(!err.message.includes('sec-test-key'));
+        return true;
+      }
     );
   }
 
