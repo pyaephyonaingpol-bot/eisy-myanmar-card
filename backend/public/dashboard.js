@@ -83,7 +83,7 @@ const Dashboard = {
     return text;
   },
 
-  /** Instant is the only customer portal. /hub redirects to /. */
+  /** Dashboard document. A truthy portal keeps the hub gateway from replacing home. */
   getPortal() {
     if (window.__EISY_PORTAL__ === 'instant') return 'instant';
     const pathName = String(window.location.pathname || '/').replace(/\/+$/, '') || '/';
@@ -118,27 +118,20 @@ const Dashboard = {
   },
 
   /**
-   * Portal isolation: Instant (TRON HD wallet). Hub (/) is Instant entry.
+   * Keep the full dashboard. Never swap / or login into the hub chooser.
    */
   applyPortalIsolation() {
-    const portal = this.getPortal();
+    const portal = this.getPortal() || 'instant';
     this._portal = portal;
-    document.documentElement.setAttribute('data-eisy-portal', portal || 'hub');
-    if (portal) this.rememberPortal(portal);
-
-    if (!portal) {
-      this.applyHubGateway();
-      this.renderPortalHubChooser();
-      this.renderPortalHeaderNav();
-      return portal;
-    }
+    document.documentElement.setAttribute('data-eisy-portal', portal);
+    this.rememberPortal(portal);
 
     this.renderPortalHeaderNav();
     this.syncCardsApplyCtas();
 
     const brandTitle = document.querySelector('.sidebar-brand-title');
-    if (brandTitle) brandTitle.textContent = 'Eisy · Instant';
-    document.title = 'Eisy Myanmar — Instant';
+    if (brandTitle) brandTitle.textContent = 'Eisymyanmar';
+    document.title = 'Eisymyanmar';
     $('portalHubChooser')?.remove();
 
     return portal;
@@ -172,7 +165,7 @@ const Dashboard = {
     });
 
     const brandTitle = document.querySelector('.sidebar-brand-title');
-    if (brandTitle) brandTitle.textContent = 'Eisy Myanmar';
+    if (brandTitle) brandTitle.textContent = 'Eisymyanmar';
     const brandSub = document.querySelector('.sidebar-brand-sub');
     if (brandSub) brandSub.textContent = 'TRON Wallet';
 
@@ -186,24 +179,18 @@ const Dashboard = {
       subtitle.textContent = 'Send USDT (TRC20) to your TRON HD deposit address.';
       subtitle.removeAttribute('data-i18n');
     }
-    document.title = 'Eisy Myanmar — TRON Wallet';
+    document.title = 'Eisymyanmar';
   },
 
   isHubGateway() {
-    return !(this._portal || this.getPortal());
+    return false;
   },
 
   renderPortalHeaderNav() {
     const header = $('portalNavHeader');
     if (!header) return;
-    const portal = this._portal || this.getPortal();
-    if (portal === 'instant') {
-      header.innerHTML = '';
-      header.setAttribute('aria-label', 'TRON wallet');
-      return;
-    }
-    header.innerHTML = '<a class="btn btn-primary btn-sm portal-switch-link" href="/" data-portal-switch="instant">Open Instant →</a>';
-    header.setAttribute('aria-label', 'Open Instant portal');
+    header.innerHTML = '';
+    header.setAttribute('aria-label', 'Dashboard');
   },
 
   syncCardsApplyCtas() {
@@ -793,8 +780,6 @@ const Dashboard = {
   },
 
   portalDefaultPage() {
-    const portal = this._portal || this.getPortal();
-    if (portal === 'instant') return 'instant-card';
     return 'home';
   },
 
@@ -6438,19 +6423,7 @@ const Dashboard = {
 
     document.documentElement.classList.toggle('has-session', loggedIn);
 
-    // Root (/) is Instant and keeps the login gate. Hub (/hub) stays browsable.
-    if (this.isHubGateway()) {
-      if (!loggedIn) {
-        this.clearCardsCache();
-        this.allCards = [];
-        if (window.location.hash && !window.location.hash.startsWith('#admin')) {
-          history.replaceState(null, '', window.location.pathname + window.location.search);
-        }
-      }
-      this.presentHubHome();
-      return;
-    }
-
+    // Root (/) opens the Dashboard and keeps the login gate.
     if (authScreen) authScreen.classList.toggle('hidden', loggedIn);
     if (dashboardScreen) dashboardScreen.classList.toggle('hidden', !loggedIn);
 

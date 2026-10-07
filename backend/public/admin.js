@@ -104,7 +104,7 @@
       $('adminPipelineHub')?.remove();
 
       const loginTitle = $('adminLoginTitle');
-      if (loginTitle) loginTitle.textContent = 'Instant Admin';
+      if (loginTitle) loginTitle.textContent = 'Eisymyanmar';
       const loginSub = $('adminLoginSubtitle');
       if (loginSub) {
         loginSub.textContent = 'USDT wallets · TRC20 · P2P · MMK';
@@ -114,10 +114,10 @@
       this.applyPipelineCopy();
 
       const brandTitle = document.querySelector('.sidebar-brand-title');
-      if (brandTitle) brandTitle.textContent = 'Instant Admin';
+      if (brandTitle) brandTitle.textContent = 'Eisymyanmar';
       const brandSub = document.querySelector('.sidebar-brand-sub');
       if (brandSub) brandSub.textContent = 'USDT · TRC20 · P2P · MMK';
-      document.title = 'Eisy Myanmar — Instant Admin';
+      document.title = 'Eisymyanmar';
 
       const userApp = $('adminUserAppLink');
       if (userApp) userApp.setAttribute('href', '/instant');
@@ -152,7 +152,7 @@
       if (!box) return;
       box.classList.remove('hidden');
       box.innerHTML = `
-        <h2 style="margin:0 0 0.5rem">Instant Admin</h2>
+        <h2 style="margin:0 0 0.5rem">Eisymyanmar</h2>
         <p class="hint" style="margin:0 0 1rem">Manage Master USDT wallets, TRC20 deposits, P2P, and MMK withdrawals.</p>
         <div class="portal-hub-grid">
           <a class="portal-hub-card" href="/admin/instant">
@@ -250,7 +250,7 @@
           el.style.display = 'none';
         });
         const heading = document.querySelector('.header .page-heading');
-        if (heading) heading.textContent = 'Instant Admin';
+        if (heading) heading.textContent = 'Eisymyanmar';
         const subtitle = document.querySelector('.header .subtitle');
         if (subtitle) subtitle.textContent = 'Open Instant Admin to manage wallets, cards, and KYC';
       }

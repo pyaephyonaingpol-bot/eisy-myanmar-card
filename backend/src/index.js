@@ -73,7 +73,6 @@ function sendPortalApp(res, portal) {
     return res.status(500).send(`Dashboard missing. Expected: ${INDEX_HTML}`);
   }
   let html = fs.readFileSync(INDEX_HTML, 'utf8');
-  const label = 'Instant';
   const inject = `<script>window.__EISY_PORTAL__=${JSON.stringify(portal)};</script>`;
   html = html.replace(/<head([^>]*)>/i, (m) => `${m}\n  ${inject}`);
   html = html.replace(/<html([^>]*)>/i, (m, attrs = '') => (
@@ -81,7 +80,7 @@ function sendPortalApp(res, portal) {
       ? m
       : `<html${attrs} data-eisy-portal="${portal}">`
   ));
-  html = html.replace(/<title>[^<]*<\/title>/i, `<title>Eisy Myanmar — ${label}</title>`);
+  html = html.replace(/<title>[^<]*<\/title>/i, '<title>Eisymyanmar</title>');
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.type('html').send(html);
 }
@@ -149,7 +148,6 @@ function sendAdminPipeline(res, pipeline) {
     return res.status(500).send(`Admin missing. Expected: ${adminHtml}`);
   }
   let html = fs.readFileSync(adminHtml, 'utf8');
-  const label = 'Instant Admin';
   const inject = `<script>window.__EISY_ADMIN_PIPELINE__=${JSON.stringify(pipeline)};</script>`;
   if (!html.includes('__EISY_ADMIN_PIPELINE__')) {
     html = html.replace(/<head([^>]*)>/i, (m) => `${m}\n  ${inject}`);
@@ -164,7 +162,7 @@ function sendAdminPipeline(res, pipeline) {
       ? m.replace(/data-admin-pipeline="[^"]*"/, `data-admin-pipeline="${pipeline}"`)
       : `<html${attrs} data-admin-pipeline="${pipeline}">`
   ));
-  html = html.replace(/<title>[^<]*<\/title>/i, `<title>Eisy Myanmar — ${label}</title>`);
+  html = html.replace(/<title>[^<]*<\/title>/i, '<title>Eisymyanmar</title>');
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.type('html').send(html);
 }

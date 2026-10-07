@@ -10,7 +10,7 @@ const path = require('path');
 const PUBLIC = path.join(__dirname, '../public');
 const ADMIN = path.join(PUBLIC, 'admin.html');
 
-function writeAdminPipeline(pipeline, label) {
+function writeAdminPipeline(pipeline) {
   if (!fs.existsSync(ADMIN)) {
     throw new Error(`Missing ${ADMIN}`);
   }
@@ -26,12 +26,12 @@ function writeAdminPipeline(pipeline, label) {
     }
     return `<html${attrs} data-admin-pipeline="${pipeline}">`;
   });
-  html = html.replace(/<title>[^<]*<\/title>/i, `<title>Eisy Myanmar — ${label}</title>`);
+  html = html.replace(/<title>[^<]*<\/title>/i, '<title>Eisymyanmar</title>');
   // Cache-bust admin.js so pipeline isolation ships with HTML shells.
-  html = html.replace(/admin\.js\?v=[^"']+/g, 'admin.js?v=20261006removeCards');
+  html = html.replace(/admin\.js\?v=[^"']+/g, 'admin.js?v=20261007eisymyanmar');
   const out = path.join(PUBLIC, `admin-${pipeline}.html`);
   fs.writeFileSync(out, html);
   console.log(`[write-admin-portal-html] wrote ${out}`);
 }
 
-writeAdminPipeline('instant', 'Instant Admin');
+writeAdminPipeline('instant');

@@ -84,7 +84,7 @@ const sidebarBrand = html.match(/class="sidebar-brand"[\s\S]*?<\/div>/);
 assert.ok(sidebarBrand, 'sidebar-brand block present');
 assert.ok(sidebarBrand[0].includes('brand-logo-sidebar'), 'sidebar uses sidebar icon mark');
 assert.ok(sidebarBrand[0].includes('sidebar-brand-title'), 'sidebar has readable text title');
-assert.ok(sidebarBrand[0].includes('Eisy Myanmar'), 'sidebar title text present');
+assert.ok(sidebarBrand[0].includes('Eisymyanmar'), 'sidebar title text present');
 assert.ok(!sidebarBrand[0].includes('brand-logo-full'), 'tiny full lockup removed from sidebar');
 assert.ok(!sidebarBrand[0].includes('logo-full.png'), 'full logo image not used in sidebar');
 assert.ok((sidebarBrand[0].match(/<img\b/g) || []).length === 1, 'exactly one logo image in sidebar brand');
