@@ -1313,22 +1313,16 @@
 
   <div id="deleteUserModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="deleteUserModalTitle" aria-modal="true" aria-hidden="true">
     <div class="proof-lightbox-backdrop delete-user-modal-backdrop"></div>
-    <div class="proof-lightbox-inner kyc-doc-viewer-inner admin-form-modal-inner" style="max-width:min(480px,100%);width:96vw">
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner admin-form-modal-inner" style="max-width:min(440px,100%);width:96vw">
       <button type="button" id="deleteUserModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
       <h3 id="deleteUserModalTitle" class="kyc-doc-viewer-title">Delete user</h3>
-      <p class="hint" style="margin-bottom:0.75rem;text-align:left">This permanently removes the account and the records that belong to it. The protected owner and the signed-in admin cannot be deleted.</p>
+      <p id="deleteUserPrompt" style="margin-bottom:0.75rem;text-align:left">Are you sure you want to delete this user?</p>
       <p id="deleteUserMeta" class="hint" style="margin-bottom:1rem;text-align:left"></p>
-      <form id="deleteUserForm" class="form" style="width:100%;text-align:left">
-        <div class="field">
-          <label for="deleteUserConfirmInput">Type DELETE to confirm</label>
-          <input id="deleteUserConfirmInput" type="text" autocomplete="off" spellcheck="false" placeholder="DELETE" />
-        </div>
-        <p id="deleteUserError" class="hint hidden" style="color:#fca5a5;margin-top:0.35rem"></p>
-        <div class="deposit-receipt-actions" style="margin-top:0.75rem">
-          <button type="submit" class="btn btn-sm delete-user-btn" id="deleteUserConfirmBtn" disabled>Delete User</button>
-          <button type="button" id="deleteUserCancel" class="btn btn-secondary">Cancel</button>
-        </div>
-      </form>
+      <p id="deleteUserError" class="hint hidden" style="color:#fca5a5;margin-bottom:0.75rem;text-align:left"></p>
+      <div class="deposit-receipt-actions">
+        <button type="button" class="btn btn-sm delete-user-btn" id="deleteUserConfirmBtn">Yes</button>
+        <button type="button" id="deleteUserCancel" class="btn btn-secondary">No</button>
+      </div>
     </div>
   </div>
 
@@ -1432,6 +1426,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261008deleteUser" defer></script>
+  <script src="/admin.js?v=20261008deleteYesNo" defer></script>
 </body>
 </html>

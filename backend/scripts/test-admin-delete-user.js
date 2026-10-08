@@ -38,7 +38,11 @@ async function main() {
   assert.ok(adminJs.includes('openDeleteUserModal'), 'confirmation modal opener');
   assert.ok(adminJs.includes("confirm: 'DELETE'"), 'client sends DELETE confirmation');
   assert.ok(adminHtml.includes('id="deleteUserModal"'), 'delete confirmation modal');
-  assert.ok(adminHtml.includes('id="deleteUserConfirmInput"'), 'typed confirmation field');
+  assert.ok(adminHtml.includes('Are you sure you want to delete this user?'), 'yes/no confirmation prompt');
+  assert.ok(adminHtml.includes('id="deleteUserConfirmBtn">Yes'), 'yes button');
+  assert.ok(adminHtml.includes('id="deleteUserCancel" class="btn btn-secondary">No'), 'no button');
+  assert.ok(!adminHtml.includes('Type DELETE to confirm'), 'typed DELETE prompt is gone');
+  assert.ok(!adminJs.includes('syncDeleteUserConfirm'), 'typed confirmation gate is gone');
   assert.ok(routeSrc.includes("'/users/:userId/delete'"), 'delete route');
   const deleteSrc = fs.readFileSync(path.join(__dirname, '../src/services/adminUserDeleteService.js'), 'utf8');
   assert.ok(!deleteSrc.includes('PRAGMA foreign_key_list'), 'delete does not scan every foreign key at request time');
