@@ -525,6 +525,26 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     }));
   }
 
+  /**
+   * Recent card activity. Docs: GET /api/v1/cards/{card_id}/transactions?pageNum=1
+   * 3DS OTPs are not a dedicated list endpoint; callers scan rows for otp fields.
+   */
+  async function listCardTransactions(cardId: string, pageNum = 1): Promise<{
+    transactions?: unknown[];
+    pagination?: unknown;
+  }> {
+    const config = resolveConfig(options);
+    const id = requireText(cardId, 'card_id');
+    const page = Number.isFinite(Number(pageNum)) && Number(pageNum) > 0
+      ? Math.floor(Number(pageNum))
+      : 1;
+    return pagoRequest(
+      config,
+      'GET',
+      `/api/v1/cards/${encodeURIComponent(id)}/transactions?pageNum=${page}`
+    );
+  }
+
   return {
     createVirtualCard,
     createCard,
@@ -532,6 +552,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     getCardBalance,
     topUpCard,
     listCardsByEmail,
+    listCardTransactions,
   };
 }
 
@@ -566,6 +587,10 @@ function listCardsByEmail(input: {
   return createPagoCardClient().listCardsByEmail(input);
 }
 
+function listCardTransactions(cardId: string, pageNum = 1) {
+  return createPagoCardClient().listCardTransactions(cardId, pageNum);
+}
+
 module.exports = {
   PagoCardError,
   createPagoCardClient,
@@ -575,5 +600,6 @@ module.exports = {
   getCardBalance,
   topUpCard,
   listCardsByEmail,
+  listCardTransactions,
   truncateUsd,
 };

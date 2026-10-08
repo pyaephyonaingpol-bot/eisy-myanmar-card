@@ -29,6 +29,7 @@ const impl = require('./pagocardsWebhook.js') as {
   unwrapWebhookBody: (body: unknown) => unknown;
   normalizePagocardsWebhook: (body: unknown) => Pagocards3dsEvent | null;
   summarizePagocardsEvent: (event: Pagocards3dsEvent) => string;
+  collect3dsOtps: (payload: unknown, fallbackCardId?: string | null) => Pagocards3dsEvent[];
 };
 
 function unwrapWebhookBody(body: unknown): unknown {
@@ -43,8 +44,13 @@ function summarizePagocardsEvent(event: Pagocards3dsEvent): string {
   return impl.summarizePagocardsEvent(event);
 }
 
+function collect3dsOtps(payload: unknown, fallbackCardId?: string | null): Pagocards3dsEvent[] {
+  return impl.collect3dsOtps(payload, fallbackCardId);
+}
+
 module.exports = {
   unwrapWebhookBody,
   normalizePagocardsWebhook,
   summarizePagocardsEvent,
+  collect3dsOtps,
 };

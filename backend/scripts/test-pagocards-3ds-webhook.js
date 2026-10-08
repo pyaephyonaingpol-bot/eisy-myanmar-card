@@ -27,9 +27,11 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pago3dsPanel"'), '3DS panel present');
   assert.ok(doc.includes('id="pago3dsCode"'), '3DS code element present');
   assert.ok(doc.includes('id="pago3dsCopyBtn"'), '3DS copy button present');
-  assert.ok(doc.includes('styles.css?v=20261008pagoCardClean'), 'CSS cache-bust bumped');
-  assert.ok(doc.includes('dashboard.js?v=20261008pagoCardClean'), 'JS cache-bust bumped');
-  assert.ok(doc.includes('i18n.js?v=20261008pagoCardClean'), 'i18n cache-bust bumped');
+  assert.ok(doc.includes('id="pago3dsRefreshBtn"'), 'Refresh Code button present');
+  assert.ok(doc.includes('pago_3ds_refresh'), 'Refresh Code label key present');
+  assert.ok(doc.includes('styles.css?v=20261008pago3dsRefresh'), 'CSS cache-bust bumped');
+  assert.ok(doc.includes('dashboard.js?v=20261008pago3dsRefresh'), 'JS cache-bust bumped');
+  assert.ok(doc.includes('i18n.js?v=20261008pago3dsRefresh'), 'i18n cache-bust bumped');
 }
 
 assert.ok(css.includes('.pago-3ds-panel'), '3DS panel styles');
@@ -40,9 +42,14 @@ assert.ok(dash.includes('renderPago3dsPanel'), 'dashboard renders 3DS panel');
 assert.ok(dash.includes('startPago3dsPoll'), 'dashboard polls 3DS');
 assert.ok(dash.includes("`/api/user/cards/${cardId}/3ds`") || dash.includes('/api/user/cards/${cardId}/3ds'), '3DS API path');
 assert.ok(dash.includes('copyPago3dsCode'), 'copy 3DS code helper');
+assert.ok(dash.includes('refreshPago3dsCode'), 'refresh 3DS code helper');
+assert.ok(dash.includes('?refresh=1'), 'dashboard asks the API to refresh');
+assert.ok(dash.includes('pago3dsRefreshBtn'), 'refresh button is bound');
 
 assert.ok(i18n.includes('pago_3ds_heading:'), 'EN 3DS heading');
-assert.ok(i18n.includes("pago_3ds_heading: '3D Secure ကုဒ်'"), 'MY 3DS heading');
+assert.ok(i18n.includes("pago_3ds_refresh: 'Refresh Code'"), 'EN Refresh Code label');
+assert.ok(i18n.includes("pago_3ds_refresh: 'ကုဒ်ပြန်ယူမည်'"), 'MY Refresh Code label');
+assert.ok(i18n.includes("pago_3ds_heading: '3DS Secure ကုဒ်'"), 'MY 3DS heading');
 
 assert.ok(webhookRoute.includes("router.post('/pagocards'"), 'Express webhook registered');
 assert.ok(webhookRoute.includes('handlePagocardsWebhook'), 'webhook uses service');
@@ -55,15 +62,26 @@ const idxList = userRoutes.indexOf("router.get('/cards/3ds'");
 const idxId = userRoutes.indexOf("router.get('/cards/:id'");
 assert.ok(idxList > -1 && idxId > -1 && idxList < idxId, '/cards/3ds before /cards/:id');
 
+assert.ok(userRoutes.includes('refreshCard3dsFromProvider'), 'per-card route refreshes from Pago');
+assert.ok(userRoutes.includes("req.query.refresh === '1'"), 'refresh query is honored');
+
 assert.ok(service.includes('handlePagocardsWebhook'), 'service exports handler');
+assert.ok(service.includes('refreshCard3dsFromProvider'), 'service pulls provider OTPs');
+assert.ok(service.includes('listCardTransactions'), 'refresh uses documented transactions endpoint');
+assert.ok(service.includes('getCardDetails'), 'refresh uses documented card endpoint');
 assert.ok(service.includes('listUser3dsEvents'), 'service lists events');
 assert.ok(service.includes('Pago3dsEvent'), 'service uses model');
+
+const pagoClient = fs.readFileSync(path.join(root, 'lib/pagocard.ts'), 'utf8');
+assert.ok(pagoClient.includes('async function listCardTransactions'), 'Pago client lists transactions');
+assert.ok(pagoClient.includes('/transactions?pageNum='), 'transactions path matches docs');
 
 assert.ok(nextRoute.includes('export async function POST'), 'Next route POST');
 assert.ok(nextRoute.includes('normalizePagocardsWebhook'), 'Next route normalizes');
 assert.ok(nextRoute.includes('pagocardsWebhook.js'), 'Next route loads CJS helper');
 assert.ok(libJs.includes('module.exports'), 'CJS helper uses module.exports');
 assert.ok(libJs.includes('function normalizePagocardsWebhook'), 'CJS normalizer present');
+assert.ok(libJs.includes('function collect3dsOtps'), 'CJS OTP collector present');
 assert.ok(!/\bexport\s+function\b/.test(libJs), 'CJS helper has no ESM export function');
 assert.ok(libTs.includes('module.exports'), 'TS helper uses module.exports (pagocard pattern)');
 assert.ok(migration.includes('CREATE TABLE IF NOT EXISTS pago_3ds_events'), 'migration table');
@@ -139,5 +157,34 @@ assert.ok(deep);
 assert.strictEqual(deep.otp, '112233');
 assert.strictEqual(deep.cardId, 'card_deep');
 assert.ok(deep.is3ds);
+
+const pulled = direct.collect3dsOtps({
+  transactions: [
+    {
+      id: 'tx-mcc',
+      merchant_mcc: '4121',
+      merchant_name: 'Taxi',
+      display_amount: '12.00',
+    },
+    {
+      id: 'tx-otp',
+      merchant_name: 'Shop',
+      otp: '556677',
+      transaction_amount: '9.50',
+      transaction_currency: 'USD',
+      card: { card_number: '4111111111111111', cvv: '123' },
+    },
+  ],
+}, 'card_demo');
+assert.strictEqual(pulled.length, 1);
+assert.strictEqual(pulled[0].otp, '556677');
+assert.strictEqual(pulled[0].eventId, 'tx-otp');
+assert.strictEqual(pulled[0].merchantName, 'Shop');
+assert.ok(pulled.every((item) => item.otp !== '123' && item.otp !== '4111111111111111'));
+
+const ignored = direct.collect3dsOtps({
+  data: { transactions: [{ id: 'tx-only', merchant_mcc: 4121, amount: 4121 }] },
+}, 'card_demo');
+assert.strictEqual(ignored.length, 0);
 
 console.log('pagocards 3ds webhook checks passed');

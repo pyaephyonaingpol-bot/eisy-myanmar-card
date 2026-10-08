@@ -204,6 +204,122 @@ async function handlePagocardsWebhook(body, req = null) {
   };
 }
 
+function isPagoConfigError(err) {
+  const code = String(err?.code || '');
+  return code === 'PAGO_NOT_CONFIGURED' || code === 'PAGO_NO_FETCH';
+}
+
+/** Drop PAN / CVV if an OTP field sits on the same object as card secrets. */
+function public3dsRaw(node) {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return null;
+  const deny = /card_?number|pan|cvv|cvc|secret|pin|expiry|exp_month|exp_year/i;
+  const out = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (deny.test(key)) continue;
+    if (value && typeof value === 'object') continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Pull the latest 3DS OTP for one provider card.
+ * Pagocards documents OTP delivery on the 3DS webhook only. The closest
+ * documented reads are GET /api/v1/cards/{id} and
+ * GET /api/v1/cards/{id}/transactions — scan those for otp fields.
+ * Missing keys or upstream errors still leave stored webhook codes available.
+ */
+async function refreshCard3dsFromProvider({
+  userId = null,
+  localCardId = null,
+  pagoCardId = null,
+} = {}) {
+  const summary = { provider_checked: false, imported: 0, error: null };
+  const providerId = String(pagoCardId || '').trim();
+  if (!providerId) return summary;
+
+  let client;
+  try {
+    // Lazy require so webhook-only deploys still load this module.
+    // eslint-disable-next-line global-require
+    const { loadPagoCardClient } = require('./loadPagoCardClient');
+    client = loadPagoCardClient().createPagoCardClient();
+  } catch (err) {
+    summary.error = err.code || err.message;
+    console.warn('[pago3ds] client load skipped:', err.message);
+    return summary;
+  }
+
+  const pulls = [
+    ['transactions', () => client.listCardTransactions(providerId, 1)],
+    ['details', () => client.getCardDetails(providerId)],
+  ];
+  const settled = await Promise.allSettled(pulls.map(([, fn]) => fn()));
+  const payloads = [];
+  settled.forEach((item, index) => {
+    const label = pulls[index][0];
+    if (item.status === 'fulfilled') {
+      payloads.push(item.value);
+      summary.provider_checked = true;
+      return;
+    }
+    const err = item.reason || {};
+    if (!isPagoConfigError(err)) {
+      console.warn(`[pago3ds] ${label} refresh:`, err.code || err.message);
+    }
+    if (!summary.error) summary.error = err.code || err.message || 'PAGO_REFRESH_FAILED';
+  });
+
+  if (!payloads.length) return summary;
+
+  let collect3dsOtps;
+  try {
+    ({ collect3dsOtps } = loadPagocardsWebhookLib());
+  } catch (err) {
+    summary.error = err.message;
+    return summary;
+  }
+  if (typeof collect3dsOtps !== 'function') return summary;
+
+  const expiresAt = expiresAtSqlite(OTP_TTL_MINUTES);
+  for (const payload of payloads) {
+    let events = [];
+    try {
+      events = collect3dsOtps(payload, providerId) || [];
+    } catch (err) {
+      console.warn('[pago3ds] otp scan skipped:', err.message);
+      continue;
+    }
+    for (const event of events) {
+      if (!event?.otp) continue;
+      try {
+        const saved = await Pago3dsEvent.create({
+          eventId: event.eventId,
+          eventType: event.eventType || '3ds',
+          authId: event.authId,
+          otp: event.otp,
+          pagoCardId: event.cardId || providerId,
+          localCardId: localCardId ?? null,
+          userId: userId ?? null,
+          merchantName: event.merchantName,
+          transactionAmount: event.transactionAmount,
+          transactionCurrency: event.transactionCurrency,
+          verificationType: event.verificationType,
+          userBankcardId: event.userBankcardId,
+          rawPayload: public3dsRaw(event.raw),
+          expiresAt,
+          renewExpiry: true,
+        });
+        if (!saved.duplicate) summary.imported += 1;
+      } catch (err) {
+        console.warn('[pago3ds] store refreshed otp skipped:', err.message);
+      }
+    }
+  }
+
+  return summary;
+}
+
 async function listUser3dsEvents(userId, {
   localCardId = null,
   pagoCardId = null,
@@ -236,6 +352,7 @@ async function markUser3dsSeen(userId, eventRowId) {
 
 module.exports = {
   handlePagocardsWebhook,
+  refreshCard3dsFromProvider,
   listUser3dsEvents,
   markUser3dsSeen,
   toPublicEvent,
