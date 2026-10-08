@@ -571,6 +571,10 @@
         </div>
 
         <nav class="sidebar-nav admin-sidebar-nav" aria-label="Admin sections">
+          <button type="button" class="nav-item" data-page="overview" data-admin-perm="master_wallet">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+            <span>Master Wallet</span>
+          </button>
           <button type="button" class="nav-item active" data-page="users" data-admin-perm="users" aria-current="page">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             <span data-i18n="nav_admin_users">Users</span>
@@ -637,7 +641,7 @@
           <span class="hidden" data-page-title="cards">Virtual Cards</span>
           <span class="hidden" data-page-title="settings">Settings</span>
           <span class="hidden" data-page-title="admins">Admins</span>
-          <span class="hidden" data-page-title="overview">Overview</span>
+          <span class="hidden" data-page-title="overview">Master Wallet</span>
           <span class="hidden" data-page-title="kyc-requests">KYC Requests</span>
 
       <section id="tabOverview" class="panel app-page" data-page="overview" data-admin-pipeline="instant">
@@ -658,8 +662,8 @@
                 <button type="button" id="btnRefreshMasterWalletStatus" class="btn btn-secondary btn-sm" data-master-wallet-refresh>
                   Refresh
                 </button>
-                <button type="button" id="btnSweepDepositsOverview" class="btn btn-primary btn-sm" data-tron-deposit-sweep title="Sweep HD deposit USDT to master (min threshold applies)">
-                  Sweep
+                <button type="button" id="btnSweepDepositsOverview" class="btn btn-primary btn-sm" data-tron-deposit-sweep title="Sweep HD deposit USDT from seed wallets into the master wallet">
+                  Sweep Wallet
                 </button>
               </div>
             </div>
@@ -668,7 +672,7 @@
               <p class="hint" style="margin:0">Loading balances…</p>
             </div>
             <p class="hint" id="masterWalletSweepHint" style="margin:0.85rem 0 0">
-              Manual sweep moves USDT from user HD deposit addresses to the master wallet when balance ≥ <strong id="masterWalletSweepMinLabel">25</strong> USDT.
+              Sweep Wallet moves USDT from seed-derived HD deposit addresses into this master wallet when a deposit balance is at least <strong id="masterWalletSweepMinLabel">25</strong> USDT.
             </p>
             <div id="masterWalletSweepStatus" class="hint" style="margin:0.5rem 0 0" aria-live="polite"></div>
           </div>
@@ -741,11 +745,11 @@
           <div class="master-wallet-panel-header">
             <div>
               <strong>Master wallet</strong>
-              <p class="hint" style="margin:0.25rem 0 0">Full balances live on <strong>Overview</strong>. Refresh here before approving TRC20 payouts. Sweep pulls HD deposit USDT ≥ min threshold into master.</p>
+              <p class="hint" style="margin:0.25rem 0 0">Full balances live on <strong>Overview</strong>. Refresh here before approving TRC20 payouts. Sweep Wallet pulls HD deposit USDT at or above the minimum into the master wallet.</p>
             </div>
             <div class="sa-card-actions">
               <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm" data-master-wallet-refresh>Refresh</button>
-              <button type="button" id="btnSweepDepositsPanel" class="btn btn-primary btn-sm" data-tron-deposit-sweep title="Sweep HD deposit USDT to master (min threshold applies)">Sweep</button>
+              <button type="button" id="btnSweepDepositsPanel" class="btn btn-primary btn-sm" data-tron-deposit-sweep title="Sweep HD deposit USDT from seed wallets into the master wallet">Sweep Wallet</button>
             </div>
           </div>
           <div id="masterWalletBalance" class="master-wallet-balance" aria-live="polite">
@@ -1392,6 +1396,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261008adminCleanup" defer></script>
+  <script src="/admin.js?v=20261008sweepWallet" defer></script>
 </body>
 </html>
