@@ -695,6 +695,59 @@ router.post('/card/reload', requireAuth, requireSensitive, async (req, res) => {
   }
 });
 
+router.get('/push/config', async (_req, res) => {
+  try {
+    const { getPublicConfig } = require('../services/webPushService');
+    const config = await getPublicConfig();
+    res.json({ success: true, ...config });
+  } catch (err) {
+    console.error('[user/push/config]', err.message);
+    res.status(500).json({ success: false, error: 'Push is unavailable', code: 'PUSH_UNAVAILABLE' });
+  }
+});
+
+router.post('/push/subscribe', requireAuth, async (req, res) => {
+  try {
+    const { saveSubscription } = require('../services/webPushService');
+    await saveSubscription(req.user.id, req.body?.subscription || req.body, req.get('user-agent'));
+    res.json({ success: true });
+  } catch (err) {
+    const status = err.status || 500;
+    res.status(status).json({
+      success: false,
+      error: err.message || 'Could not save push subscription',
+      code: err.code || 'PUSH_SUBSCRIBE_FAILED',
+    });
+  }
+});
+
+router.post('/push/unsubscribe', requireAuth, async (req, res) => {
+  try {
+    const { removeSubscription } = require('../services/webPushService');
+    const endpoint = req.body?.endpoint || req.body?.subscription?.endpoint;
+    await removeSubscription(req.user.id, endpoint);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Could not remove push subscription' });
+  }
+});
+
+router.post('/push/test', requireAuth, async (req, res) => {
+  try {
+    const { notifyUserPush } = require('../services/webPushService');
+    const result = await notifyUserPush(req.user.id, {
+      title: 'Eisy notifications are on',
+      body: 'Verification codes and deposit alerts will appear on this phone.',
+      url: '/#settings',
+      tag: 'eisy-push-test',
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[user/push/test]', err.message);
+    res.status(500).json({ success: false, error: 'Could not send a test notification' });
+  }
+});
+
 router.get('/transactions', requireAuth, async (req, res) => {
   try {
     const transactions = await TransactionLog.findByUserId(req.user.id, { limit: 100 });

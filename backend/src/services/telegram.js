@@ -88,6 +88,20 @@ async function notifyAdminDepositVerified({ user, deposit, txnId, senderPhone })
 
   await sendAdminMessage(message);
   console.log('[Telegram] Admin notified for deposit', deposit.ref_code);
+  try {
+    const { notifyUserPush } = require('./webPushService');
+    const usd = Number(deposit?.amount_usd || 0);
+    notifyUserPush(user?.id, {
+      title: 'USDT deposit confirmed',
+      body: usd > 0
+        ? `$${usd.toFixed(2)} USDT was credited to your wallet.`
+        : 'Your deposit was credited to your wallet.',
+      url: '/#usdt-wallet',
+      tag: `eisy-deposit-${deposit?.ref_code || 'deposit'}`,
+    }).catch((err) => console.warn('[push] deposit:', err.message));
+  } catch (err) {
+    console.warn('[push] deposit skipped:', err.message);
+  }
 }
 
 async function notifyAdminP2pDepositPending({ user, deposit, seller, txHash }) {
