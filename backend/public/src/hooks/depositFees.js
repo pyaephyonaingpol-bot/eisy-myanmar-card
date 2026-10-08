@@ -3,7 +3,8 @@
  * window.EisyHooks.depositFees
  *
  * Modes (`payment_service_fee_mode`) mirror backend paymentFeeService:
- *   off | percent | fixed | max_percent_or_min (default)
+ *   off | percent | fixed | max_percent_or_min (default) | fixed_plus_percent
+ * fixed_plus_percent: fee = max(fixed + amount × percent/100, minimum)
  */
 (function (root) {
   'use strict';
@@ -15,6 +16,7 @@
     PERCENT: 'percent',
     FIXED: 'fixed',
     MAX_PERCENT_OR_MIN: 'max_percent_or_min',
+    FIXED_PLUS_PERCENT: 'fixed_plus_percent',
   };
 
   function cfg() {
@@ -26,6 +28,9 @@
     if (mode === 'disabled' || mode === 'none' || mode === '0') return FEE_MODE.OFF;
     if (mode === 'pct' || mode === 'percentage') return FEE_MODE.PERCENT;
     if (mode === 'flat' || mode === 'fixed_usdt') return FEE_MODE.FIXED;
+    if (mode === 'fixed_plus_percent' || mode === 'fixed+percent' || mode === 'fixed_and_percent') {
+      return FEE_MODE.FIXED_PLUS_PERCENT;
+    }
     if (
       mode === 'max'
       || mode === 'max_percent_or_minimum'
@@ -39,6 +44,7 @@
       || mode === FEE_MODE.PERCENT
       || mode === FEE_MODE.FIXED
       || mode === FEE_MODE.MAX_PERCENT_OR_MIN
+      || mode === FEE_MODE.FIXED_PLUS_PERCENT
     ) {
       return mode;
     }
@@ -62,6 +68,12 @@
     );
   }
 
+  function resolveFixedUsdt(fees, scope) {
+    const prefix = scope === 'withdrawal' ? 'withdrawal_service_fee' : 'deposit_service_fee';
+    const n = Number(fees?.[`${prefix}_fixed_usdt`] ?? fees?.payment_service_fee_fixed_usdt ?? 0);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  }
+
   function resolveMinimumUsdt(fees, scope) {
     const c = cfg();
     const prefix = scope === 'withdrawal' ? 'withdrawal_service_fee' : 'deposit_service_fee';
@@ -73,16 +85,27 @@
     );
   }
 
-  function calcUsdtFee(amount, feePercent, minimumFee, mode) {
+  function calcUsdtFee(amount, feePercent, minimumFee, mode, fixedFee) {
     if (mode === FEE_MODE.OFF) return 0;
     const percentFee = Math.round(amount * feePercent) / 100;
+    const fixed = Number.isFinite(Number(fixedFee)) ? Number(fixedFee) : 0;
     if (mode === FEE_MODE.PERCENT) return Math.round(percentFee * 100) / 100;
     if (mode === FEE_MODE.FIXED) return Math.round(minimumFee * 100) / 100;
+    if (mode === FEE_MODE.FIXED_PLUS_PERCENT) {
+      return Math.round(Math.max(fixed + percentFee, minimumFee) * 100) / 100;
+    }
     return Math.round(Math.max(percentFee, minimumFee) * 100) / 100;
   }
 
-  function usdtFeeLabel(mode, fee, feePercent, minimumFee, percentFee) {
+  function usdtFeeLabel(mode, fee, feePercent, minimumFee, percentFee, fixedFee) {
     if (mode === FEE_MODE.OFF || !(fee > 0)) return 'No service fee';
+    if (mode === FEE_MODE.FIXED_PLUS_PERCENT) {
+      const fixed = Number(fixedFee) || 0;
+      const additive = Math.round((fixed + percentFee) * 100) / 100;
+      if (minimumFee > additive) return `min $${Number(minimumFee).toFixed(2)}`;
+      if (fixed > 0) return `$${fixed.toFixed(2)} + ${feePercent}% ($${Number(fee).toFixed(2)})`;
+      return `${feePercent}% ($${Number(fee).toFixed(2)})`;
+    }
     if (mode === FEE_MODE.FIXED) return `fixed $${Number(fee).toFixed(2)}`;
     if (mode === FEE_MODE.PERCENT) return `${feePercent}% ($${Number(fee).toFixed(2)})`;
     if (percentFee < minimumFee) {
@@ -91,8 +114,17 @@
     return `${feePercent}% ($${Number(fee).toFixed(2)})`;
   }
 
-  function mmkFeeLabel(mode, fee, feePercent, minimumFee, percentFee) {
+  function mmkFeeLabel(mode, fee, feePercent, minimumFee, percentFee, fixedFee) {
     if (mode === FEE_MODE.OFF || !(fee > 0)) return 'No service fee';
+    if (mode === FEE_MODE.FIXED_PLUS_PERCENT) {
+      const fixed = Math.round(Number(fixedFee) || 0);
+      const additive = fixed + percentFee;
+      if (minimumFee > additive) return `min ${Math.round(minimumFee).toLocaleString()} MMK`;
+      if (fixed > 0) {
+        return `fixed ${fixed.toLocaleString()} MMK + ${feePercent}% (${Math.round(fee).toLocaleString()} MMK)`;
+      }
+      return `${feePercent}% (${Math.round(fee).toLocaleString()} MMK)`;
+    }
     if (mode === FEE_MODE.FIXED) return `fixed ${Math.round(fee).toLocaleString()} MMK`;
     if (mode === FEE_MODE.PERCENT) {
       return `${feePercent}% (${Math.round(fee).toLocaleString()} MMK)`;
@@ -109,15 +141,16 @@
     const mode = resolveMode(fees, 'deposit');
     const feePercent = resolvePercent(fees, 'deposit');
     const minimumFee = resolveMinimumUsdt(fees, 'deposit');
+    const fixedFee = resolveFixedUsdt(fees, 'deposit');
     const percentFee = Math.round(amount * feePercent) / 100;
-    const fee = calcUsdtFee(amount, feePercent, minimumFee, mode);
+    const fee = calcUsdtFee(amount, feePercent, minimumFee, mode, fixedFee);
     const net = Math.round((amount - fee) * 100) / 100;
     return {
       amount_usdt: amount,
       fee_usdt: fee,
       net_usdt: net,
       fee_mode: mode,
-      fee_label: usdtFeeLabel(mode, fee, feePercent, minimumFee, percentFee),
+      fee_label: usdtFeeLabel(mode, fee, feePercent, minimumFee, percentFee, fixedFee),
       invalid_net: net <= 0,
     };
   }
@@ -130,11 +163,13 @@
     const feePercent = resolvePercent(fees, 'deposit');
     const rate = Number(fees.mmk_to_usd_rate || fees.usdt_to_mmk_rate || 4500);
     const minimumFee = Math.round(resolveMinimumUsdt(fees, 'deposit') * rate);
+    const fixedFee = Math.round(resolveFixedUsdt(fees, 'deposit') * rate);
     const percentFee = Math.round(amount * feePercent / 100);
     let fee = 0;
     if (mode === FEE_MODE.OFF) fee = 0;
     else if (mode === FEE_MODE.PERCENT) fee = percentFee;
     else if (mode === FEE_MODE.FIXED) fee = minimumFee;
+    else if (mode === FEE_MODE.FIXED_PLUS_PERCENT) fee = Math.max(fixedFee + percentFee, minimumFee);
     else fee = Math.max(percentFee, minimumFee);
     const net = amount - fee;
     return {
@@ -142,7 +177,7 @@
       fee_mmk: fee,
       net_mmk: net,
       fee_mode: mode,
-      fee_label: mmkFeeLabel(mode, fee, feePercent, minimumFee, percentFee),
+      fee_label: mmkFeeLabel(mode, fee, feePercent, minimumFee, percentFee, fixedFee),
       invalid_net: net <= 0,
     };
   }
@@ -154,8 +189,9 @@
     const mode = resolveMode(fees, 'withdrawal');
     const feePercent = resolvePercent(fees, 'withdrawal');
     const minimumFee = resolveMinimumUsdt(fees, 'withdrawal');
+    const fixedFee = resolveFixedUsdt(fees, 'withdrawal');
     const percentFee = Math.round(amount * feePercent) / 100;
-    const feeUsdt = calcUsdtFee(amount, feePercent, minimumFee, mode);
+    const feeUsdt = calcUsdtFee(amount, feePercent, minimumFee, mode, fixedFee);
     const net = Math.round((amount - feeUsdt) * 100) / 100;
     const min = Number(fees.minimum_usdt_withdrawal || c.DEFAULT_MINIMUM_USDT_WITHDRAWAL || 10);
     return {
@@ -164,7 +200,7 @@
       net_usdt: net,
       fee_percent: feePercent,
       fee_mode: mode,
-      fee_label: usdtFeeLabel(mode, feeUsdt, feePercent, minimumFee, percentFee),
+      fee_label: usdtFeeLabel(mode, feeUsdt, feePercent, minimumFee, percentFee, fixedFee),
       minimum_usdt_withdrawal: min,
       below_minimum: amount < min,
       network: method === 'bank' ? 'BANK' : network,

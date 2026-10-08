@@ -65,22 +65,26 @@ assert.ok(bank.summary.includes('48'));
 const drifted = calculateWithdrawalBreakdown(100, 'TRC20', {
   ...settings,
   withdrawal_service_fee_percent: 2,
+  withdrawal_service_fee_fixed_usdt: 1,
+  withdrawal_service_fee_minimum_usdt: 0,
   payment_service_fee_percent: 2,
   usdt_withdraw_fee_trc20: 2,
   usdt_withdraw_fee_trc20_type: 'fixed',
   withdrawal_service_fee_mode: 'fixed',
   payment_service_fee_mode: 'fixed',
 });
-assert.strictEqual(drifted.fee_usdt, 4);
-assert.strictEqual(drifted.network_fee_usdt, 3);
-assert.strictEqual(drifted.platform_margin_usdt, 1);
+assert.strictEqual(drifted.fee_usdt, 3, 'admin fixed 1 + 2% replaces the old forced 4%');
+assert.strictEqual(drifted.net_usdt, 97);
+assert.strictEqual(drifted.processing_hours, 48);
+assert.strictEqual(drifted.payout_provider, 'platform');
 
 const svc = fs.readFileSync(path.join(__dirname, '../src/services/withdrawalService.js'), 'utf8');
 assert.ok(svc.includes('WITHDRAW_PROCESSING_HOURS'), 'service references 48h constant');
 assert.ok(svc.includes('payout_provider: WITHDRAW_PAYOUT_PROVIDER'), 'platform payout provider');
 
 const settingsSrc = fs.readFileSync(path.join(__dirname, '../src/services/settingsService.js'), 'utf8');
-assert.ok(settingsSrc.includes('forcedSettings') || settingsSrc.includes('WITHDRAW_MARKUP_PERCENT'), 'fee math forces markup');
+assert.ok(settingsSrc.includes('fixed_plus_percent'), 'withdrawal fee uses admin fixed + percent');
+assert.ok(!settingsSrc.includes('forcedSettings'), 'admin withdrawal settings are not overwritten');
 assert.ok(fs.existsSync(path.join(__dirname, '../src/constants/withdrawMarkupPolicy.js')));
 
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');

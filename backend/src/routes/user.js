@@ -470,6 +470,8 @@ router.get('/cards/topup-pricing', requireAuth, requireSensitive, async (_req, r
       minimum_usdt_reload: settings.minimum_usdt_reload,
       card_reload_fee_usd: settings.card_reload_fee_usd,
       card_reload_fee_percent: settings.card_reload_fee_percent,
+      card_reload_fee_minimum_usd: settings.card_reload_fee_minimum_usd,
+      fee_rule: 'fee = max(fixed + amount * percent/100, minimum)',
     });
   } catch (err) {
     console.error('[user/cards/topup-pricing]', err.message);

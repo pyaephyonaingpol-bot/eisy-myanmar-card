@@ -126,11 +126,14 @@ router.get('/fees', requireAuth, async (_req, res) => {
       minimum_mmk_withdrawal: settings.minimum_mmk_withdrawal,
       mmk_withdraw_fee_percent: settings.mmk_withdraw_fee_percent,
       payment_service_fee_percent: settings.payment_service_fee_percent,
+      payment_service_fee_fixed_usdt: settings.payment_service_fee_fixed_usdt,
       payment_service_fee_minimum_usdt: settings.payment_service_fee_minimum_usdt,
       payment_service_fee_mode: settings.payment_service_fee_mode,
       withdrawal_service_fee_percent: settings.withdrawal_service_fee_percent,
+      withdrawal_service_fee_fixed_usdt: settings.withdrawal_service_fee_fixed_usdt,
       withdrawal_service_fee_minimum_usdt: settings.withdrawal_service_fee_minimum_usdt,
       withdrawal_service_fee_mode: settings.withdrawal_service_fee_mode,
+      fee_rule: 'fee = max(fixed + amount * percent/100, minimum)',
       mmk_to_usd_rate: settings.mmk_to_usd_rate,
     });
   } catch (err) {

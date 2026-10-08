@@ -31,7 +31,11 @@ assert.ok(pricingHtml.includes('id="settingWithdrawFeePercent"'), 'withdrawal pe
 assert.ok(pricingHtml.includes('id="settingWithdrawFeeMinUsdt"'), 'withdrawal min fee input');
 
 assert.ok(!pricingHtml.includes('id="settingDepositFeeMode"'), 'generalized deposit fee mode removed');
-assert.ok(!pricingHtml.includes('id="settingReloadFee"'), 'legacy fixed reload fee input removed');
+assert.ok(!/id="settingReloadFee"[\s>]/.test(pricingHtml), 'legacy fixed reload fee input removed');
+assert.ok(pricingHtml.includes('id="settingCardReloadFixed"'), 'reload fixed fee input');
+assert.ok(pricingHtml.includes('id="settingCardReloadMinFee"'), 'reload minimum fee input');
+assert.ok(pricingHtml.includes('id="settingDepositFeeFixed"'), 'deposit fixed fee input');
+assert.ok(pricingHtml.includes('id="settingWithdrawFeeFixed"'), 'withdrawal fixed fee input');
 assert.ok(!pricingHtml.includes('P2P trading'), 'P2P block removed from Rate & Pricing');
 assert.ok(!pricingHtml.includes('id="settingP2pSellerFee"'), 'P2P seller fee removed from Rate & Pricing');
 
@@ -40,8 +44,8 @@ assert.ok(adminHtml.includes('id="btnEditRatesFees"'), 'overview links to Rates 
 
 assert.ok(adminJs.includes('card_reload_fee_percent'), 'admin saves reload percent');
 assert.ok(adminJs.includes('settingWithdrawFeePercent'), 'admin loads withdrawal percent');
-assert.ok(adminJs.includes("deposit_service_fee_mode: 'max_percent_or_min'"), 'deposit mode fixed to max(%, min)');
-assert.ok(adminJs.includes("withdrawal_service_fee_mode: 'max_percent_or_min'"), 'withdrawal mode fixed to max(%, min)');
+assert.ok(adminJs.includes("deposit_service_fee_mode: 'fixed_plus_percent'"), 'deposit mode is fixed + percent');
+assert.ok(adminJs.includes("withdrawal_service_fee_mode: 'fixed_plus_percent'"), 'withdrawal mode is fixed + percent');
 
 process.env.DATABASE_URL = `file:${path.join(os.tmpdir(), `eisy-pricing-blocks-${Date.now()}.db`)}`;
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
@@ -58,7 +62,8 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 
   await updateSettings({
     card_reload_fee_percent: 5,
-    card_reload_fee_usd: 3.5,
+    card_reload_fee_usd: 0,
+    card_reload_fee_minimum_usd: 0,
     minimum_usdt_reload: 5,
     effective_date: '2026-08-31',
     updated_by: 'test',
@@ -66,6 +71,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 
   const pricing = await getCardPricingSettings();
   assert.strictEqual(pricing.card_reload_fee_percent, 5);
+  assert.strictEqual(pricing.card_reload_fee_usd, 0);
 
   assert.strictEqual(resolveCardReloadFeeUsd(100, pricing), 5);
   const reload = calculateCardReloadPricingUsdt(100, pricing);

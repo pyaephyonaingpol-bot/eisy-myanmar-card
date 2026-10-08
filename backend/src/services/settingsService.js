@@ -16,6 +16,7 @@ const DEFAULTS = {
   minimum_initial_deposit_usd: '10.00',
   card_reload_fee_usd: '3.50',
   card_reload_fee_percent: '0',
+  card_reload_fee_minimum_usd: '0',
   card_reload_provider_cost_usd: '1.50',
   card_reload_net_profit_usd: '2.00',
   minimum_usdt_deposit: '5.00',
@@ -40,11 +41,13 @@ const DEFAULTS = {
   payment_service_fee_minimum_usdt: '0',
   payment_service_fee_mode: 'percent',
   deposit_service_fee_percent: '2',
+  deposit_service_fee_fixed_usdt: '0',
   deposit_service_fee_minimum_usdt: '1',
-  deposit_service_fee_mode: 'max_percent_or_min',
+  deposit_service_fee_mode: 'fixed_plus_percent',
   withdrawal_service_fee_percent: '4',
+  withdrawal_service_fee_fixed_usdt: '0',
   withdrawal_service_fee_minimum_usdt: '0',
-  withdrawal_service_fee_mode: 'percent',
+  withdrawal_service_fee_mode: 'fixed_plus_percent',
 };
 
 const NUMERIC_KEYS = new Set([
@@ -53,6 +56,7 @@ const NUMERIC_KEYS = new Set([
   'minimum_initial_deposit_usd',
   'card_reload_fee_usd',
   'card_reload_fee_percent',
+  'card_reload_fee_minimum_usd',
   'card_reload_provider_cost_usd',
   'card_reload_net_profit_usd',
   'minimum_usdt_deposit',
@@ -69,8 +73,10 @@ const NUMERIC_KEYS = new Set([
   'payment_service_fee_percent',
   'payment_service_fee_minimum_usdt',
   'deposit_service_fee_percent',
+  'deposit_service_fee_fixed_usdt',
   'deposit_service_fee_minimum_usdt',
   'withdrawal_service_fee_percent',
+  'withdrawal_service_fee_fixed_usdt',
   'withdrawal_service_fee_minimum_usdt',
 ]);
 
@@ -151,16 +157,25 @@ async function getAllSettings() {
   return { ...map };
 }
 
+function parseNonNegative(raw, fallback) {
+  if (raw == null || raw === '') return fallback;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
 function resolveScopedServiceFeeFields(raw, scope) {
   const { normalizeFeeMode, DEFAULT_FEE_MODE } = require('./paymentFeeService');
   const prefix = scope === 'withdrawal' ? 'withdrawal_service_fee' : 'deposit_service_fee';
+  const isWithdrawal = scope === 'withdrawal';
   const modeRaw = raw[`${prefix}_mode`] ?? raw.payment_service_fee_mode ?? DEFAULT_FEE_MODE;
   const percentRaw = raw[`${prefix}_percent`] ?? raw.payment_service_fee_percent;
   const minimumRaw = raw[`${prefix}_minimum_usdt`] ?? raw.payment_service_fee_minimum_usdt;
+  const fixedRaw = raw[`${prefix}_fixed_usdt`];
   return {
     [`${prefix}_mode`]: normalizeFeeMode(modeRaw),
-    [`${prefix}_percent`]: parseFloat(percentRaw) || 2,
-    [`${prefix}_minimum_usdt`]: parseFloat(minimumRaw) || 1,
+    [`${prefix}_percent`]: parseNonNegative(percentRaw, isWithdrawal ? 4 : 2),
+    [`${prefix}_fixed_usdt`]: parseNonNegative(fixedRaw, 0),
+    [`${prefix}_minimum_usdt`]: parseNonNegative(minimumRaw, isWithdrawal ? 0 : 1),
   };
 }
 
@@ -172,7 +187,22 @@ function withScopedPaymentFeeShape(settings, scope) {
     ...scoped,
     payment_service_fee_mode: scoped[`${prefix}_mode`],
     payment_service_fee_percent: scoped[`${prefix}_percent`],
+    payment_service_fee_fixed_usdt: scoped[`${prefix}_fixed_usdt`],
     payment_service_fee_minimum_usdt: scoped[`${prefix}_minimum_usdt`],
+  };
+}
+
+/** Live deposit/withdrawal charges use Fixed + Percentage, floored by Minimum. Explicit off stays off. */
+function applyAdminFeeFormula(settings, scope) {
+  const prefix = scope === 'withdrawal' ? 'withdrawal_service_fee' : 'deposit_service_fee';
+  const scopedMode = settings?.[`${prefix}_mode`] || settings?.payment_service_fee_mode;
+  if (scopedMode === 'off' || settings?.payment_service_fee_mode === 'off') {
+    return settings;
+  }
+  return {
+    ...settings,
+    payment_service_fee_mode: 'fixed_plus_percent',
+    [`${prefix}_mode`]: 'fixed_plus_percent',
   };
 }
 
@@ -183,8 +213,9 @@ async function getCardPricingSettings() {
     card_funding_fee_percent: parseFloat(raw.card_funding_fee_percent) || 0,
     card_processing_fee_usd: CARD_PROCESSING_FEE_USD,
     minimum_initial_deposit_usd: parseFloat(raw.minimum_initial_deposit_usd) || 10,
-    card_reload_fee_usd: parseFloat(raw.card_reload_fee_usd) || CARD_RELOAD_USER_FEE_USD,
-    card_reload_fee_percent: parseFloat(raw.card_reload_fee_percent) || 0,
+    card_reload_fee_usd: parseNonNegative(raw.card_reload_fee_usd, CARD_RELOAD_USER_FEE_USD),
+    card_reload_fee_percent: parseNonNegative(raw.card_reload_fee_percent, 0),
+    card_reload_fee_minimum_usd: parseNonNegative(raw.card_reload_fee_minimum_usd, 0),
     card_reload_provider_cost_usd: parseFloat(raw.card_reload_provider_cost_usd) || 1.5,
     card_reload_net_profit_usd: parseFloat(raw.card_reload_net_profit_usd) || 2,
     minimum_usdt_deposit: parseFloat(raw.minimum_usdt_deposit) || 5,
@@ -205,8 +236,8 @@ async function getCardPricingSettings() {
     minimum_usdt_withdrawal: parseFloat(raw.minimum_usdt_withdrawal) || 10,
     minimum_mmk_withdrawal: parseFloat(raw.minimum_mmk_withdrawal) || 10000,
     mmk_withdraw_fee_percent: parseFloat(raw.mmk_withdraw_fee_percent) || 2,
-    payment_service_fee_percent: parseFloat(raw.payment_service_fee_percent) || 2,
-    payment_service_fee_minimum_usdt: parseFloat(raw.payment_service_fee_minimum_usdt) || 1,
+    payment_service_fee_percent: parseNonNegative(raw.payment_service_fee_percent, 2),
+    payment_service_fee_minimum_usdt: parseNonNegative(raw.payment_service_fee_minimum_usdt, 0),
     payment_service_fee_mode: (() => {
       const { normalizeFeeMode, DEFAULT_FEE_MODE } = require('./paymentFeeService');
       return normalizeFeeMode(raw.payment_service_fee_mode || DEFAULT_FEE_MODE);
@@ -218,40 +249,33 @@ async function getCardPricingSettings() {
 
 async function getDepositFeeSettings() {
   const pricing = await getCardPricingSettings();
-  return withScopedPaymentFeeShape(pricing, 'deposit');
+  return applyAdminFeeFormula(withScopedPaymentFeeShape(pricing, 'deposit'), 'deposit');
 }
 
 async function getWithdrawalFeeSettings() {
   const {
-    WITHDRAW_MARKUP_PERCENT,
     WITHDRAW_PROCESSING_HOURS,
     WITHDRAW_PAYOUT_PROVIDER,
-    WITHDRAW_FEE_MODE,
     NETWORK_FEE_PERCENT,
     PLATFORM_WITHDRAW_MARGIN_PERCENT,
   } = require('../constants/withdrawMarkupPolicy');
   const pricing = await getCardPricingSettings();
-  const scoped = withScopedPaymentFeeShape(pricing, 'withdrawal');
+  const scoped = applyAdminFeeFormula(withScopedPaymentFeeShape(pricing, 'withdrawal'), 'withdrawal');
+  const percent = scoped.withdrawal_service_fee_percent;
   return {
-    usdt_withdraw_fee_trc20: WITHDRAW_MARKUP_PERCENT,
-    usdt_withdraw_fee_bep20: WITHDRAW_MARKUP_PERCENT,
+    ...scoped,
+    usdt_withdraw_fee_trc20: percent,
+    usdt_withdraw_fee_bep20: percent,
     usdt_withdraw_fee_trc20_type: 'percent',
     usdt_withdraw_fee_bep20_type: 'percent',
-    usdt_withdraw_fee_bank: WITHDRAW_MARKUP_PERCENT,
+    usdt_withdraw_fee_bank: percent,
     usdt_withdraw_fee_bank_type: 'percent',
-    minimum_usdt_withdrawal: scoped.minimum_usdt_withdrawal,
-    minimum_mmk_withdrawal: scoped.minimum_mmk_withdrawal,
-    mmk_withdraw_fee_percent: WITHDRAW_MARKUP_PERCENT,
-    mmk_to_usd_rate: scoped.mmk_to_usd_rate,
-    payment_service_fee_percent: WITHDRAW_MARKUP_PERCENT,
-    payment_service_fee_minimum_usdt: 0,
-    payment_service_fee_mode: WITHDRAW_FEE_MODE,
-    withdrawal_service_fee_percent: WITHDRAW_MARKUP_PERCENT,
-    withdrawal_service_fee_minimum_usdt: 0,
-    withdrawal_service_fee_mode: WITHDRAW_FEE_MODE,
+    minimum_usdt_withdrawal: pricing.minimum_usdt_withdrawal,
+    minimum_mmk_withdrawal: pricing.minimum_mmk_withdrawal,
+    mmk_withdraw_fee_percent: percent,
+    mmk_to_usd_rate: pricing.mmk_to_usd_rate,
     network_fee_percent: NETWORK_FEE_PERCENT,
     platform_withdraw_margin_percent: PLATFORM_WITHDRAW_MARGIN_PERCENT,
-    withdraw_markup_percent: WITHDRAW_MARKUP_PERCENT,
     withdraw_processing_hours: WITHDRAW_PROCESSING_HOURS,
     withdraw_payout_provider: WITHDRAW_PAYOUT_PROVIDER,
   };
@@ -280,13 +304,9 @@ async function getWithdrawalRateSettings() {
     usdt_withdraw_fee_bank: fees.usdt_withdraw_fee_bank,
     usdt_withdraw_fee_bank_type: fees.usdt_withdraw_fee_bank_type,
     mmk_withdraw_fee_percent: fees.mmk_withdraw_fee_percent,
-    fee_rule: (() => {
-      const mode = fees.payment_service_fee_mode;
-      if (mode === 'off') return 'fee = 0 (disabled)';
-      if (mode === 'percent') return 'fee = amount × percent';
-      if (mode === 'fixed') return 'fee = fixed USDT minimum';
-      return 'Math.max(amount × percent, minimum_usdt)';
-    })(),
+    fee_rule: fees.payment_service_fee_mode === 'off'
+      ? 'fee = 0 (disabled)'
+      : 'fee = max(fixed + amount × percent/100, minimum)',
     current_rate: rateSummary,
   };
 }
@@ -337,6 +357,7 @@ async function updateWithdrawalRates(updates = {}) {
   const allowedKeys = [
     'mmk_to_usd_rate',
     'withdrawal_service_fee_percent',
+    'withdrawal_service_fee_fixed_usdt',
     'withdrawal_service_fee_minimum_usdt',
     'withdrawal_service_fee_mode',
     'payment_service_fee_percent',
@@ -509,65 +530,63 @@ function calculateNetworkWithdrawalFee(amountUsdt, network, settings) {
 function calculateWithdrawalBreakdown(amountUsdt, network, settings) {
   const {
     splitWithdrawMarkup,
-    WITHDRAW_MARKUP_PERCENT,
     WITHDRAW_PROCESSING_HOURS,
     WITHDRAW_PAYOUT_PROVIDER,
-    WITHDRAW_FEE_MODE,
     NETWORK_FEE_PERCENT,
     PLATFORM_WITHDRAW_MARGIN_PERCENT,
   } = require('../constants/withdrawMarkupPolicy');
+  const { calculateUsdtPaymentFeeBreakdown } = require('./paymentFeeService');
 
   const amount = parseFloat(amountUsdt);
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('Enter a valid USDT withdrawal amount');
   }
 
-  // Policy: always charge the fixed 4% markup (3% network + 1% platform),
-  // independent of drifted admin fee settings.
-  const forcedSettings = {
-    ...(settings || {}),
-    withdrawal_service_fee_mode: WITHDRAW_FEE_MODE,
-    withdrawal_service_fee_percent: WITHDRAW_MARKUP_PERCENT,
-    withdrawal_service_fee_minimum_usdt: 0,
-    payment_service_fee_mode: WITHDRAW_FEE_MODE,
-    payment_service_fee_percent: WITHDRAW_MARKUP_PERCENT,
-    payment_service_fee_minimum_usdt: 0,
-    usdt_withdraw_fee_trc20_type: 'percent',
-    usdt_withdraw_fee_trc20: WITHDRAW_MARKUP_PERCENT,
-    usdt_withdraw_fee_bep20_type: 'percent',
-    usdt_withdraw_fee_bep20: WITHDRAW_MARKUP_PERCENT,
-    usdt_withdraw_fee_bank_type: 'percent',
-    usdt_withdraw_fee_bank: WITHDRAW_MARKUP_PERCENT,
-  };
-
-  const breakdown = calculateNetworkWithdrawalFee(amount, network, forcedSettings);
-  const min = parseFloat(settings?.minimum_usdt_withdrawal) || 10;
+  const feeSettings = applyAdminFeeFormula(
+    withScopedPaymentFeeShape(settings || {}, 'withdrawal'),
+    'withdrawal'
+  );
+  const feeBreakdown = calculateUsdtPaymentFeeBreakdown(amount, feeSettings);
+  const netName = String(network || 'TRC20').toUpperCase();
+  const isBank = netName === 'BANK';
+  const isBep20 = netName === 'BEP20';
+  const networkName = isBank ? 'BANK' : isBep20 ? 'BEP20' : 'TRC20';
+  const minRaw = parseFloat(settings?.minimum_usdt_withdrawal);
+  const min = Number.isFinite(minRaw) && minRaw > 0 ? minRaw : 10;
   const rate = parseFloat(settings?.mmk_to_usd_rate) || 4500;
-  const isBank = breakdown.network === 'BANK';
-  const amountMmk = isBank ? Math.round(breakdown.net_usdt * rate) : null;
-
-  const markup = splitWithdrawMarkup(breakdown.amount_usdt, breakdown.fee_usdt);
+  const amountMmk = isBank ? Math.round(feeBreakdown.net_usdt * rate) : null;
+  const markup = splitWithdrawMarkup(feeBreakdown.amount_usdt, feeBreakdown.fee_usdt);
 
   return {
-    ...breakdown,
-    fee_label: markup.fee_label,
+    network: networkName,
+    amount_usdt: feeBreakdown.amount_usdt,
+    fee_usdt: feeBreakdown.fee_usdt,
+    net_usdt: feeBreakdown.net_usdt,
+    fee_type: feeBreakdown.fee_type,
+    fee_value: feeBreakdown.fee_percent,
+    fee_percent: feeBreakdown.fee_percent,
+    minimum_fee_usdt: feeBreakdown.minimum_fee_usdt,
+    fixed_fee_usdt: feeBreakdown.fixed_fee_usdt,
+    used_minimum_fee: feeBreakdown.used_minimum_fee,
+    fee_rule: feeBreakdown.fee_rule,
+    fee_label: feeBreakdown.fee_label,
     payout_method: isBank ? 'bank' : 'crypto',
     payout_provider: WITHDRAW_PAYOUT_PROVIDER,
     exchange_rate: isBank ? rate : null,
     amount_mmk: amountMmk,
     minimum_usdt_withdrawal: min,
     below_minimum: amount < min,
-    invalid_net: breakdown.net_usdt <= 0,
+    invalid_net: feeBreakdown.net_usdt <= 0,
     network_fee_percent: NETWORK_FEE_PERCENT,
     platform_margin_percent: PLATFORM_WITHDRAW_MARGIN_PERCENT,
-    markup_percent: WITHDRAW_MARKUP_PERCENT,
+    markup_percent: feeBreakdown.fee_percent,
     network_fee_usdt: markup.network_fee_usdt,
     platform_margin_usdt: markup.platform_margin_usdt,
     processing_hours: WITHDRAW_PROCESSING_HOURS,
     processing_label: markup.processing_label,
     summary: isBank
-      ? `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${markup.fee_label} = ${breakdown.net_usdt.toFixed(2)} USDT → ${Math.round(amountMmk || 0).toLocaleString()} MMK at rate ${rate.toLocaleString()} · ${markup.processing_label}`
-      : `Requested ${breakdown.amount_usdt.toFixed(2)} USDT − ${markup.fee_label} = ${breakdown.net_usdt.toFixed(2)} USDT · ${markup.processing_label}`,
+      ? `Requested ${feeBreakdown.amount_usdt.toFixed(2)} USDT − ${feeBreakdown.fee_label} = ${feeBreakdown.net_usdt.toFixed(2)} USDT → ${Math.round(amountMmk || 0).toLocaleString()} MMK at rate ${rate.toLocaleString()} · ${markup.processing_label}`
+      : `Requested ${feeBreakdown.amount_usdt.toFixed(2)} USDT − ${feeBreakdown.fee_label} = ${feeBreakdown.net_usdt.toFixed(2)} USDT · ${markup.processing_label}`,
   };
 }
 
@@ -576,7 +595,10 @@ function calculateMmkWithdrawalBreakdown(amountMmk, settings) {
     calculateMmkPaymentFeeBreakdown,
   } = require('./paymentFeeService');
 
-  const breakdown = calculateMmkPaymentFeeBreakdown(amountMmk, settings);
+  const breakdown = calculateMmkPaymentFeeBreakdown(
+    amountMmk,
+    applyAdminFeeFormula(withScopedPaymentFeeShape(settings || {}, 'withdrawal'), 'withdrawal')
+  );
   const min = parseFloat(settings?.minimum_mmk_withdrawal) || 10000;
 
   return {
@@ -602,7 +624,7 @@ function calculateDepositFeeBreakdown(amount, { currency = 'USDT', settings = {}
     calculateMmkPaymentFeeBreakdown,
   } = require('./paymentFeeService');
 
-  const feeSettings = withScopedPaymentFeeShape(settings, 'deposit');
+  const feeSettings = applyAdminFeeFormula(withScopedPaymentFeeShape(settings, 'deposit'), 'deposit');
 
   if (String(currency).toUpperCase() === 'MMK') {
     return {
@@ -749,7 +771,7 @@ async function updateSettings(updates) {
       const { normalizeFeeMode, FEE_MODES } = require('./paymentFeeService');
       const mode = normalizeFeeMode(strVal);
       if (!Object.values(FEE_MODES).includes(mode)) {
-        throw new Error(`${key} must be off, percent, fixed, or max_percent_or_min`);
+        throw new Error(`${key} must be off, percent, fixed, max_percent_or_min, or fixed_plus_percent`);
       }
       await setSetting(key, mode);
     } else if (STRING_KEYS.has(key)) {
@@ -823,15 +845,11 @@ async function updateSettings(updates) {
 }
 
 function resolveCardReloadFeeUsd(topUpUsd, settings = {}) {
-  const percent = parseFloat(settings.card_reload_fee_percent);
-  if (Number.isFinite(percent) && percent > 0) {
-    return Math.round((Number(topUpUsd) * percent / 100) * 100) / 100;
-  }
-  const fixed = parseFloat(settings.card_reload_fee_usd);
-  if (Number.isFinite(fixed) && fixed >= 0) {
-    return Math.round(fixed * 100) / 100;
-  }
-  return getCardReloadFeeBreakdown().reload_fee_usd;
+  const percent = parseNonNegative(settings.card_reload_fee_percent, 0);
+  const fixed = parseNonNegative(settings.card_reload_fee_usd, CARD_RELOAD_USER_FEE_USD);
+  const minimum = parseNonNegative(settings.card_reload_fee_minimum_usd, 0);
+  const additive = fixed + (Number(topUpUsd) * percent / 100);
+  return roundUsd(Math.max(additive, minimum));
 }
 
 function calculateCardReloadPricingUsdt(topUpUsdt, settings) {
@@ -846,20 +864,10 @@ function calculateCardReloadPricingUsdt(topUpUsdt, settings) {
   }
 
   const topUpUsd = roundUsd(topUp);
-  const reloadFeePercent = parseFloat(settings.card_reload_fee_percent);
-  let platformReloadFeeUsd = 0;
-  if (Number.isFinite(reloadFeePercent) && reloadFeePercent > 0) {
-    platformReloadFeeUsd = roundUsd(topUpUsd * reloadFeePercent / 100);
-  } else {
-    const configuredReloadFee = Number.isFinite(parseFloat(settings.card_reload_fee_usd))
-      ? parseFloat(settings.card_reload_fee_usd)
-      : null;
-    platformReloadFeeUsd = roundUsd(
-      configuredReloadFee != null && configuredReloadFee >= 0
-        ? Math.max(0, configuredReloadFee)
-        : getCardReloadFeeBreakdown().reload_fee_usd
-    );
-  }
+  const reloadFeePercent = parseNonNegative(settings.card_reload_fee_percent, 0);
+  const reloadFeeFixed = parseNonNegative(settings.card_reload_fee_usd, CARD_RELOAD_USER_FEE_USD);
+  const reloadFeeMinimum = parseNonNegative(settings.card_reload_fee_minimum_usd, 0);
+  const platformReloadFeeUsd = resolveCardReloadFeeUsd(topUpUsd, settings);
 
   const providerCostUsd = roundUsd(
     Number.isFinite(parseFloat(settings.card_reload_provider_cost_usd))
@@ -879,9 +887,9 @@ function calculateCardReloadPricingUsdt(topUpUsdt, settings) {
     net_usd_to_card: topUpUsd,
     platform_reload_markup_usd: platformReloadFeeUsd,
     reload_fee_usd: reloadFeeUsd,
-    reload_fee_percent: Number.isFinite(reloadFeePercent) && reloadFeePercent > 0
-      ? reloadFeePercent
-      : null,
+    reload_fee_percent: reloadFeePercent,
+    reload_fee_fixed_usd: reloadFeeFixed,
+    reload_fee_minimum_usd: reloadFeeMinimum,
     provider_cost_usd: providerCostUsd,
     net_profit_usd: netProfitUsd,
     gross_usd: topUpUsd,
