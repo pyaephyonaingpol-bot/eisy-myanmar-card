@@ -80,4 +80,54 @@ router.post('/telegram', async (req, res) => {
   }
 });
 
+/**
+ * Pagocards webhook — 3DS OTP / card events.
+ * Register: https://YOUR_DOMAIN/api/webhook/pagocards
+ * Optional: PAGO_CARD_WEBHOOK_SECRET via header x-pago-webhook-secret.
+ */
+router.post('/pagocards', async (req, res) => {
+  try {
+    const { handlePagocardsWebhook } = require('../services/pago3dsWebhookService');
+    const result = await handlePagocardsWebhook(req.body || {}, req);
+    return res.status(200).json({
+      ok: true,
+      received: true,
+      eventId: result.event?.eventId || null,
+      eventType: result.event?.eventType || null,
+      is3ds: Boolean(result.event?.is3ds),
+      hasOtp: Boolean(result.event?.otp),
+      saved: result.saved,
+      duplicate: result.duplicate,
+      ignored: Boolean(result.ignored),
+      id: result.row?.id ?? null,
+    });
+  } catch (err) {
+    const status = err.status || (err.code === 'PAGO_WEBHOOK_UNAUTHORIZED' ? 401 : 500);
+    console.error('[webhook/pagocards]', err.message, err.code || '');
+    if (status === 401) {
+      return res.status(401).json({
+        ok: false,
+        error: err.message || 'Unauthorized',
+        code: err.code || 'PAGO_WEBHOOK_UNAUTHORIZED',
+      });
+    }
+    // ACK most failures so Pagocards does not hammer retries on app bugs.
+    return res.status(200).json({
+      ok: false,
+      received: true,
+      error: err.message || 'Webhook error',
+      code: err.code || 'PAGO_WEBHOOK_ERROR',
+    });
+  }
+});
+
+router.get('/pagocards', (_req, res) => {
+  res.json({
+    ok: true,
+    service: 'pagocards-webhook',
+    accepts: ['3ds'],
+    path: '/api/webhook/pagocards',
+  });
+});
+
 module.exports = router;
