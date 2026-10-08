@@ -9023,10 +9023,32 @@ const Dashboard = {
     return `•••• •••• •••• ${last4}`;
   },
 
-  togglePagoCardReveal() {
-    this.pagoDetailRevealed = !this.pagoDetailRevealed;
+  async togglePagoCardReveal() {
     const card = this.getSelectedPagoCard();
-    if (card) this.showPagoCardDetail(card);
+    if (!card) return;
+    const next = !this.pagoDetailRevealed;
+    if (!next) {
+      this.pagoDetailRevealed = false;
+      this.showPagoCardDetail(card);
+      return;
+    }
+    let full = card;
+    try {
+      if (!card.card_number || !card.cvv || !card.exp_date) {
+        full = await this.ensurePagoCardSecrets(card);
+      }
+    } catch (err) {
+      if (err?.code !== 'SENSITIVE_AUTH_REQUIRED') {
+        this.toast(err.message || 'Could not show card details', 'error');
+      }
+      return;
+    }
+    if (!full?.card_number && !full?.cvv && !full?.exp_date) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before copying.'), 'error');
+      return;
+    }
+    this.pagoDetailRevealed = true;
+    this.showPagoCardDetail(full);
   },
 
   prefillPagoCardRequest() {
@@ -9143,9 +9165,12 @@ const Dashboard = {
       this.toast(this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before copying.'), 'error');
       return;
     }
-    this.pagoDetailRevealed = true;
-    this.showPagoCardDetail(card);
-    await this.copyToClipboard(number);
+    try {
+      await this.copyToClipboard(number);
+    } catch (err) {
+      this.toast(err.message || 'Could not copy card', 'error');
+      return;
+    }
     this.copyToast(this.i18nText('pago_copy_card_done', 'Card number copied'));
   },
 
@@ -9224,9 +9249,8 @@ const Dashboard = {
     if (revealBtn) {
       const showLabel = typeof t === 'function' ? t('pago_show_details') : 'Show number & CVV';
       const hideLabel = typeof t === 'function' ? t('pago_hide_details') : 'Hide number & CVV';
-      revealBtn.textContent = revealed ? hideLabel : showLabel;
+      revealBtn.setAttribute('aria-label', revealed ? hideLabel : showLabel);
       revealBtn.setAttribute('aria-pressed', revealed ? 'true' : 'false');
-      revealBtn.disabled = !hasNumber && !card.cvv;
     }
     this.updatePagoWalletUi(card);
   },

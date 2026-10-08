@@ -49,7 +49,7 @@
       touch-action: pan-y !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261008pagoCards" />
+  <link rel="stylesheet" href="/styles.css?v=20261008cardEye" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -1303,9 +1303,31 @@
                 </div>
                 <div class="pago-plastic-chip-row">
                   <span class="pago-plastic-chip" aria-hidden="true"></span>
-                  <span class="pago-plastic-contactless" aria-hidden="true"></span>
+                  <span class="pago-plastic-chip-tools">
+                    <span class="pago-plastic-contactless" aria-hidden="true"></span>
+                    <button type="button" class="pago-plastic-icon-btn pago-plastic-eye" id="pagoCardRevealBtn" aria-pressed="false" aria-label="Show number &amp; CVV">
+                      <svg class="pago-eye-open" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                      <svg class="pago-eye-off" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path d="M3 3l18 18"/>
+                        <path d="M10.6 6.1A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18.5 18.5 0 0 1-3.2 3.8"/>
+                        <path d="M6.1 6.7C3.7 8.3 2 12 2 12s3.5 6 10 6c1.5 0 2.9-.3 4.1-.8"/>
+                        <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>
+                      </svg>
+                    </button>
+                  </span>
                 </div>
-                <p class="pago-plastic-number" id="pagoCardDetailNumber">•••• •••• •••• ••••</p>
+                <div class="pago-plastic-number-row">
+                  <p class="pago-plastic-number" id="pagoCardDetailNumber">•••• •••• •••• ••••</p>
+                  <button type="button" class="pago-plastic-icon-btn pago-plastic-copy" id="pagoCardCopyNumberBtn" data-i18n-aria="pago_copy_card" aria-label="Copy Card">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                      <rect x="8" y="8" width="12" height="12" rx="2"/>
+                      <path d="M4 16V6a2 2 0 0 1 2-2h10"/>
+                    </svg>
+                  </button>
+                </div>
                 <div class="pago-plastic-footer">
                   <div>
                     <small data-i18n="card_holder">Card holder</small>
@@ -1330,8 +1352,6 @@
               </div>
 
               <div class="pago-card-actions" role="group" aria-label="Card actions">
-                <button type="button" class="btn btn-secondary btn-sm" id="pagoCardRevealBtn" data-i18n="pago_show_details">Show number &amp; CVV</button>
-                <button type="button" class="btn btn-primary btn-sm" id="pagoCardCopyNumberBtn" data-i18n="pago_copy_card">Copy Card</button>
                 <button type="button" class="pago-action-wallet pago-action-apple" id="pagoAddAppleWalletBtn" data-wallet-target="apple">
                   <span data-i18n="pago_wallet_apple_label">Apple Wallet</span>
                 </button>
@@ -1825,7 +1845,7 @@
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261008pagoCards"></script>
+  <script defer src="/dashboard.js?v=20261008cardEye"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

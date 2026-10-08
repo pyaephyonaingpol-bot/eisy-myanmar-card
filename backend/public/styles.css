@@ -5424,6 +5424,44 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   opacity: 0.85;
 }
 
+.pago-plastic-chip-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-left: auto;
+}
+
+.pago-plastic-number-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.pago-plastic-icon-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  background: rgba(15, 23, 42, 0.28);
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.pago-plastic-icon-btn:hover,
+.pago-plastic-icon-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.pago-plastic-eye .pago-eye-off { display: none; }
+.pago-plastic-eye[aria-pressed="true"] .pago-eye-open { display: none; }
+.pago-plastic-eye[aria-pressed="true"] .pago-eye-off { display: block; }
+
 .pago-plastic-number {
   margin: 0.15rem 0 0;
   font-family: var(--font-mono);
