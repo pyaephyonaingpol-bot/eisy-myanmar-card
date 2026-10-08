@@ -735,9 +735,11 @@ router.post('/push/unsubscribe', requireAuth, async (req, res) => {
 router.post('/push/test', requireAuth, async (req, res) => {
   try {
     const { notifyUserPush } = require('../services/webPushService');
+    const title = String(req.body?.title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    const body = String(req.body?.body || '').replace(/\s+/g, ' ').trim().slice(0, 180);
     const result = await notifyUserPush(req.user.id, {
-      title: 'Eisy notifications are on',
-      body: 'Verification codes and deposit alerts will appear on this phone.',
+      title: title || 'Eisy notifications are on',
+      body: body || 'Verification codes and deposit alerts will appear on this phone.',
       url: '/#settings',
       tag: 'eisy-push-test',
     });

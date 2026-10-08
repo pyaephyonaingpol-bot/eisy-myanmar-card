@@ -35,20 +35,27 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pushEnableBtn"'), 'enable button present');
   assert.ok(doc.includes('id="pushStatus"'), 'status line present');
   assert.ok(doc.includes('data-i18n="push_heading"'), 'heading i18n');
-  assert.ok(doc.includes('/pushNotifications.js?v=20261008push'), 'client script tag');
+  assert.ok(doc.includes('/pushNotifications.js?v=20261008pushLock'), 'client script tag');
   const settingsAt = doc.indexOf('id="pageSettings"');
   const panelAt = doc.indexOf('id="pushNotifyPanel"');
   assert.ok(settingsAt > -1 && panelAt > settingsAt, 'phone notifications sit on Settings');
 }
 
 assert.ok(sw.includes("addEventListener('push'"), 'service worker handles push');
+assert.ok(sw.includes('readPushPayload'), 'push payload is parsed inside the worker');
+assert.ok(sw.includes('displayNotification'), 'worker owns notification display');
+assert.ok(sw.includes('event.waitUntil(displayNotification(payload))'), 'push event always displays');
+assert.ok(sw.includes('requireInteraction'), 'OTP alerts stay on the lock screen');
+assert.ok(sw.includes('vibrate'), 'lock-screen alerts can vibrate');
 assert.ok(sw.includes("addEventListener('notificationclick'"), 'click focuses the app');
+assert.ok(sw.includes("addEventListener('pushsubscriptionchange'"), 'expired subscriptions can be replaced');
 assert.ok(sw.includes('showNotification'), 'worker displays a system notification');
 assert.ok(sw.includes("msg.type !== 'SHOW_NOTIFICATION'"), 'worker accepts page messages');
 assert.ok(!/export\s+function/.test(sw), 'worker stays classic script');
 
 assert.ok(client.includes("serviceWorker.register"), 'page registers the worker');
-assert.ok(client.includes('showNotification'), 'page asks the worker to show a notification');
+assert.ok(client.includes("type: 'SHOW_NOTIFICATION'"), 'page asks the worker to show a notification');
+assert.ok(client.includes('PUSH_SUBSCRIPTION_CHANGED'), 'page refreshes a rotated subscription');
 assert.ok(client.includes('/api/user/push/subscribe'), 'page stores the subscription');
 assert.ok(client.includes('/api/user/push/config'), 'page loads the VAPID public key');
 assert.ok(client.includes('EisyPush'), 'client exposes EisyPush');
@@ -76,6 +83,7 @@ assert.ok(pushAt > -1 && catchAll > pushAt, 'push routes are registered before t
 assert.ok(service.includes("require('web-push')"), 'service uses web-push');
 assert.ok(service.includes('notifyUserPush'), 'service can deliver to a user');
 assert.ok(service.includes('status === 404 || status === 410'), 'expired endpoints are removed');
+assert.ok(service.includes("urgency: 'high'"), 'pushes are marked urgent so the lock screen shows them');
 assert.ok(!/export\s+function/.test(service), 'service stays CommonJS');
 
 assert.ok(webhook.includes('notifyUserPush'), '3DS webhook sends a phone alert');
@@ -145,8 +153,8 @@ async function assertDelivery() {
     url: '/#cards',
     tag: 'eisy-3ds',
   }, {
-    sendNotification: async (sub, data) => {
-      sent.push({ endpoint: sub.endpoint, payload: JSON.parse(data) });
+    sendNotification: async (sub, data, options) => {
+      sent.push({ endpoint: sub.endpoint, payload: JSON.parse(data), options });
     },
   });
   assert.strictEqual(ok.sent, 1);
@@ -156,6 +164,9 @@ async function assertDelivery() {
   assert.strictEqual(sent[0].payload.body, '482913 for Cafe');
   assert.strictEqual(sent[0].payload.url, '/#cards');
   assert.strictEqual(sent[0].payload.tag, 'eisy-3ds');
+  assert.strictEqual(sent[0].options.urgency, 'high');
+  assert.ok(sent[0].options.TTL >= 3600, 'push stays queued if the phone is locked');
+  assert.strictEqual(sent[0].options.topic, 'eisy-3ds');
 
   const gone = await push.notifyUserPush(owner.id, { title: 'gone', body: 'x' }, {
     sendNotification: async () => {
