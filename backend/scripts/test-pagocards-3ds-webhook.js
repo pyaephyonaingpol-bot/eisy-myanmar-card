@@ -19,7 +19,8 @@ const webhookRoute = fs.readFileSync(path.join(root, 'backend/src/routes/webhook
 const userRoutes = fs.readFileSync(path.join(root, 'backend/src/routes/user.js'), 'utf8');
 const service = fs.readFileSync(path.join(root, 'backend/src/services/pago3dsWebhookService.js'), 'utf8');
 const nextRoute = fs.readFileSync(path.join(root, 'app/api/webhook/pagocards/route.ts'), 'utf8');
-const lib = fs.readFileSync(path.join(root, 'lib/pagocardsWebhook.ts'), 'utf8');
+const libTs = fs.readFileSync(path.join(root, 'lib/pagocardsWebhook.ts'), 'utf8');
+const libJs = fs.readFileSync(path.join(root, 'lib/pagocardsWebhook.js'), 'utf8');
 const migration = fs.readFileSync(path.join(root, 'backend/migrations/071_pago_3ds_events.sql'), 'utf8');
 
 for (const doc of [html, instant]) {
@@ -60,8 +61,16 @@ assert.ok(service.includes('Pago3dsEvent'), 'service uses model');
 
 assert.ok(nextRoute.includes('export async function POST'), 'Next route POST');
 assert.ok(nextRoute.includes('normalizePagocardsWebhook'), 'Next route normalizes');
-assert.ok(lib.includes('export function normalizePagocardsWebhook'), 'shared normalizer');
+assert.ok(nextRoute.includes('pagocardsWebhook.js'), 'Next route loads CJS helper');
+assert.ok(libJs.includes('module.exports'), 'CJS helper uses module.exports');
+assert.ok(libJs.includes('function normalizePagocardsWebhook'), 'CJS normalizer present');
+assert.ok(!/\bexport\s+function\b/.test(libJs), 'CJS helper has no ESM export function');
+assert.ok(libTs.includes('module.exports'), 'TS helper uses module.exports (pagocard pattern)');
 assert.ok(migration.includes('CREATE TABLE IF NOT EXISTS pago_3ds_events'), 'migration table');
+
+// Direct CJS require must work without strip-types / Unexpected token export.
+const direct = require('../../lib/pagocardsWebhook.js');
+assert.strictEqual(typeof direct.normalizePagocardsWebhook, 'function');
 
 const { loadPagocardsWebhookLib } = require('../src/services/pago3dsWebhookService');
 const { normalizePagocardsWebhook, summarizePagocardsEvent } = loadPagocardsWebhookLib();
