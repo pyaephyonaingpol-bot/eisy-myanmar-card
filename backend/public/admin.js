@@ -117,7 +117,7 @@
       }
       const usersHint = $('adminUsersHint');
       if (usersHint) {
-        usersHint.textContent = 'Search users, review wallets, and block or unblock accounts.';
+        usersHint.textContent = 'All registered users and Supabase wallets, newest first. Change page size to scroll a shorter page or load everyone.';
       }
       const cardsHeading = $('adminCardsHeading');
       if (cardsHeading) cardsHeading.textContent = 'Virtual Cards';
@@ -826,6 +826,8 @@
         }
       });
       $('usersStatusFilter')?.addEventListener('change', () => this.loadUsers({ reset: true }));
+      $('usersSort')?.addEventListener('change', () => this.loadUsers({ reset: true }));
+      $('usersPageSize')?.addEventListener('change', () => this.loadUsers({ reset: true }));
       $('usersPrevBtn')?.addEventListener('click', () => this.usersGoPrevPage());
       $('usersNextBtn')?.addEventListener('click', () => this.usersGoNextPage());
       $('usersLoadMoreBtn')?.addEventListener('click', () => this.usersLoadMore());
@@ -3910,15 +3912,21 @@
       has_more: false,
       q: '',
       status: '',
+      sort: 'created_at_desc',
       loading: false,
     },
 
     getUsersListFiltersFromDom() {
       const qEl = $('usersSearchInput');
       const statusEl = $('usersStatusFilter');
+      const sortEl = $('usersSort');
+      const sizeEl = $('usersPageSize');
+      const size = sizeEl ? parseInt(sizeEl.value, 10) : 50;
       return {
         q: qEl ? String(qEl.value || '').trim() : (this.usersListState.q || ''),
         status: statusEl ? String(statusEl.value || '').trim() : (this.usersListState.status || ''),
+        sort: sortEl ? String(sortEl.value || 'created_at_desc') : (this.usersListState.sort || 'created_at_desc'),
+        limit: Number.isFinite(size) && size > 0 ? size : 50,
       };
     },
 
@@ -3937,7 +3945,7 @@
       const page = limit > 0 ? Math.floor(offset / limit) + 1 : 1;
       const pages = limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1;
 
-      if (pager) pager.style.display = total > limit || offset > 0 ? '' : 'none';
+      if (pager) pager.style.display = '';
       if (label) {
         label.textContent = total
           ? ('Page ' + page + ' / ' + pages + ' · ' + shownFrom + '–' + shownTo + ' of ' + total)
@@ -3998,14 +4006,25 @@
       });
     },
 
+    formatUserCreated(value) {
+      if (!value) return '—';
+      const raw = String(value).trim();
+      const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z');
+      if (Number.isNaN(parsed.getTime())) return this.esc(raw);
+      return parsed.toLocaleString();
+    },
+
     renderUsersRowsHtml(users) {
       return users.map((u) =>
         '<tr>' +
-          '<td>' + u.id + '</td>' +
-          '<td>' + this.esc(u.name || '—') + '</td>' +
+          '<td>' + this.esc(u.id) + '</td>' +
+          '<td>' + this.esc(u.name || '—') +
+            (u.source === 'supabase' ? ' <span class="hint">Supabase</span>' : '') +
+          '</td>' +
           '<td>' + this.esc(u.email || '—') + '</td>' +
           '<td><strong>$' + Number(u.balance_usdt || 0).toFixed(2) + ' USDT</strong></td>' +
           '<td>' + this.esc(this.formatUserAuthStatus(u.auth_status)) + '</td>' +
+          '<td>' + this.formatUserCreated(u.created_at) + '</td>' +
           '<td class="actions-cell">' +
             '<button type="button" class="btn btn-sm btn-secondary view-card-requests">Card Requests</button>' +
             '<button type="button" class="btn btn-sm btn-secondary adj-usdt-wallet" data-uid="' + u.id + '" data-usdt="' + Number(u.balance_usdt || 0) + '">Adjust USDT</button> ' +
@@ -4023,13 +4042,15 @@
       const reset = opts.reset !== false && !append;
 
       if (!this.usersListState) {
-        this.usersListState = { limit: 50, offset: 0, total: 0, has_more: false, q: '', status: '', loading: false };
+        this.usersListState = { limit: 50, offset: 0, total: 0, has_more: false, q: '', status: '', sort: 'created_at_desc', loading: false };
       }
 
       if (reset) {
         const filters = this.getUsersListFiltersFromDom();
         this.usersListState.q = filters.q;
         this.usersListState.status = filters.status;
+        this.usersListState.sort = filters.sort;
+        this.usersListState.limit = Math.min(Math.max(filters.limit || 50, 1), 10000);
         this.usersListState.offset = 0;
       } else if (typeof opts.offset === 'number') {
         this.usersListState.offset = Math.max(0, opts.offset);
@@ -4037,7 +4058,8 @@
 
       if (opts.q != null) this.usersListState.q = String(opts.q || '').trim();
       if (opts.status != null) this.usersListState.status = String(opts.status || '').trim();
-      if (opts.limit != null) this.usersListState.limit = Math.min(Math.max(parseInt(opts.limit, 10) || 50, 1), 200);
+      if (opts.sort != null) this.usersListState.sort = String(opts.sort || 'created_at_desc');
+      if (opts.limit != null) this.usersListState.limit = Math.min(Math.max(parseInt(opts.limit, 10) || 50, 1), 10000);
 
       const st = this.usersListState;
       if (st.loading) return;
@@ -4048,6 +4070,7 @@
         const params = new URLSearchParams();
         params.set('limit', String(st.limit));
         params.set('offset', String(st.offset));
+        params.set('sort', st.sort || 'created_at_desc');
         if (st.q) params.set('q', st.q);
         if (st.status) params.set('status', st.status);
         // Keep list lean — mirror is loaded separately.
@@ -4087,7 +4110,7 @@
           if (!tbody) {
             table.innerHTML =
               '<table class="data-table">' +
-                '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>USDT Wallet</th><th>Status</th><th>Actions</th></tr></thead>' +
+                '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>USDT Wallet</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>' +
                 '<tbody></tbody></table>';
             tbody = table.querySelector('tbody');
           }
@@ -4096,7 +4119,7 @@
         } else {
           table.innerHTML =
             '<table class="data-table">' +
-              '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>USDT Wallet</th><th>Status</th><th>Actions</th></tr></thead>' +
+              '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>USDT Wallet</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>' +
               '<tbody>' + rowsHtml + '</tbody></table>';
           this.bindUsersTableRowActions(table);
         }

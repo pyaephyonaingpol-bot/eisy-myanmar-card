@@ -270,6 +270,95 @@ function backfillAllUserWalletsInBackground(options = {}) {
 }
 
 /**
+ * Read every row from a Supabase table.
+ * PostgREST db-max-rows (sometimes 15) truncates a single .range() even when
+ * a higher end index is requested. Advance by the rows actually returned and
+ * keep going until `count` is covered or the next page is empty.
+ */
+async function fetchAllSupabaseRows(sb, {
+  table,
+  columnsList,
+  orderColumn = 'user_id',
+  ascending = true,
+  pageSize = 1000,
+  maxRows = 20000,
+} = {}) {
+  const selects = (Array.isArray(columnsList) ? columnsList : [columnsList]).filter(Boolean);
+  let lastError = null;
+
+  for (const columns of selects) {
+    const rows = [];
+    let from = 0;
+    let total = null;
+    let previousFirstKey = undefined;
+    let failed = false;
+
+    for (;;) {
+      const to = from + pageSize - 1;
+      const { data, error, count } = await sb
+        .from(table)
+        .select(columns, { count: total == null ? 'exact' : undefined })
+        .order(orderColumn, { ascending })
+        .range(from, to);
+
+      if (error) {
+        lastError = error;
+        failed = true;
+        break;
+      }
+
+      if (total == null && typeof count === 'number') total = count;
+      const batch = data || [];
+      if (!batch.length) break;
+
+      const firstKey = batch[0]?.user_id ?? batch[0]?.id ?? null;
+      if (previousFirstKey != null && firstKey != null && String(firstKey) === String(previousFirstKey)) {
+        break;
+      }
+      previousFirstKey = firstKey;
+
+      rows.push(...batch);
+      from += batch.length;
+      if (total != null && rows.length >= total) break;
+      if (rows.length >= maxRows) break;
+    }
+
+    if (!failed) return { rows, total: total ?? rows.length, error: null };
+  }
+
+  return { rows: [], total: null, error: lastError };
+}
+
+/**
+ * Every Supabase user_wallets row, past a 15-row PostgREST cap.
+ */
+async function listSupabaseUserWallets() {
+  if (!isSupabaseEnabled()) {
+    return { enabled: false, rows: [], total: 0, error: null };
+  }
+  const sb = getSupabase();
+  if (!sb) {
+    return { enabled: false, rows: [], total: 0, error: 'supabase_client_unavailable' };
+  }
+
+  const result = await fetchAllSupabaseRows(sb, {
+    table: 'user_wallets',
+    columnsList: [
+      'user_id, email, name, balance_usdt, updated_at, created_at, auth_status',
+      'user_id, email, name, balance_usdt, updated_at, created_at',
+      'user_id, email, name, balance_usdt, updated_at',
+    ],
+    orderColumn: 'user_id',
+    ascending: true,
+  });
+
+  if (result.error) {
+    return { enabled: true, rows: [], total: null, error: result.error.message || String(result.error) };
+  }
+  return { enabled: true, rows: result.rows, total: result.total, error: null };
+}
+
+/**
  * Compare Turso users vs Supabase user_wallets (paginated) so admins can see
  * whether the mirror is complete — not stuck on PostgREST's default page size.
  */
@@ -337,35 +426,26 @@ async function getUserWalletsMirrorStatus({ includeMissingIds = false, missingSa
 
   const tursoIds = (await db.all('SELECT id FROM users ORDER BY id ASC')).map((r) => String(r.id));
 
-  const pageSize = 1000;
-  const supabaseIds = [];
-  let from = 0;
-  let exactCount = supabaseTotal;
-  for (;;) {
-    const to = from + pageSize - 1;
-    const { data, error, count } = await sb
-      .from('user_wallets')
-      .select('user_id', { count: exactCount == null ? 'exact' : undefined })
-      .order('user_id', { ascending: true })
-      .range(from, to);
-    if (error) {
-      return {
-        enabled: true,
-        turso_total: tursoTotal,
-        supabase_total: null,
-        missing_count: tursoTotal,
-        missing_user_ids: wantIds ? tursoIds : undefined,
-        in_sync: false,
-        reason: error.message,
-      };
-    }
-    if (exactCount == null && typeof count === 'number') exactCount = count;
-    const batch = data || [];
-    for (const row of batch) supabaseIds.push(String(row.user_id));
-    if (batch.length < pageSize) break;
-    from += pageSize;
-    if (supabaseIds.length > 100000) break;
+  const scanned = await fetchAllSupabaseRows(sb, {
+    table: 'user_wallets',
+    columnsList: ['user_id'],
+    orderColumn: 'user_id',
+    ascending: true,
+  });
+  if (scanned.error) {
+    return {
+      enabled: true,
+      turso_total: tursoTotal,
+      supabase_total: null,
+      missing_count: tursoTotal,
+      missing_user_ids: wantIds ? tursoIds : undefined,
+      in_sync: false,
+      reason: scanned.error.message || String(scanned.error),
+    };
   }
+  const supabaseIds = [];
+  for (const row of scanned.rows) supabaseIds.push(String(row.user_id));
+  let exactCount = typeof scanned.total === 'number' ? scanned.total : supabaseTotal;
 
   const supabaseSet = new Set(supabaseIds);
   const missing = tursoIds.filter((id) => !supabaseSet.has(id));
@@ -626,4 +706,6 @@ module.exports = {
   syncSupportThread,
   syncSupportMessage,
   isSupabaseEnabled,
+  fetchAllSupabaseRows,
+  listSupabaseUserWallets,
 };

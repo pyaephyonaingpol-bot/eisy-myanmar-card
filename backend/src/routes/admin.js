@@ -1314,13 +1314,15 @@ router.post('/balance/adjust', requirePermission('balance_adjust'), async (req, 
 
 router.get('/users', requirePermission('users'), async (req, res) => {
   try {
-    // Lean paginated list from Turso only — no joins, no mirror/backfill on the
-    // hot path. Full catalog remains reachable via total + limit/offset pages.
-    const page = await User.listForAdmin({
+    // Union of Turso users and every Supabase wallet, paged in this API.
+    // A PostgREST max-rows cap (for example 15) must not hide the rest.
+    const { listAdminUserDirectory } = require('../services/adminUserDirectory');
+    const page = await listAdminUserDirectory({
       limit: req.query.limit,
       offset: req.query.offset,
       q: req.query.q,
       status: req.query.status,
+      sort: req.query.sort,
     });
 
     const wantMirror = String(req.query.mirror || '').trim() === '1'
@@ -1354,6 +1356,7 @@ router.get('/users', requirePermission('users'), async (req, res) => {
       truncated: page.has_more,
       q: String(req.query.q || '').trim() || null,
       status: String(req.query.status || '').trim() || null,
+      sort: page.sort || 'created_at_desc',
       mirror,
       backfill,
     });
