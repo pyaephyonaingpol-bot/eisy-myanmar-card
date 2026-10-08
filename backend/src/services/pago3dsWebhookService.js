@@ -58,6 +58,11 @@ function loadPagocardsWebhookLib() {
   return webhookLib;
 }
 
+/** Clear cached TS module so --watch / deploys pick up lib changes. */
+function resetPagocardsWebhookLibCache() {
+  webhookLib = null;
+}
+
 function getWebhookSecret() {
   return String(process.env.PAGO_CARD_WEBHOOK_SECRET || '').trim();
 }
@@ -79,9 +84,10 @@ function assertWebhookSecret(req) {
   }
 }
 
-function expiresAtIso(minutes = OTP_TTL_MINUTES) {
+/** SQLite-friendly UTC timestamp: YYYY-MM-DD HH:MM:SS */
+function expiresAtSqlite(minutes = OTP_TTL_MINUTES) {
   const ms = Date.now() + Math.max(1, minutes) * 60 * 1000;
-  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  return new Date(ms).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
 }
 
 function toPublicEvent(row) {
@@ -105,6 +111,12 @@ function toPublicEvent(row) {
   };
 }
 
+function payloadDebugKeys(body) {
+  if (!body || typeof body !== 'object') return { type: typeof body };
+  if (Array.isArray(body)) return { type: 'array', length: body.length };
+  return { keys: Object.keys(body).slice(0, 40) };
+}
+
 /**
  * Handle an inbound Pagocards webhook body (Express or Next bridge).
  * @returns {{ saved: boolean, duplicate: boolean, ignored?: boolean, row: object|null, event: object|null }}
@@ -112,17 +124,29 @@ function toPublicEvent(row) {
 async function handlePagocardsWebhook(body, req = null) {
   if (req) assertWebhookSecret(req);
 
+  // Always reload normalizer in case lib/pagocardsWebhook.ts changed under watch.
+  resetPagocardsWebhookLibCache();
   const { normalizePagocardsWebhook, summarizePagocardsEvent } = loadPagocardsWebhookLib();
   const event = normalizePagocardsWebhook(body);
   if (!event) {
-    console.warn('[webhook/pagocards] unrecognized payload');
+    console.warn('[webhook/pagocards] unrecognized payload', payloadDebugKeys(body));
     return { saved: false, duplicate: false, ignored: true, row: null, event: null };
+  }
+
+  if (!event.otp) {
+    console.warn('[webhook/pagocards] 3DS event without otp field', {
+      eventId: event.eventId,
+      eventType: event.eventType,
+      cardId: event.cardId,
+      keys: event.raw ? Object.keys(event.raw).slice(0, 40) : [],
+    });
   }
 
   console.log('[webhook/pagocards]', summarizePagocardsEvent(event), {
     eventId: event.eventId,
     authId: event.authId,
     is3ds: event.is3ds,
+    hasOtp: Boolean(event.otp),
   });
 
   let localCard = null;
@@ -132,6 +156,11 @@ async function handlePagocardsWebhook(body, req = null) {
     } catch (err) {
       console.warn('[webhook/pagocards] card lookup failed:', err.message);
     }
+  }
+
+  if (!localCard && event.cardId) {
+    console.warn('[webhook/pagocards] no local card for pago_card_id', event.cardId,
+      '— storing orphan event (UI will match by pago_card_id once card is linked)');
   }
 
   const { row, duplicate } = await Pago3dsEvent.create({
@@ -148,8 +177,19 @@ async function handlePagocardsWebhook(body, req = null) {
     verificationType: event.verificationType,
     userBankcardId: event.userBankcardId,
     rawPayload: event.raw,
-    expiresAt: event.otp ? expiresAtIso(OTP_TTL_MINUTES) : expiresAtIso(60 * 24),
+    expiresAt: event.otp ? expiresAtSqlite(OTP_TTL_MINUTES) : expiresAtSqlite(60 * 24),
   });
+
+  if (localCard?.id && event.cardId) {
+    try {
+      await Pago3dsEvent.linkOrphansByPagoCardId(event.cardId, {
+        localCardId: localCard.id,
+        userId: localCard.user_id,
+      });
+    } catch (err) {
+      console.warn('[webhook/pagocards] orphan link skipped:', err.message);
+    }
+  }
 
   if (duplicate) {
     console.log('[webhook/pagocards] duplicate eventId', event.eventId);
@@ -157,6 +197,7 @@ async function handlePagocardsWebhook(body, req = null) {
     console.log('[webhook/pagocards] stored 3DS OTP for card', event.cardId || '(unknown)', {
       local_card_id: localCard?.id || null,
       user_id: localCard?.user_id || null,
+      row_id: row?.id || null,
     });
   }
 
@@ -170,8 +211,28 @@ async function handlePagocardsWebhook(body, req = null) {
   };
 }
 
-async function listUser3dsEvents(userId, { localCardId = null, limit = 20 } = {}) {
-  const rows = await Pago3dsEvent.listForUser(userId, { localCardId, limit, includeExpired: false });
+async function listUser3dsEvents(userId, {
+  localCardId = null,
+  pagoCardId = null,
+  limit = 20,
+} = {}) {
+  if (pagoCardId && localCardId != null) {
+    try {
+      await Pago3dsEvent.linkOrphansByPagoCardId(pagoCardId, {
+        localCardId,
+        userId,
+      });
+    } catch (err) {
+      console.warn('[pago3ds] orphan claim skipped:', err.message);
+    }
+  }
+
+  const rows = await Pago3dsEvent.listForUser(userId, {
+    localCardId,
+    pagoCardId,
+    limit,
+    includeExpired: false,
+  });
   return rows.map(toPublicEvent);
 }
 
@@ -186,5 +247,6 @@ module.exports = {
   markUser3dsSeen,
   toPublicEvent,
   loadPagocardsWebhookLib,
+  resetPagocardsWebhookLibCache,
   OTP_TTL_MINUTES,
 };
