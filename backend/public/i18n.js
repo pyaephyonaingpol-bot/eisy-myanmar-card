@@ -196,7 +196,9 @@
 
       // Cards page
       cards_page_desc: 'View card status, reveal details when needed, and reload your virtual cards.',
-      pago_cards_heading: 'Your virtual cards',
+      pago_cards_heading: 'Your virtual card',
+      pago_copy_card: 'Copy Card',
+      pago_copy_card_done: 'Card number copied',
       pago_cards_empty: 'No virtual cards yet. Request one below.',
       pago_detail_heading: 'Card details',
       pago_request_heading: 'Request a virtual card',
@@ -681,7 +683,9 @@
       send_usdt: 'Send USDT',
 
       cards_page_desc: 'ကဒ်အခြေအနေ ကြည့်ရှု၊ လိုအပ်ပါက အသေးစိတ်ပြသခြင်း၊ virtual card များကို reload လုပ်ပါ။',
-      pago_cards_heading: 'သင်၏ virtual ကဒ်များ',
+      pago_cards_heading: 'သင်၏ virtual ကဒ်',
+      pago_copy_card: 'ကဒ်ကူးမည်',
+      pago_copy_card_done: 'ကဒ်နံပါတ် ကူးယူပြီးပါပြီ',
       pago_cards_empty: 'virtual ကဒ် မရှိသေးပါ။ အောက်တွင် တောင်းဆိုပါ။',
       pago_detail_heading: 'ကဒ်အသေးစိတ်',
       pago_request_heading: 'virtual ကဒ် တောင်းဆိုရန်',

@@ -23,26 +23,25 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pagoCardCopyNumberBtn"'), 'copy number button present');
   assert.ok(doc.includes('id="pagoCardDetailBalance"'), 'balance chip present');
   assert.ok(doc.includes('pago-balance-chip') || doc.includes('pagoCardDetailBalance'), 'balance display wired');
-  assert.ok(
-    doc.includes('styles.css?v=20261008pagoWallet') || doc.includes('styles.css?v=20261008pagoPlastic'),
-    'CSS cache-bust present'
-  );
-  assert.ok(
-    doc.includes('dashboard.js?v=20261008pagoWallet') || doc.includes('dashboard.js?v=20261008pagoPlastic'),
-    'JS cache-bust present'
-  );
+  assert.ok(doc.includes('styles.css?v=20261008pagoCardClean'), 'CSS cache-bust present');
+  assert.ok(doc.includes('dashboard.js?v=20261008pagoCardClean'), 'JS cache-bust present');
+  assert.ok(doc.includes('id="pagoCardCopyNumberBtn"') && doc.includes('pago_copy_card'), 'Copy Card action present');
+  assert.ok(doc.includes('class="pago-card-component'), 'single card component present');
+  assert.ok((doc.match(/class="pago-plastic-card"/g) || []).length === 1, 'only one plastic card shell');
 }
 
 assert.ok(css.includes('.pago-plastic-card'), 'plastic card styles exist');
 assert.ok(css.includes('.pago-plastic-chip'), 'chip styles exist');
 assert.ok(css.includes('@keyframes pagoSheen'), 'sheen motion present');
-assert.ok(css.includes('.pago-card-tile'), 'list tiles are plastic cards');
+assert.ok(css.includes('.pago-card-chip'), 'compact card switcher styles');
+assert.ok(css.includes('.pago-card-actions'), 'action row styles');
 assert.ok(!/purple-to-indigo|from-purple|to-indigo|#a855f7|#8b5cf6/i.test(css.match(/\.pago-plastic-card[\s\S]{0,500}/)?.[0] || ''), 'pago card avoids purple AI gradient cluster');
 
 assert.ok(dash.includes('togglePagoCardReveal'), 'reveal toggle wired');
 assert.ok(dash.includes('pagoDetailRevealed'), 'reveal state tracked');
 assert.ok(dash.includes('maskPagoNumber'), 'masked number helper');
-assert.ok(dash.includes('pago-card-tile'), 'list renders plastic tiles');
+assert.ok(dash.includes('pago-card-chip'), 'switcher renders compact chips');
+assert.ok(dash.includes('copyPagoCard'), 'copy card action wired');
 assert.ok(dash.includes("pago_show_details"), 'show label used');
 assert.ok(dash.includes("pago_hide_details"), 'hide label used');
 

@@ -51,7 +51,7 @@
       touch-action: pan-y !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261008pago3ds2" />
+  <link rel="stylesheet" href="/styles.css?v=20261008pagoCardClean" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -1283,18 +1283,15 @@
               </div>
             </div>
 
-            <section class="panel pago-cards-panel">
-              <h2 data-i18n="pago_cards_heading">Your virtual cards</h2>
-              <div id="pagoCardList" class="pago-card-list" role="list"></div>
-              <p id="pagoCardEmpty" class="hint" data-i18n="pago_cards_empty">No virtual cards yet. Request one below.</p>
-            </section>
-
-            <section class="panel pago-detail-panel hidden" id="pagoCardDetailPanel">
-              <div class="pago-detail-header">
-                <h2 data-i18n="pago_detail_heading">Card details</h2>
+            <section class="panel pago-card-stage" id="pagoCardStage">
+              <div class="pago-card-stage-head">
+                <h2 data-i18n="pago_cards_heading">Your virtual card</h2>
                 <p id="pagoCardDetailSummary" class="hint"></p>
               </div>
+              <div id="pagoCardList" class="pago-card-switcher hidden" role="tablist" aria-label="Your cards"></div>
+              <p id="pagoCardEmpty" class="hint" data-i18n="pago_cards_empty">No virtual cards yet. Request one below.</p>
 
+              <div class="pago-card-component hidden" id="pagoCardDetailPanel">
               <article class="pago-plastic-card" id="pagoPlasticCard" aria-label="Virtual card">
                 <div class="pago-plastic-sheen" aria-hidden="true"></div>
                 <div class="pago-plastic-top">
@@ -1327,56 +1324,29 @@
                   <span class="pago-status-pill" id="pagoCardDetailStatus">—</span>
                   <span class="pago-balance-chip"><small data-i18n="pago_balance">Balance</small> <strong id="pagoCardDetailBalance">—</strong></span>
                 </div>
-                <div class="pago-detail-actions">
-                  <button type="button" class="btn btn-secondary btn-sm" id="pagoCardRevealBtn" data-i18n="pago_show_details">Show number &amp; CVV</button>
-                  <button type="button" class="btn btn-secondary btn-sm hidden" id="pagoCardCopyNumberBtn" data-i18n="copy_card_number">Copy Card Number</button>
-                </div>
               </div>
 
-              <section class="pago-3ds-panel" id="pago3dsPanel" aria-labelledby="pago3dsHeading" hidden>
-                <div class="pago-3ds-copy">
+              <div class="pago-card-actions" role="group" aria-label="Card actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="pagoCardRevealBtn" data-i18n="pago_show_details">Show number &amp; CVV</button>
+                <button type="button" class="btn btn-primary btn-sm" id="pagoCardCopyNumberBtn" data-i18n="pago_copy_card">Copy Card</button>
+                <button type="button" class="pago-action-wallet pago-action-apple" id="pagoAddAppleWalletBtn" data-wallet-target="apple">
+                  <span data-i18n="pago_wallet_apple_label">Apple Wallet</span>
+                </button>
+                <button type="button" class="pago-action-wallet pago-action-google" id="pagoAddGooglePayBtn" data-wallet-target="google">
+                  <span data-i18n="pago_wallet_google_label">Google Pay</span>
+                </button>
+              </div>
+              <p id="pagoWalletAtmHint" class="pago-wallet-atm-hint hidden" data-i18n="pago_wallet_atm_hint">Visa ATM cards support contactless spend in Google Pay after you add the card.</p>
+
+              <section class="pago-3ds-panel pago-3ds-strip" id="pago3dsPanel" aria-labelledby="pago3dsHeading" hidden>
+                <div class="pago-3ds-strip-label">
                   <h3 id="pago3dsHeading" data-i18n="pago_3ds_heading">3D Secure code</h3>
-                  <p class="hint" id="pago3dsHint" data-i18n="pago_3ds_hint">When a merchant asks for a verification code, it appears here automatically.</p>
+                  <p class="pago-3ds-meta" id="pago3dsMeta"></p>
                 </div>
                 <div class="pago-3ds-code-row" id="pago3dsCodeRow">
                   <p class="pago-3ds-code" id="pago3dsCode" aria-live="polite">————</p>
                   <button type="button" class="btn btn-secondary btn-sm" id="pago3dsCopyBtn" data-i18n="pago_3ds_copy">Copy code</button>
                 </div>
-                <p class="pago-3ds-meta" id="pago3dsMeta"></p>
-                <ul class="pago-3ds-list" id="pago3dsList" role="list"></ul>
-              </section>
-
-              <section class="pago-wallet-add" id="pagoWalletAddSection" aria-labelledby="pagoWalletAddHeading">
-                <div class="pago-wallet-add-copy">
-                  <h3 id="pagoWalletAddHeading" data-i18n="pago_wallet_heading">Add to Apple Wallet &amp; Google Pay</h3>
-                  <p class="hint" data-i18n="pago_wallet_hint">Pago cards work with Apple Pay and Google Pay. Tap a button to copy details and follow the short add steps.</p>
-                </div>
-                <div class="pago-wallet-add-actions">
-                  <button type="button" class="pago-wallet-btn pago-wallet-btn-apple" id="pagoAddAppleWalletBtn" data-wallet-target="apple">
-                    <span class="pago-wallet-btn-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" width="18" height="18" focusable="false"><path fill="currentColor" d="M16.365 12.83c-.02-2.02 1.65-2.99 1.72-3.03-0.94-1.37-2.4-1.56-2.91-1.58-1.24-.13-2.42.73-3.05.73-.63 0-1.61-.71-2.65-.69-1.36.02-2.62.79-3.32 2.01-1.42 2.46-.36 6.1 1.02 8.1.67.98 1.48 2.08 2.54 2.04 1.02-.04 1.4-.66 2.63-.66 1.22 0 1.57.66 2.64.64 1.09-.02 1.78-1 2.45-1.98.77-1.13 1.09-2.23 1.11-2.29-.02-.01-2.12-.81-2.14-3.29zm-2.01-5.94c.56-.68.94-1.62.84-2.56-.81.03-1.79.54-2.37 1.22-.52.6-.98 1.56-.86 2.48.91.07 1.83-.46 2.39-1.14z"/></svg>
-                    </span>
-                    <span class="pago-wallet-btn-text">
-                      <small data-i18n="pago_wallet_apple_eyebrow">Add to</small>
-                      <strong data-i18n="pago_wallet_apple_label">Apple Wallet</strong>
-                    </span>
-                  </button>
-                  <button type="button" class="pago-wallet-btn pago-wallet-btn-google" id="pagoAddGooglePayBtn" data-wallet-target="google">
-                    <span class="pago-wallet-btn-icon" aria-hidden="true">
-                      <svg viewBox="0 0 48 48" width="18" height="18" focusable="false">
-                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-                      </svg>
-                    </span>
-                    <span class="pago-wallet-btn-text">
-                      <small data-i18n="pago_wallet_google_eyebrow">Add to</small>
-                      <strong data-i18n="pago_wallet_google_label">Google Pay</strong>
-                    </span>
-                  </button>
-                </div>
-                <p id="pagoWalletAtmHint" class="pago-wallet-atm-hint hidden" data-i18n="pago_wallet_atm_hint">Visa ATM cards support contactless spend in Google Pay after you add the card.</p>
               </section>
 
               <form id="pagoCardTopupForm" class="form pago-topup-form">
@@ -1388,6 +1358,7 @@
                 </div>
                 <button type="submit" class="btn btn-primary" id="pagoCardTopupSubmit" data-i18n="pago_topup_submit">Top up</button>
               </form>
+              </div>
             </section>
 
             <section class="panel">
@@ -1804,7 +1775,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261008pago3ds2"></script>
+  <script defer src="/i18n.js?v=20261008pagoCardClean"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1826,7 +1797,7 @@
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20261008pago3ds2"></script>
+  <script defer src="/dashboard.js?v=20261008pagoCardClean"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
