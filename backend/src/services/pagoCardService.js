@@ -725,6 +725,221 @@ function getWalletProvisioningInfo(card = {}) {
   };
 }
 
+function asTxnRecord(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value;
+}
+
+function pickTxnText(...candidates) {
+  for (const candidate of candidates) {
+    if (candidate == null || typeof candidate === 'object') continue;
+    const text = String(candidate).trim();
+    if (text) return text;
+  }
+  return null;
+}
+
+function parseTxnNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/[$,\s]/g, '');
+    if (!cleaned) return null;
+    const num = Number(cleaned);
+    return Number.isFinite(num) ? num : null;
+  }
+  return null;
+}
+
+/** Prefer display dollars. Bare integers >= 10000 are Pagocards minor units (1 USD = 1_000_000). */
+function dollarsFromTxnAmount(raw, { display = false } = {}) {
+  const num = parseTxnNumber(raw);
+  if (num == null) return null;
+  if (display) return num;
+  if (Number.isInteger(num) && Math.abs(num) >= 10000) return num / 1_000_000;
+  return num;
+}
+
+function extractTransactionRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  const root = asTxnRecord(payload);
+  if (!root) return [];
+  const keys = ['transactions', 'list', 'records', 'items', 'rows'];
+  for (const key of keys) {
+    if (Array.isArray(root[key])) return root[key];
+  }
+  if (Array.isArray(root.data)) return root.data;
+  const nested = asTxnRecord(root.data) || asTxnRecord(root.result);
+  if (!nested) return [];
+  for (const key of keys) {
+    if (Array.isArray(nested[key])) return nested[key];
+  }
+  return [];
+}
+
+function mapTxnStatus(rawStatus, rawType) {
+  const status = String(rawStatus || '').toLowerCase().trim();
+  const type = String(rawType || '').toLowerCase().trim();
+  if (/refund|revers/.test(status) || /refund|revers/.test(type)) return 'refunded';
+  if ([
+    'success', 'successful', 'completed', 'complete', 'settled', 'posted',
+    'approved', 'captured', 'cleared',
+  ].includes(status)) return 'completed';
+  if (['pending', 'processing', 'authorized', 'authorised', 'auth', 'hold'].includes(status)) {
+    return 'pending';
+  }
+  if ([
+    'failed', 'declined', 'rejected', 'void', 'voided', 'cancelled', 'canceled', 'error',
+  ].includes(status)) return 'declined';
+  if (/complet|settl|approv|captur|success|posted|clear/.test(status)) return 'completed';
+  if (/pend|process|author/.test(status)) return 'pending';
+  if (/fail|declin|reject|void|cancel/.test(status)) return 'declined';
+  return 'unknown';
+}
+
+function normalizeTxnDate(value) {
+  const text = pickTxnText(value);
+  if (!text) return null;
+  if (/^\d{10}$/.test(text)) return new Date(Number(text) * 1000).toISOString();
+  if (/^\d{13}$/.test(text)) return new Date(Number(text)).toISOString();
+  const parsed = Date.parse(text);
+  if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+  return text;
+}
+
+/**
+ * Turn a Pagocards transactions payload into rows the card detail UI can render.
+ * OTP-only objects (no merchant and no amount) are skipped.
+ */
+function normalizePagoCardTransactions(payload) {
+  const rows = extractTransactionRows(payload);
+  const out = [];
+  rows.forEach((row, index) => {
+    const rec = asTxnRecord(row);
+    if (!rec) return;
+    const merchantObj = asTxnRecord(rec.merchant);
+    const amountObj = asTxnRecord(rec.amount)
+      || asTxnRecord(rec.transaction_amount)
+      || asTxnRecord(rec.transactionAmount);
+    const merchant = pickTxnText(
+      rec.merchant_name,
+      rec.merchantName,
+      merchantObj && merchantObj.name,
+      rec.description,
+      rec.narrative,
+      rec.merchant
+    );
+    const displayAmount = dollarsFromTxnAmount(
+      rec.display_amount ?? rec.displayAmount ?? (amountObj && (amountObj.display_amount ?? amountObj.displayAmount)),
+      { display: true }
+    );
+    const rawAmount = displayAmount != null
+      ? displayAmount
+      : dollarsFromTxnAmount(
+        amountObj && amountObj.amount != null
+          ? amountObj.amount
+          : (typeof rec.amount === 'object' ? null : rec.amount)
+            ?? rec.transaction_amount
+            ?? rec.transactionAmount
+            ?? rec.transCurrencyAmt
+            ?? rec.billing_amount
+      );
+    if (!merchant && rawAmount == null) return;
+
+    const status = mapTxnStatus(
+      pickTxnText(rec.status, rec.transaction_status, rec.transactionStatus, rec.state, rec.auth_status),
+      pickTxnText(rec.type, rec.transaction_type, rec.transactionType)
+    );
+    let amount = rawAmount == null ? null : Math.round(rawAmount * 100) / 100;
+    if (amount != null && status === 'refunded' && amount > 0) amount = -amount;
+
+    const currency = pickTxnText(
+      rec.currency,
+      rec.transaction_currency,
+      rec.transactionCurrency,
+      amountObj && amountObj.currency,
+      rec.transCurrency
+    ) || (amount != null ? 'USD' : null);
+
+    const date = normalizeTxnDate(
+      rec.created_at
+      ?? rec.createdAt
+      ?? rec.transaction_time
+      ?? rec.transactionTime
+      ?? rec.trans_time
+      ?? rec.authorized_at
+      ?? rec.posted_at
+      ?? rec.date
+      ?? rec.time
+    );
+    const id = pickTxnText(
+      rec.id,
+      rec.transaction_id,
+      rec.transactionId,
+      rec.reference,
+      rec.authId,
+      rec.auth_id
+    ) || `tx-${index + 1}`;
+
+    out.push({
+      id,
+      date,
+      merchant: merchant || null,
+      amount,
+      currency,
+      status,
+    });
+  });
+  return out;
+}
+
+/**
+ * Recent spend for one local card.
+ * Docs: GET /api/v1/cards/{card_id}/transactions?pageNum=1
+ */
+async function listPagoCardTransactions({ userId, localCardId, page = 1 } = {}, deps = {}) {
+  const card = await Card.findById(localCardId);
+  if (!card || Number(card.user_id) !== Number(userId)) {
+    throw httpError('Card not found', 404, 'CARD_NOT_FOUND');
+  }
+  const pageNum = Number.isFinite(Number(page)) && Number(page) > 0
+    ? Math.min(20, Math.floor(Number(page)))
+    : 1;
+  if (!card.pago_card_id) {
+    return {
+      transactions: [],
+      page: pageNum,
+      card_id: card.id,
+      pago_card_id: null,
+    };
+  }
+
+  const client = getClient({
+    ...deps,
+    timeoutMs: deps.timeoutMs || CARD_FETCH_TIMEOUT_MS,
+  });
+  if (typeof client.listCardTransactions !== 'function') {
+    throw httpError('Pago card transactions are unavailable', 503, 'PAGO_NOT_CONFIGURED');
+  }
+
+  let payload;
+  try {
+    payload = await withCardApiTimeout(
+      client.listCardTransactions(card.pago_card_id, pageNum),
+      (Number(deps.timeoutMs) || CARD_FETCH_TIMEOUT_MS) + 500,
+      'Card transactions'
+    );
+  } catch (err) {
+    rethrowPago(err);
+  }
+
+  return {
+    transactions: normalizePagoCardTransactions(payload),
+    page: pageNum,
+    card_id: card.id,
+    pago_card_id: card.pago_card_id,
+  };
+}
+
 module.exports = {
   PAGO_PRODUCTS,
   CARD_CREATE_TIMEOUT_MS,
@@ -740,4 +955,6 @@ module.exports = {
   importPagoCardById,
   mapPagoStatus,
   getWalletProvisioningInfo,
+  normalizePagoCardTransactions,
+  listPagoCardTransactions,
 };

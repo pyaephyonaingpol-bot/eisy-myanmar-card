@@ -49,7 +49,7 @@
       touch-action: pan-y !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261008cardTimeout3ds" />
+  <link rel="stylesheet" href="/styles.css?v=20261008pagoTx" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -1350,6 +1350,21 @@
                 </div>
               </section>
 
+              <section class="pago-tx-panel" id="pagoTxPanel" aria-labelledby="pagoTxHeading">
+                <div class="pago-tx-head">
+                  <h3 id="pagoTxHeading" data-i18n="pago_tx_heading">Transaction history</h3>
+                  <button type="button" class="btn btn-secondary btn-sm" id="pagoTxRefreshBtn" data-i18n="pago_tx_refresh">Refresh</button>
+                </div>
+                <p class="pago-tx-meta hint" id="pagoTxMeta" data-i18n="pago_tx_loading">Loading transactions…</p>
+                <div class="pago-tx-columns" aria-hidden="true">
+                  <span data-i18n="pago_tx_merchant">Merchant</span>
+                  <span data-i18n="pago_tx_date">Date</span>
+                  <span data-i18n="pago_tx_amount">Amount</span>
+                  <span data-i18n="pago_tx_status">Status</span>
+                </div>
+                <ul class="pago-tx-list" id="pagoTxList"></ul>
+              </section>
+
               <form id="pagoCardTopupForm" class="form pago-topup-form">
                 <h3 data-i18n="pago_topup_heading">Top up this card</h3>
                 <p class="hint" data-i18n="pago_topup_hint">Minimum $5. Your USDT wallet is charged the amount plus the card reload fee.</p>
@@ -1776,7 +1791,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261008cardTimeout3ds"></script>
+  <script defer src="/i18n.js?v=20261008pagoTx"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1798,7 +1813,7 @@
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20261008cardTimeout3ds"></script>
+  <script defer src="/dashboard.js?v=20261008pagoTx"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

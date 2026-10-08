@@ -8446,6 +8446,10 @@ const Dashboard = {
     $('pagoCardCopyNumberBtn')?.addEventListener('click', () => this.copyPagoCard());
     $('pago3dsCopyBtn')?.addEventListener('click', () => this.copyPago3dsCode());
     $('pago3dsRefreshBtn')?.addEventListener('click', () => this.refreshPago3dsCode());
+    $('pagoTxRefreshBtn')?.addEventListener('click', () => {
+      const card = this.getSelectedPagoCard();
+      if (card) this.loadPagoCardTransactions(card.id).catch(() => {});
+    });
     $('pagoAddAppleWalletBtn')?.addEventListener('click', () => this.openPagoWalletGuide('apple'));
     $('pagoAddGooglePayBtn')?.addEventListener('click', () => this.openPagoWalletGuide('google'));
     $('pagoWalletModalClose')?.addEventListener('click', () => this.closePagoWalletModal());
@@ -8597,6 +8601,98 @@ const Dashboard = {
 
   i18nText(key, fallback) {
     return (typeof t === 'function' ? t(key) : null) || fallback;
+  },
+
+  formatPagoTxDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  },
+
+  formatPagoTxAmount(tx) {
+    const amount = Number(tx?.amount);
+    if (!Number.isFinite(amount)) return '—';
+    const currency = String(tx?.currency || 'USD').toUpperCase();
+    const formatted = Math.abs(amount).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const sign = amount < 0 ? '-' : '';
+    if (currency === 'USD') return `${sign}$${formatted}`;
+    return `${sign}${formatted} ${currency}`;
+  },
+
+  renderPagoCardTransactions(transactions, { message } = {}) {
+    const list = $('pagoTxList');
+    const meta = $('pagoTxMeta');
+    if (!list) return;
+    const rows = Array.isArray(transactions) ? transactions : [];
+    if (!rows.length) {
+      list.innerHTML = '';
+      if (meta) {
+        meta.textContent = message || this.i18nText('pago_tx_empty', 'No transactions for this card yet.');
+      }
+      return;
+    }
+    if (meta) {
+      meta.textContent = this.i18nText('pago_tx_count', '{n} recent transactions')
+        .replace('{n}', String(rows.length));
+    }
+    const labels = {
+      completed: this.i18nText('pago_tx_status_completed', 'Completed'),
+      pending: this.i18nText('pago_tx_status_pending', 'Pending'),
+      declined: this.i18nText('pago_tx_status_declined', 'Declined'),
+      refunded: this.i18nText('pago_tx_status_refunded', 'Refunded'),
+      unknown: this.i18nText('pago_tx_status_unknown', 'Unknown'),
+    };
+    list.innerHTML = rows.map((tx) => {
+      const status = labels[tx.status] ? String(tx.status) : 'unknown';
+      const merchant = tx.merchant || this.i18nText('pago_tx_merchant_unknown', 'Card payment');
+      return `<li class="pago-tx-item">
+        <span class="pago-tx-merchant">${this.escapeHtml(merchant)}</span>
+        <time class="pago-tx-date" datetime="${this.escapeAttr(tx.date || '')}">${this.escapeHtml(this.formatPagoTxDate(tx.date))}</time>
+        <span class="pago-tx-amount${Number(tx.amount) < 0 ? ' is-credit' : ''}">${this.escapeHtml(this.formatPagoTxAmount(tx))}</span>
+        <span class="pago-tx-status is-${status}">${this.escapeHtml(labels[status])}</span>
+      </li>`;
+    }).join('');
+  },
+
+  async loadPagoCardTransactions(cardId) {
+    const list = $('pagoTxList');
+    const meta = $('pagoTxMeta');
+    if (!list || !cardId) return null;
+    const requestId = String(cardId);
+    this._pagoTxRequestId = requestId;
+    if (meta) meta.textContent = this.i18nText('pago_tx_loading', 'Loading transactions…');
+    list.innerHTML = '';
+    const refreshBtn = $('pagoTxRefreshBtn');
+    if (refreshBtn) refreshBtn.disabled = true;
+    try {
+      const data = await Auth.api('GET', `/api/user/cards/${cardId}/transactions`, null, {
+        sensitive: true,
+        timeoutMs: 14000,
+      });
+      if (this._pagoTxRequestId !== requestId) return data;
+      this.renderPagoCardTransactions(data?.transactions || []);
+      return data;
+    } catch (err) {
+      if (this._pagoTxRequestId !== requestId) return null;
+      const timedOut = err?.code === 'REQUEST_TIMEOUT' || err?.code === 'PAGO_TIMEOUT' || err?.code === 'CARD_REQUEST_TIMEOUT';
+      const message = timedOut
+        ? this.i18nText('pago_tx_timeout', 'Transactions timed out. Tap Refresh.')
+        : (err?.message || this.i18nText('pago_tx_error', 'Could not load transactions.'));
+      this.renderPagoCardTransactions([], { message });
+      return null;
+    } finally {
+      if (this._pagoTxRequestId === requestId && refreshBtn) refreshBtn.disabled = false;
+    }
   },
 
   detectPagoWalletPlatform() {
@@ -8905,6 +9001,9 @@ const Dashboard = {
       empty?.classList.remove('hidden');
       panel?.classList.add('hidden');
       this.stopPago3dsPoll();
+      this.renderPagoCardTransactions([], {
+        message: this.i18nText('pago_tx_empty', 'No transactions for this card yet.'),
+      });
       return;
     }
     empty?.classList.add('hidden');
@@ -8952,6 +9051,7 @@ const Dashboard = {
       this.startPago3dsPoll(card.id);
       this.renderPago3dsPanel(this.pago3dsEvents || []);
       this.loadPago3dsEvents(card.id, { silent: true, refresh: true }).catch(() => {});
+      this.loadPagoCardTransactions(card.id).catch(() => {});
     }
     panel.classList.remove('hidden');
 
