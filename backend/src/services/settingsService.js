@@ -12,6 +12,7 @@ const {
 
 const DEFAULTS = {
   card_issuance_fee_usd: '5.00',
+  card_issue_provider_cost_usd: '1.50',
   card_funding_fee_percent: '0',
   minimum_initial_deposit_usd: '10.00',
   card_reload_fee_usd: '3.50',
@@ -52,6 +53,7 @@ const DEFAULTS = {
 
 const NUMERIC_KEYS = new Set([
   'card_issuance_fee_usd',
+  'card_issue_provider_cost_usd',
   'card_funding_fee_percent',
   'minimum_initial_deposit_usd',
   'card_reload_fee_usd',
@@ -210,6 +212,7 @@ async function getCardPricingSettings() {
   const raw = await getAllSettings();
   return {
     card_issuance_fee_usd: parseNonNegative(raw.card_issuance_fee_usd, 5),
+    card_issue_provider_cost_usd: parseNonNegative(raw.card_issue_provider_cost_usd, 1.5),
     card_funding_fee_percent: parseFloat(raw.card_funding_fee_percent) || 0,
     card_processing_fee_usd: CARD_PROCESSING_FEE_USD,
     minimum_initial_deposit_usd: parseFloat(raw.minimum_initial_deposit_usd) || 10,

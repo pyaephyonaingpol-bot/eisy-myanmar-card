@@ -461,6 +461,123 @@
       font-size: 0.85rem;
     }
     .revenue-period-chip strong { color: #4ade80; }
+    .net-revenue-panel {
+      margin-bottom: 1.5rem;
+    }
+    .net-revenue-periods {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.85rem;
+      margin: 0 0 0.9rem;
+    }
+    .net-revenue-period {
+      text-align: left;
+      cursor: pointer;
+      padding: 1rem 1.05rem 0.95rem;
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(15, 23, 42, 0.4));
+      color: inherit;
+      font: inherit;
+    }
+    .net-revenue-period.is-active {
+      border-color: rgba(74, 222, 128, 0.55);
+      box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.25);
+      background: linear-gradient(180deg, rgba(22, 101, 52, 0.28), rgba(15, 23, 42, 0.55));
+    }
+    .net-revenue-kicker {
+      display: block;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 0.35rem;
+    }
+    .net-revenue-period strong {
+      display: block;
+      font-size: 1.7rem;
+      line-height: 1.1;
+      color: #f8fafc;
+    }
+    .net-revenue-sub {
+      display: block;
+      margin-top: 0.35rem;
+      color: #94a3b8;
+      font-size: 0.8rem;
+    }
+    .net-revenue-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.85fr);
+      gap: 0.85rem;
+    }
+    .net-revenue-chart,
+    .net-revenue-sources {
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      background: rgba(8, 14, 26, 0.45);
+      padding: 1rem 1.05rem;
+    }
+    .net-revenue-chart h3,
+    .net-revenue-sources h3 {
+      margin: 0 0 0.75rem;
+      font-size: 0.95rem;
+    }
+    .net-revenue-stack {
+      display: flex;
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(148, 163, 184, 0.15);
+      margin-bottom: 0.9rem;
+    }
+    .net-revenue-stack span { display: block; height: 100%; }
+    .net-revenue-bar { margin-bottom: 0.75rem; }
+    .net-revenue-bar-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      font-size: 0.84rem;
+      margin-bottom: 0.3rem;
+      color: #e2e8f0;
+    }
+    .net-revenue-track {
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.14);
+      overflow: hidden;
+    }
+    .net-revenue-track span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+    }
+    .net-revenue-source {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.65rem 0;
+      border-top: 1px solid rgba(148, 163, 184, 0.12);
+    }
+    .net-revenue-source:first-of-type { border-top: 0; padding-top: 0; }
+    .net-revenue-source b { color: #f8fafc; }
+    .net-revenue-source small { display: block; color: #94a3b8; margin-top: 0.15rem; }
+    .net-revenue-swatch {
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 99px;
+      display: inline-block;
+      margin-right: 0.4rem;
+    }
+    .net-revenue-note {
+      margin: 0.85rem 0 0;
+      color: #94a3b8;
+      font-size: 0.78rem;
+    }
+    @media (max-width: 800px) {
+      .net-revenue-periods,
+      .net-revenue-layout { grid-template-columns: 1fr; }
+      .net-revenue-period strong { font-size: 1.45rem; }
+    }
     .deposit-receipt-meta {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -588,6 +705,10 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             <span>Deposits &amp; KYC</span>
           </button>
+          <button type="button" class="nav-item" data-page="revenue" data-admin-perm="revenue">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+            <span data-i18n="nav_admin_revenue">Revenue</span>
+          </button>
           <button type="button" class="nav-item" data-page="cards" data-admin-perm="cards">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
             <span>Virtual Cards</span>
@@ -647,6 +768,7 @@
           <span class="hidden" data-page-title="settings">Settings</span>
           <span class="hidden" data-page-title="admins">Admins</span>
           <span class="hidden" data-page-title="overview">Master Wallet</span>
+          <span class="hidden" data-page-title="revenue">Revenue</span>
           <span class="hidden" data-page-title="kyc-requests">KYC Requests</span>
 
       <section id="tabOverview" class="panel app-page" data-page="overview" data-admin-pipeline="instant">
@@ -954,12 +1076,17 @@
       <section id="tabRevenue" class="panel app-page" data-page="revenue" data-admin-pipeline="instant">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem">
           <div>
-            <h2 style="margin:0">Revenue &amp; Profit Analytics</h2>
-            <p class="hint" style="margin:0.35rem 0 0">Separate profit tracking for P2P trading fees, card reload markup, and withdrawal fees.</p>
+            <h2 style="margin:0">Total Net Revenue</h2>
+            <p class="hint" style="margin:0.35rem 0 0">Tron deposit fees, withdrawal fees, card issuing profit, and card top-up markup from transaction records.</p>
           </div>
           <button type="button" id="btnRefreshRevenue" class="btn btn-secondary btn-sm">Refresh</button>
         </div>
 
+        <div id="netRevenuePanel" class="net-revenue-panel">
+          <p class="hint">Loading total net revenue…</p>
+        </div>
+
+        <h3 style="margin:0.25rem 0 0.75rem;font-size:1rem">Fee ledger</h3>
         <div id="revenueMetricsGrid" class="revenue-metrics-grid">
           <p class="hint">Loading revenue metrics…</p>
         </div>
@@ -1443,6 +1570,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261008feeFormula" defer></script>
+  <script src="/admin.js?v=20261008netRevenue2" defer></script>
 </body>
 </html>
