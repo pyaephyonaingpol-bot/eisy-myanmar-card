@@ -185,6 +185,18 @@ async function executeFixedFeeTrc20Withdraw(userId, { customerAddress, withdrawA
       status: 'pending',
       adminNote: 'Queued for admin review — auto on-chain withdraw disabled (security incident lock)',
     });
+    const { notifyAdminWithdrawalForUser } = require('./telegram');
+    notifyAdminWithdrawalForUser(userId, {
+      kind: 'USDT',
+      network: 'TRC20',
+      amountUsdt: calc.withdrawAmount,
+      feeUsdt: calc.feeUsdt,
+      netUsdt: calc.netPayout,
+      destination: calc.customerAddress,
+      refCode,
+      status: pending.status || 'pending',
+      withdrawal: pending,
+    });
     return {
       success: true,
       queued: true,
@@ -253,6 +265,19 @@ async function executeFixedFeeTrc20Withdraw(userId, { customerAddress, withdrawA
     status: 'completed',
     txHash: transfer.txId,
     adminNote: `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
+  });
+
+  const { notifyAdminWithdrawalForUser } = require('./telegram');
+  notifyAdminWithdrawalForUser(userId, {
+    kind: 'USDT',
+    network: 'TRC20',
+    amountUsdt: calc.withdrawAmount,
+    feeUsdt: calc.feeUsdt,
+    netUsdt: calc.netPayout,
+    destination: calc.customerAddress,
+    refCode,
+    status: completed.status || 'completed',
+    withdrawal: completed,
   });
 
   return {

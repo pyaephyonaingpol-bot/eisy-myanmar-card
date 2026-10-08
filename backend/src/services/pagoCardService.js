@@ -404,6 +404,15 @@ async function issuePagoCardForUser({
     }
   }
 
+  const { notifyAdminCardCreated } = require('./telegram');
+  notifyAdminCardCreated({
+    user,
+    card: row,
+    productCode: product,
+    pricing,
+    debitedUsdt: debited,
+  });
+
   return { card: row, debited_usdt: debited, pricing };
 }
 

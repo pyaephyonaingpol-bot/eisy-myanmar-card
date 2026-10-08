@@ -294,6 +294,19 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
       adminNote: `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
     });
 
+    const { notifyAdminWithdrawalForUser } = require('./telegram');
+    notifyAdminWithdrawalForUser(userId, {
+      kind: 'USDT',
+      network: normalizedNetwork,
+      amountUsdt: breakdown.amount_usdt,
+      feeUsdt: breakdown.fee_usdt,
+      netUsdt: breakdown.net_usdt,
+      destination: walletAddress,
+      refCode,
+      status: completed.status || 'completed',
+      withdrawal: completed,
+    });
+
     return {
       withdrawal: completed,
       breakdown,
@@ -311,6 +324,18 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
 
   // TRC20 / BEP20: payout queue — processed within 48 hours (no hot-wallet send unless AUTO_ONCHAIN).
   const refreshed = await UsdtWithdrawal.findById(withdrawal.id);
+  const { notifyAdminWithdrawalForUser } = require('./telegram');
+  notifyAdminWithdrawalForUser(userId, {
+    kind: 'USDT',
+    network: normalizedNetwork,
+    amountUsdt: breakdown.amount_usdt,
+    feeUsdt: breakdown.fee_usdt,
+    netUsdt: breakdown.net_usdt,
+    destination: walletAddress,
+    refCode,
+    status: refreshed?.status || 'pending',
+    withdrawal: refreshed,
+  });
   return {
     withdrawal: refreshed,
     breakdown,
@@ -410,6 +435,19 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
     console.warn('[withdrawal] supabase bank withdrawal sync unavailable:', err.message);
   }
 
+  const { notifyAdminWithdrawalForUser } = require('./telegram');
+  notifyAdminWithdrawalForUser(userId, {
+    kind: 'USDT bank',
+    currency: 'USDT',
+    amountUsdt: breakdown.amount_usdt,
+    feeUsdt: breakdown.fee_usdt,
+    netUsdt: breakdown.net_usdt,
+    destination: `${bank.bankName} ${bank.accountNumber}`,
+    refCode,
+    status: withdrawal.status || 'pending',
+    withdrawal,
+  });
+
   return {
     withdrawal,
     breakdown,
@@ -464,6 +502,19 @@ async function createMmkBankWithdrawalRequest(userId, body = {}) {
       net_mmk: breakdown.net_mmk,
       bank_name: bank.bankName,
     },
+  });
+
+  const { notifyAdminWithdrawalForUser } = require('./telegram');
+  notifyAdminWithdrawalForUser(userId, {
+    kind: 'MMK',
+    currency: 'MMK',
+    amountMmk: breakdown.amount_mmk,
+    feeMmk: breakdown.fee_mmk,
+    netMmk: breakdown.net_mmk,
+    destination: `${bank.bankName} ${bank.accountNumber}`,
+    refCode,
+    status: withdrawal.status || 'pending',
+    withdrawal,
   });
 
   return {

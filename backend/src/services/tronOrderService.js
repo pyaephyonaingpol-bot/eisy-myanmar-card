@@ -306,6 +306,17 @@ async function createTronOrder(userId, { amount_usdt, amount } = {}) {
     throw err;
   }
 
+  const { notifyAdminDepositForUser } = require('./telegram');
+  notifyAdminDepositForUser(userId, {
+    amountUsdt: feeBreakdown.amount_usdt,
+    feeUsdt: feeBreakdown.fee_usdt,
+    netUsdt: feeBreakdown.net_usdt,
+    network: 'TRC20',
+    refCode,
+    address: depositAddress,
+    deposit,
+  });
+
   return {
     message: 'TRON USDT deposit order created',
     provider: 'tron_trc20',

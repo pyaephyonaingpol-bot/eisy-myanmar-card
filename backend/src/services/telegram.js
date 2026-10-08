@@ -31,48 +31,53 @@ function isTelegramConfigured() {
  * Send a message to the admin Telegram chat/group.
  * @returns {Promise<{ ok: boolean, message?: object, chatId?: string, skipped?: boolean, error?: string }>}
  */
+function queueAdminNotify(task) {
+  return Promise.resolve()
+    .then(task)
+    .catch((err) => {
+      console.warn('[Telegram] notify failed:', err.message);
+      return { ok: false, error: err.message };
+    });
+}
+
 async function sendAdminMessage(message, options = {}) {
-  const chatId = getAdminChatId();
-  if (!chatId || chatId === 'your_admin_chat_id_here') {
-    console.log('[Telegram] Admin chat not configured — skipping notification');
-    console.log('[Telegram]', String(message || '').replace(/\*/g, ''));
-    return { ok: false, skipped: true };
-  }
+  const { loadTelegramClient } = require('./loadTelegramClient');
+  return loadTelegramClient().sendAdminMessage(message, options);
+}
 
-  const telegramBot = getBot();
-  if (!telegramBot) {
-    console.log('[Telegram] Bot token not configured — skipping notification');
-    console.log('[Telegram]', String(message || '').replace(/\*/g, ''));
-    return { ok: false, skipped: true };
-  }
+function notifyAdminDepositRequest(payload) {
+  const { loadTelegramClient } = require('./loadTelegramClient');
+  return queueAdminNotify(() => loadTelegramClient().notifyAdminDepositRequest(payload));
+}
 
-  const opts = {
-    parse_mode: options.parseMode || 'Markdown',
-    disable_web_page_preview: true,
-  };
-  if (options.replyToMessageId) {
-    opts.reply_to_message_id = Number(options.replyToMessageId);
-  }
-  if (options.messageThreadId) {
-    opts.message_thread_id = Number(options.messageThreadId);
-  }
+function notifyAdminCardCreated(payload) {
+  const { loadTelegramClient } = require('./loadTelegramClient');
+  return queueAdminNotify(() => loadTelegramClient().notifyAdminCardCreated(payload));
+}
 
-  try {
-    const sent = await telegramBot.sendMessage(chatId, message, opts);
-    return { ok: true, message: sent, chatId: String(chatId) };
-  } catch (err) {
-    try {
-      const plain = await telegramBot.sendMessage(
-        chatId,
-        String(message || '').replace(/[*_`\[\]]/g, ''),
-        { ...opts, parse_mode: undefined }
-      );
-      return { ok: true, message: plain, chatId: String(chatId), plain: true };
-    } catch (err2) {
-      console.error('[Telegram] Failed to send notification:', err2.message);
-      return { ok: false, error: err2.message };
-    }
-  }
+function notifyAdminWithdrawalRequest(payload) {
+  const { loadTelegramClient } = require('./loadTelegramClient');
+  return queueAdminNotify(() => loadTelegramClient().notifyAdminWithdrawalRequest(payload));
+}
+
+function notifyAdminDepositForUser(userId, payload) {
+  const User = require('../models/User');
+  return User.findById(userId)
+    .then((user) => notifyAdminDepositRequest({ user, ...payload }))
+    .catch((err) => {
+      console.warn('[Telegram] deposit notify skipped:', err.message);
+      return { ok: false, error: err.message };
+    });
+}
+
+function notifyAdminWithdrawalForUser(userId, payload) {
+  const User = require('../models/User');
+  return User.findById(userId)
+    .then((user) => notifyAdminWithdrawalRequest({ user, ...payload }))
+    .catch((err) => {
+      console.warn('[Telegram] withdrawal notify skipped:', err.message);
+      return { ok: false, error: err.message };
+    });
 }
 
 async function notifyAdminDepositVerified({ user, deposit, txnId, senderPhone }) {
@@ -201,6 +206,11 @@ module.exports = {
   getAdminChatId,
   isTelegramConfigured,
   sendAdminMessage,
+  notifyAdminDepositRequest,
+  notifyAdminDepositForUser,
+  notifyAdminCardCreated,
+  notifyAdminWithdrawalRequest,
+  notifyAdminWithdrawalForUser,
   notifyAdminDepositVerified,
   notifyAdminP2pDepositPending,
   notifyAdminP2pBuyOrderPending,
