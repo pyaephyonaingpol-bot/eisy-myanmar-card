@@ -42,7 +42,7 @@
       nav_admin_revenue: 'Revenue & Profit',
       nav_admin_support: 'Support',
       nav_admin_kyc: 'KYC Requests',
-      nav_admin_settings: 'Rates & Fees',
+      nav_admin_settings: 'Settings',
 
       // Header / common
       header_signed_in_as: 'Signed in as',
@@ -523,7 +523,7 @@
       nav_admin_revenue: 'ဝင်ငွေ & အမြတ်',
       nav_admin_support: 'Support',
       nav_admin_kyc: 'KYC တောင်းဆိုမှုများ',
-      nav_admin_settings: 'လဲလှယ်နှုန်း & အခကြေးငွေ',
+      nav_admin_settings: 'ဆက်တင်များ',
 
       header_signed_in_as: 'ဝင်ရောက်ထားသူ',
       header_admin_panel: 'Admin ထိန်းချုပ်မှု',
