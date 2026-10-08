@@ -18,6 +18,11 @@
  * getCardDetails(cardId) returns number, CVV, and expiry when the provider sends them.
  * getCardBalance(cardId) reads the current balance.
  * topUpCard(cardId, amount) funds the card with USD already taken from the platform balance.
+ *
+ * Apple Pay / Google Pay: Pagocards marketing lists wallet support (ATM BIN notes
+ * contactless Google Pay), but the public Business API has no token-provisioning,
+ * OPC JWT, or wallet deep-link endpoints. Clients guide users to add the card
+ * manually with PAN / expiry / CVV until issuer push provisioning is available.
  */
 'use strict';
 

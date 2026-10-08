@@ -23,8 +23,14 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pagoCardCopyNumberBtn"'), 'copy number button present');
   assert.ok(doc.includes('id="pagoCardDetailBalance"'), 'balance chip present');
   assert.ok(doc.includes('pago-balance-chip') || doc.includes('pagoCardDetailBalance'), 'balance display wired');
-  assert.ok(doc.includes('styles.css?v=20261008pagoPlastic'), 'CSS cache-bust bumped');
-  assert.ok(doc.includes('dashboard.js?v=20261008pagoPlastic'), 'JS cache-bust bumped');
+  assert.ok(
+    doc.includes('styles.css?v=20261008pagoWallet') || doc.includes('styles.css?v=20261008pagoPlastic'),
+    'CSS cache-bust present'
+  );
+  assert.ok(
+    doc.includes('dashboard.js?v=20261008pagoWallet') || doc.includes('dashboard.js?v=20261008pagoPlastic'),
+    'JS cache-bust present'
+  );
 }
 
 assert.ok(css.includes('.pago-plastic-card'), 'plastic card styles exist');

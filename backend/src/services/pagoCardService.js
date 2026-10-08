@@ -597,6 +597,56 @@ async function topUpPagoCard({ userId, localCardId, amountUsd }, deps = {}) {
   };
 }
 
+/**
+ * Pago Card marketing/fees list Apple Pay & Google Pay as Supported, and the
+ * ATM BIN notes contactless Google Pay. Public Business API docs expose create,
+ * get, fund, freeze, PIN, and list — not push provisioning, OPC JWTs, or wallet
+ * deep-link payloads. Wallet add is therefore a guided manual flow using the
+ * revealed PAN/expiry/CVV until Pago enables issuer token provisioning.
+ */
+function getWalletProvisioningInfo(card = {}) {
+  const product = String(card.product_code || card.productCode || '').trim().toLowerCase();
+  const brand = String(card.brand || '').trim().toLowerCase();
+  const isAtm = product === ATM_PRODUCT_CODE || product.includes('atm') || brand.includes('atm');
+  const network = product.includes('master') || product.includes('536') || brand.includes('master')
+    ? 'mastercard'
+    : 'visa';
+
+  return {
+    provider: 'pago',
+    product_code: product || null,
+    network,
+    mode: 'manual_add',
+    push_provisioning_available: false,
+    push_provisioning_reason:
+      'Pago Card public API does not expose Apple Pay / Google Pay token provisioning or opaque payment credentials.',
+    network_support: {
+      apple_pay: true,
+      google_pay: true,
+    },
+    contactless_google_pay: Boolean(isAtm),
+    deep_links: {
+      // Destination helpers only — not 1-click push provision payloads.
+      google_wallet_web: 'https://pay.google.com/',
+      google_wallet_play: 'https://play.google.com/store/apps/details?id=com.google.android.apps.walletnfcrel',
+      apple_wallet_store: 'https://apps.apple.com/app/wallet/id1160481993',
+    },
+    apple_pay: {
+      supported: true,
+      mode: 'manual_add',
+      button_label: 'Add to Apple Wallet',
+    },
+    google_pay: {
+      supported: true,
+      mode: 'manual_add',
+      button_label: 'Add to Google Pay',
+      contactless_hint: isAtm
+        ? 'Visa ATM cards support contactless spend via Google Pay after you add the card.'
+        : null,
+    },
+  };
+}
+
 module.exports = {
   PAGO_PRODUCTS,
   issuePagoCardForUser,
@@ -605,4 +655,5 @@ module.exports = {
   syncPagoCardsForUser,
   importPagoCardById,
   mapPagoStatus,
+  getWalletProvisioningInfo,
 };
