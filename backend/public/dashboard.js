@@ -9408,8 +9408,24 @@ const Dashboard = {
     errEl.classList.toggle('hidden', !message);
   },
 
+  previewPagoTopupAmount(amountUsdt) {
+    const pricing = this.pagoTopupPricing || this.cardPricing;
+    return this.calculateReloadPreviewUsdtClient.call({ cardPricing: pricing }, amountUsdt);
+  },
+
+  async ensurePagoTopupPricing() {
+    if (this.pagoTopupPricing) return this.pagoTopupPricing;
+    const data = await Auth.api('GET', '/api/user/cards/topup-pricing', null, { sensitive: true });
+    this.pagoTopupPricing = {
+      card_reload_fee_percent: Number(data.card_reload_fee_percent) || 0,
+      card_reload_fee_usd: Number(data.card_reload_fee_usd) || 0,
+      minimum_usdt_reload: Number(data.minimum_usdt_reload) || 5,
+    };
+    return this.pagoTopupPricing;
+  },
+
   updatePagoTopupPreview() {
-    const preview = this.calculateReloadPreviewUsdtClient($('pagoTopupAmount')?.value);
+    const preview = this.previewPagoTopupAmount($('pagoTopupAmount')?.value);
     const wallet = Number(this.walletUsdt);
     const set = (id, text) => {
       const el = $(id);
@@ -9461,9 +9477,7 @@ const Dashboard = {
     if (this.walletUsdt == null) {
       this.loadWallet().then(() => this.updatePagoTopupPreview()).catch(() => {});
     }
-    if (!this.cardPricing) {
-      this.loadCardPricing().then(() => this.updatePagoTopupPreview()).catch(() => {});
-    }
+    this.ensurePagoTopupPricing().then(() => this.updatePagoTopupPreview()).catch(() => {});
   },
 
   closePagoTopupModal() {

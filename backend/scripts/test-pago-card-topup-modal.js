@@ -50,6 +50,7 @@ assert.ok(dash.includes('openPagoTopupModal'), 'button opens the modal');
 assert.ok(dash.includes('closePagoTopupModal'), 'cancel closes the modal');
 assert.ok(dash.includes('updatePagoTopupPreview'), 'amount updates the preview');
 assert.ok(dash.includes('`/api/user/cards/${cardId}/topup`'), 'confirm posts to the card top-up route');
+assert.ok(dash.includes("'/api/user/cards/topup-pricing'"), 'preview loads the live reload fee');
 assert.ok(dash.includes('amount_usdt: amount'), 'amount is sent to the API');
 assert.ok(dash.includes("err.code === 'INSUFFICIENT_USDT_BALANCE'"), 'short wallet opens the wallet top-up');
 
@@ -59,6 +60,8 @@ assert.ok(i18n.includes("pago_topup_heading: 'Top up this card'"), 'EN modal tit
 assert.ok(i18n.includes("pago_topup_total: 'Deducted from wallet'"), 'EN debit label');
 assert.ok(i18n.includes("pago_topup_to_card: 'ကဒ်ထဲ ပေါင်းထည့်မည့်ပမာဏ'"), 'MY card credit label');
 
+assert.ok(routes.includes("router.get('/cards/topup-pricing'"), 'pricing route registered');
+assert.ok(routes.indexOf("router.get('/cards/topup-pricing'") < routes.indexOf("router.get('/cards/:id'"), 'pricing route is not captured by :id');
 assert.ok(routes.includes("router.post('/cards/:id/topup'"), 'top-up route registered');
 assert.ok(routes.includes('topUpPagoCard'), 'route uses the wallet debit service');
 assert.ok(service.includes('await debitUsdt(userId, pricing.deposit_usdt'), 'top-up debits the wallet');
