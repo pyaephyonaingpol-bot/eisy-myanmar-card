@@ -11,56 +11,50 @@
 
 const fs = require('fs');
 const path = require('path');
-const Module = require('module');
 const Card = require('../models/Card');
 const Pago3dsEvent = require('../models/Pago3dsEvent');
 
 const OTP_TTL_MINUTES = 15;
 
-function stripTypes(source) {
-  if (typeof Module.stripTypeScriptTypes !== 'function') {
-    throw new Error('Node stripTypeScriptTypes unavailable — cannot load lib/pagocardsWebhook.ts');
-  }
-  const emitWarning = process.emitWarning;
-  process.emitWarning = function hideStripWarning(warning, type, code, ...rest) {
-    const message = typeof warning === 'string' ? warning : warning && warning.message;
-    const name = type || (warning && warning.name) || code;
-    if (name === 'ExperimentalWarning' && /stripTypeScriptTypes/.test(String(message || ''))) {
-      return undefined;
-    }
-    return emitWarning.call(process, warning, type, code, ...rest);
-  };
-  try {
-    return Module.stripTypeScriptTypes(source);
-  } finally {
-    process.emitWarning = emitWarning;
-  }
-}
-
 let webhookLib = null;
 
-function loadPagocardsWebhookLib() {
-  if (webhookLib) return webhookLib;
+function resolvePagocardsWebhookLibPath() {
   const candidates = [
+    path.join(__dirname, '../../../lib/pagocardsWebhook.js'),
+    path.join(process.cwd(), 'lib/pagocardsWebhook.js'),
     path.join(__dirname, '../../../lib/pagocardsWebhook.ts'),
     path.join(process.cwd(), 'lib/pagocardsWebhook.ts'),
   ];
-  const file = candidates.find((candidate) => fs.existsSync(candidate));
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
+function loadPagocardsWebhookLib() {
+  if (webhookLib) return webhookLib;
+  const file = resolvePagocardsWebhookLibPath();
   if (!file) {
-    throw new Error('lib/pagocardsWebhook.ts is not in the server bundle');
+    throw new Error('lib/pagocardsWebhook.js is not in the server bundle');
   }
-  const source = stripTypes(fs.readFileSync(file, 'utf8'));
-  const loaded = new Module(file, module);
-  loaded.filename = file;
-  loaded.paths = Module._nodeModulePaths(path.dirname(file));
-  loaded._compile(source, file);
-  webhookLib = loaded.exports;
+  // Prefer the plain CommonJS .js file — never eval ESM `export` on Vercel.
+  // eslint-disable-next-line import/no-dynamic-require, global-require
+  webhookLib = require(file);
+  if (
+    !webhookLib
+    || typeof webhookLib.normalizePagocardsWebhook !== 'function'
+  ) {
+    throw new Error('pagocardsWebhook lib missing normalizePagocardsWebhook');
+  }
   return webhookLib;
 }
 
-/** Clear cached TS module so --watch / deploys pick up lib changes. */
+/** Clear cached module so --watch / deploys pick up lib changes. */
 function resetPagocardsWebhookLibCache() {
   webhookLib = null;
+  try {
+    const file = resolvePagocardsWebhookLibPath();
+    if (file && require.cache[file]) delete require.cache[file];
+  } catch {
+    /* ignore */
+  }
 }
 
 function getWebhookSecret() {
@@ -124,7 +118,6 @@ function payloadDebugKeys(body) {
 async function handlePagocardsWebhook(body, req = null) {
   if (req) assertWebhookSecret(req);
 
-  // Always reload normalizer in case lib/pagocardsWebhook.ts changed under watch.
   resetPagocardsWebhookLibCache();
   const { normalizePagocardsWebhook, summarizePagocardsEvent } = loadPagocardsWebhookLib();
   const event = normalizePagocardsWebhook(body);

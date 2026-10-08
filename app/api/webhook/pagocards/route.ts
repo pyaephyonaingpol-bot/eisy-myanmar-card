@@ -1,35 +1,19 @@
 /**
- * Pagocards webhook — App Router shape.
+ * Pagocards webhook — App Router shape (documentation / future Next hosting).
  *
- * Receives 3DS OTP / card event payloads from Pagocards, extracts verification
- * codes, and acknowledges with 2xx. In this monorepo production traffic is
- * rewritten to Express (`/api/webhook/pagocards`), which persists events for
- * the dashboard UI. This route mirrors the same contract for Next.js tooling
- * and future App Router hosting.
+ * IMPORTANT: Production on Vercel rewrites `/api/*` to Express (`api/index.js`).
+ * Do not rely on this file as the live handler. Live path:
+ *   POST /api/webhook/pagocards  →  backend/src/routes/webhook.js
  *
- * Register in Pagocards: https://YOUR_DOMAIN/api/webhook/pagocards
- *
- * Example 3DS payload:
- * {
- *   "eventId": "...",
- *   "eventType": "3ds",
- *   "otp": "234562",
- *   "authId": "...",
- *   "cardid": "card_...",
- *   "merchantName": "MYPAL",
- *   "transactionAmount": "10",
- *   "transactionCurrency": "USD"
- * }
+ * This module avoids ESM `import` of runtime helpers so a mistaken raw load
+ * cannot surface "Unexpected token 'export'" from lib/pagocardsWebhook.ts.
  */
 
-import {
-  normalizePagocardsWebhook,
-  summarizePagocardsEvent,
-  type Pagocards3dsEvent,
-} from '../../../../lib/pagocardsWebhook';
+import { createRequire } from 'node:module';
+import path from 'node:path';
 
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+// Resolve from repo root so this works whether Next compiles ESM or CJS.
+const require = createRequire(path.join(process.cwd(), 'package.json'));
 
 type PersistResult = {
   saved: boolean;
@@ -38,11 +22,33 @@ type PersistResult = {
   reason?: string;
 };
 
-async function tryPersist(event: Pagocards3dsEvent, rawBody: unknown): Promise<PersistResult> {
+function loadNormalizer(): {
+  normalizePagocardsWebhook: (body: unknown) => {
+    eventId: string;
+    eventType: string;
+    authId: string | null;
+    otp: string | null;
+    cardId: string | null;
+    is3ds: boolean;
+  } | null;
+  summarizePagocardsEvent: (event: {
+    eventType: string;
+    otp: string | null;
+    cardId: string | null;
+    merchantName?: string | null;
+    transactionAmount?: string | null;
+    transactionCurrency?: string | null;
+    authId?: string | null;
+    is3ds?: boolean;
+  }) => string;
+} {
+  // Plain CommonJS — safe on Vercel/Node without strip-types / ESM export.
+  return require(path.join(process.cwd(), 'lib/pagocardsWebhook.js'));
+}
+
+async function tryPersist(rawBody: unknown): Promise<PersistResult> {
   try {
-    // Prefer the Express service when this process is the backend (strip-types / CJS bridge).
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const service = require('../../../../backend/src/services/pago3dsWebhookService');
+    const service = require(path.join(process.cwd(), 'backend/src/services/pago3dsWebhookService.js'));
     if (service && typeof service.handlePagocardsWebhook === 'function') {
       const result = await service.handlePagocardsWebhook(rawBody);
       return {
@@ -88,12 +94,12 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  const { normalizePagocardsWebhook, summarizePagocardsEvent } = loadNormalizer();
   const event = normalizePagocardsWebhook(body);
   if (!event) {
     console.warn('[webhook/pagocards] unrecognized payload', {
       keys: body && typeof body === 'object' ? Object.keys(body as object) : [],
     });
-    // ACK unknown shapes so Pagocards does not retry forever on schema drift.
     return Response.json({ ok: true, received: true, ignored: true });
   }
 
@@ -103,7 +109,7 @@ export async function POST(request: Request): Promise<Response> {
     is3ds: event.is3ds,
   });
 
-  const persist = await tryPersist(event, body);
+  const persist = await tryPersist(body);
 
   return Response.json({
     ok: true,
@@ -120,7 +126,6 @@ export async function POST(request: Request): Promise<Response> {
   });
 }
 
-/** Health / config probe for webhook URL verification. */
 export async function GET(): Promise<Response> {
   return Response.json({
     ok: true,
