@@ -542,6 +542,35 @@ async function submitAndAutoVerifyUsdtDeposit(depositId, {
 }
 
 
+/**
+ * Honor a stored deposit quote only when fee + net equals the gross amount.
+ * A tampered net above the deposit is recomputed and never credited.
+ */
+function resolveUsdtTopupCredit(grossUsdt, feeMeta, settings) {
+  const gross = Math.round(Number(grossUsdt) * 100) / 100;
+  let feeUsdt = Number(feeMeta?.fee_usdt);
+  let netUsdt = Number(feeMeta?.net_usdt);
+  const reconciled = Number.isFinite(gross)
+    && gross > 0
+    && Number.isFinite(feeUsdt)
+    && Number.isFinite(netUsdt)
+    && feeUsdt >= 0
+    && netUsdt > 0
+    && netUsdt <= gross + 0.001
+    && Math.abs((feeUsdt + netUsdt) - gross) <= 0.05;
+  if (!reconciled) {
+    const feeBreakdown = calculateDepositFeeBreakdown(gross, { currency: 'USDT', settings });
+    feeUsdt = feeBreakdown.fee_usdt;
+    netUsdt = feeBreakdown.net_usdt;
+  }
+  feeUsdt = Math.round(Number(feeUsdt) * 100) / 100;
+  netUsdt = Math.round(Math.min(Number(netUsdt), gross) * 100) / 100;
+  if (!(gross > 0) || !(netUsdt > 0) || netUsdt > gross + 0.001) {
+    throw new Error('USDT deposit net credit must be positive and cannot exceed the deposited amount');
+  }
+  return { grossUsdt: gross, feeUsdt, netUsdt };
+}
+
 async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, createdBy = 'admin', adminNote }) {
   const db = getDb();
   const user = await User.findById(deposit.user_id);
@@ -706,21 +735,10 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
   if (purpose === 'usdt_topup') {
     const grossUsdt = Number(deposit.amount_usd ?? metadata.amount_usdt ?? 0);
     const feeMeta = metadata.payment_fee || metadata.pricing || {};
-    let feeUsdt = Number(feeMeta.fee_usdt);
-    let netUsdt = Number(feeMeta.net_usdt);
-
-    if (!Number.isFinite(feeUsdt) || !Number.isFinite(netUsdt) || feeUsdt < 0 || netUsdt <= 0) {
-      const settings = await getCardPricingSettings();
-      const feeBreakdown = calculateDepositFeeBreakdown(grossUsdt, { currency: 'USDT', settings });
-      feeUsdt = feeBreakdown.fee_usdt;
-      netUsdt = feeBreakdown.net_usdt;
-    }
-
-    netUsdt = Math.round(netUsdt * 100) / 100;
-    feeUsdt = Math.round(feeUsdt * 100) / 100;
-    if (!(netUsdt > 0)) {
-      throw new Error('USDT deposit net credit must be positive after service fee');
-    }
+    const settings = await getCardPricingSettings();
+    const quoted = resolveUsdtTopupCredit(grossUsdt, feeMeta, settings);
+    const feeUsdt = quoted.feeUsdt;
+    const netUsdt = quoted.netUsdt;
 
     const atomic = await creditUsdtBalanceAtomic({
       deposit,

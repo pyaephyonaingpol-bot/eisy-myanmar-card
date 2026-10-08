@@ -3,7 +3,7 @@
  * Manual energy mode — no Feee.io / external energy rental APIs.
  *
  * POST /api/withdraw body: { customerAddress, withdrawAmount }
- * Fee: fixed 2.0 USDT (Net Payout = withdrawAmount - 2.0)
+ * Fee: $2 fixed + 2% of the requested amount (Net Payout = withdrawAmount - fee)
  *
  * SECURITY: After unauthorized-withdrawal incident, on-chain broadcast requires
  * WITHDRAWALS_PAUSED=false AND AUTO_ONCHAIN_WITHDRAWALS=true. Otherwise the
@@ -25,6 +25,7 @@ const {
 } = require('./securityFlags');
 
 const FIXED_WITHDRAW_FEE_USDT = Number(process.env.WITHDRAW_FIXED_FEE_USDT || 2);
+const WITHDRAW_PERCENT = 2;
 
 function roundUsdt(value) {
   return Math.round(Number(value) * 1e6) / 1e6;
@@ -85,7 +86,8 @@ function calculateFixedFeeWithdraw({ customerAddress, withdrawAmount }) {
     throw err;
   }
 
-  const feeUsdt = getFixedWithdrawFeeUsdt();
+  const fixedFee = getFixedWithdrawFeeUsdt();
+  const feeUsdt = roundUsdt(fixedFee + roundUsdt(amount * WITHDRAW_PERCENT / 100));
   if (!(amount > feeUsdt)) {
     const err = new Error(
       `withdrawAmount must be strictly greater than the ${feeUsdt.toFixed(1)} USDT fee`

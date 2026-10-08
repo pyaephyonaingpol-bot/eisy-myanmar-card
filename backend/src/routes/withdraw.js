@@ -2,7 +2,7 @@
  * POST /api/withdraw — automated TRC20 USDT withdrawal (master wallet, manual energy).
  *
  * Body: { customerAddress, withdrawAmount }
- * Fee: fixed 2.0 USDT → Net Payout = withdrawAmount - 2.0
+ * Fee: $2 fixed + 2% → Net Payout = withdrawAmount - fee
  */
 const express = require('express');
 const { requireAuth, requireSensitive } = require('../middleware/auth');
@@ -75,7 +75,12 @@ router.post('/', requireAuth, requireSensitive, requireWithdrawalsEnabled, async
       ].includes(err.code)) {
         return 400;
       }
-      if (['INSUFFICIENT_USDT', 'INSUFFICIENT_BALANCE', 'INSUFFICIENT_FUNDS'].includes(err.code)) {
+      if ([
+        'INSUFFICIENT_USDT',
+        'INSUFFICIENT_USDT_BALANCE',
+        'INSUFFICIENT_BALANCE',
+        'INSUFFICIENT_FUNDS',
+      ].includes(err.code)) {
         return 400;
       }
       if (['MASTER_KEY_MISSING', 'MASTER_KEY_INVALID', 'MASTER_ADDRESS_INVALID'].includes(err.code)) {

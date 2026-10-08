@@ -661,7 +661,14 @@ async function topUpPagoCard({ userId, localCardId, amountUsd }, deps = {}) {
     throw httpError(`Minimum top-up is $${MIN_TOP_UP.toFixed(2)}`, 400, 'VALIDATION_ERROR');
   }
 
-  await debitUsdt(userId, pricing.deposit_usdt, {
+  const payer = await User.findById(userId);
+  const available = Number(payer?.balance_usdt || 0);
+  if (!(available + 1e-9 >= pricing.deposit_usdt)) {
+    throw httpError('Insufficient balance', 400, 'INSUFFICIENT_USDT_BALANCE');
+  }
+
+  try {
+    await debitUsdt(userId, pricing.deposit_usdt, {
     txType: 'balance_debit',
     description: `Pago Card top-up ${fundAmount.toFixed(2)} USD`,
     referenceType: 'cards_v2',
@@ -673,7 +680,13 @@ async function topUpPagoCard({ userId, localCardId, amountUsd }, deps = {}) {
       top_up_usd: fundAmount,
       reload_fee_usd: pricing.reload_fee_usd,
     },
-  });
+    });
+  } catch (err) {
+    if (err?.code === 'INSUFFICIENT_USDT_BALANCE') {
+      throw httpError('Insufficient balance', 400, 'INSUFFICIENT_USDT_BALANCE');
+    }
+    throw err;
+  }
 
   let funded;
   try {
