@@ -209,7 +209,7 @@ function applyAdminFeeFormula(settings, scope) {
 async function getCardPricingSettings() {
   const raw = await getAllSettings();
   return {
-    card_issuance_fee_usd: parseFloat(raw.card_issuance_fee_usd) || 5,
+    card_issuance_fee_usd: parseNonNegative(raw.card_issuance_fee_usd, 5),
     card_funding_fee_percent: parseFloat(raw.card_funding_fee_percent) || 0,
     card_processing_fee_usd: CARD_PROCESSING_FEE_USD,
     minimum_initial_deposit_usd: parseFloat(raw.minimum_initial_deposit_usd) || 10,

@@ -8441,7 +8441,10 @@ const Dashboard = {
     if (!Auth.isLoggedIn()) return;
     const force = Boolean(opts.force);
     if (!force && this._isFresh('wallet')) {
-      if (this.renderWalletBalancesFromCache()) return;
+      if (this.renderWalletBalancesFromCache()) {
+        this.updatePagoIssueSummary();
+        return;
+      }
     }
 
     if (Auth.needsPinUnlock()) {
@@ -8466,6 +8469,7 @@ const Dashboard = {
         this.walletUsdt = data.balance_usdt;
         this.walletUsdtLocked = data.balance_usdt_locked || 0;
         this._markFetched('wallet');
+        this.updatePagoIssueSummary();
         this.applySessionUserToUI();
         if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
           this.syncUsdtWalletBalancesFromPayload(data);
@@ -8506,6 +8510,7 @@ const Dashboard = {
     this.pago3dsEvents = [];
     this.pago3dsKnownIds = new Set();
     $('pagoCardRequestForm')?.addEventListener('submit', (e) => this.submitPagoCardRequest(e));
+    $('pagoCardInitialLoad')?.addEventListener('input', () => this.updatePagoIssueSummary());
     $('pagoCardTopupForm')?.addEventListener('submit', (e) => this.submitPagoCardTopup(e));
     $('pagoCardTopupForm')?.addEventListener('click', (e) => {
       const chip = e.target.closest('[data-pago-topup-quick]');
@@ -9124,6 +9129,7 @@ const Dashboard = {
     const last = $('pagoCardLastName');
     if (first && !first.value && parts[0]) first.value = parts[0];
     if (last && !last.value && parts.length > 1) last.value = parts.slice(1).join(' ');
+    this.refreshPagoIssueSummary();
   },
 
   pagoCardNetworkLabel(card) {
@@ -9400,10 +9406,97 @@ const Dashboard = {
     }
   },
 
+  quotePagoIssue(initialRaw) {
+    const pricing = this.pagoIssuePricing || {
+      card_issuance_fee_usd: 5,
+      card_processing_fee_usd: 1.5,
+      card_funding_fee_percent: 0,
+    };
+    const round = (value) => Math.round(Number(value) * 100) / 100;
+    const nonNeg = (value, fallback) => {
+      const n = Number(value);
+      return Number.isFinite(n) && n >= 0 ? round(n) : fallback;
+    };
+    const issuance = nonNeg(pricing.card_issuance_fee_usd, 5);
+    const processing = nonNeg(pricing.card_processing_fee_usd, 1.5);
+    const raw = String(initialRaw ?? '').trim();
+    let load = 0;
+    if (raw) {
+      const value = Number(raw);
+      if (Number.isFinite(value) && value > 0) load = Math.trunc(value * 100) / 100;
+    }
+    const percent = nonNeg(pricing.card_funding_fee_percent, 0);
+    const funding = percent > 0 ? round((load * percent) / 100) : 0;
+    return {
+      issuance,
+      processing,
+      funding,
+      load,
+      total: round(issuance + processing + funding + load),
+    };
+  },
+
+  async ensurePagoIssuePricing() {
+    if (this.pagoIssuePricing) return this.pagoIssuePricing;
+    const data = await Auth.api('GET', '/api/user/cards/issue-pricing', null, { sensitive: true });
+    const num = (value, fallback) => {
+      const n = Number(value);
+      return Number.isFinite(n) && n >= 0 ? n : fallback;
+    };
+    this.pagoIssuePricing = {
+      card_issuance_fee_usd: num(data.card_issuance_fee_usd, 5),
+      card_processing_fee_usd: num(data.card_processing_fee_usd, 1.5),
+      card_funding_fee_percent: num(data.card_funding_fee_percent, 0),
+    };
+    return this.pagoIssuePricing;
+  },
+
+  updatePagoIssueSummary() {
+    if (!$('pagoIssueSummary')) return null;
+    const quote = this.quotePagoIssue($('pagoCardInitialLoad')?.value);
+    const money = (amount) => `$${Number(amount).toFixed(2)}`;
+    const set = (id, text) => {
+      const el = $(id);
+      if (el) el.textContent = text;
+    };
+    set('pagoIssueFee', money(quote.issuance));
+    set('pagoIssueProcessing', money(quote.processing));
+    set('pagoIssueFunding', money(quote.funding));
+    set('pagoIssueLoad', money(quote.load));
+    set('pagoIssueTotal', money(quote.total));
+    $('pagoIssueFundingRow')?.classList.toggle('hidden', !(quote.funding > 0));
+    const wallet = Number(this.walletUsdt);
+    const known = Number.isFinite(wallet);
+    set('pagoIssueWallet', known ? `${wallet.toFixed(2)} USDT` : '—');
+    const short = known && wallet + 1e-9 < quote.total;
+    const warn = $('pagoIssueBalanceWarning');
+    if (warn) {
+      warn.textContent = this.i18nText('pago_issue_insufficient', 'Insufficient balance');
+      warn.classList.toggle('hidden', !short);
+    }
+    const btn = $('pagoCardRequestSubmit');
+    if (btn && btn.dataset.busy !== '1') btn.disabled = short;
+    return { ...quote, short };
+  },
+
+  async refreshPagoIssueSummary() {
+    try {
+      const tasks = [this.ensurePagoIssuePricing()];
+      if (this.walletUsdt == null) tasks.push(this.loadWallet({ force: false }));
+      await Promise.all(tasks);
+    } catch (_) { /* summary still shows the default issuing fee */ }
+    this.updatePagoIssueSummary();
+  },
+
   async submitPagoCardRequest(e) {
     e.preventDefault();
+    const preview = this.updatePagoIssueSummary();
+    if (preview?.short) return;
     const btn = $('pagoCardRequestSubmit');
-    if (btn) btn.disabled = true;
+    if (btn) {
+      btn.dataset.busy = '1';
+      btn.disabled = true;
+    }
     try {
       const initial = $('pagoCardInitialLoad')?.value.trim();
       const data = await Auth.api('POST', '/api/user/cards/request', {
@@ -9420,6 +9513,14 @@ const Dashboard = {
       if (card) this.showPagoCardDetail(card);
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
+        const warn = $('pagoIssueBalanceWarning');
+        if (warn) {
+          warn.textContent = this.i18nText('pago_issue_insufficient', 'Insufficient balance');
+          warn.classList.remove('hidden');
+        }
+        if (btn) btn.disabled = true;
+      }
       const orphanId = err.response?.pago_card_id || err.pago_card_id;
       if (err.code === 'PAGO_CARD_SAVE_FAILED' && orphanId) {
         this.toast('Card issued at Pago — importing into your account…', 'ok');
@@ -9437,7 +9538,9 @@ const Dashboard = {
       }
       this.toast(this.cardTimeoutMessage(err) || err.message || 'Card request failed', 'error');
     } finally {
-      if (btn) btn.disabled = false;
+      if (btn) delete btn.dataset.busy;
+      await this.loadWallet({ force: true }).catch(() => {});
+      this.updatePagoIssueSummary();
     }
   },
 
