@@ -5209,6 +5209,67 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   border: 1px solid rgba(148, 163, 184, 0.55);
 }
 
+.pago-action-topup {
+  grid-column: 1 / -1;
+  color: #042f2e;
+  background: linear-gradient(180deg, #99f6e4 0%, #2dd4bf 100%);
+  border: 1px solid rgba(15, 118, 110, 0.35);
+  box-shadow: 0 8px 18px rgba(13, 148, 136, 0.22);
+}
+
+.pago-topup-modal-box {
+  max-width: min(440px, 100%);
+}
+
+.pago-topup-lead {
+  margin: 0 0 0.75rem;
+}
+
+.pago-topup-card-line {
+  margin: 0 0 0.9rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.pago-topup-quick {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin: 0.15rem 0 0.85rem;
+}
+
+.pago-topup-quick button {
+  appearance: none;
+  min-height: 2.2rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  background: rgba(45, 212, 191, 0.08);
+  color: #ccfbf1;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pago-topup-quick button.is-selected {
+  background: #14b8a6;
+  color: #042f2e;
+  border-color: #5eead4;
+}
+
+#pagoTopupModal .pago-topup-form {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+#pagoTopupError {
+  color: #fca5a5;
+  margin: 0 0 0.75rem;
+}
+
 .pago-3ds-strip {
   display: flex;
   flex-wrap: wrap;

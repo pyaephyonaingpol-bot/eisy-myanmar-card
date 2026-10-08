@@ -49,7 +49,7 @@
       touch-action: pan-y !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261008cardEye" />
+  <link rel="stylesheet" href="/styles.css?v=20261008cardTopup" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -148,6 +148,40 @@
         <button type="button" class="btn btn-primary" id="pagoWalletCopyAllBtn" data-i18n="copy_all_details">Copy All Details</button>
         <button type="button" class="btn btn-secondary" id="pagoWalletOpenAppBtn" data-i18n="pago_wallet_open_app">Open wallet app</button>
       </div>
+    </div>
+  </div>
+
+  <div id="pagoTopupModal" class="modal hidden" role="dialog" aria-labelledby="pagoTopupModalTitle" aria-modal="true">
+    <div class="modal-box pago-topup-modal-box">
+      <div class="modal-header-row">
+        <h3 id="pagoTopupModalTitle" data-i18n="pago_topup_heading">Top up this card</h3>
+        <button type="button" id="pagoTopupModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p class="hint pago-topup-lead" data-i18n="pago_topup_hint">Minimum $5. Your USDT wallet is charged the amount plus the card reload fee.</p>
+      <p id="pagoTopupCardLine" class="pago-topup-card-line">—</p>
+      <form id="pagoCardTopupForm" class="form pago-topup-form">
+        <div class="field">
+          <label for="pagoTopupAmount" data-i18n="topup_amount_usdt">Top-Up Amount (USDT)</label>
+          <input id="pagoTopupAmount" type="number" inputmode="decimal" min="5" step="0.01" placeholder="20.00" required />
+        </div>
+        <div class="pago-topup-quick" role="group" aria-label="Quick amounts">
+          <button type="button" data-pago-topup-quick="10">$10</button>
+          <button type="button" data-pago-topup-quick="20">$20</button>
+          <button type="button" data-pago-topup-quick="50">$50</button>
+          <button type="button" data-pago-topup-quick="100">$100</button>
+        </div>
+        <div class="reload-preview-box" id="pagoTopupPreview">
+          <div class="reload-preview-row"><span data-i18n="pago_topup_wallet">Wallet balance</span><strong id="pagoTopupWallet">—</strong></div>
+          <div class="reload-preview-row"><span data-i18n="pago_topup_to_card">Added to card</span><strong id="pagoTopupToCard">—</strong></div>
+          <div class="reload-preview-row"><span data-i18n="pago_topup_fee">Service fee</span><strong id="pagoTopupFee">—</strong></div>
+          <div class="reload-preview-row reload-preview-highlight"><span data-i18n="pago_topup_total">Deducted from wallet</span><strong id="pagoTopupTotal">—</strong></div>
+        </div>
+        <p id="pagoTopupError" class="hint hidden" role="alert"></p>
+        <div class="pago-wallet-modal-actions">
+          <button type="submit" class="btn btn-primary" id="pagoCardTopupSubmit" data-i18n="pago_topup_confirm">Confirm</button>
+          <button type="button" class="btn btn-secondary" id="pagoTopupCancel" data-i18n="btn_cancel">Cancel</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -1358,6 +1392,9 @@
                 <button type="button" class="pago-action-wallet pago-action-google" id="pagoAddGooglePayBtn" data-wallet-target="google">
                   <span data-i18n="pago_wallet_google_label">Google Pay</span>
                 </button>
+                <button type="button" class="pago-action-wallet pago-action-topup" id="pagoCardTopupOpenBtn">
+                  <span data-i18n="pago_topup_open">Top Up</span>
+                </button>
               </div>
               <p id="pagoWalletAtmHint" class="pago-wallet-atm-hint hidden" data-i18n="pago_wallet_atm_hint">Visa ATM cards support contactless spend in Google Pay after you add the card.</p>
 
@@ -1389,16 +1426,6 @@
                 </div>
                 <ul class="pago-tx-list" id="pagoTxList"></ul>
               </section>
-
-              <form id="pagoCardTopupForm" class="form pago-topup-form">
-                <h3 data-i18n="pago_topup_heading">Top up this card</h3>
-                <p class="hint" data-i18n="pago_topup_hint">Minimum $5. Your USDT wallet is charged the amount plus the card reload fee.</p>
-                <div class="field">
-                  <label for="pagoTopupAmount" data-i18n="topup_amount_usdt">Top-Up Amount (USDT)</label>
-                  <input id="pagoTopupAmount" type="number" min="5" step="0.01" placeholder="20.00" required />
-                </div>
-                <button type="submit" class="btn btn-primary" id="pagoCardTopupSubmit" data-i18n="pago_topup_submit">Top up</button>
-              </form>
               </div>
             </section>
 
@@ -1822,7 +1849,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261008pagoCards"></script>
+  <script defer src="/i18n.js?v=20261008cardTopup"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1845,7 +1872,7 @@
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261008cardEye"></script>
+  <script defer src="/dashboard.js?v=20261008cardTopup"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

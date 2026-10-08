@@ -460,6 +460,22 @@ router.get('/cards/products', requireAuth, (_req, res) => {
   res.json({ products: PAGO_PRODUCTS });
 });
 
+router.get('/cards/topup-pricing', requireAuth, requireSensitive, async (_req, res) => {
+  try {
+    const { getCardPricingSettings } = require('../services/settingsService');
+    const settings = await getCardPricingSettings();
+    res.json({
+      success: true,
+      minimum_usdt_reload: settings.minimum_usdt_reload,
+      card_reload_fee_usd: settings.card_reload_fee_usd,
+      card_reload_fee_percent: settings.card_reload_fee_percent,
+    });
+  } catch (err) {
+    console.error('[user/cards/topup-pricing]', err.message);
+    res.status(500).json({ error: 'Could not load top-up pricing', code: 'TOPUP_PRICING_FAILED' });
+  }
+});
+
 /** All recent 3DS codes across the user's Pago cards (must be before /cards/:id). */
 router.get('/cards/3ds', requireAuth, requireSensitive, async (req, res) => {
   try {
