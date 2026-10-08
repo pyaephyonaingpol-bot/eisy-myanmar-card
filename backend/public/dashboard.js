@@ -4,6 +4,8 @@ const CARD_CACHE_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.st
 const Dashboard = {
   pollTimer: null,
   cardsPollTimer: null,
+  /** Bumped on card mutations so in-flight GET /cards cannot overwrite fresher state. */
+  _cardsEpoch: 0,
   currentCard: null,
   allCards: [],
   activeCardIndex: 0,
@@ -1267,7 +1269,8 @@ const Dashboard = {
       c.card_holder_name || '',
       c.exp_date || '',
       c.cvv || '',
-      c.balance_usd ?? '',
+      c.balance_usd ?? c.balance_display_usd ?? '',
+      c.pago_card_id || '',
       c.label || '',
       c.status_reason || '',
     ].join(':')).join('|');
@@ -1296,6 +1299,82 @@ const Dashboard = {
 
   clearCardsCache() {
     try { localStorage.removeItem(CARD_CACHE_KEY); } catch (_) {}
+  },
+
+  /**
+   * Apply a cards API payload to local state + localStorage, invalidate TTL,
+   * and optionally select a specific card. Returns the selected card (if any).
+   */
+  applyCardsPayload(data, { selectCardId = null, markFresh = true } = {}) {
+    if (!data || !Array.isArray(data.cards)) return null;
+    this._cardsEpoch = (this._cardsEpoch || 0) + 1;
+    this.invalidateFetch('cards');
+    this.allCards = this.filterVisibleCards(data.cards);
+    this.saveCardsCache(this.allCards);
+
+    let selected = null;
+    if (selectCardId != null) {
+      const idx = this.allCards.findIndex((c) => Number(c.id) === Number(selectCardId));
+      if (idx >= 0) {
+        this.activeCardIndex = idx;
+        selected = this.allCards[idx];
+      }
+    }
+    if (!selected && data.card && this.allCards.some((c) => Number(c.id) === Number(data.card.id))) {
+      const idx = this.allCards.findIndex((c) => Number(c.id) === Number(data.card.id));
+      this.activeCardIndex = idx >= 0 ? idx : this.activeCardIndex;
+      selected = this.allCards[this.activeCardIndex] || data.card;
+    }
+    if (!selected && typeof data.active_index === 'number' && this.allCards[data.active_index]) {
+      this.activeCardIndex = data.active_index;
+      selected = this.allCards[data.active_index];
+    }
+    if (this.activeCardIndex >= this.allCards.length) this.activeCardIndex = 0;
+    if (!selected && this.allCards.length) selected = this.allCards[this.activeCardIndex];
+
+    if (markFresh) this._markFetched('cards');
+    this.renderPagoCardList();
+    try {
+      if (this.allCards.length) {
+        this.renderCardSelector();
+        this.renderActiveCard(this.allCards[this.activeCardIndex]);
+        this.populateReloadCardSelect();
+      }
+    } catch (err) {
+      console.warn('[Dashboard] card chrome refresh skipped:', err.message);
+    }
+    if (this._scheduleCardsPoll) this._scheduleCardsPoll();
+    return selected;
+  },
+
+  /** After create/top-up/remove: apply payload then force a server re-fetch. */
+  async refreshCardsAfterMutation(data, { selectCardId = null } = {}) {
+    let selected = null;
+    if (data && Array.isArray(data.cards)) {
+      selected = this.applyCardsPayload(data, {
+        selectCardId,
+        markFresh: false,
+      });
+    } else {
+      this._cardsEpoch = (this._cardsEpoch || 0) + 1;
+      this.invalidateFetch('cards');
+    }
+    this.invalidateFetch('cards', 'wallet', 'usdtWallet');
+    try {
+      await this.loadAllCards({
+        forceRefresh: true,
+        preserveSelection: true,
+        silent: true,
+      });
+    } catch (err) {
+      console.warn('[Dashboard] post-mutation cards refresh failed:', err.message);
+    }
+    this.loadWallet({ force: true });
+    if (selectCardId != null) {
+      const again = (this.allCards || []).find((c) => Number(c.id) === Number(selectCardId));
+      return again || selected;
+    }
+    return selected || (this.allCards || [])[this.activeCardIndex] || null;
   },
 
   resolveCardStatus(card) {
@@ -8426,12 +8505,11 @@ const Dashboard = {
     const local = (this.allCards || []).find((card) => String(card.id) === String(cardId)) || fallback;
     if (local) this.showPagoCardDetail(local);
     try {
+      this.invalidateFetch('cards');
       const data = await Auth.api('GET', `/api/user/cards/${cardId}`, null, { sensitive: true });
-      const card = data.card || (data.cards || []).find((item) => String(item.id) === String(cardId));
-      if (Array.isArray(data.cards)) {
-        this.allCards = this.filterVisibleCards(data.cards);
-        this.renderPagoCardList();
-      }
+      const card = this.applyCardsPayload(data, { selectCardId: cardId })
+        || data.card
+        || (data.cards || []).find((item) => String(item.id) === String(cardId));
       if (card) this.showPagoCardDetail(card);
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
@@ -8454,10 +8532,8 @@ const Dashboard = {
       }, { sensitive: true });
       this.toast(data.message || 'Your virtual card is ready.', 'ok');
       if ($('pagoCardInitialLoad')) $('pagoCardInitialLoad').value = '';
-      if (Array.isArray(data.cards)) this.allCards = this.filterVisibleCards(data.cards);
-      this.renderPagoCardList();
-      this.loadWallet();
-      const card = data.card || (this.allCards || [])[0];
+      const selectId = data.card?.id ?? null;
+      const card = await this.refreshCardsAfterMutation(data, { selectCardId: selectId });
       if (card) this.showPagoCardDetail(card);
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
@@ -8484,10 +8560,7 @@ const Dashboard = {
       }, { sensitive: true });
       this.toast(data.message || 'Card topped up.', 'ok');
       if ($('pagoTopupAmount')) $('pagoTopupAmount').value = '';
-      if (Array.isArray(data.cards)) this.allCards = this.filterVisibleCards(data.cards);
-      this.renderPagoCardList();
-      this.loadWallet();
-      const card = data.card || (this.allCards || []).find((item) => String(item.id) === String(cardId));
+      const card = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
       if (card) this.showPagoCardDetail(card);
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
@@ -8532,6 +8605,7 @@ const Dashboard = {
     }
 
     this._cardsLoading = true;
+    const epochAtStart = this._cardsEpoch || 0;
 
     if (!forceRefresh && !this.allCards.length) {
       this.applyCachedCardsIfAvailable();
@@ -8554,6 +8628,11 @@ const Dashboard = {
         } else {
           throw err;
         }
+      }
+
+      // A create/top-up/remove landed while this GET was in flight — discard stale list.
+      if ((this._cardsEpoch || 0) > epochAtStart) {
+        return;
       }
 
       const newCards = this.filterVisibleCards(data.cards || []);

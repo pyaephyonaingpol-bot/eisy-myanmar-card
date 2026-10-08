@@ -51,6 +51,9 @@ function mapCardForClient(c) {
     request_status: metadata.request_status || (pending ? 'pending_approval' : 'approved'),
     is_primary: Boolean(c.is_primary),
     balance_usd: c.balance_display_usd ?? metadata.balance_usd ?? null,
+    balance_display_usd: c.balance_display_usd ?? metadata.balance_usd ?? null,
+    expiry_month: pending ? null : (c.expiry_month || null),
+    expiry_year: pending ? null : (c.expiry_year || null),
     pago_card_id: c.pago_card_id || metadata.pago_card_id || null,
     product_code: c.product_code || metadata.product_code || null,
     brand: c.brand || metadata.brand || null,
@@ -109,8 +112,15 @@ async function getUserCardsPayload(userId) {
   return { cards: mapped, active_index: activeIdx };
 }
 
+function setCardsNoStore(res) {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+}
+
 router.get('/cards', requireAuth, requireSensitive, async (req, res) => {
   try {
+    setCardsNoStore(res);
     const user = await User.findById(req.user.id);
     const payload = await getUserCardsPayload(req.user.id);
 
@@ -346,6 +356,7 @@ function sendPagoError(res, err, fallback) {
 
 router.post('/cards/request', requireAuth, requireSensitive, async (req, res) => {
   try {
+    setCardsNoStore(res);
     const { issuePagoCardForUser, PAGO_PRODUCTS } = require('../services/pagoCardService');
     const result = await issuePagoCardForUser({
       userId: req.user.id,
@@ -378,6 +389,7 @@ router.get('/cards/products', requireAuth, (_req, res) => {
 
 router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
   try {
+    setCardsNoStore(res);
     const cardId = parseInt(req.params.id, 10);
     if (!Number.isFinite(cardId) || cardId <= 0) {
       return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
@@ -396,6 +408,7 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
 
 router.post('/cards/:id/topup', requireAuth, requireSensitive, async (req, res) => {
   try {
+    setCardsNoStore(res);
     const cardId = parseInt(req.params.id, 10);
     if (!Number.isFinite(cardId) || cardId <= 0) {
       return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
