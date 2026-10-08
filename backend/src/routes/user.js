@@ -390,12 +390,13 @@ router.post('/cards/request', requireAuth, requireSensitive, async (req, res) =>
     const {
       issuePagoCardForUser,
       PAGO_PRODUCTS,
+      DEFAULT_ISSUE_PRODUCT,
       withCardApiTimeout,
       CARD_CREATE_ROUTE_TIMEOUT_MS,
     } = require('../services/pagoCardService');
     const result = await withCardApiTimeout(issuePagoCardForUser({
       userId: req.user.id,
-      productCode: req.body?.product_code,
+      productCode: DEFAULT_ISSUE_PRODUCT,
       firstName: req.body?.first_name,
       lastName: req.body?.last_name,
       email: req.body?.email,
