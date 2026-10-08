@@ -29,7 +29,7 @@ assert.ok(adminHtml.includes('Deposits &amp; KYC'), 'deposits+kyc nav label');
 assert.ok(adminHtml.includes('Virtual Cards'), 'virtual cards nav');
 assert.ok(adminHtml.includes('id="tabCards"'), 'cards panel restored');
 assert.ok(adminHtml.includes('id="pendingCardsTable"'), 'pending cards table');
-assert.ok(adminHtml.includes('admin.js?v=20261008deleteUser'), 'admin.js cache-bust');
+assert.ok(adminHtml.includes('admin.js?v=20261008deleteYesNo'), 'admin.js cache-bust');
 assert.ok(indexSrc.includes("res.redirect(302, '/admin')"), 'instant redirects to /admin');
 
 const dbFile = path.join(os.tmpdir(), `eisy-admin-owner-${Date.now()}.db`);

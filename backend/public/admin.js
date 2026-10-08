@@ -832,11 +832,7 @@
       $('deleteUserCancel')?.addEventListener('click', () => this.closeDeleteUserModal());
       $('deleteUserModal')?.querySelector('.delete-user-modal-backdrop')
         ?.addEventListener('click', () => this.closeDeleteUserModal());
-      $('deleteUserConfirmInput')?.addEventListener('input', () => this.syncDeleteUserConfirm());
-      $('deleteUserForm')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        this.submitDeleteUser();
-      });
+      $('deleteUserConfirmBtn')?.addEventListener('click', () => this.submitDeleteUser());
       $('usersPrevBtn')?.addEventListener('click', () => this.usersGoPrevPage());
       $('usersNextBtn')?.addEventListener('click', () => this.usersGoNextPage());
       $('usersLoadMoreBtn')?.addEventListener('click', () => this.usersLoadMore());
@@ -3909,21 +3905,19 @@
         if (this._deleteUserTarget.email) bits.push(this._deleteUserTarget.email);
         meta.textContent = bits.join(' · ');
       }
-      const input = $('deleteUserConfirmInput');
-      if (input) input.value = '';
       const errEl = $('deleteUserError');
       if (errEl) {
         errEl.textContent = '';
         errEl.classList.add('hidden');
       }
       const btn = $('deleteUserConfirmBtn');
-      if (btn) btn.disabled = true;
+      if (btn) btn.disabled = false;
       const modal = $('deleteUserModal');
       if (modal) {
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
       }
-      if (input) input.focus();
+      if (btn) btn.focus();
     },
 
     closeDeleteUserModal() {
@@ -3933,32 +3927,15 @@
         modal.setAttribute('aria-hidden', 'true');
       }
       this._deleteUserTarget = null;
-      const input = $('deleteUserConfirmInput');
-      if (input) input.value = '';
       const btn = $('deleteUserConfirmBtn');
-      if (btn) btn.disabled = true;
-    },
-
-    syncDeleteUserConfirm() {
-      const input = $('deleteUserConfirmInput');
-      const btn = $('deleteUserConfirmBtn');
-      if (!btn) return;
-      btn.disabled = !input || String(input.value || '') !== 'DELETE';
+      if (btn) btn.disabled = false;
     },
 
     async submitDeleteUser() {
       const target = this._deleteUserTarget;
-      const input = $('deleteUserConfirmInput');
       const errEl = $('deleteUserError');
       const btn = $('deleteUserConfirmBtn');
       if (!target || !target.id) return;
-      if (!input || String(input.value || '') !== 'DELETE') {
-        if (errEl) {
-          errEl.textContent = 'Type DELETE to confirm.';
-          errEl.classList.remove('hidden');
-        }
-        return;
-      }
       if (btn) btn.disabled = true;
       try {
         await this.api('POST', '/api/admin/users/' + encodeURIComponent(target.id) + '/delete', {
@@ -3971,7 +3948,7 @@
           errEl.textContent = (err && err.message) || 'Failed to delete user';
           errEl.classList.remove('hidden');
         }
-        this.syncDeleteUserConfirm();
+        if (btn) btn.disabled = false;
       }
     },
 
