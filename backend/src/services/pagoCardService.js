@@ -40,10 +40,30 @@ function httpError(message, status, code, extra) {
 
 function mapPagoStatus(raw) {
   const status = String(raw || '').toLowerCase().trim();
-  if (['active', 'activated', 'enabled', 'open'].includes(status)) return 'active';
-  if (['pending', 'processing', 'creating', 'issued'].includes(status)) return 'pending';
-  if (['frozen', 'freeze', 'blocked', 'inactive', 'suspended'].includes(status)) return 'frozen';
-  if (['terminated', 'cancelled', 'canceled', 'closed', 'expired'].includes(status)) return 'terminated';
+  // Create responses use "active"; Get Card uses Pagocards lifecycle names.
+  if (['active', 'activated', 'enabled', 'open', 'normal'].includes(status)) return 'active';
+  if ([
+    'pending',
+    'processing',
+    'creating',
+    'issued',
+    'initial_state',
+    'pending_activation',
+    'activation_in_progress',
+  ].includes(status)) return 'pending';
+  if (['frozen', 'freeze', 'blocked', 'inactive', 'suspended', 'pause'].includes(status)) {
+    return 'frozen';
+  }
+  if ([
+    'terminated',
+    'cancelled',
+    'canceled',
+    'closed',
+    'expired',
+    'loss_report',
+    'before_cancellation',
+    'cancellation',
+  ].includes(status)) return 'terminated';
   return status ? 'pending' : 'active';
 }
 
@@ -74,25 +94,49 @@ function readBalance(card) {
   };
 }
 
+function parseExpiryParts(card) {
+  let expiryMonth = card?.expiry_month != null ? String(card.expiry_month).trim() : '';
+  let expiryYear = card?.expiry_year != null ? String(card.expiry_year).trim() : '';
+  const expiredate = String(card?.expiredate || card?.expire_date || '').trim();
+  if ((!expiryMonth || !expiryYear) && expiredate) {
+    const match = expiredate.match(/^(\d{1,2})\s*[\/\-]\s*(\d{2,4})$/);
+    if (match) {
+      if (!expiryMonth) expiryMonth = match[1].padStart(2, '0');
+      if (!expiryYear) expiryYear = match[2];
+    }
+  }
+  if (expiryMonth) expiryMonth = expiryMonth.padStart(2, '0');
+  if (expiryYear && expiryYear.length === 4) expiryYear = expiryYear.slice(-2);
+  const expDate = expiredate
+    || [expiryMonth, expiryYear].filter(Boolean).join('/')
+    || null;
+  return {
+    expiryMonth: expiryMonth || null,
+    expiryYear: expiryYear || null,
+    expDate,
+  };
+}
+
 function cardFieldsFromProvider(card) {
   const balance = readBalance(card);
   const number = card.card_number || card.cardnumber || null;
   const digits = String(number || '').replace(/\D/g, '');
-  const lastFour = String(card.last_four || digits.slice(-4) || '').slice(-4);
-  const expiryMonth = card.expiry_month || null;
-  const expiryYear = card.expiry_year || null;
-  const expDate = card.expiredate
-    || [expiryMonth, expiryYear].filter(Boolean).join('/')
-    || null;
+  const lastFour = String(card.last_four || card.lastfour || digits.slice(-4) || '')
+    .replace(/\D/g, '')
+    .slice(-4);
+  const { expiryMonth, expiryYear, expDate } = parseExpiryParts(card);
+  const cvv = card.cvv != null && String(card.cvv).trim() !== ''
+    ? String(card.cvv).replace(/\D/g, '')
+    : null;
   return {
-    pagoCardId: String(card.card_id || '').trim(),
+    pagoCardId: String(card.card_id || card.cardid || '').trim(),
     productCode: card.product_code || null,
     brand: card.brand || null,
     status: mapPagoStatus(card.status),
     pagoStatus: card.status || null,
-    cardNumber: number,
+    cardNumber: digits || null,
     expDate,
-    cvv: card.cvv || null,
+    cvv: cvv || null,
     cardHolderName: card.name_on_card || null,
     lastFour,
     expiryMonth,
@@ -102,6 +146,25 @@ function cardFieldsFromProvider(card) {
     balanceAmount: balance.balance_amount,
     balanceCurrency: balance.balance_currency,
   };
+}
+
+function needsSensitiveDetails(card) {
+  const number = String(card?.card_number || card?.cardnumber || '').replace(/\D/g, '');
+  const cvv = String(card?.cvv || '').replace(/\D/g, '');
+  return number.length < 12 || cvv.length < 3;
+}
+
+async function enrichCreatedCard(created, deps = {}) {
+  if (!created || !needsSensitiveDetails(created)) return created;
+  const cardId = String(created.card_id || created.cardid || '').trim();
+  if (!cardId) return created;
+  try {
+    const details = await getClient(deps).getCardDetails(cardId);
+    return { ...created, ...details, card_id: details.card_id || cardId };
+  } catch (err) {
+    console.warn('[pago] getCardDetails after create skipped:', err.message);
+    return created;
+  }
 }
 
 function getClient(deps) {
@@ -197,6 +260,9 @@ async function issuePagoCardForUser({
     rethrowPago(err);
   }
 
+  // Create often returns card_number/cvv null; Get Card fills PAN/CVV/expiry.
+  created = await enrichCreatedCard(created, deps);
+
   const fields = cardFieldsFromProvider(created);
   if (!fields.pagoCardId) {
     throw httpError('Pago Card did not return a card id', 502, 'PAGO_BAD_RESPONSE');
@@ -211,12 +277,19 @@ async function issuePagoCardForUser({
       email: cardEmail,
     });
   } catch (err) {
+    console.error('[pago] local cards_v2 save failed:', err.message, {
+      pago_card_id: fields.pagoCardId,
+      last_four: fields.lastFour,
+      has_pan: Boolean(fields.cardNumber),
+      has_cvv: Boolean(fields.cvv),
+    });
     const wrapped = httpError(
       'The card was created at Pago Card but could not be saved locally',
       500,
       'PAGO_CARD_SAVE_FAILED'
     );
     wrapped.pago_card_id = fields.pagoCardId;
+    wrapped.detail = String(err.message || err);
     throw wrapped;
   }
 

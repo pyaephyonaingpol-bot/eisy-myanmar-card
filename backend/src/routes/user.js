@@ -340,6 +340,7 @@ function sendPagoError(res, err, fallback) {
     error: err.message || fallback,
     code: err.code || 'PAGO_ERROR',
     pago_card_id: err.pago_card_id || undefined,
+    detail: err.detail || undefined,
   });
 }
 
