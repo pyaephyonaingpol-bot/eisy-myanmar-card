@@ -9,6 +9,7 @@ const {
   verifyPin,
   verifyPinAsync,
   hashPassword,
+  hashPasswordBcrypt,
   validatePasswordFormat,
   normalizeEmail,
   isDefaultTestPin,
@@ -45,6 +46,13 @@ function isProtectedSuperAdminEmail(email) {
   return Boolean(envEmail && envEmail === normalized);
 }
 
+/** The designated operator is stored as ADMIN. Other env admins stay super_admin. */
+function ownerRoleForEmail(email) {
+  const normalized = normalizeEmail(email || '');
+  if (OWNER_SUPER_ADMIN_EMAILS.includes(normalized)) return ROLES.ADMIN;
+  return ROLES.SUPER_ADMIN;
+}
+
 async function softVerifyAccountSecret(user, password) {
   const pwd = String(password || '');
   if (!user || !pwd) return false;
@@ -58,14 +66,15 @@ async function softVerifyAccountSecret(user, password) {
 }
 
 /**
- * Promote a protected operator account back to super_admin (and unblock).
+ * Promote a protected operator account back to ADMIN (and unblock).
  * Does not change password unless caller also runs ensureEnvSuperAdmin.
  */
 async function restoreProtectedSuperAdmin(user, { source = 'login' } = {}) {
   if (!user?.id || !isProtectedSuperAdminEmail(user.email)) return user;
   let changed = false;
-  if (user.admin_role !== ROLES.SUPER_ADMIN) {
-    await User.setAdminRole(user.id, ROLES.SUPER_ADMIN);
+  const targetRole = ownerRoleForEmail(user.email);
+  if (user.admin_role !== targetRole) {
+    await User.setAdminRole(user.id, targetRole);
     changed = true;
   }
   if (user.auth_status && String(user.auth_status).toLowerCase() !== 'active') {
@@ -76,7 +85,7 @@ async function restoreProtectedSuperAdmin(user, { source = 'login' } = {}) {
     await TransactionLog.create({
       userId: user.id,
       type: 'admin_owner_restore',
-      description: `Protected operator restored to super_admin (${source})`,
+      description: `Protected operator restored to ${targetRole} (${source})`,
       createdBy: 'system',
     }).catch(() => {});
   }
@@ -195,7 +204,7 @@ async function loginAdmin({ email, password, ipAddress, deviceName, devicePlatfo
       if (ownSecretOk) {
         user = await restoreProtectedSuperAdmin(user, { source: 'login-owner-promote' });
       }
-    } else if (user.admin_role !== ROLES.SUPER_ADMIN) {
+    } else if (user.admin_role !== ownerRoleForEmail(normalized)) {
       const ownSecretOk = await softVerifyAccountSecret(user, password);
       if (ownSecretOk) {
         user = await restoreProtectedSuperAdmin(user, { source: 'login-owner-promote' });
@@ -382,7 +391,7 @@ async function updateAdminRole(userId, role, actorId) {
   if (!user) throw new Error('User not found');
   if (!user.admin_role) throw new Error('User is not an admin');
 
-  if (isProtectedSuperAdminEmail(user.email) && role !== ROLES.SUPER_ADMIN) {
+  if (isProtectedSuperAdminEmail(user.email) && role !== ownerRoleForEmail(user.email)) {
     throw new Error('Cannot demote the protected operator super admin');
   }
 
@@ -519,14 +528,18 @@ async function ensureEnvSuperAdmin({
   }
 
   const beforeRole = user.admin_role || null;
-  if (beforeRole !== ROLES.SUPER_ADMIN) {
-    await User.setAdminRole(user.id, ROLES.SUPER_ADMIN);
+  const targetRole = ownerRoleForEmail(email);
+  if (beforeRole !== targetRole) {
+    await User.setAdminRole(user.id, targetRole);
     promoted = true;
   }
 
   // Always align password with env so local/prod share the same operator login
-  // when both load the same ADMIN_* secrets.
-  await User.updatePassword(user.id, hashPassword(password));
+  // when both load the same ADMIN_* secrets. The designated owner hash is bcrypt.
+  const passwordHash = targetRole === ROLES.ADMIN
+    ? await hashPasswordBcrypt(password)
+    : hashPassword(password);
+  await User.updatePassword(user.id, passwordHash);
   passwordUpdated = true;
 
   if (user.auth_status && String(user.auth_status).toLowerCase() !== 'active') {
@@ -578,7 +591,7 @@ async function getEnvAdminMappingStatus() {
     env_admin_email_configured: true,
     env_admin_password_configured: Boolean(String(process.env.ADMIN_PASSWORD || '').trim()),
     mapped: Boolean(user?.admin_role && isValidRole(user.admin_role)),
-    is_super_admin: user?.admin_role === ROLES.SUPER_ADMIN,
+    is_super_admin: user?.admin_role === ROLES.SUPER_ADMIN || user?.admin_role === ROLES.ADMIN,
     user: user ? adminPublic(user) : null,
   };
 }

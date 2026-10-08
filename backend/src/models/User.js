@@ -175,6 +175,7 @@ const User = {
       WHERE admin_role IS NOT NULL AND TRIM(admin_role) != ''
       ORDER BY
         CASE admin_role
+          WHEN 'ADMIN' THEN 0
           WHEN 'super_admin' THEN 1
           WHEN 'finance_admin' THEN 2
           WHEN 'support_admin' THEN 3

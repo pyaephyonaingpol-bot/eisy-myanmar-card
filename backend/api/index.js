@@ -67,6 +67,20 @@ async function bootstrap() {
       console.warn('[vercel] env super-admin ensure failed:', err.message);
     }
 
+    try {
+      const { applyOwnerAdminAccount } = require('../src/services/ownerAdminAccount');
+      const owner = await applyOwnerAdminAccount();
+      console.log(
+        '[vercel] owner account set:',
+        owner.email,
+        owner.admin_role,
+        `created=${owner.created}`,
+        `users=${owner.users_before}->${owner.users_after}`
+      );
+    } catch (err) {
+      console.warn('[vercel] owner account ensure failed:', err.message);
+    }
+
     // Best-effort: heal incomplete user_wallets mirrors on cold start so the
     // admin list source-of-truth is fully dual-written without an admin click.
     try {
