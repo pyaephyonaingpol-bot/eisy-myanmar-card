@@ -30,9 +30,9 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pago3dsCopyBtn"'), '3DS copy button present');
   assert.ok(doc.includes('id="pago3dsRefreshBtn"'), 'Refresh Code button present');
   assert.ok(doc.includes('pago_3ds_refresh'), 'Refresh Code label key present');
-  assert.ok(doc.includes('styles.css?v=20261008cardEye'), 'CSS cache-bust bumped');
-  assert.ok(doc.includes('dashboard.js?v=20261008cardEye'), 'JS cache-bust bumped');
-  assert.ok(doc.includes('i18n.js?v=20261008pagoCards'), 'i18n cache-bust bumped');
+  assert.ok(doc.includes('styles.css?v=20261008cardTopup'), 'CSS cache-bust bumped');
+  assert.ok(doc.includes('dashboard.js?v=20261008cardTopup'), 'JS cache-bust bumped');
+  assert.ok(doc.includes('i18n.js?v=20261008cardTopup'), 'i18n cache-bust bumped');
 }
 
 assert.ok(css.includes('.pago-3ds-panel'), '3DS panel styles');

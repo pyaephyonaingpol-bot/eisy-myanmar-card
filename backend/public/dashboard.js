@@ -8460,6 +8460,24 @@ const Dashboard = {
     this.pago3dsKnownIds = new Set();
     $('pagoCardRequestForm')?.addEventListener('submit', (e) => this.submitPagoCardRequest(e));
     $('pagoCardTopupForm')?.addEventListener('submit', (e) => this.submitPagoCardTopup(e));
+    $('pagoCardTopupForm')?.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-pago-topup-quick]');
+      if (!chip) return;
+      const input = $('pagoTopupAmount');
+      if (input) input.value = chip.dataset.pagoTopupQuick || '';
+      this.markPagoTopupQuick(chip.dataset.pagoTopupQuick);
+      this.updatePagoTopupPreview();
+    });
+    $('pagoTopupAmount')?.addEventListener('input', () => {
+      this.markPagoTopupQuick($('pagoTopupAmount')?.value);
+      this.updatePagoTopupPreview();
+    });
+    $('pagoCardTopupOpenBtn')?.addEventListener('click', () => this.openPagoTopupModal());
+    $('pagoTopupModalClose')?.addEventListener('click', () => this.closePagoTopupModal());
+    $('pagoTopupCancel')?.addEventListener('click', () => this.closePagoTopupModal());
+    $('pagoTopupModal')?.addEventListener('click', (e) => {
+      if (e.target === $('pagoTopupModal')) this.closePagoTopupModal();
+    });
     $('pagoCardRevealBtn')?.addEventListener('click', () => this.togglePagoCardReveal());
     $('pagoCardCopyNumberBtn')?.addEventListener('click', () => this.copyPagoCard());
     $('pago3dsCopyBtn')?.addEventListener('click', () => this.copyPago3dsCode());
@@ -9180,6 +9198,7 @@ const Dashboard = {
     const nextId = String(card.id);
     const sameCard = panel.dataset.cardId === nextId && !panel.classList.contains('hidden');
     if (!sameCard) {
+      this.closePagoTopupModal();
       if (panel.dataset.cardId && panel.dataset.cardId !== nextId) {
         this.pagoDetailRevealed = false;
         this.pagoWalletInfo = null;
@@ -9375,35 +9394,128 @@ const Dashboard = {
     }
   },
 
+  markPagoTopupQuick(value) {
+    const current = String(value ?? '');
+    $('pagoCardTopupForm')?.querySelectorAll('[data-pago-topup-quick]').forEach((btn) => {
+      btn.classList.toggle('is-selected', btn.dataset.pagoTopupQuick === current);
+    });
+  },
+
+  setPagoTopupError(message) {
+    const errEl = $('pagoTopupError');
+    if (!errEl) return;
+    errEl.textContent = message || '';
+    errEl.classList.toggle('hidden', !message);
+  },
+
+  updatePagoTopupPreview() {
+    const preview = this.calculateReloadPreviewUsdtClient($('pagoTopupAmount')?.value);
+    const wallet = Number(this.walletUsdt);
+    const set = (id, text) => {
+      const el = $(id);
+      if (el) el.textContent = text;
+    };
+    set('pagoTopupWallet', Number.isFinite(wallet) ? this.formatUsdt(wallet) : '—');
+    set('pagoTopupToCard', preview ? `$${preview.top_up_usd.toFixed(2)}` : '—');
+    set('pagoTopupFee', preview ? `$${preview.reload_fee_usd.toFixed(2)}` : '—');
+    set('pagoTopupTotal', preview ? `$${preview.total_wallet_usd.toFixed(2)} USDT` : '—');
+    const submit = $('pagoCardTopupSubmit');
+    if (submit && submit.dataset.busy !== '1') {
+      submit.disabled = Boolean(preview?.below_min);
+    }
+    if (preview?.below_min) {
+      const min = Number(preview.min_usdt || 5).toFixed(2);
+      this.setPagoTopupError(`Minimum top-up is $${min}.`);
+    } else if (!submit || submit.dataset.busy !== '1') {
+      this.setPagoTopupError('');
+    }
+  },
+
+  openPagoTopupModal() {
+    const card = this.getSelectedPagoCard();
+    if (!card) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
+      return;
+    }
+    const status = String(card.status || '').toLowerCase();
+    if (status && status !== 'active') {
+      this.toast(this.i18nText('pago_topup_inactive', 'Only active cards can be topped up'), 'error');
+      return;
+    }
+    const line = $('pagoTopupCardLine');
+    if (line) {
+      const last4 = card.last4 || '••••';
+      line.textContent = `•••• ${last4} · ${this.pagoCardBalanceText(card)}`;
+    }
+    if ($('pagoTopupAmount')) $('pagoTopupAmount').value = '';
+    this.markPagoTopupQuick('');
+    const submit = $('pagoCardTopupSubmit');
+    if (submit) {
+      submit.disabled = false;
+      delete submit.dataset.busy;
+    }
+    this.setPagoTopupError('');
+    this.updatePagoTopupPreview();
+    $('pagoTopupModal')?.classList.remove('hidden');
+    $('pagoTopupAmount')?.focus();
+    if (this.walletUsdt == null) {
+      this.loadWallet().then(() => this.updatePagoTopupPreview()).catch(() => {});
+    }
+    if (!this.cardPricing) {
+      this.loadCardPricing().then(() => this.updatePagoTopupPreview()).catch(() => {});
+    }
+  },
+
+  closePagoTopupModal() {
+    $('pagoTopupModal')?.classList.add('hidden');
+    const submit = $('pagoCardTopupSubmit');
+    if (submit) {
+      submit.disabled = false;
+      delete submit.dataset.busy;
+    }
+  },
+
   async submitPagoCardTopup(e) {
     e.preventDefault();
     const panel = $('pagoCardDetailPanel');
     const cardId = panel?.dataset.cardId;
     const amount = $('pagoTopupAmount')?.value;
     if (!cardId) {
-      this.toast('Choose a card first', 'error');
+      this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
       return;
     }
     const btn = $('pagoCardTopupSubmit');
-    if (btn) btn.disabled = true;
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.busy = '1';
+    }
+    this.setPagoTopupError('');
     try {
       const data = await Auth.api('POST', `/api/user/cards/${cardId}/topup`, {
         amount_usdt: amount,
       }, { sensitive: true });
       this.toast(data.message || 'Card topped up.', 'ok');
       if ($('pagoTopupAmount')) $('pagoTopupAmount').value = '';
+      this.closePagoTopupModal();
       const card = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
       if (card) this.showPagoCardDetail(card);
+      this.loadWallet({ force: true }).catch(() => {});
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
       if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
         this.toast(err.message, 'error');
+        this.closePagoTopupModal();
         this.openUsdtTopUpModal();
         return;
       }
-      this.toast(err.message || 'Top-up failed', 'error');
+      const message = err.message || 'Top-up failed';
+      this.setPagoTopupError(message);
+      this.toast(message, 'error');
     } finally {
-      if (btn) btn.disabled = false;
+      if (btn) {
+        btn.disabled = false;
+        delete btn.dataset.busy;
+      }
     }
   },
 

@@ -30,8 +30,8 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('data-i18n="pago_tx_status"'), 'status column');
   const panelAt = doc.indexOf('id="pagoTxPanel"');
   const detailAt = doc.indexOf('id="pagoCardDetailPanel"');
-  const topupAt = doc.indexOf('id="pagoCardTopupForm"');
-  assert.ok(detailAt > -1 && panelAt > detailAt && topupAt > panelAt, 'history sits inside the card detail');
+  const requestAt = doc.indexOf('id="pagoCardRequestForm"');
+  assert.ok(detailAt > -1 && panelAt > detailAt && requestAt > panelAt, 'history sits inside the card detail');
 }
 
 assert.ok(css.includes('.pago-tx-item'), 'transaction row styles');
