@@ -174,8 +174,17 @@ async function run() {
   assert.strictEqual(issued.card.expiry_month, '12');
   assert.strictEqual(issued.card.expiry_year, '30');
   assert.strictEqual(Number(issued.card.balance_display_usd), 10);
-  assert.strictEqual(issued.debited_usdt, 10.12);
-  assert.strictEqual(await balanceOf(user.id), 89.88);
+  const { quoteCardIssuanceCheckout } = require('../src/constants/cardIssuanceFees');
+  const { getCardPricingSettings } = require('../src/services/settingsService');
+  const issueQuote = quoteCardIssuanceCheckout({
+    initialLoadUsd: 10.12,
+    settings: await getCardPricingSettings(),
+  });
+  assert.ok(issueQuote.card_issuance_fee_usd > 0, 'default issuing fee is charged');
+  assert.strictEqual(issued.debited_usdt, issueQuote.total_usd);
+  assert.strictEqual(issued.pricing.initial_load_usd, 10.12);
+  const afterIssue = Math.round((100 - issueQuote.total_usd) * 100) / 100;
+  assert.strictEqual(await balanceOf(user.id), afterIssue);
 
   const failing = {
     async createVirtualCard() {
@@ -196,7 +205,7 @@ async function run() {
     }, { client: failing }),
     (err) => err.code === 'PAGO_REQUEST_FAILED'
   );
-  assert.strictEqual(await balanceOf(user.id), 89.88, 'failed issue refunds the wallet');
+  assert.strictEqual(await balanceOf(user.id), afterIssue, 'failed issue refunds the wallet');
 
   await assert.rejects(
     () => issuePagoCardForUser({
@@ -209,7 +218,7 @@ async function run() {
     }, { client }),
     (err) => err.code === 'VALIDATION_ERROR'
   );
-  assert.strictEqual(await balanceOf(user.id), 89.88, 'rejected ATM load does not debit');
+  assert.strictEqual(await balanceOf(user.id), afterIssue, 'rejected ATM load does not debit');
 
   const topped = await topUpPagoCard({
     userId: user.id,
@@ -220,7 +229,7 @@ async function run() {
   assert.ok(topped.debited_usdt >= 10);
   assert.strictEqual(topped.transaction_id, 'txn_pago_1');
   assert.strictEqual(Number(topped.card.balance_display_usd), 15);
-  assert.strictEqual(await balanceOf(user.id), Math.round((89.88 - topped.debited_usdt) * 100) / 100);
+  assert.strictEqual(await balanceOf(user.id), Math.round((afterIssue - topped.debited_usdt) * 100) / 100);
 
   // Missing Pago columns (prod Turso drift) must be repaired by the ensure patch.
   const { ensurePagoCardColumns, PAGO_CARD_COLUMNS } = require('../migrations/patches/ensurePagoCardColumns');

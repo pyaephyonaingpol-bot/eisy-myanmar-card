@@ -51,7 +51,7 @@
       touch-action: pan-y !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261008cardTopup" />
+  <link rel="stylesheet" href="/styles.css?v=20261008issueFee" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -1451,6 +1451,34 @@
                   <label for="pagoCardInitialLoad" data-i18n="pago_initial_load">Starting balance (USD, optional)</label>
                   <input id="pagoCardInitialLoad" type="number" min="10" max="2500" step="0.01" placeholder="10.00" />
                 </div>
+                <section class="pricing-receipt pago-issue-summary" id="pagoIssueSummary" aria-labelledby="pagoIssueSummaryTitle">
+                  <h3 id="pagoIssueSummaryTitle" data-i18n="pago_issue_summary">Price summary</h3>
+                  <div class="pricing-row">
+                    <span data-i18n="pago_issue_fee">Card issuing fee</span>
+                    <strong id="pagoIssueFee">$5.00</strong>
+                  </div>
+                  <div class="pricing-row">
+                    <span data-i18n="pago_issue_processing">Processing fee</span>
+                    <strong id="pagoIssueProcessing">$1.50</strong>
+                  </div>
+                  <div class="pricing-row hidden" id="pagoIssueFundingRow">
+                    <span data-i18n="pago_issue_funding">Funding fee</span>
+                    <strong id="pagoIssueFunding">$0.00</strong>
+                  </div>
+                  <div class="pricing-row">
+                    <span data-i18n="pago_issue_load">Starting balance</span>
+                    <strong id="pagoIssueLoad">$0.00</strong>
+                  </div>
+                  <div class="pricing-row">
+                    <span data-i18n="pago_issue_wallet">Wallet balance</span>
+                    <strong id="pagoIssueWallet">—</strong>
+                  </div>
+                  <div class="pricing-row pricing-total">
+                    <span data-i18n="pago_issue_total">Total from wallet</span>
+                    <strong id="pagoIssueTotal">$6.50</strong>
+                  </div>
+                  <p class="pago-issue-warning hidden" id="pagoIssueBalanceWarning" role="alert" data-i18n="pago_issue_insufficient">Insufficient balance</p>
+                </section>
                 <button type="submit" class="btn btn-primary" id="pagoCardRequestSubmit" data-i18n="pago_request_submit">Request card</button>
               </form>
             </section>
@@ -1842,7 +1870,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261008bin404"></script>
+  <script defer src="/i18n.js?v=20261008issueFee"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1865,7 +1893,7 @@
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261008feeFormula"></script>
+  <script defer src="/dashboard.js?v=20261008issueFee"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

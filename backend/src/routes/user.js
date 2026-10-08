@@ -409,6 +409,7 @@ router.post('/cards/request', requireAuth, requireSensitive, async (req, res) =>
       message: 'Your virtual card is ready.',
       products: PAGO_PRODUCTS,
       debited_usdt: result.debited_usdt,
+      pricing: result.pricing || null,
       card,
       ...payload,
     });
@@ -459,6 +460,25 @@ router.post('/cards/sync', requireAuth, requireSensitive, async (req, res) => {
 router.get('/cards/products', requireAuth, (_req, res) => {
   const { PAGO_PRODUCTS } = require('../services/pagoCardService');
   res.json({ products: PAGO_PRODUCTS });
+});
+
+router.get('/cards/issue-pricing', requireAuth, requireSensitive, async (_req, res) => {
+  try {
+    const { getCardPricingSettings } = require('../services/settingsService');
+    const { quoteCardIssuanceCheckout } = require('../constants/cardIssuanceFees');
+    const settings = await getCardPricingSettings();
+    const quote = quoteCardIssuanceCheckout({ initialLoadUsd: 0, settings });
+    res.json({
+      success: true,
+      card_issuance_fee_usd: quote.card_issuance_fee_usd,
+      card_processing_fee_usd: quote.card_processing_fee_usd,
+      card_funding_fee_percent: quote.card_funding_fee_percent,
+      fee_rule: 'total = issuing fee + processing fee + funding percent of starting balance + starting balance',
+    });
+  } catch (err) {
+    console.error('[user/cards/issue-pricing]', err.message);
+    res.status(500).json({ error: 'Could not load card issuing fees', code: 'ISSUE_PRICING_FAILED' });
+  }
 });
 
 router.get('/cards/topup-pricing', requireAuth, requireSensitive, async (_req, res) => {

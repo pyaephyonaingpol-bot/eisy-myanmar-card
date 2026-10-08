@@ -9,6 +9,7 @@ const {
 } = require('./settingsService');
 const { loadPagoCardClient } = require('./loadPagoCardClient');
 const { displayStatusLabel } = require('../constants/cardStatuses');
+const { quoteCardIssuanceCheckout } = require('../constants/cardIssuanceFees');
 
 const PAGO_PRODUCTS = [
   { code: 'us_493_visa_bin_v2', label: 'Visa (493)', allows_initial_load: true },
@@ -269,16 +270,34 @@ async function issuePagoCardForUser({
     }
   }
 
+  const settings = deps.settings || await getCardPricingSettings();
+  const pricing = quoteCardIssuanceCheckout({
+    initialLoadUsd: load || 0,
+    settings,
+  });
+
   let debited = 0;
-  if (load != null) {
-    await debitUsdt(userId, load, {
-      txType: 'balance_debit',
-      description: `Pago Card starting balance ${load.toFixed(2)} USD`,
-      referenceType: 'cards_v2',
-      createdBy: 'user',
-      metadata: { provider: 'pago', product_code: product, initial_load: load },
-    });
-    debited = load;
+  if (pricing.total_usd > 0) {
+    const fresh = await User.findById(userId);
+    const available = Number(fresh?.balance_usdt || 0);
+    if (!(available + 1e-9 >= pricing.total_usd)) {
+      throw httpError('Insufficient balance', 400, 'INSUFFICIENT_USDT_BALANCE');
+    }
+    try {
+      await debitUsdt(userId, pricing.total_usd, {
+        txType: 'balance_debit',
+        description: `Pago Card checkout ${pricing.total_usd.toFixed(2)} USD`,
+        referenceType: 'cards_v2',
+        createdBy: 'user',
+        metadata: { provider: 'pago', product_code: product, ...pricing },
+      });
+    } catch (err) {
+      if (err?.code === 'INSUFFICIENT_USDT_BALANCE') {
+        throw httpError('Insufficient balance', 400, 'INSUFFICIENT_USDT_BALANCE');
+      }
+      throw err;
+    }
+    debited = pricing.total_usd;
   }
 
   let created;
@@ -296,7 +315,7 @@ async function issuePagoCardForUser({
     });
   } catch (err) {
     if (debited > 0) {
-      await refundUsdt(userId, debited, 'Refund Pago Card starting balance');
+      await refundUsdt(userId, debited, 'Refund Pago Card checkout');
     }
     rethrowPago(err);
   }
@@ -363,7 +382,29 @@ async function issuePagoCardForUser({
     createdBy: 'user',
   }).catch((err) => console.warn('[pago] issue log skipped:', err.message));
 
-  return { card: row, debited_usdt: debited };
+  const platformFee = Math.round((
+    pricing.card_issuance_fee_usd
+    + pricing.card_processing_fee_usd
+    + pricing.funding_fee_usd
+  ) * 100) / 100;
+  if (platformFee > 0) {
+    try {
+      const { recordPlatformUsdFee, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
+      await recordPlatformUsdFee(platformFee, {
+        feeType: PLATFORM_FEE_TYPES.CARD_ISSUE,
+        description: `Card issuing fee — ${fields.lastFour ? `•••• ${fields.lastFour}` : fields.pagoCardId}`,
+        referenceType: 'cards_v2',
+        referenceId: row?.id || null,
+        relatedUserId: userId,
+        createdBy: 'user',
+        metadata: { provider: 'pago', product_code: product, ...pricing },
+      });
+    } catch (err) {
+      console.warn('[pago] issue fee ledger skipped:', err.message);
+    }
+  }
+
+  return { card: row, debited_usdt: debited, pricing };
 }
 
 async function ensurePagoSchemaColumns() {

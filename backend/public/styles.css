@@ -5270,6 +5270,18 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   margin: 0 0 0.75rem;
 }
 
+.pago-issue-summary h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  color: #93c5fd;
+}
+
+.pago-issue-warning {
+  color: #fca5a5;
+  font-weight: 700;
+  margin: 0.65rem 0 0;
+}
+
 .pago-3ds-strip {
   display: flex;
   flex-wrap: wrap;
