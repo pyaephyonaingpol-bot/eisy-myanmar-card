@@ -8646,7 +8646,23 @@ const Dashboard = {
     }
     this.pagoDetailRevealed = true;
     this.showPagoCardDetail(card);
-    await this.copyToClipboard(this.formatAllCardDetails(card));
+    try {
+      await this.copyToClipboard(this.formatAllCardDetails(card));
+    } catch (err) {
+      // Clipboard can fail without window focus (mobile WebView / headless).
+      // Details stay revealed on the plastic card so the user can still copy manually.
+      if (!silentToast) {
+        this.toast(
+          this.i18nText(
+            'pago_wallet_copy_failed',
+            'Could not auto-copy. Card details are shown — copy them manually into your wallet app.'
+          ),
+          'error'
+        );
+      }
+      console.warn('[Dashboard] wallet clipboard:', err?.message || err);
+      return false;
+    }
     if (!silentToast) {
       this.copyToast(
         this.i18nText('pago_wallet_copied', 'Card details copied — paste them in your wallet app')
