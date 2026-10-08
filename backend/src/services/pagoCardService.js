@@ -22,6 +22,38 @@ const ATM_PRODUCT_CODE = 'us_493_visa_atm';
 const MIN_INITIAL_LOAD = 10;
 const MAX_INITIAL_LOAD = 2500;
 const MIN_TOP_UP = 5;
+/** Upstream create call. The route backstop is a few seconds longer so a timeout can refund. */
+const CARD_CREATE_TIMEOUT_MS = parseInt(process.env.CARD_CREATE_TIMEOUT_MS || '15000', 10);
+const CARD_CREATE_ROUTE_TIMEOUT_MS = parseInt(process.env.CARD_CREATE_ROUTE_TIMEOUT_MS || '22000', 10);
+/** One card details / list call. */
+const CARD_FETCH_TIMEOUT_MS = parseInt(process.env.CARD_FETCH_TIMEOUT_MS || '8000', 10);
+/** Whole provider sync while loading My Cards. */
+const CARD_SYNC_BUDGET_MS = parseInt(process.env.CARD_SYNC_BUDGET_MS || '12000', 10);
+
+function withCardApiTimeout(promise, ms, label = 'Card request') {
+  const timeoutMs = Math.max(1000, Number(ms) || CARD_FETCH_TIMEOUT_MS);
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(httpError(
+        `${label} timed out. Please try again.`,
+        504,
+        'CARD_REQUEST_TIMEOUT'
+      ));
+    }, timeoutMs);
+  });
+  return Promise.race([
+    Promise.resolve(promise).finally(() => {
+      if (timer) clearTimeout(timer);
+    }),
+    timeout,
+  ]);
+}
+
+function isCardTimeoutError(err) {
+  const code = String(err?.code || '');
+  return code === 'PAGO_TIMEOUT' || code === 'CARD_REQUEST_TIMEOUT';
+}
 
 function truncateUsd(amount) {
   const value = Number(amount);
@@ -167,13 +199,17 @@ async function enrichCreatedCard(created, deps = {}) {
   }
 }
 
-function getClient(deps) {
+function getClient(deps = {}) {
   if (deps.client) return deps.client;
-  return loadPagoCardClient().createPagoCardClient();
+  const timeoutMs = Number(deps.timeoutMs) || CARD_FETCH_TIMEOUT_MS;
+  return loadPagoCardClient().createPagoCardClient({ timeoutMs });
 }
 
 function rethrowPago(err) {
   const code = err?.code || 'PAGO_ERROR';
+  if (code === 'PAGO_TIMEOUT' || isCardTimeoutError(err)) {
+    throw httpError('Pago Card timed out. Please try again.', 504, 'PAGO_TIMEOUT');
+  }
   if (code === 'PAGO_NOT_CONFIGURED') {
     throw httpError(err.message, 503, code);
   }
@@ -245,7 +281,10 @@ async function issuePagoCardForUser({
 
   let created;
   try {
-    created = await getClient(deps).createVirtualCard({
+    created = await getClient({
+      ...deps,
+      timeoutMs: deps.timeoutMs || CARD_CREATE_TIMEOUT_MS,
+    }).createVirtualCard({
       product_code: product,
       first_name: names.first_name,
       last_name: names.last_name,
@@ -261,7 +300,10 @@ async function issuePagoCardForUser({
   }
 
   // Create often returns card_number/cvv null; Get Card fills PAN/CVV/expiry.
-  created = await enrichCreatedCard(created, deps);
+  created = await enrichCreatedCard(created, {
+    ...deps,
+    timeoutMs: CARD_FETCH_TIMEOUT_MS,
+  });
 
   const fields = cardFieldsFromProvider(created);
   if (!fields.pagoCardId) {
@@ -359,7 +401,10 @@ async function importPagoCardById(userId, pagoCardId, deps = {}) {
   const existing = await Card.findByPagoCardId(id);
   if (existing && Number(existing.user_id) === Number(userId)) {
     try {
-      const remote = await getClient(deps).getCardDetails(id);
+      const remote = await getClient({
+        ...deps,
+        timeoutMs: deps.timeoutMs || CARD_FETCH_TIMEOUT_MS,
+      }).getCardDetails(id);
       return Card.updateFromPago(existing.id, cardFieldsFromProvider(remote));
     } catch (_) {
       return existing;
@@ -372,7 +417,10 @@ async function importPagoCardById(userId, pagoCardId, deps = {}) {
   const user = await User.findById(userId);
   let remote;
   try {
-    remote = await getClient(deps).getCardDetails(id);
+    remote = await getClient({
+      ...deps,
+      timeoutMs: deps.timeoutMs || CARD_FETCH_TIMEOUT_MS,
+    }).getCardDetails(id);
   } catch (err) {
     rethrowPago(err);
   }
@@ -412,12 +460,27 @@ async function syncPagoCardsForUser(userId, { pagoCardId = null } = {}, deps = {
     throw httpError('Add an email to your profile before syncing cards', 400, 'EMAIL_REQUIRED');
   }
 
-  const client = getClient(deps);
+  const deadline = Date.now() + Math.max(1000, Number(deps.syncBudgetMs) || CARD_SYNC_BUDGET_MS);
   let imported = 0;
   let updated = 0;
+  let timedOut = false;
   const touched = [];
 
+  const clientFor = () => {
+    const left = deadline - Date.now();
+    if (left < 1000) return null;
+    if (deps.client) return deps.client;
+    return getClient({
+      timeoutMs: Math.min(CARD_FETCH_TIMEOUT_MS, left),
+    });
+  };
+
   for (const product of PAGO_PRODUCTS) {
+    const client = clientFor();
+    if (!client) {
+      timedOut = true;
+      break;
+    }
     let summaries = [];
     try {
       if (typeof client.listCardsByEmail !== 'function') {
@@ -428,7 +491,9 @@ async function syncPagoCardsForUser(userId, { pagoCardId = null } = {}, deps = {
         product_code: product.code,
       });
     } catch (err) {
+      if (isCardTimeoutError(err)) timedOut = true;
       console.warn('[pago] listCardsByEmail skipped:', product.code, err.message);
+      if (timedOut) break;
       continue;
     }
 
@@ -444,8 +509,14 @@ async function syncPagoCardsForUser(userId, { pagoCardId = null } = {}, deps = {
       try {
         let remote;
         try {
-          remote = await client.getCardDetails(remoteId);
-        } catch (_) {
+          const detailClient = clientFor();
+          if (!detailClient) {
+            timedOut = true;
+            break;
+          }
+          remote = await detailClient.getCardDetails(remoteId);
+        } catch (err) {
+          if (isCardTimeoutError(err)) timedOut = true;
           remote = {
             card_id: remoteId,
             product_code: summary.product_code || product.code,
@@ -484,9 +555,10 @@ async function syncPagoCardsForUser(userId, { pagoCardId = null } = {}, deps = {
         console.warn('[pago] sync card skipped:', remoteId, err.message);
       }
     }
+    if (timedOut) break;
   }
 
-  return { imported, updated, cards: touched };
+  return { imported, updated, cards: touched, timed_out: timedOut };
 }
 
 async function refreshPagoCard(userId, localCardId, deps = {}) {
@@ -498,7 +570,10 @@ async function refreshPagoCard(userId, localCardId, deps = {}) {
 
   let remote;
   try {
-    remote = await getClient(deps).getCardDetails(card.pago_card_id);
+    remote = await getClient({
+      ...deps,
+      timeoutMs: deps.timeoutMs || CARD_FETCH_TIMEOUT_MS,
+    }).getCardDetails(card.pago_card_id);
   } catch (err) {
     rethrowPago(err);
   }
@@ -550,7 +625,10 @@ async function topUpPagoCard({ userId, localCardId, amountUsd }, deps = {}) {
 
   let funded;
   try {
-    funded = await getClient(deps).topUpCard(
+    funded = await getClient({
+      ...deps,
+      timeoutMs: deps.timeoutMs || CARD_CREATE_TIMEOUT_MS,
+    }).topUpCard(
       card.pago_card_id,
       fundAmount,
       { idempotencyKey: `pago-fund-${userId}-${card.id}-${crypto.randomBytes(6).toString('hex')}` }
@@ -649,6 +727,12 @@ function getWalletProvisioningInfo(card = {}) {
 
 module.exports = {
   PAGO_PRODUCTS,
+  CARD_CREATE_TIMEOUT_MS,
+  CARD_CREATE_ROUTE_TIMEOUT_MS,
+  CARD_FETCH_TIMEOUT_MS,
+  CARD_SYNC_BUDGET_MS,
+  withCardApiTimeout,
+  isCardTimeoutError,
   issuePagoCardForUser,
   refreshPagoCard,
   topUpPagoCard,

@@ -76,6 +76,18 @@ async function run() {
   assert.ok(dash.includes('_cardsEpoch'), 'stale in-flight GET cannot overwrite newer cards');
   const userRoutes = fs.readFileSync(path.join(root, 'backend/src/routes/user.js'), 'utf8');
   assert.ok(userRoutes.includes('function setCardsNoStore'), 'cards API sets no-store headers');
+  assert.ok(userRoutes.includes('withCardApiTimeout'), 'card routes enforce a timeout');
+  assert.ok(userRoutes.includes('CARD_CREATE_ROUTE_TIMEOUT_MS'), 'card creation has a route timeout');
+  assert.ok(userRoutes.includes('CARD_FETCH_TIMEOUT_MS') || userRoutes.includes('CARD_SYNC_BUDGET_MS'), 'card fetch has a route timeout');
+  assert.ok(dash.includes('timeoutMs: 26000'), 'card create client timeout');
+  assert.ok(dash.includes('timeoutMs: 16000'), 'card list client timeout');
+  assert.ok(dash.includes('timeoutMs: 12000'), 'card detail client timeout');
+  assert.ok(dash.includes('cardTimeoutMessage'), 'timeout toast helper');
+  const { withCardApiTimeout } = require('../src/services/pagoCardService');
+  await assert.rejects(
+    () => withCardApiTimeout(new Promise(() => {}), 1000, 'Card fetch'),
+    (err) => err.code === 'CARD_REQUEST_TIMEOUT' && err.status === 504
+  );
 
   const { resetSupabaseClientForTests } = require('../src/lib/supabase');
   process.env.SUPABASE_URL = 'off';

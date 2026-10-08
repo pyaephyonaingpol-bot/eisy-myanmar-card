@@ -239,6 +239,38 @@ const sampleCard = {
   }
 
   {
+    const started = Date.now();
+    const api = createPagoCardClient({
+      baseUrl: 'https://pagocards.example',
+      apiKey: 'pub-test-key',
+      secretKey: 'sec-test-key',
+      timeoutMs: 300,
+      fetchImpl: (_url, init) => new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          resolve({
+            ok: true,
+            status: 200,
+            async text() {
+              return JSON.stringify({ status: 'success', data: { card_id: 'late' } });
+            },
+          });
+        }, 1500);
+        init.signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          const err = new Error('The operation was aborted due to timeout');
+          err.name = 'TimeoutError';
+          reject(err);
+        });
+      }),
+    });
+    await assert.rejects(
+      () => api.getCardDetails('card_slow'),
+      (err) => err instanceof PagoCardError && err.code === 'PAGO_TIMEOUT'
+    );
+    assert.ok(Date.now() - started < 1200, 'create/fetch abort before the slow response');
+  }
+
+  {
     const { api } = clientWith(async () => ({
       ok: false,
       status: 502,

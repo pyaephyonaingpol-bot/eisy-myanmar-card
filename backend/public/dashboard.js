@@ -8985,6 +8985,19 @@ const Dashboard = {
     this.updatePagoWalletUi(card);
   },
 
+  cardTimeoutMessage(err) {
+    const code = String(err?.code || '');
+    if (
+      code === 'REQUEST_TIMEOUT'
+      || code === 'PAGO_TIMEOUT'
+      || code === 'CARD_REQUEST_TIMEOUT'
+      || Number(err?.status) === 504
+    ) {
+      return this.i18nText('pago_timeout', 'Card service timed out. Please try again.');
+    }
+    return '';
+  },
+
   async openPagoCardDetail(cardId, fallback) {
     const local = (this.allCards || []).find((card) => String(card.id) === String(cardId)) || fallback;
     this.pagoDetailRevealed = false;
@@ -8992,17 +9005,23 @@ const Dashboard = {
     if (local) this.showPagoCardDetail(local);
     try {
       this.invalidateFetch('cards');
-      const data = await Auth.api('GET', `/api/user/cards/${cardId}`, null, { sensitive: true });
+      const data = await Auth.api('GET', `/api/user/cards/${cardId}`, null, {
+        sensitive: true,
+        timeoutMs: 12000,
+      });
       const card = this.applyCardsPayload(data, { selectCardId: cardId })
         || data.card
         || (data.cards || []).find((item) => String(item.id) === String(cardId));
+      if (data.timed_out) {
+        this.toast(this.i18nText('pago_timeout', 'Card service timed out. Please try again.'), 'error');
+      }
       if (card) {
         this.showPagoCardDetail(card);
         this.loadPagoWalletInfo(card).then(() => this.updatePagoWalletUi(card)).catch(() => {});
       }
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
-      else this.toast(err.message || 'Could not refresh card details', 'error');
+      else this.toast(this.cardTimeoutMessage(err) || err.message || 'Could not refresh card details', 'error');
     }
   },
 
@@ -9010,14 +9029,19 @@ const Dashboard = {
     if (!Auth.isLoggedIn() || Auth.needsPinUnlock()) return null;
     try {
       const body = pagoCardId ? { pago_card_id: pagoCardId } : {};
-      const data = await Auth.api('POST', '/api/user/cards/sync', body, { sensitive: true });
+      const data = await Auth.api('POST', '/api/user/cards/sync', body, {
+        sensitive: true,
+        timeoutMs: 16000,
+      });
       if (Array.isArray(data.cards)) {
         this.applyCardsPayload(data, {
           selectCardId: data.card?.id || null,
           markFresh: true,
         });
       }
-      if (!silent && data.message) this.toast(data.message, 'ok');
+      if (!silent && data.timed_out) {
+        this.toast(this.i18nText('pago_timeout', 'Card service timed out. Please try again.'), 'error');
+      } else if (!silent && data.message) this.toast(data.message, 'ok');
       return data;
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
@@ -9025,7 +9049,9 @@ const Dashboard = {
         return null;
       }
       console.warn('[Dashboard] pago sync failed:', err.message);
-      if (!silent) this.toast(err.message || 'Could not sync cards from Pago', 'error');
+      if (!silent) {
+        this.toast(this.cardTimeoutMessage(err) || err.message || 'Could not sync cards from Pago', 'error');
+      }
       return null;
     }
   },
@@ -9042,7 +9068,7 @@ const Dashboard = {
         last_name: $('pagoCardLastName')?.value.trim(),
         email: $('pagoCardEmail')?.value.trim(),
         initial_load: initial || undefined,
-      }, { sensitive: true });
+      }, { sensitive: true, timeoutMs: 26000 });
       this.toast(data.message || 'Your virtual card is ready.', 'ok');
       if ($('pagoCardInitialLoad')) $('pagoCardInitialLoad').value = '';
       const selectId = data.card?.id ?? null;
@@ -9065,7 +9091,7 @@ const Dashboard = {
           return;
         }
       }
-      this.toast(err.message || 'Card request failed', 'error');
+      this.toast(this.cardTimeoutMessage(err) || err.message || 'Card request failed', 'error');
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -9160,7 +9186,7 @@ const Dashboard = {
 
       let data;
       try {
-        data = await Auth.api('GET', '/api/user/cards', null, { sensitive: true });
+        data = await Auth.api('GET', '/api/user/cards', null, { sensitive: true, timeoutMs: 16000 });
       } catch (err) {
         // Back-compat: older servers returned 404 for empty card lists
         if (err.status === 404 && Array.isArray(err.response?.cards)) {
@@ -9192,6 +9218,9 @@ const Dashboard = {
       this.allCards = newCards;
       this.saveCardsCache(this.allCards);
       this._markFetched('cards');
+      if (data.provider_timed_out && !silent) {
+        this.toast(this.i18nText('pago_timeout', 'Card service timed out. Please try again.'), 'error');
+      }
 
       if (prevCardId != null) {
         const idx = this.allCards.findIndex((c) => c.id === prevCardId);
@@ -9250,7 +9279,7 @@ const Dashboard = {
           if ($('sumCard')) $('sumCard').textContent = 'No card';
           this.updateCardStatusSummary(null);
         }
-        showOutput('viewCardOutput', err.message, true);
+        showOutput('viewCardOutput', this.cardTimeoutMessage(err) || err.message, true);
       } else {
         console.warn('[Dashboard] silent loadAllCards failed:', err.message);
       }
