@@ -5047,11 +5047,116 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   letter-spacing: 0.01em;
 }
 
-/* ── Pago virtual cards — plastic ATM card UI ── */
+/* ── Pago virtual cards — one plastic card + actions ── */
 .pago-cards-panel,
-.pago-detail-panel {
+.pago-detail-panel,
+.pago-card-stage,
+.pago-card-component {
   display: grid;
-  gap: 1.15rem;
+  gap: 0.9rem;
+}
+
+.pago-card-component {
+  max-width: 26.5rem;
+}
+
+.pago-card-stage-head {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.pago-card-stage-head h2 {
+  margin: 0;
+}
+
+.pago-card-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.pago-card-switcher.hidden {
+  display: none;
+}
+
+.pago-card-chip {
+  appearance: none;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.35);
+  color: var(--text-secondary, #cbd5e1);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.pago-card-chip.is-active {
+  color: #e0f2fe;
+  border-color: rgba(56, 189, 248, 0.7);
+  background: rgba(14, 165, 233, 0.18);
+}
+
+.pago-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.pago-card-actions .btn,
+.pago-card-actions .pago-action-wallet {
+  width: 100%;
+  min-height: 2.45rem;
+  white-space: normal;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.pago-action-wallet {
+  appearance: none;
+  border-radius: 0.7rem;
+  min-height: 2.15rem;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pago-action-apple {
+  color: #f8fafc;
+  background: #0b0f14;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.pago-action-google {
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+}
+
+.pago-3ds-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+  margin: 0;
+}
+
+.pago-3ds-strip-label h3 {
+  margin: 0;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pago-3ds-strip .pago-3ds-code-row {
+  margin: 0;
+}
+
+.pago-3ds-strip .pago-3ds-meta {
+  margin: 0.15rem 0 0;
 }
 
 .pago-detail-header {
