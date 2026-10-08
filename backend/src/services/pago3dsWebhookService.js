@@ -232,6 +232,34 @@ async function handlePagocardsWebhook(body, req = null) {
     }
   }
 
+  if (!duplicate && localCard?.user_id && event.otp) {
+    try {
+      const { notifyUserPush } = require('./webPushService');
+      notifyUserPush(localCard.user_id, {
+        title: '3DS verification code',
+        body: event.merchantName
+          ? `${event.otp} for ${event.merchantName}`
+          : `Your code is ${event.otp}`,
+        url: '/#cards',
+        tag: 'eisy-3ds',
+      }).catch((err) => console.warn('[push] 3ds:', err.message));
+    } catch (err) {
+      console.warn('[push] 3ds skipped:', err.message);
+    }
+  } else if (!duplicate && cardUpdated && localCard?.user_id && event.localStatus) {
+    try {
+      const { notifyUserPush } = require('./webPushService');
+      notifyUserPush(localCard.user_id, {
+        title: 'Card status updated',
+        body: `Your card is now ${event.localStatus}.`,
+        url: '/#cards',
+        tag: `eisy-card-${localCard.id}`,
+      }).catch((err) => console.warn('[push] card status:', err.message));
+    } catch (err) {
+      console.warn('[push] card status skipped:', err.message);
+    }
+  }
+
   if (duplicate) {
     console.log('[webhook/pagocards] duplicate eventId', event.eventId);
   } else if (event.otp) {

@@ -1475,6 +1475,19 @@ const Dashboard = {
   },
 
   toast(message, type = 'ok', otpCode = null) {
+    const hidden = typeof document !== 'undefined' && document.hidden;
+    if (window.EisyPush?.show && (otpCode || (type !== 'error' && hidden))) {
+      const title = otpCode
+        ? this.i18nText('push_3ds_title', '3DS verification code')
+        : this.i18nText('push_app_title', 'Eisy Myanmar');
+      const body = otpCode ? `${message}: ${otpCode}` : String(message || '');
+      window.EisyPush.show({
+        title,
+        body,
+        url: otpCode ? '/#cards' : '/',
+        tag: otpCode ? 'eisy-3ds' : 'eisy',
+      }).catch(() => {});
+    }
     if (window.EisyComponents?.toast?.showToast) {
       return window.EisyComponents.toast.showToast(message, type, otpCode);
     }
@@ -6524,6 +6537,7 @@ const Dashboard = {
     const hydrateToken = this.beginHydration();
     this.initNavigationIfNeeded();
     this.applySessionUserToUI();
+    window.EisyPush?.sync?.().catch(() => {});
 
     const finishHydration = () => this.endHydration(hydrateToken);
     const hydrationSafety = setTimeout(finishHydration, 5000);

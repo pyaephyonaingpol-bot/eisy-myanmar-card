@@ -1702,6 +1702,12 @@
             </div>
 
             <div class="settings-grid">
+              <div class="settings-card settings-card-wide" id="pushNotifyPanel">
+                <h3 data-i18n="push_heading">Phone notifications</h3>
+                <p class="hint" data-i18n="push_hint">Alerts show on your phone screen, including when Eisy is in the background. On iPhone, add Eisy to the Home Screen first.</p>
+                <button type="button" class="btn btn-primary btn-sm" id="pushEnableBtn" data-i18n="push_enable">Enable phone notifications</button>
+                <p id="pushStatus" class="hint" style="margin-top:0.65rem"></p>
+              </div>
               <div class="settings-card">
                 <h3 data-i18n="profile_heading">Profile</h3>
                 <p class="hint" data-i18n="settings_profile_link_hint">Name, email, phone, and card status are on your Profile page.</p>
@@ -1813,6 +1819,7 @@
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <script defer src="/pushNotifications.js?v=20261008push"></script>
   <script defer src="/dashboard.js?v=20261008pagoTx"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
