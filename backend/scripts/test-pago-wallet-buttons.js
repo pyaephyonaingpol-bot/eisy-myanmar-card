@@ -39,10 +39,12 @@ assert.ok(dash.includes('loadPagoWalletInfo'), 'wallet capability loader');
 assert.ok(dash.includes("`/api/user/cards/${card.id}/wallet`") || dash.includes('/api/user/cards/${card.id}/wallet'), 'wallet API path used');
 assert.ok(dash.includes('copyPagoWalletDetails'), 'copy details for wallet paste');
 assert.ok(dash.includes('fallbackPagoWalletInfo'), 'offline capability fallback');
+assert.ok(dash.includes('pago_wallet_copy_failed'), 'clipboard failure softens to reveal+manual copy');
 
 assert.ok(i18n.includes('pago_wallet_heading:'), 'EN wallet heading');
 assert.ok(i18n.includes('pago_wallet_apple_title:'), 'EN Apple title');
 assert.ok(i18n.includes('pago_wallet_google_title:'), 'EN Google title');
+assert.ok(i18n.includes('pago_wallet_copy_failed:'), 'EN clipboard failure string');
 assert.ok(i18n.includes("pago_wallet_heading: 'Apple Wallet နှင့် Google Pay ထည့်မည်'"), 'MY wallet heading');
 
 assert.ok(service.includes('function getWalletProvisioningInfo'), 'capability helper exported');

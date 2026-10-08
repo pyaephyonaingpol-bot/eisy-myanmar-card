@@ -1320,14 +1320,13 @@
                     <strong id="pagoCardDetailCvv">•••</strong>
                   </div>
                 </div>
-                <div class="pago-plastic-balance">
-                  <small data-i18n="pago_balance">Balance</small>
-                  <strong id="pagoCardDetailBalance">—</strong>
-                </div>
               </article>
 
               <div class="pago-detail-toolbar">
-                <span class="pago-status-pill" id="pagoCardDetailStatus">—</span>
+                <div class="pago-detail-meta">
+                  <span class="pago-status-pill" id="pagoCardDetailStatus">—</span>
+                  <span class="pago-balance-chip"><small data-i18n="pago_balance">Balance</small> <strong id="pagoCardDetailBalance">—</strong></span>
+                </div>
                 <div class="pago-detail-actions">
                   <button type="button" class="btn btn-secondary btn-sm" id="pagoCardRevealBtn" data-i18n="pago_show_details">Show number &amp; CVV</button>
                   <button type="button" class="btn btn-secondary btn-sm hidden" id="pagoCardCopyNumberBtn" data-i18n="copy_card_number">Copy Card Number</button>
