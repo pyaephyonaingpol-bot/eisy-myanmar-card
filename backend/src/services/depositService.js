@@ -324,6 +324,17 @@ async function createUsdtDepositRequest(userId, {
     },
   });
 
+  const { notifyAdminDepositForUser } = require('./telegram');
+  notifyAdminDepositForUser(userId, {
+    amountUsdt: grossAmount,
+    feeUsdt: feeBreakdown.fee_usdt,
+    netUsdt: feeBreakdown.net_usdt,
+    network: net,
+    refCode,
+    address: depositAddress,
+    deposit,
+  });
+
   return { deposit, depositAddress, network: net, fee_breakdown: feeBreakdown };
 }
 
