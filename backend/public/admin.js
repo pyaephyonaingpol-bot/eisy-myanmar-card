@@ -828,6 +828,15 @@
       $('usersStatusFilter')?.addEventListener('change', () => this.loadUsers({ reset: true }));
       $('usersSort')?.addEventListener('change', () => this.loadUsers({ reset: true }));
       $('usersPageSize')?.addEventListener('change', () => this.loadUsers({ reset: true }));
+      $('deleteUserModalClose')?.addEventListener('click', () => this.closeDeleteUserModal());
+      $('deleteUserCancel')?.addEventListener('click', () => this.closeDeleteUserModal());
+      $('deleteUserModal')?.querySelector('.delete-user-modal-backdrop')
+        ?.addEventListener('click', () => this.closeDeleteUserModal());
+      $('deleteUserConfirmInput')?.addEventListener('input', () => this.syncDeleteUserConfirm());
+      $('deleteUserForm')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.submitDeleteUser();
+      });
       $('usersPrevBtn')?.addEventListener('click', () => this.usersGoPrevPage());
       $('usersNextBtn')?.addEventListener('click', () => this.usersGoNextPage());
       $('usersLoadMoreBtn')?.addEventListener('click', () => this.usersLoadMore());
@@ -3883,6 +3892,89 @@
       return '<button type="button" class="btn btn-sm btn-secondary block-user-btn" data-uid="' + user.id + '" data-email="' + this.esc(user.email || '') + '">Block User</button>';
     },
 
+    _deleteUserTarget: null,
+
+    openDeleteUserModal(target) {
+      const id = target && target.id;
+      if (!id) return;
+      this._deleteUserTarget = {
+        id: String(id),
+        email: target.email || '',
+        name: target.name || '',
+      };
+      const meta = $('deleteUserMeta');
+      if (meta) {
+        const bits = ['#' + this._deleteUserTarget.id];
+        if (this._deleteUserTarget.name) bits.push(this._deleteUserTarget.name);
+        if (this._deleteUserTarget.email) bits.push(this._deleteUserTarget.email);
+        meta.textContent = bits.join(' · ');
+      }
+      const input = $('deleteUserConfirmInput');
+      if (input) input.value = '';
+      const errEl = $('deleteUserError');
+      if (errEl) {
+        errEl.textContent = '';
+        errEl.classList.add('hidden');
+      }
+      const btn = $('deleteUserConfirmBtn');
+      if (btn) btn.disabled = true;
+      const modal = $('deleteUserModal');
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden', 'false');
+      }
+      if (input) input.focus();
+    },
+
+    closeDeleteUserModal() {
+      const modal = $('deleteUserModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+      this._deleteUserTarget = null;
+      const input = $('deleteUserConfirmInput');
+      if (input) input.value = '';
+      const btn = $('deleteUserConfirmBtn');
+      if (btn) btn.disabled = true;
+    },
+
+    syncDeleteUserConfirm() {
+      const input = $('deleteUserConfirmInput');
+      const btn = $('deleteUserConfirmBtn');
+      if (!btn) return;
+      btn.disabled = !input || String(input.value || '') !== 'DELETE';
+    },
+
+    async submitDeleteUser() {
+      const target = this._deleteUserTarget;
+      const input = $('deleteUserConfirmInput');
+      const errEl = $('deleteUserError');
+      const btn = $('deleteUserConfirmBtn');
+      if (!target || !target.id) return;
+      if (!input || String(input.value || '') !== 'DELETE') {
+        if (errEl) {
+          errEl.textContent = 'Type DELETE to confirm.';
+          errEl.classList.remove('hidden');
+        }
+        return;
+      }
+      if (btn) btn.disabled = true;
+      try {
+        await this.api('POST', '/api/admin/users/' + encodeURIComponent(target.id) + '/delete', {
+          confirm: 'DELETE',
+        });
+        this.closeDeleteUserModal();
+        await this.loadUsers();
+      } catch (err) {
+        if (errEl) {
+          errEl.textContent = (err && err.message) || 'Failed to delete user';
+          errEl.classList.remove('hidden');
+        }
+        this.syncDeleteUserConfirm();
+      }
+    },
+
     async setUserBlocked(userId, status) {
       const label = status === 'blocked' ? 'block' : 'unblock';
       const reason = window.prompt(
@@ -4004,6 +4096,13 @@
       table.querySelectorAll('.unblock-user-btn').forEach((btn) => {
         btn.addEventListener('click', () => this.setUserBlocked(btn.dataset.uid, 'active'));
       });
+      table.querySelectorAll('.delete-user-btn').forEach((btn) => {
+        btn.addEventListener('click', () => this.openDeleteUserModal({
+          id: btn.dataset.uid,
+          email: btn.dataset.email || '',
+          name: btn.dataset.name || '',
+        }));
+      });
     },
 
     formatUserCreated(value) {
@@ -4029,6 +4128,7 @@
             '<button type="button" class="btn btn-sm btn-secondary view-card-requests">Card Requests</button>' +
             '<button type="button" class="btn btn-sm btn-secondary adj-usdt-wallet" data-uid="' + u.id + '" data-usdt="' + Number(u.balance_usdt || 0) + '">Adjust USDT</button> ' +
             this.renderUserBlockButton(u) +
+            '<button type="button" class="btn btn-sm delete-user-btn" data-uid="' + this.esc(u.id) + '" data-email="' + this.esc(u.email || '') + '" data-name="' + this.esc(u.name || '') + '">Delete User</button>' +
           '</td>' +
         '</tr>'
       ).join('');
