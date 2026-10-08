@@ -566,48 +566,28 @@
       <aside class="app-sidebar" id="adminSidebar" aria-label="Admin navigation">
         <div class="sidebar-brand">
           <div class="sidebar-brand-title">Eisymyanmar</div>
-          <div class="sidebar-brand-sub">Control · Payouts · Support</div>
-          <div id="adminPipelineSwitcher" class="admin-pipeline-switcher" aria-label="Admin pipeline"></div>
+          <div class="sidebar-brand-sub">Admin Control</div>
+          <div id="adminPipelineSwitcher" class="admin-pipeline-switcher hidden" aria-hidden="true"></div>
         </div>
 
         <nav class="sidebar-nav admin-sidebar-nav" aria-label="Admin sections">
-          <button type="button" class="nav-item" data-page="overview" data-admin-perm="overview" data-admin-pipeline="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-            <span>Overview</span>
-          </button>
-          <button type="button" class="nav-item active" data-page="deposits" data-admin-perm="deposits" data-admin-pipeline="instant" aria-current="page">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            <span data-i18n="nav_admin_deposits">Deposits</span>
-          </button>
-          <button type="button" class="nav-item" data-page="mmk-withdrawals" data-admin-perm="withdrawals" data-admin-pipeline="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 10h18M7 15h1M12 15h1M17 15h1"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
-            <span>MMK Withdrawals</span>
-          </button>
-          <button type="button" class="nav-item" data-page="users" data-admin-perm="users" data-admin-pipeline="shared">
+          <button type="button" class="nav-item active" data-page="users" data-admin-perm="users" aria-current="page">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             <span data-i18n="nav_admin_users">Users</span>
           </button>
-          <button type="button" class="nav-item" data-page="transactions" data-admin-perm="transactions" data-admin-pipeline="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
-            <span data-i18n="nav_admin_transactions">Transactions</span>
+          <button type="button" class="nav-item" data-page="deposits" data-admin-perm="deposits">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span>Deposits &amp; KYC</span>
           </button>
-          <button type="button" class="nav-item" data-page="revenue" data-admin-perm="revenue" data-admin-pipeline="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-6 6"/><path d="M14 9h4v4"/></svg>
-            <span data-i18n="nav_admin_revenue">Revenue &amp; Profit</span>
+          <button type="button" class="nav-item" data-page="cards" data-admin-perm="cards">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+            <span>Virtual Cards</span>
           </button>
-          <button type="button" class="nav-item" data-page="support" data-admin-perm="support" data-admin-pipeline="shared">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <span data-i18n="nav_admin_support">Support</span>
+          <button type="button" class="nav-item" data-page="settings" data-admin-perm="settings_read">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+            <span data-i18n="nav_admin_settings">Settings</span>
           </button>
-          <button type="button" class="nav-item" data-page="kyc-requests" data-admin-perm="kyc" data-admin-pipeline="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            <span data-i18n="nav_admin_kyc">KYC Requests</span>
-          </button>
-          <button type="button" class="nav-item" data-page="settings" data-admin-perm="settings_read" data-admin-pipeline="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 5 5-9"/></svg>
-            <span data-i18n="nav_admin_settings">Rates &amp; Fees</span>
-          </button>
-          <button type="button" class="nav-item" data-page="admins" data-admin-perm="manage_admins" data-admin-pipeline="shared">
+          <button type="button" class="nav-item" data-page="admins" data-admin-perm="manage_admins">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
             <span>Admins</span>
           </button>
@@ -632,8 +612,8 @@
             <div style="display:flex;align-items:center;gap:0.75rem">
               <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Open menu" aria-expanded="false" aria-controls="adminSidebar">☰</button>
               <div>
-                <h1 class="page-heading">Admin</h1>
-                <p class="subtitle" data-i18n="header_admin_panel">Admin control panel</p>
+                <h1 class="page-heading">Users</h1>
+                <p class="subtitle">Users · Deposits &amp; KYC · Virtual Cards · Settings</p>
               </div>
             </div>
             <div class="header-actions">
@@ -651,18 +631,14 @@
         </header>
 
         <main class="app-content">
-          <div id="adminPipelineHub" class="panel portal-hub-chooser hidden" data-admin-pipeline="hub"></div>
-          <span class="hidden" data-page-title="overview" data-admin-pipeline="instant">Overview</span>
-          <span class="hidden" data-page-title="deposits" data-admin-pipeline="instant" data-i18n="nav_admin_deposits">Deposits</span>
-          <span class="hidden" data-page-title="mmk-withdrawals" data-admin-pipeline="instant">MMK Bank Withdrawals</span>
-          <span class="hidden" data-page-title="cards" data-admin-pipeline="shared" data-i18n="nav_admin_cards">Cards</span>
-          <span class="hidden" data-page-title="users" data-admin-pipeline="shared" data-i18n="nav_admin_users">Users</span>
-          <span class="hidden" data-page-title="transactions" data-admin-pipeline="instant" data-i18n="nav_admin_transactions">Transactions</span>
-          <span class="hidden" data-page-title="revenue" data-admin-pipeline="instant" data-i18n="nav_admin_revenue">Revenue &amp; Profit</span>
-          <span class="hidden" data-page-title="support" data-admin-pipeline="shared" data-i18n="nav_admin_support">Support</span>
-          <span class="hidden" data-page-title="kyc-requests" data-admin-pipeline="instant" data-i18n="nav_admin_kyc">KYC Requests</span>
-          <span class="hidden" data-page-title="settings" data-admin-pipeline="instant" data-i18n="nav_admin_settings">Rates &amp; Fees</span>
-          <span class="hidden" data-page-title="admins" data-admin-pipeline="shared">Admins</span>
+          <div id="adminPipelineHub" class="panel portal-hub-chooser hidden" aria-hidden="true"></div>
+          <span class="hidden" data-page-title="users">Users</span>
+          <span class="hidden" data-page-title="deposits">Deposits &amp; KYC Approvals</span>
+          <span class="hidden" data-page-title="cards">Virtual Cards</span>
+          <span class="hidden" data-page-title="settings">Settings</span>
+          <span class="hidden" data-page-title="admins">Admins</span>
+          <span class="hidden" data-page-title="overview">Overview</span>
+          <span class="hidden" data-page-title="kyc-requests">KYC Requests</span>
 
       <section id="tabOverview" class="panel app-page" data-page="overview" data-admin-pipeline="instant">
         <div class="sa-overview">
@@ -718,8 +694,25 @@
         </div>
       </section>
 
-      <section id="tabDeposits" class="panel app-page is-active" data-page="deposits" data-admin-pipeline="instant">
-        <h2 data-i18n="wallet_deposit_requests">Wallet Deposit Requests</h2>
+      <section id="tabDeposits" class="panel app-page" data-page="deposits">
+        <h2>Deposits &amp; KYC Approvals</h2>
+        <p class="hint" style="margin-bottom:0.85rem">Approve wallet deposits and review KYC identity documents in one place.</p>
+
+        <h3 style="margin-top:0.35rem;font-size:1rem">KYC Verification Requests</h3>
+        <p class="hint" style="margin-bottom:0.75rem">Review user identity documents for P2P trading and verified banking features.</p>
+        <div class="p2p-market-toolbar" style="margin-bottom:1rem">
+          <label for="kycStatusFilter">Status</label>
+          <select id="kycStatusFilter" class="p2p-network-select">
+            <option value="PENDING_REVIEW">Pending Review</option>
+            <option value="VERIFIED">Verified</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="all">All</option>
+          </select>
+          <button type="button" id="btnRefreshKycRequests" class="btn btn-secondary btn-sm">Refresh</button>
+        </div>
+        <div id="kycRequestsTable" class="data-table-wrap"><p class="hint">Loading KYC requests…</p></div>
+
+        <h3 style="margin-top:1.75rem;font-size:1rem" data-i18n="wallet_deposit_requests">Wallet Deposit Requests</h3>
         <div class="admin-toolbar">
           <select id="depositFilter">
             <option value="all" selected data-i18n="all_statuses">All statuses</option>
@@ -827,9 +820,45 @@
         <div id="mmkWithdrawalsTable" class="data-table-wrap"><p class="hint">Loading MMK bank withdrawals…</p></div>
       </section>
 
-      <section id="tabUsers" class="panel app-page" data-page="users" data-admin-pipeline="shared">
-        <h2 id="adminUsersHeading">Users &amp; Wallet Adjustments</h2>
-        <p class="hint" id="adminUsersHint" style="margin-bottom:0.75rem">Users hold a USDT wallet balance only. Use Adjust USDT for manual corrections.</p>
+      <section id="tabCards" class="panel app-page" data-page="cards">
+        <h2 id="adminCardsHeading">Virtual Cards</h2>
+        <p class="hint" id="adminCardsHint" style="margin-bottom:1rem">Review Pago virtual cards, pending requests, and reload approvals.</p>
+
+        <h3 style="margin-top:0.5rem;font-size:1rem">Card Requests</h3>
+        <p class="hint" style="margin-bottom:0.65rem">Pending applications awaiting admin review.</p>
+        <div id="pendingCardsTable" class="data-table-wrap"><p class="hint">Loading card requests…</p></div>
+
+        <div id="adminInstantCardIssueBlock">
+          <h3 style="margin-top:1.5rem;font-size:1rem" id="issueCardFormTitle">Issue / Update Card</h3>
+          <p class="hint" style="margin-bottom:0.65rem">Manual card issue or update — click <strong>Edit</strong> in the issued table to pre-fill.</p>
+          <form id="issueCardAdminForm" class="form grid-admin-form">
+            <div class="field"><label for="acUserId">User ID</label><input id="acUserId" type="number" required /></div>
+            <div class="field"><label for="acCardId">Card ID</label><input id="acCardId" type="number" placeholder="Leave empty to issue new" /></div>
+            <div class="field"><label for="acCardNumber">Card Number</label><input id="acCardNumber" placeholder="4532 8765 4321 0987" required /></div>
+            <div class="field"><label for="acExp">Expiry (MM/YY)</label><input id="acExp" placeholder="12/28" required /></div>
+            <div class="field"><label for="acCvv">CVV</label><input id="acCvv" placeholder="456" required /></div>
+            <div class="field"><label for="acHolder">Holder Name</label><input id="acHolder" /></div>
+            <div class="field"><label for="acNotes">Admin Notes</label><input id="acNotes" placeholder="Optional internal note" /></div>
+            <div class="field" style="grid-column:1/-1;display:flex;gap:0.5rem;flex-wrap:wrap">
+              <button type="submit" class="btn btn-primary" id="issueCardAdminSubmit">Issue Card</button>
+              <button type="button" class="btn btn-secondary" id="issueCardAdminReset">Clear Form</button>
+            </div>
+          </form>
+          <pre class="output hidden" id="issueCardAdminOut" aria-hidden="true"></pre>
+        </div>
+
+        <h3 style="margin-top:1.5rem;font-size:1rem">Issued Cards — Status Control</h3>
+        <p class="hint" style="margin-bottom:0.65rem">Update lifecycle status for issued virtual cards. Optional reason is shown to the user when suspended or frozen.</p>
+        <div id="issuedCardsTable" class="data-table-wrap"><p class="hint">Loading issued cards…</p></div>
+
+        <h3 style="margin-top:1.5rem;font-size:1rem">Card Reload Requests</h3>
+        <p class="hint" style="margin-bottom:0.65rem">Wallet funds were deducted when the user submitted — approve to credit the card or reject to refund.</p>
+        <div id="pendingReloadsTable" class="data-table-wrap"><p class="hint">Loading reload requests…</p></div>
+      </section>
+
+      <section id="tabUsers" class="panel app-page is-active" data-page="users">
+        <h2 id="adminUsersHeading">Users</h2>
+        <p class="hint" id="adminUsersHint" style="margin-bottom:0.75rem">Search users, review wallets, and block or unblock accounts.</p>
         <div class="admin-toolbar" id="usersToolbar" style="margin-bottom:0.65rem">
           <input id="usersSearchInput" type="search" placeholder="Search name, email, or ID" autocomplete="off" />
           <select id="usersStatusFilter" aria-label="Filter by status">
@@ -1013,24 +1042,14 @@
         </div>
       </section>
 
-      <section id="tabKycRequests" class="panel app-page" data-page="kyc-requests" data-admin-pipeline="instant">
-        <h2>KYC Verification Requests</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Review user identity documents for P2P trading and verified banking features.</p>
-        <div class="p2p-market-toolbar" style="margin-bottom:1rem">
-          <label for="kycStatusFilter">Status</label>
-          <select id="kycStatusFilter" class="p2p-network-select">
-            <option value="PENDING_REVIEW">Pending Review</option>
-            <option value="VERIFIED">Verified</option>
-            <option value="REJECTED">Rejected</option>
-            <option value="all">All</option>
-          </select>
-          <button type="button" id="btnRefreshKycRequests" class="btn btn-secondary btn-sm">Refresh</button>
-        </div>
-        <div id="kycRequestsTable" class="data-table-wrap"><p class="hint">Loading KYC requests…</p></div>
+      <section id="tabKycRequests" class="panel app-page hidden" data-page="kyc-requests" aria-hidden="true" hidden>
+        <p class="hint">KYC approvals live under Deposits &amp; KYC.</p>
       </section>
 
-      <section id="tabSettings" class="panel app-page" data-page="settings" data-admin-pipeline="instant">
-        <h2>System Ledger Summary</h2>
+      <section id="tabSettings" class="panel app-page" data-page="settings">
+        <h2>Settings</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Rates, fees, and system ledger controls.</p>
+        <h3 style="margin-top:0.5rem;font-size:1rem">System Ledger Summary</h3>
         <p class="hint" style="margin-bottom:0.75rem">Aggregate balances across all user wallets and P2P escrow.</p>
         <div id="adminLedgerSummary" class="ledger-summary-grid">
           <div class="ledger-summary-card usdt">
@@ -1371,8 +1390,8 @@
   <script src="/src/components/toast.js?v=20260817m2"></script>
   <script src="/src/components/index.js?v=20260817m2"></script>
   <script src="/viewport.js?v=20260909pinKb"></script>
-  <script src="/i18n.js?v=20260817m2"></script>
+  <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261007eisymyanmar" defer></script>
+  <script src="/admin.js?v=20261008adminCleanup" defer></script>
 </body>
 </html>

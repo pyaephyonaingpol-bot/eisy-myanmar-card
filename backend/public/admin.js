@@ -7,16 +7,12 @@
   const LEGACY_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.ADMIN_KEY_LEGACY) || 'eisy_admin_key';
   const PIPELINE_STORAGE_KEY = 'eisy_last_admin_pipeline';
 
-  /** Instant admin pages (Master Wallet / TRON). */
-  const INSTANT_ADMIN_PAGES = new Set([
-    'overview',
-    'deposits',
-    'mmk-withdrawals',
-    'kyc-requests',
+  /** Core admin modules shown in the sidebar (Instant/Hub split removed). */
+  const CORE_ADMIN_PAGES = new Set([
     'users',
-    'transactions',
-    'revenue',
-    'support',
+    'deposits',
+    'kyc-requests',
+    'cards',
     'settings',
     'admins',
   ]);
@@ -40,59 +36,44 @@
     _pipeline: null,
     _pipelineIsolated: false,
 
-    /** Dedicated Instant (/admin/instant) pipeline, or hub (/admin). */
+    /** Unified admin portal — no Instant/Hub chooser. */
     getPipeline() {
-      if (window.__EISY_ADMIN_PIPELINE__ === 'instant') return 'instant';
-      const path = String(location.pathname || '');
-      if (/\/admin\/instant\/?$/.test(path)) return 'instant';
-      return null;
+      return 'instant';
     },
 
-    pipelineHref(pipeline) {
-      if (pipeline === 'instant') return '/admin/instant';
+    pipelineHref(_pipeline) {
       return '/admin';
     },
 
-    rememberPipeline(pipeline) {
+    rememberPipeline(_pipeline) {
       try {
-        if (pipeline === 'instant') localStorage.setItem(PIPELINE_STORAGE_KEY, pipeline);
+        localStorage.setItem(PIPELINE_STORAGE_KEY, 'instant');
       } catch (_) { /* ignore */ }
     },
 
     lastPipeline() {
-      try {
-        return localStorage.getItem(PIPELINE_STORAGE_KEY) === 'instant' ? 'instant' : null;
-      } catch (_) {
-        return null;
-      }
+      return 'instant';
     },
 
-    pagesForPipeline(pipeline) {
-      if (pipeline === 'instant') return INSTANT_ADMIN_PAGES;
-      return null;
+    pagesForPipeline(_pipeline) {
+      return CORE_ADMIN_PAGES;
     },
 
-    pipelineDefaultPage(pipeline) {
-      if (this.pages?.includes('overview')) return 'overview';
+    pipelineDefaultPage(_pipeline) {
+      if (this.pages?.includes('users')) return 'users';
       if (this.pages?.includes('deposits')) return 'deposits';
-      return this.pages?.[0] || 'deposits';
+      if (this.pages?.includes('cards')) return 'cards';
+      return this.pages?.[0] || 'users';
     },
 
     /**
-     * Lock admin UI to Instant pipeline. Hub (/admin) shows Instant entry only.
+     * Single unified admin shell (no Instant/Hub pipeline chrome).
      */
     applyPipelineIsolation() {
       const pipeline = this.getPipeline();
       this._pipeline = pipeline;
-      document.documentElement.setAttribute('data-admin-pipeline', pipeline || 'hub');
-      if (pipeline) this.rememberPipeline(pipeline);
-
-      // Instant admin only — no secondary pipeline chrome.
-      if (!pipeline) {
-        this.renderPipelineHubChooser();
-        this.renderPipelineSwitcher();
-        return pipeline;
-      }
+      document.documentElement.setAttribute('data-admin-pipeline', 'instant');
+      this.rememberPipeline(pipeline);
 
       if (this._pipelineIsolated) {
         this.renderPipelineSwitcher();
@@ -104,10 +85,10 @@
       $('adminPipelineHub')?.remove();
 
       const loginTitle = $('adminLoginTitle');
-      if (loginTitle) loginTitle.textContent = 'Eisymyanmar';
+      if (loginTitle) loginTitle.textContent = 'Eisymyanmar Admin';
       const loginSub = $('adminLoginSubtitle');
       if (loginSub) {
-        loginSub.textContent = 'USDT wallets · TRC20 · P2P · MMK';
+        loginSub.textContent = 'Users · Deposits & KYC · Virtual Cards · Settings';
       }
 
       this.renderPipelineSwitcher();
@@ -116,11 +97,11 @@
       const brandTitle = document.querySelector('.sidebar-brand-title');
       if (brandTitle) brandTitle.textContent = 'Eisymyanmar';
       const brandSub = document.querySelector('.sidebar-brand-sub');
-      if (brandSub) brandSub.textContent = 'USDT · TRC20 · P2P · MMK';
-      document.title = 'Eisymyanmar';
+      if (brandSub) brandSub.textContent = 'Admin Control';
+      document.title = 'Eisymyanmar Admin';
 
       const userApp = $('adminUserAppLink');
-      if (userApp) userApp.setAttribute('href', '/instant');
+      if (userApp) userApp.setAttribute('href', '/');
 
       return pipeline;
     },
@@ -128,46 +109,37 @@
     applyPipelineCopy() {
       const usersHeading = $('adminUsersHeading');
       if (usersHeading) {
-        usersHeading.textContent = 'Users & Internal USDT Wallets';
+        usersHeading.textContent = 'Users';
       }
       const usersHint = $('adminUsersHint');
       if (usersHint) {
-        usersHint.textContent = 'Manage internal USDT wallet balances used for P2P and TRC20 flows.';
+        usersHint.textContent = 'Search users, review wallets, and block or unblock accounts.';
+      }
+      const cardsHeading = $('adminCardsHeading');
+      if (cardsHeading) cardsHeading.textContent = 'Virtual Cards';
+      const cardsHint = $('adminCardsHint');
+      if (cardsHint) {
+        cardsHint.textContent = 'Review Pago virtual cards, pending requests, and reload approvals.';
       }
     },
 
     renderPipelineSwitcher() {
       const host = $('adminPipelineSwitcher');
       if (!host) return;
-      const pipeline = this._pipeline || this.getPipeline();
-      if (pipeline === 'instant') {
-        host.innerHTML = '<a class="btn btn-secondary btn-sm portal-switch-link" href="/admin">← Admin hub</a>';
-        return;
-      }
-      host.innerHTML = '<a class="btn btn-primary btn-sm portal-switch-link" href="/admin/instant">Open Instant Admin →</a>';
+      host.innerHTML = '';
+      host.classList.add('hidden');
     },
 
     renderPipelineHubChooser() {
       const box = $('adminPipelineHub');
       if (!box) return;
-      box.classList.remove('hidden');
-      box.innerHTML = `
-        <h2 style="margin:0 0 0.5rem">Eisymyanmar</h2>
-        <p class="hint" style="margin:0 0 1rem">Manage Master USDT wallets, TRC20 deposits, P2P, and MMK withdrawals.</p>
-        <div class="portal-hub-grid">
-          <a class="portal-hub-card" href="/admin/instant">
-            <strong>Open Instant Admin</strong>
-            <span>Internal USDT wallets, TRC20 deposits, P2P, MMK withdrawals, KYC</span>
-          </a>
-        </div>
-      `;
+      box.classList.add('hidden');
+      box.innerHTML = '';
     },
 
-    /** Filter RBAC pages to the active Instant pipeline. */
+    /** Keep RBAC pages scoped to the core admin modules. */
     filterPagesForPipeline(pages) {
-      const pipeline = this._pipeline || this.getPipeline();
-      const allowed = this.pagesForPipeline(pipeline);
-      if (!allowed) return Array.isArray(pages) ? pages.slice() : [];
+      const allowed = this.pagesForPipeline(this.getPipeline());
       return (pages || []).filter((p) => allowed.has(p));
     },
 
@@ -237,23 +209,7 @@
         app.classList.remove('hidden');
         app.style.display = '';
       }
-      // Hub (/admin): show Instant admin entry only.
-      const pipeline = this._pipeline || this.getPipeline();
-      if (!pipeline) {
-        this.renderPipelineHubChooser();
-        this.renderPipelineSwitcher();
-        document.querySelectorAll('.admin-sidebar-nav .nav-item[data-page]').forEach((el) => {
-          el.style.display = 'none';
-        });
-        document.querySelectorAll('.app-page[data-page]').forEach((el) => {
-          el.classList.remove('is-active');
-          el.style.display = 'none';
-        });
-        const heading = document.querySelector('.header .page-heading');
-        if (heading) heading.textContent = 'Eisymyanmar';
-        const subtitle = document.querySelector('.header .subtitle');
-        if (subtitle) subtitle.textContent = 'Open Instant Admin to manage wallets, cards, and KYC';
-      }
+      this.renderPipelineSwitcher();
     },
 
     ensureVisible() {
@@ -366,19 +322,13 @@
 
     applyRoleVisibility() {
       const pipeline = this._pipeline || this.getPipeline();
-      // Hub has no tab chrome — chooser only.
-      if (!pipeline) {
-        document.querySelectorAll('.admin-sidebar-nav .nav-item[data-page]').forEach((el) => {
-          el.style.display = 'none';
-        });
-        return;
-      }
+      const corePages = this.pagesForPipeline(pipeline);
 
       document.querySelectorAll('[data-admin-perm]').forEach((el) => {
         const perm = el.getAttribute('data-admin-perm');
         const page = el.getAttribute('data-page');
-        const inPipeline = !page || !this.pagesForPipeline(pipeline) || this.pagesForPipeline(pipeline).has(page);
-        const allowed = this.hasPermission(perm) && inPipeline;
+        const inCore = !page || corePages.has(page);
+        const allowed = this.hasPermission(perm) && inCore;
         if (el.classList.contains('nav-item')) {
           el.style.display = allowed ? '' : 'none';
           if (!allowed) el.classList.remove('active');
@@ -571,8 +521,12 @@
       const heading = document.querySelector('.header .page-heading');
       if (!heading) return;
       if (page === 'cards') {
-        const pipeline = this._pipeline || this.getPipeline();
-        heading.textContent = pipeline === 'instant' ? 'Instant Cards' : 'Cards';
+        heading.textContent = 'Virtual Cards';
+        heading.removeAttribute('data-i18n');
+        return;
+      }
+      if (page === 'deposits') {
+        heading.textContent = 'Deposits & KYC Approvals';
         heading.removeAttribute('data-i18n');
         return;
       }
@@ -584,8 +538,17 @@
 
     _showTabPanel(name) {
       if (name === 'withdrawal-rates') {
-        // Rates now live on Overview
-        this.switchTab(this.hasPermission('overview') ? 'overview' : 'deposits');
+        this.switchTab(this.hasPermission('settings_read') ? 'settings' : 'users');
+        return;
+      }
+      if (name === 'kyc-requests') {
+        this.switchTab('deposits');
+        return;
+      }
+      if (name === 'overview' || name === 'transactions' || name === 'revenue' || name === 'support' || name === 'mmk-withdrawals') {
+        // Legacy Instant/Hub pages — land on the closest core module.
+        const fallback = name === 'support' ? 'users' : (name === 'mmk-withdrawals' ? 'deposits' : this.pipelineDefaultPage());
+        this.switchTab(fallback);
         return;
       }
       if (name === 'overview') {
@@ -598,6 +561,7 @@
         this.loadP2pSellOrders();
         this.loadUsdtWithdrawals();
         if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
+        if (this.hasPermission('kyc')) this.loadKycRequests();
       }
       if (name === 'mmk-withdrawals') {
         this.loadMmkWithdrawals();
@@ -633,14 +597,12 @@
 
     /** Load only the visible admin tab so login/session restore feels instant. */
     loadActiveTabData() {
-      const pipeline = this._pipeline || this.getPipeline();
-      if (!pipeline) return;
       if (this.hasPermission('settings_read') || this.hasPermission('rates')) {
         this.loadPricingSettings();
       }
       const page = (typeof AppNav !== 'undefined' && AppNav.currentPage)
         || (location.hash || '').replace(/^#admin-/, '')
-        || this.pipelineDefaultPage(pipeline);
+        || this.pipelineDefaultPage(this.getPipeline());
       this._showTabPanel(page);
     },
 

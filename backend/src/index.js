@@ -171,13 +171,14 @@ app.get('/admin', (_req, res) => {
   sendHtmlFile(res, path.join(PUBLIC_DIR, 'admin.html'));
 });
 
+// Instant/Hub split removed — keep legacy URLs working by redirecting to /admin.
 app.get(['/admin/instant', '/admin/instant.html'], (_req, res) => {
-  sendAdminPipeline(res, 'instant');
+  res.redirect(302, '/admin');
 });
 
-// Legacy Business/Standard admin URLs → Instant admin.
+// Legacy Business/Standard admin URLs → unified admin.
 app.get(['/admin/business', '/admin/business.html', '/admin/standard', '/admin/standard.html'], (_req, res) => {
-  res.redirect(302, '/admin/instant');
+  res.redirect(302, '/admin');
 });
 
 app.use(express.static(PUBLIC_DIR, {
