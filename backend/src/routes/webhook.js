@@ -60,18 +60,34 @@ router.post('/stripe', async (req, res) => {
   }
 });
 
+/**
+ * Telegram support webhook.
+ * Register: https://YOUR_DOMAIN/api/webhook/telegram
+ * Admin Reply payloads are parsed and saved onto the matching support ticket
+ * so the customer live-chat inbox can poll them.
+ * Optional: TELEGRAM_WEBHOOK_SECRET via header x-telegram-bot-api-secret-token.
+ */
 router.post('/telegram', async (req, res) => {
   try {
-    const secret = process.env.TELEGRAM_WEBHOOK_SECRET || '';
+    const secret = String(process.env.TELEGRAM_WEBHOOK_SECRET || '').trim();
     if (secret) {
       const header = req.get('x-telegram-bot-api-secret-token') || '';
       if (header !== secret) {
-        return res.status(401).json({ error: 'Invalid webhook secret' });
+        return res.status(401).json({ ok: false, error: 'Invalid webhook secret' });
       }
     }
 
-    const { handleTelegramUpdate } = require('../services/supportTelegramService');
-    const result = await handleTelegramUpdate(req.body || {});
+    const {
+      handleTelegramUpdate,
+      parseTelegramWebhookPayload,
+    } = require('../services/supportTelegramService');
+    const hasObjectBody = req.body
+      && typeof req.body === 'object'
+      && !Buffer.isBuffer(req.body)
+      && Object.keys(req.body).length > 0;
+    const raw = hasObjectBody ? req.body : (req.rawBody || req.body || {});
+    const parsed = parseTelegramWebhookPayload(raw);
+    const result = await handleTelegramUpdate(parsed.update || {});
     return res.json({ ok: true, result });
   } catch (err) {
     console.error('[webhook/telegram]', err.message);
