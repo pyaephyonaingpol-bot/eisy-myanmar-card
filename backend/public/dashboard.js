@@ -8436,6 +8436,8 @@ const Dashboard = {
     if (this._pagoCardBound) return;
     this._pagoCardBound = true;
     this.pagoDetailRevealed = false;
+    this.pagoWalletInfo = null;
+    this.pagoWalletTarget = null;
     $('pagoCardRequestForm')?.addEventListener('submit', (e) => this.submitPagoCardRequest(e));
     $('pagoCardTopupForm')?.addEventListener('submit', (e) => this.submitPagoCardTopup(e));
     $('pagoCardRevealBtn')?.addEventListener('click', () => this.togglePagoCardReveal());
@@ -8445,11 +8447,240 @@ const Dashboard = {
       await this.copyToClipboard(String(card.card_number).replace(/\s/g, ''));
       this.copyToast(typeof t === 'function' ? t('copy_card_number') : 'Copied card number');
     });
+    $('pagoAddAppleWalletBtn')?.addEventListener('click', () => this.openPagoWalletGuide('apple'));
+    $('pagoAddGooglePayBtn')?.addEventListener('click', () => this.openPagoWalletGuide('google'));
+    $('pagoWalletModalClose')?.addEventListener('click', () => this.closePagoWalletModal());
+    $('pagoWalletCopyAllBtn')?.addEventListener('click', () => this.copyPagoWalletDetails());
+    $('pagoWalletOpenAppBtn')?.addEventListener('click', () => this.openPagoWalletDestination());
+    $('pagoWalletModal')?.addEventListener('click', (e) => {
+      if (e.target === $('pagoWalletModal')) this.closePagoWalletModal();
+    });
     $('pagoCardList')?.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-pago-view]');
       if (!btn) return;
       this.openPagoCardDetail(btn.getAttribute('data-pago-view'));
     });
+  },
+
+  i18nText(key, fallback) {
+    return (typeof t === 'function' ? t(key) : null) || fallback;
+  },
+
+  detectPagoWalletPlatform() {
+    const ua = String(navigator.userAgent || '').toLowerCase();
+    if (/iphone|ipad|ipod/.test(ua)) return 'ios';
+    if (/android/.test(ua)) return 'android';
+    if (/mac os x|macintosh/.test(ua) && !('ontouchend' in document)) return 'macos';
+    return 'other';
+  },
+
+  fallbackPagoWalletInfo(card = {}) {
+    const product = String(card.product_code || '').toLowerCase();
+    const isAtm = product.includes('atm');
+    return {
+      mode: 'manual_add',
+      push_provisioning_available: false,
+      network_support: { apple_pay: true, google_pay: true },
+      contactless_google_pay: isAtm,
+      deep_links: {
+        google_wallet_web: 'https://pay.google.com/',
+        google_wallet_play: 'https://play.google.com/store/apps/details?id=com.google.android.apps.walletnfcrel',
+        apple_wallet_store: 'https://apps.apple.com/app/wallet/id1160481993',
+      },
+      google_pay: {
+        contactless_hint: isAtm
+          ? this.i18nText(
+            'pago_wallet_atm_hint',
+            'Visa ATM cards support contactless spend in Google Pay after you add the card.'
+          )
+          : null,
+      },
+    };
+  },
+
+  async loadPagoWalletInfo(card) {
+    if (!card?.id) return this.fallbackPagoWalletInfo(card);
+    try {
+      const data = await Auth.api('GET', `/api/user/cards/${card.id}/wallet`, null, {
+        sensitive: true,
+        timeoutMs: 8000,
+      });
+      this.pagoWalletInfo = data.wallet || this.fallbackPagoWalletInfo(card);
+      return this.pagoWalletInfo;
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') throw err;
+      console.warn('[Dashboard] wallet capability:', err.message);
+      this.pagoWalletInfo = this.fallbackPagoWalletInfo(card);
+      return this.pagoWalletInfo;
+    }
+  },
+
+  updatePagoWalletUi(card) {
+    const atmHint = $('pagoWalletAtmHint');
+    if (!atmHint) return;
+    const info = this.pagoWalletInfo || this.fallbackPagoWalletInfo(card || {});
+    const showAtm = Boolean(
+      info.contactless_google_pay
+      || info.google_pay?.contactless_hint
+      || String(card?.product_code || '').toLowerCase().includes('atm')
+    );
+    atmHint.classList.toggle('hidden', !showAtm);
+  },
+
+  getPagoWalletGuideCopy(target) {
+    const isApple = target === 'apple';
+    return {
+      title: this.i18nText(
+        isApple ? 'pago_wallet_apple_title' : 'pago_wallet_google_title',
+        isApple ? 'Add to Apple Wallet' : 'Add to Google Pay'
+      ),
+      lead: this.i18nText(
+        isApple ? 'pago_wallet_apple_lead' : 'pago_wallet_google_lead',
+        isApple
+          ? 'Your card details are ready. Paste them into Wallet on your iPhone or Apple Watch.'
+          : 'Your card details are ready. Paste them into Google Wallet / Google Pay on your phone.'
+      ),
+      steps: [
+        this.i18nText(
+          isApple ? 'pago_wallet_apple_step1' : 'pago_wallet_google_step1',
+          'Tap Copy All Details below (card number, expiry, and CVV).'
+        ),
+        this.i18nText(
+          isApple ? 'pago_wallet_apple_step2' : 'pago_wallet_google_step2',
+          isApple
+            ? 'Open the Wallet app, then tap the + button.'
+            : 'Open Google Wallet (or Google Pay) and tap Add to Wallet.'
+        ),
+        this.i18nText(
+          isApple ? 'pago_wallet_apple_step3' : 'pago_wallet_google_step3',
+          isApple
+            ? 'Choose Debit or Credit Card and paste or type the details.'
+            : 'Choose Payment card and paste or type the details.'
+        ),
+        this.i18nText(
+          isApple ? 'pago_wallet_apple_step4' : 'pago_wallet_google_step4',
+          isApple
+            ? 'Confirm with Face ID / Touch ID when Apple asks.'
+            : 'Verify with the code Google sends if prompted.'
+        ),
+      ],
+      note: this.i18nText(
+        'pago_wallet_manual_note',
+        'Pago supports Apple Pay and Google Pay on the network. True 1-click push provisioning is not in the public Pago API yet, so this guided copy-and-add flow is used.'
+      ),
+    };
+  },
+
+  closePagoWalletModal() {
+    $('pagoWalletModal')?.classList.add('hidden');
+    this.pagoWalletTarget = null;
+  },
+
+  async ensurePagoCardSecrets(card) {
+    if (card?.card_number && card?.cvv && card?.exp_date) return card;
+    if (!card?.id) return card;
+    try {
+      this.invalidateFetch('cards');
+      const data = await Auth.api('GET', `/api/user/cards/${card.id}`, null, { sensitive: true });
+      return this.applyCardsPayload(data, { selectCardId: card.id })
+        || data.card
+        || card;
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+        this.openPinUnlockModal();
+        throw err;
+      }
+      throw err;
+    }
+  },
+
+  async openPagoWalletGuide(target) {
+    const selected = this.getSelectedPagoCard();
+    if (!selected) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
+      return;
+    }
+
+    try {
+      const card = await this.ensurePagoCardSecrets(selected);
+      if (!card?.card_number || !card?.cvv) {
+        this.toast(
+          this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before adding to a wallet.'),
+          'error'
+        );
+        return;
+      }
+
+      this.pagoDetailRevealed = true;
+      this.showPagoCardDetail(card);
+      await this.loadPagoWalletInfo(card);
+      this.updatePagoWalletUi(card);
+
+      this.pagoWalletTarget = target === 'google' ? 'google' : 'apple';
+      const copy = this.getPagoWalletGuideCopy(this.pagoWalletTarget);
+      if ($('pagoWalletModalTitle')) $('pagoWalletModalTitle').textContent = copy.title;
+      if ($('pagoWalletModalLead')) $('pagoWalletModalLead').textContent = copy.lead;
+      if ($('pagoWalletModalNote')) $('pagoWalletModalNote').textContent = copy.note;
+      const steps = $('pagoWalletModalSteps');
+      if (steps) {
+        steps.innerHTML = copy.steps.map((step) => `<li>${this.escapeHtml(step)}</li>`).join('');
+      }
+      $('pagoWalletModal')?.classList.remove('hidden');
+
+      // One-tap convenience: copy details immediately so the wallet app paste is ready.
+      await this.copyPagoWalletDetails({ silentToast: false });
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') return;
+      this.toast(err.message || 'Could not prepare wallet add', 'error');
+    }
+  },
+
+  async copyPagoWalletDetails({ silentToast = false } = {}) {
+    const card = this.getSelectedPagoCard();
+    if (!card?.card_number) {
+      this.toast(
+        this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before adding to a wallet.'),
+        'error'
+      );
+      return false;
+    }
+    this.pagoDetailRevealed = true;
+    this.showPagoCardDetail(card);
+    await this.copyToClipboard(this.formatAllCardDetails(card));
+    if (!silentToast) {
+      this.copyToast(
+        this.i18nText('pago_wallet_copied', 'Card details copied — paste them in your wallet app')
+      );
+    }
+    return true;
+  },
+
+  openPagoWalletDestination() {
+    const info = this.pagoWalletInfo || this.fallbackPagoWalletInfo(this.getSelectedPagoCard() || {});
+    const links = info.deep_links || {};
+    const platform = this.detectPagoWalletPlatform();
+    const target = this.pagoWalletTarget || 'apple';
+    let url = null;
+    if (target === 'google') {
+      url = platform === 'android'
+        ? (links.google_wallet_play || links.google_wallet_web)
+        : (links.google_wallet_web || links.google_wallet_play);
+    } else if (platform === 'ios' || platform === 'macos') {
+      url = links.apple_wallet_store || null;
+    } else {
+      url = links.apple_wallet_store || links.google_wallet_web || null;
+    }
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    this.toast(
+      this.i18nText(
+        target === 'google' ? 'pago_wallet_google_step2' : 'pago_wallet_apple_step2',
+        'Open your wallet app on this device.'
+      ),
+      'ok'
+    );
   },
 
   getSelectedPagoCard() {
@@ -8603,11 +8834,13 @@ const Dashboard = {
     if (copyBtn) {
       copyBtn.classList.toggle('hidden', !(revealed && hasNumber));
     }
+    this.updatePagoWalletUi(card);
   },
 
   async openPagoCardDetail(cardId, fallback) {
     const local = (this.allCards || []).find((card) => String(card.id) === String(cardId)) || fallback;
     this.pagoDetailRevealed = false;
+    this.pagoWalletInfo = null;
     if (local) this.showPagoCardDetail(local);
     try {
       this.invalidateFetch('cards');
@@ -8615,7 +8848,10 @@ const Dashboard = {
       const card = this.applyCardsPayload(data, { selectCardId: cardId })
         || data.card
         || (data.cards || []).find((item) => String(item.id) === String(cardId));
-      if (card) this.showPagoCardDetail(card);
+      if (card) {
+        this.showPagoCardDetail(card);
+        this.loadPagoWalletInfo(card).then(() => this.updatePagoWalletUi(card)).catch(() => {});
+      }
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
       else this.toast(err.message || 'Could not refresh card details', 'error');

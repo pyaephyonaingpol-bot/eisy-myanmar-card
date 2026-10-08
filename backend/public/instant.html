@@ -51,7 +51,7 @@
       touch-action: pan-y !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261008pagoPlastic" />
+  <link rel="stylesheet" href="/styles.css?v=20261008pagoWallet" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -137,6 +137,22 @@
   </div>
 
   <!-- ═══ RELOAD / TOP-UP CARD MODAL ═══ -->
+  <div id="pagoWalletModal" class="modal hidden" role="dialog" aria-labelledby="pagoWalletModalTitle" aria-modal="true">
+    <div class="modal-box pago-wallet-modal-box">
+      <div class="modal-header-row">
+        <h3 id="pagoWalletModalTitle">Add to Wallet</h3>
+        <button type="button" id="pagoWalletModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p id="pagoWalletModalLead" class="hint pago-wallet-modal-lead"></p>
+      <ol id="pagoWalletModalSteps" class="pago-wallet-steps"></ol>
+      <p id="pagoWalletModalNote" class="pago-wallet-note hint"></p>
+      <div class="pago-wallet-modal-actions">
+        <button type="button" class="btn btn-primary" id="pagoWalletCopyAllBtn" data-i18n="copy_all_details">Copy All Details</button>
+        <button type="button" class="btn btn-secondary" id="pagoWalletOpenAppBtn" data-i18n="pago_wallet_open_app">Open wallet app</button>
+      </div>
+    </div>
+  </div>
+
   <div id="reloadCardModal" class="modal hidden" role="dialog" aria-labelledby="reloadCardModalTitle" aria-modal="true">
     <div class="modal-box modal-box-wide">
       <div class="modal-header-row">
@@ -1318,6 +1334,39 @@
                 </div>
               </div>
 
+              <section class="pago-wallet-add" id="pagoWalletAddSection" aria-labelledby="pagoWalletAddHeading">
+                <div class="pago-wallet-add-copy">
+                  <h3 id="pagoWalletAddHeading" data-i18n="pago_wallet_heading">Add to Apple Wallet &amp; Google Pay</h3>
+                  <p class="hint" data-i18n="pago_wallet_hint">Pago cards work with Apple Pay and Google Pay. Tap a button to copy details and follow the short add steps.</p>
+                </div>
+                <div class="pago-wallet-add-actions">
+                  <button type="button" class="pago-wallet-btn pago-wallet-btn-apple" id="pagoAddAppleWalletBtn" data-wallet-target="apple">
+                    <span class="pago-wallet-btn-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="18" height="18" focusable="false"><path fill="currentColor" d="M16.365 12.83c-.02-2.02 1.65-2.99 1.72-3.03-0.94-1.37-2.4-1.56-2.91-1.58-1.24-.13-2.42.73-3.05.73-.63 0-1.61-.71-2.65-.69-1.36.02-2.62.79-3.32 2.01-1.42 2.46-.36 6.1 1.02 8.1.67.98 1.48 2.08 2.54 2.04 1.02-.04 1.4-.66 2.63-.66 1.22 0 1.57.66 2.64.64 1.09-.02 1.78-1 2.45-1.98.77-1.13 1.09-2.23 1.11-2.29-.02-.01-2.12-.81-2.14-3.29zm-2.01-5.94c.56-.68.94-1.62.84-2.56-.81.03-1.79.54-2.37 1.22-.52.6-.98 1.56-.86 2.48.91.07 1.83-.46 2.39-1.14z"/></svg>
+                    </span>
+                    <span class="pago-wallet-btn-text">
+                      <small data-i18n="pago_wallet_apple_eyebrow">Add to</small>
+                      <strong data-i18n="pago_wallet_apple_label">Apple Wallet</strong>
+                    </span>
+                  </button>
+                  <button type="button" class="pago-wallet-btn pago-wallet-btn-google" id="pagoAddGooglePayBtn" data-wallet-target="google">
+                    <span class="pago-wallet-btn-icon" aria-hidden="true">
+                      <svg viewBox="0 0 48 48" width="18" height="18" focusable="false">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                      </svg>
+                    </span>
+                    <span class="pago-wallet-btn-text">
+                      <small data-i18n="pago_wallet_google_eyebrow">Add to</small>
+                      <strong data-i18n="pago_wallet_google_label">Google Pay</strong>
+                    </span>
+                  </button>
+                </div>
+                <p id="pagoWalletAtmHint" class="pago-wallet-atm-hint hidden" data-i18n="pago_wallet_atm_hint">Visa ATM cards support contactless spend in Google Pay after you add the card.</p>
+              </section>
+
               <form id="pagoCardTopupForm" class="form pago-topup-form">
                 <h3 data-i18n="pago_topup_heading">Top up this card</h3>
                 <p class="hint" data-i18n="pago_topup_hint">Minimum $5. Your USDT wallet is charged the amount plus the card reload fee.</p>
@@ -1743,7 +1792,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261008pagoPlastic"></script>
+  <script defer src="/i18n.js?v=20261008pagoWallet"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1765,7 +1814,7 @@
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20261008pagoPlastic"></script>
+  <script defer src="/dashboard.js?v=20261008pagoWallet"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

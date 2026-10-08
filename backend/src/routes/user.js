@@ -450,6 +450,39 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
   }
 });
 
+/**
+ * Wallet add capability for a card. Pago supports Apple/Google Pay at the
+ * network level but has no public push-provisioning API — clients use the
+ * guided manual-add flow with revealed PAN/expiry/CVV.
+ */
+router.get('/cards/:id/wallet', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId);
+    if (!card) return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
+    const { getWalletProvisioningInfo } = require('../services/pagoCardService');
+    const wallet = getWalletProvisioningInfo(card);
+    res.json({
+      success: true,
+      card_id: card.id,
+      last4: card.last4,
+      brand: card.brand,
+      product_code: card.product_code,
+      has_pan: Boolean(card.card_number),
+      has_cvv: Boolean(card.cvv),
+      wallet,
+    });
+  } catch (err) {
+    console.error('[user/cards/wallet]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to load wallet add options');
+  }
+});
+
 router.post('/cards/:id/topup', requireAuth, requireSensitive, async (req, res) => {
   try {
     setCardsNoStore(res);
