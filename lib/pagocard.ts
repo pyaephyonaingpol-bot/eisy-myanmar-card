@@ -71,6 +71,19 @@ export interface PagoCardFundResult {
   transaction_id: string;
 }
 
+/** Summary row from POST /api/v1/cards/getallcards (field names vary). */
+export interface PagoCardSummary {
+  card_id?: string;
+  cardid?: string;
+  useremail?: string;
+  email?: string;
+  last_four?: string;
+  lastfour?: string;
+  brand?: string;
+  type?: string;
+  product_code?: string;
+}
+
 export interface CreateCardInput {
   product_code: PagoCardProductCode;
   first_name: string;
@@ -419,12 +432,101 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     );
   }
 
+  /**
+   * List cards for an email + product. Pago returns `{ cards: [...] }`
+   * (not always the usual `{ status, data }` envelope).
+   */
+  async function listCardsByEmail(input: {
+    email: string;
+    product_code: PagoCardProductCode;
+  }): Promise<PagoCardSummary[]> {
+    const config = resolveConfig(options);
+    const email = requireText(input?.email, 'email');
+    const productCode = requireText(input?.product_code, 'product_code');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new PagoCardError('email must be a valid email address', {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        details: { email: ['The email field must be a valid email address.'] },
+      });
+    }
+
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      publickey: config.apiKey,
+      secretkey: config.secretKey,
+    };
+
+    let response: Response;
+    try {
+      response = await config.fetchImpl(`${config.baseUrl}/api/v1/cards/getallcards`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ email, product_code: productCode }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Pago Card request failed';
+      throw new PagoCardError(redact(message, [config.apiKey, config.secretKey]), {
+        status: 0,
+        code: 'PAGO_NETWORK',
+        cause: err,
+      });
+    }
+
+    const text = await response.text();
+    let payload: Record<string, unknown> | null = null;
+    if (text) {
+      try {
+        payload = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        throw new PagoCardError(
+          redact(`Pago Card returned a non-JSON response (HTTP ${response.status})`, [
+            config.apiKey,
+            config.secretKey,
+          ]),
+          { status: response.status, code: 'PAGO_BAD_RESPONSE' }
+        );
+      }
+    }
+
+    if (!response.ok || payload?.status === 'failure' || payload == null) {
+      throw new PagoCardError(
+        redact(
+          String(payload?.message || `Pago Card request failed (${response.status})`),
+          [config.apiKey, config.secretKey]
+        ),
+        {
+          status: response.status,
+          code: String(payload?.code || 'PAGO_REQUEST_FAILED'),
+          details: payload?.errors as Record<string, string[]> | undefined,
+        }
+      );
+    }
+
+    const data = payload.data;
+    const rawList = Array.isArray(payload.cards)
+      ? payload.cards
+      : (data && typeof data === 'object' && Array.isArray((data as { cards?: unknown }).cards)
+        ? (data as { cards: unknown[] }).cards
+        : Array.isArray(data)
+          ? data
+          : []);
+
+    return (rawList as PagoCardSummary[]).map((row) => ({
+      ...row,
+      product_code: row.product_code || productCode,
+    }));
+  }
+
   return {
     createVirtualCard,
     createCard,
     getCardDetails,
     getCardBalance,
     topUpCard,
+    listCardsByEmail,
   };
 }
 
@@ -452,6 +554,13 @@ function topUpCard(
   return createPagoCardClient().topUpCard(cardIdOrInput, amount, extra);
 }
 
+function listCardsByEmail(input: {
+  email: string;
+  product_code: PagoCardProductCode;
+}): Promise<PagoCardSummary[]> {
+  return createPagoCardClient().listCardsByEmail(input);
+}
+
 module.exports = {
   PagoCardError,
   createPagoCardClient,
@@ -460,5 +569,6 @@ module.exports = {
   getCardDetails,
   getCardBalance,
   topUpCard,
+  listCardsByEmail,
   truncateUsd,
 };

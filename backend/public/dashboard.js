@@ -1174,7 +1174,7 @@ const Dashboard = {
       }
       if (page === 'cards') {
         this.prefillPagoCardRequest();
-        this.loadAllCards({ forceRefresh: force, silent: false });
+        this.loadAllCards({ forceRefresh: force, silent: false, reconcilePago: true });
       }
       if (page === 'instant-card') {
         this.enterInstantCardPage({ force });
@@ -8517,6 +8517,30 @@ const Dashboard = {
     }
   },
 
+  async syncPagoCardsFromProvider({ pagoCardId = null, silent = true } = {}) {
+    if (!Auth.isLoggedIn() || Auth.needsPinUnlock()) return null;
+    try {
+      const body = pagoCardId ? { pago_card_id: pagoCardId } : {};
+      const data = await Auth.api('POST', '/api/user/cards/sync', body, { sensitive: true });
+      if (Array.isArray(data.cards)) {
+        this.applyCardsPayload(data, {
+          selectCardId: data.card?.id || null,
+          markFresh: true,
+        });
+      }
+      if (!silent && data.message) this.toast(data.message, 'ok');
+      return data;
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+        if (!silent) this.openPinUnlockModal();
+        return null;
+      }
+      console.warn('[Dashboard] pago sync failed:', err.message);
+      if (!silent) this.toast(err.message || 'Could not sync cards from Pago', 'error');
+      return null;
+    }
+  },
+
   async submitPagoCardRequest(e) {
     e.preventDefault();
     const btn = $('pagoCardRequestSubmit');
@@ -8537,6 +8561,21 @@ const Dashboard = {
       if (card) this.showPagoCardDetail(card);
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      const orphanId = err.response?.pago_card_id || err.pago_card_id;
+      if (err.code === 'PAGO_CARD_SAVE_FAILED' && orphanId) {
+        this.toast('Card issued at Pago — importing into your account…', 'ok');
+        const synced = await this.syncPagoCardsFromProvider({
+          pagoCardId: orphanId,
+          silent: true,
+        });
+        const card = synced?.card
+          || (this.allCards || []).find((item) => item.pago_card_id === orphanId);
+        if (card) {
+          this.showPagoCardDetail(card);
+          this.toast('Your virtual card is ready.', 'ok');
+          return;
+        }
+      }
       this.toast(err.message || 'Card request failed', 'error');
     } finally {
       if (btn) btn.disabled = false;
@@ -8575,7 +8614,12 @@ const Dashboard = {
     }
   },
 
-  async loadAllCards({ preserveSelection = false, silent = false, forceRefresh = false } = {}) {
+  async loadAllCards({
+    preserveSelection = false,
+    silent = false,
+    forceRefresh = false,
+    reconcilePago = false,
+  } = {}) {
     if (!Auth.isLoggedIn()) return;
 
     if (Auth.needsPinUnlock()) {
@@ -8585,8 +8629,13 @@ const Dashboard = {
     }
 
     // Honor cards TTL for silent/background refreshes (including empty lists).
-    if (!forceRefresh && this._isFresh('cards')) {
+    if (!forceRefresh && !reconcilePago && this._isFresh('cards')) {
       return;
+    }
+
+    // Pull orphaned Pago cards (provider-created, missing locally) before listing.
+    if (reconcilePago || (!this.allCards.length && forceRefresh)) {
+      await this.syncPagoCardsFromProvider({ silent: true });
     }
 
     // Never drop refreshes while a request is in flight — queue and replay
@@ -8595,11 +8644,13 @@ const Dashboard = {
         preserveSelection: false,
         silent: true,
         forceRefresh: false,
+        reconcilePago: false,
       };
       this._cardsLoadQueued = {
         preserveSelection: queued.preserveSelection || preserveSelection,
         silent: queued.silent && silent,
         forceRefresh: queued.forceRefresh || forceRefresh,
+        reconcilePago: queued.reconcilePago || reconcilePago,
       };
       return;
     }

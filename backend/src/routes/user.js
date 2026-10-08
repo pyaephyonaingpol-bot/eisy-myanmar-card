@@ -122,7 +122,20 @@ router.get('/cards', requireAuth, requireSensitive, async (req, res) => {
   try {
     setCardsNoStore(res);
     const user = await User.findById(req.user.id);
-    const payload = await getUserCardsPayload(req.user.id);
+    const wantSync = String(req.query?.sync || req.query?.reconcile || '').trim() === '1'
+      || String(req.query?.sync || '').toLowerCase() === 'true';
+
+    let payload = await getUserCardsPayload(req.user.id);
+    // Empty local list (or explicit ?sync=1): import orphaned provider cards.
+    if (wantSync || payload.cards.length === 0) {
+      try {
+        const { syncPagoCardsForUser } = require('../services/pagoCardService');
+        await syncPagoCardsForUser(req.user.id, {});
+        payload = await getUserCardsPayload(req.user.id);
+      } catch (err) {
+        console.warn('[user/cards] pago sync skipped:', err.message);
+      }
+    }
 
     // Always 200 — empty list is a valid state (new users / post-request).
     // Returning 404 here made the dashboard wipe cards and look "broken".
@@ -379,6 +392,37 @@ router.post('/cards/request', requireAuth, requireSensitive, async (req, res) =>
   } catch (err) {
     console.error('[user/cards/request]', err.code || err.message);
     sendPagoError(res, err, 'Failed to request a virtual card');
+  }
+});
+
+/**
+ * Reconcile provider-issued Pago cards into local cards_v2.
+ * Body may include pago_card_id to import one orphaned card by id.
+ */
+router.post('/cards/sync', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const { syncPagoCardsForUser } = require('../services/pagoCardService');
+    const result = await syncPagoCardsForUser(req.user.id, {
+      pagoCardId: req.body?.pago_card_id || req.body?.card_id || null,
+    });
+    const payload = await getUserCardsPayload(req.user.id);
+    const message = result.imported > 0
+      ? `Imported ${result.imported} card${result.imported === 1 ? '' : 's'} from Pago Card.`
+      : (result.updated > 0
+        ? 'Card details refreshed from Pago Card.'
+        : 'No new Pago cards to import.');
+    res.json({
+      success: true,
+      message,
+      imported: result.imported || 0,
+      updated: result.updated || 0,
+      ...payload,
+      card: payload.cards.length ? payload.cards[payload.active_index] : null,
+    });
+  } catch (err) {
+    console.error('[user/cards/sync]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to sync Pago cards');
   }
 });
 
