@@ -88,6 +88,10 @@ async function postTelegram(
   return payload.result || {};
 }
 
+function plainTelegramText(text: string) {
+  return text.replace(/[*_`[\]]/g, '');
+}
+
 async function sendAdminMessage(message: string, options: SendOptions = {}): Promise<TelegramNotifyResult> {
   const token = readToken(options.token);
   const chatId = readChatId(options.chatId);
@@ -110,26 +114,34 @@ async function sendAdminMessage(message: string, options: SendOptions = {}): Pro
   if (options.replyToMessageId) base.reply_to_message_id = Number(options.replyToMessageId);
   if (options.messageThreadId) base.message_thread_id = Number(options.messageThreadId);
 
-  try {
-    const sent = await postTelegram(token, {
-      ...base,
-      text,
-      parse_mode: options.parseMode || 'Markdown',
-    }, options.fetchImpl);
-    return { ok: true, message: sent, chatId };
-  } catch (err) {
+  const attempts: Array<Record<string, unknown>> = [
+    { ...base, text, parse_mode: options.parseMode || 'Markdown' },
+    { ...base, text: plainTelegramText(text) },
+  ];
+  if (base.message_thread_id) {
+    const { message_thread_id: _thread, ...withoutThread } = base;
+    attempts.push(
+      { ...withoutThread, text, parse_mode: options.parseMode || 'Markdown' },
+      { ...withoutThread, text: plainTelegramText(text) }
+    );
+  }
+
+  let lastError = 'Telegram send failed';
+  for (let i = 0; i < attempts.length; i += 1) {
     try {
-      const plain = await postTelegram(token, {
-        ...base,
-        text: text.replace(/[*_`[\]]/g, ''),
-      }, options.fetchImpl);
-      return { ok: true, message: plain, chatId, plain: true };
-    } catch (err2) {
-      const error = err2 instanceof Error ? err2.message : 'Telegram send failed';
-      console.error('[Telegram] Failed to send notification:', error);
-      return { ok: false, error };
+      const sent = await postTelegram(token, attempts[i], options.fetchImpl);
+      return {
+        ok: true,
+        message: sent,
+        chatId,
+        plain: attempts[i].parse_mode ? undefined : true,
+      };
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'Telegram send failed';
     }
   }
+  console.error('[Telegram] Failed to send notification:', lastError);
+  return { ok: false, error: lastError };
 }
 
 async function notifyAdminDepositRequest(input: {
