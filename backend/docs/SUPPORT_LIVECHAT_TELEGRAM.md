@@ -64,7 +64,7 @@ Admin (`support` permission):
 
 Telegram:
 
-- `POST /api/webhook/telegram` (Bot API updates)
+- `POST /api/webhook/telegram` parses an incoming Bot API update (`message`, `edited_message`, or channel post). When an admin hits Reply, the handler matches the ticket by the replied message id or by `#T123` in the quoted text, saves `sender_type=admin` / `source=telegram` on `support_messages`, and the customer live-chat inbox shows it on the next poll.
 
 ## Tests
 

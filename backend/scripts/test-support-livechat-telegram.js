@@ -60,6 +60,7 @@ async function main() {
   includes(adminRoutes, 'notifySupportEvent', 'telegram notify on admin web reply');
   includes(webhook, "router.post('/telegram'", 'telegram webhook route');
   includes(webhook, 'handleTelegramUpdate', 'webhook uses bridge handler');
+  includes(webhook, 'parseTelegramWebhookPayload', 'webhook parses Telegram reply payloads');
   includes(telegramSvc, 'sendAdminMessage', 'telegram send helper');
   includes(telegramSvc, 'isTelegramConfigured', 'telegram config helper');
   includes(bridge, 'notifySupportEvent', 'bridge outbound');
@@ -254,6 +255,131 @@ async function main() {
 
   const updated = await SupportThread.findById(thread.id);
   assert.strictEqual(updated.status, 'in_progress');
+
+  console.log('\n== HTTP webhook reply in user inbox ==');
+  const http = require('http');
+  const express = require('express');
+  const { createSession } = require('../src/services/authService');
+  const { parseTelegramWebhookPayload } = require('../src/services/supportTelegramService');
+
+  const quoted = JSON.stringify({
+    update_id: 77,
+    message: {
+      message_id: 42,
+      text: 'quoted',
+      chat: { id: -100123 },
+      reply_to_message: { message_id: 1, text: `#T${thread.id}` },
+    },
+  });
+  const parsedQuote = parseTelegramWebhookPayload(quoted);
+  assert.strictEqual(parsedQuote.message.text, 'quoted');
+  assert.strictEqual(parsedQuote.message.chat.id, -100123);
+
+  process.env.TELEGRAM_WEBHOOK_SECRET = 'hook-secret';
+  const mini = express();
+  mini.use(express.json({
+    verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); },
+  }));
+  mini.use('/api/webhook', require('../src/routes/webhook'));
+  mini.use('/api/support', require('../src/routes/support'));
+  const server = http.createServer(mini);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+
+  function requestJson(method, urlPath, body, headers) {
+    return new Promise((resolve, reject) => {
+      const payload = body == null ? null : JSON.stringify(body);
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port,
+        path: urlPath,
+        method,
+        headers: {
+          ...(payload ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } : {}),
+          ...headers,
+        },
+      }, (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const raw = Buffer.concat(chunks).toString('utf8');
+          let json = {};
+          try { json = raw ? JSON.parse(raw) : {}; } catch (_) { json = { raw }; }
+          resolve({ status: res.statusCode, json });
+        });
+      });
+      req.on('error', reject);
+      if (payload) req.write(payload);
+      req.end();
+    });
+  }
+
+  const replyPayload = {
+    update_id: 90010,
+    message: {
+      message_id: 9010,
+      text: 'Your payout is on the way',
+      chat: { id: -100123, type: 'supergroup' },
+      from: { id: 55, is_bot: false, first_name: 'Admin' },
+      reply_to_message: {
+        message_id: 9001,
+        text: `🎫 New Support Ticket\n🔖 Ticket: #T${thread.id}`,
+      },
+    },
+  };
+
+  const denied = await requestJson('POST', '/api/webhook/telegram', replyPayload, {});
+  assert.strictEqual(denied.status, 401);
+
+  const accepted = await requestJson('POST', '/api/webhook/telegram', replyPayload, {
+    'x-telegram-bot-api-secret-token': 'hook-secret',
+  });
+  assert.strictEqual(accepted.status, 200);
+  assert.strictEqual(accepted.json.ok, true);
+  assert.strictEqual(accepted.json.result.ok, true);
+  assert.strictEqual(accepted.json.result.threadId, thread.id);
+
+  const quotedOnly = {
+    update_id: 90011,
+    message: {
+      message_id: 9011,
+      text: 'Checking the card issue now',
+      chat: { id: '-100123', type: 'supergroup' },
+      from: { id: 55, is_bot: false },
+      reply_to_message: { message_id: 7777 },
+      quote: { text: `Ticket: #T${thread.id}` },
+    },
+  };
+  const quotedReply = await requestJson('POST', '/api/webhook/telegram', quotedOnly, {
+    'x-telegram-bot-api-secret-token': 'hook-secret',
+  });
+  assert.strictEqual(quotedReply.status, 200);
+  assert.strictEqual(quotedReply.json.result.ok, true);
+
+  const duplicate = await requestJson('POST', '/api/webhook/telegram', replyPayload, {
+    'x-telegram-bot-api-secret-token': 'hook-secret',
+  });
+  assert.strictEqual(duplicate.json.result.duplicate, true);
+
+  const { sessionToken } = await createSession({ userId: user.id });
+  const inbox = await requestJson(
+    'GET',
+    `/api/support/threads/${thread.id}/messages`,
+    null,
+    { authorization: `Bearer ${sessionToken}` }
+  );
+  assert.strictEqual(inbox.status, 200);
+  const payout = inbox.json.messages.find((m) => /Your payout is on the way/.test(m.message));
+  const card = inbox.json.messages.find((m) => /Checking the card issue now/.test(m.message));
+  assert.ok(payout, 'admin reply is in the user inbox');
+  assert.strictEqual(payout.sender_type, 'admin');
+  assert.strictEqual(payout.source, 'telegram');
+  assert.ok(card, 'quoted reply is in the user inbox');
+  assert.strictEqual(card.sender_type, 'admin');
+  assert.strictEqual(card.source, 'telegram');
+
+  delete process.env.TELEGRAM_WEBHOOK_SECRET;
+  await new Promise((resolve) => server.close(resolve));
 
   await closeDb();
   try { fs.unlinkSync(dbFile); } catch (_) { /* ignore */ }
