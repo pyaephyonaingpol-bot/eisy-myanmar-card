@@ -49,7 +49,7 @@
       touch-action: pan-y !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261008pagoTx" />
+  <link rel="stylesheet" href="/styles.css?v=20261008pagoCards" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -1286,7 +1286,12 @@
                 <h2 data-i18n="pago_cards_heading">Your virtual card</h2>
                 <p id="pagoCardDetailSummary" class="hint"></p>
               </div>
-              <div id="pagoCardList" class="pago-card-switcher hidden" role="tablist" aria-label="Your cards"></div>
+              <div id="pagoCardCarousel" class="pago-card-carousel hidden">
+                <button type="button" class="pago-card-carousel-nav" id="pagoCardPrev" data-pago-step="-1" aria-label="Previous card">‹</button>
+                <div id="pagoCardList" class="pago-card-switcher" role="tablist" aria-label="Your cards"></div>
+                <button type="button" class="pago-card-carousel-nav" id="pagoCardNext" data-pago-step="1" aria-label="Next card">›</button>
+              </div>
+              <p id="pagoCardCarouselMeta" class="pago-card-carousel-meta hidden"></p>
               <p id="pagoCardEmpty" class="hint" data-i18n="pago_cards_empty">No virtual cards yet. Request one below.</p>
 
               <div class="pago-card-component hidden" id="pagoCardDetailPanel">
@@ -1797,7 +1802,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261008pagoTx"></script>
+  <script defer src="/i18n.js?v=20261008pagoCards"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1820,7 +1825,7 @@
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261008pago3ds"></script>
+  <script defer src="/dashboard.js?v=20261008pagoCards"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

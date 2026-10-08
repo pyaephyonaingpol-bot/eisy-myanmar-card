@@ -3927,9 +3927,9 @@ html.app-hydrating .wallet-hero-actions-row {
     box-sizing: border-box;
   }
 
-  .hint,
-  .field small.hint,
-  small.hint,
+  .hint:not(.hidden),
+  .field small.hint:not(.hidden),
+  small.hint:not(.hidden),
   .page-desc,
   .wallet-hero-hint,
   .wallet-balance-subtext,
@@ -5069,14 +5069,51 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   margin: 0;
 }
 
-.pago-card-switcher {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
+.pago-card-carousel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  align-items: center;
 }
 
-.pago-card-switcher.hidden {
-  display: none;
+.pago-card-carousel.hidden,
+.pago-card-carousel-meta.hidden,
+#pagoCardEmpty.hidden {
+  display: none !important;
+}
+
+.pago-card-carousel-nav {
+  appearance: none;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.45);
+  color: #e2e8f0;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pago-card-carousel-nav:focus-visible,
+.pago-card-slide:focus-visible {
+  outline: 2px solid var(--accent, #38bdf8);
+  outline-offset: 2px;
+}
+
+.pago-card-carousel-meta {
+  margin: 0;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.78rem;
+}
+
+.pago-card-switcher {
+  display: flex;
+  gap: 0.55rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 0.1rem 0.05rem 0.35rem;
+  scrollbar-width: thin;
 }
 
 .pago-card-chip {
@@ -5096,6 +5133,40 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   color: #e0f2fe;
   border-color: rgba(56, 189, 248, 0.7);
   background: rgba(14, 165, 233, 0.18);
+}
+
+.pago-card-chip.pago-card-slide {
+  flex: 0 0 9.6rem;
+  scroll-snap-align: start;
+  display: grid;
+  gap: 0.12rem;
+  justify-items: start;
+  text-align: left;
+  border-radius: 0.9rem;
+  padding: 0.7rem 0.75rem;
+  min-height: 5.5rem;
+}
+
+.pago-card-slide-brand {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.pago-card-slide-number {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.92rem;
+}
+
+.pago-card-slide-balance {
+  font-weight: 750;
+  font-size: 0.95rem;
+}
+
+.pago-card-slide-status {
+  font-size: 0.68rem;
+  opacity: 0.8;
 }
 
 .pago-card-actions {
