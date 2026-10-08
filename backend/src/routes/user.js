@@ -518,7 +518,9 @@ router.get('/cards/:id/wallet', requireAuth, requireSensitive, async (req, res) 
 });
 
 /**
- * Recent Pagocards 3DS verification codes for a card (webhook-fed).
+ * Recent Pagocards 3DS verification codes for one card.
+ * ?refresh=1 also reads the documented card + transactions endpoints and
+ * stores any OTP fields found there. Webhook rows are always included.
  */
 router.get('/cards/:id/3ds', requireAuth, requireSensitive, async (req, res) => {
   try {
@@ -531,7 +533,21 @@ router.get('/cards/:id/3ds', requireAuth, requireSensitive, async (req, res) => 
     const card = payload.cards.find((item) => Number(item.id) === cardId);
     if (!card) return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
 
-    const { listUser3dsEvents } = require('../services/pago3dsWebhookService');
+    const wantsRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    const {
+      listUser3dsEvents,
+      refreshCard3dsFromProvider,
+    } = require('../services/pago3dsWebhookService');
+
+    let provider = null;
+    if (wantsRefresh) {
+      provider = await refreshCard3dsFromProvider({
+        userId: req.user.id,
+        localCardId: cardId,
+        pagoCardId: card.pago_card_id || null,
+      });
+    }
+
     const events = await listUser3dsEvents(req.user.id, {
       localCardId: cardId,
       pagoCardId: card.pago_card_id || null,
@@ -544,6 +560,8 @@ router.get('/cards/:id/3ds', requireAuth, requireSensitive, async (req, res) => 
       pago_card_id: card.pago_card_id || null,
       latest,
       events,
+      provider_checked: Boolean(provider?.provider_checked),
+      provider_imported: provider?.imported || 0,
     });
   } catch (err) {
     console.error('[user/cards/3ds]', err.code || err.message);
