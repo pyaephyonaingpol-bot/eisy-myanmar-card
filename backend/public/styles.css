@@ -5047,45 +5047,344 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   letter-spacing: 0.01em;
 }
 
+/* ── Pago virtual cards — plastic ATM card UI ── */
+.pago-cards-panel,
+.pago-detail-panel {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.pago-detail-header {
+  display: grid;
+  gap: 0.35rem;
+}
+
 .pago-card-list {
   display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.pago-card-tile {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  border-radius: var(--radius-xl);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+
+.pago-card-tile:hover,
+.pago-card-tile:focus-visible {
+  transform: translateY(-3px);
+  outline: none;
+}
+
+.pago-card-tile:focus-visible .pago-plastic-card {
+  box-shadow:
+    0 0 0 2px rgba(59, 130, 246, 0.55),
+    0 22px 48px rgba(2, 12, 27, 0.55);
+}
+
+.pago-plastic-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: grid;
+  gap: 0.85rem;
+  min-height: 11.5rem;
+  padding: 1.25rem 1.35rem 1.15rem;
+  border-radius: var(--radius-xl);
+  color: #f8fafc;
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(56, 189, 248, 0.28), transparent 55%),
+    radial-gradient(90% 80% at 0% 100%, rgba(16, 185, 129, 0.18), transparent 50%),
+    linear-gradient(145deg, #071526 0%, #0c2a4d 42%, #123a6b 72%, #0ea5e9 160%);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 18px 40px rgba(2, 12, 27, 0.45);
+  aspect-ratio: 1.68 / 1;
+}
+
+.pago-plastic-card.is-mastercard {
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(251, 146, 60, 0.22), transparent 55%),
+    radial-gradient(90% 80% at 0% 100%, rgba(239, 68, 68, 0.16), transparent 50%),
+    linear-gradient(145deg, #1a0f0a 0%, #3b1d12 45%, #7c2d12 78%, #ea580c 160%);
+}
+
+.pago-plastic-card.is-atm {
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(167, 139, 250, 0.2), transparent 55%),
+    radial-gradient(90% 80% at 0% 100%, rgba(34, 197, 94, 0.14), transparent 50%),
+    linear-gradient(145deg, #0b1220 0%, #1e293b 48%, #334155 100%);
+}
+
+.pago-plastic-sheen {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.12) 48%,
+    transparent 62%
+  );
+  transform: translateX(-120%);
+  animation: pagoSheen 7s ease-in-out infinite;
+  z-index: 0;
+}
+
+@keyframes pagoSheen {
+  0%, 55% { transform: translateX(-120%); }
+  75%, 100% { transform: translateX(120%); }
+}
+
+.pago-plastic-card > *:not(.pago-plastic-sheen) {
+  position: relative;
+  z-index: 1;
+}
+
+.pago-plastic-top,
+.pago-plastic-chip-row,
+.pago-plastic-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
 }
 
-.pago-card-row {
+.pago-plastic-brand {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.82);
+}
+
+.pago-plastic-network {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  font-style: italic;
+  opacity: 0.95;
+}
+
+.pago-plastic-network.is-visa::after {
+  content: 'VISA';
+}
+
+.pago-plastic-network.is-mastercard {
+  gap: 0.15rem;
+}
+
+.pago-plastic-network.is-mastercard::before,
+.pago-plastic-network.is-mastercard::after {
+  content: '';
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.pago-plastic-network.is-mastercard::before {
+  background: #eb001b;
+}
+
+.pago-plastic-network.is-mastercard::after {
+  background: #f79e1b;
+  margin-left: -0.4rem;
+  opacity: 0.92;
+}
+
+.pago-plastic-chip {
+  width: 2.55rem;
+  height: 1.85rem;
+  border-radius: 0.4rem;
+  background:
+    linear-gradient(135deg, #fde68a 0%, #f59e0b 45%, #b45309 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(120, 53, 15, 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.25);
+  position: relative;
+}
+
+.pago-plastic-chip::before {
+  content: '';
+  position: absolute;
+  inset: 18% 10%;
+  border: 1px solid rgba(120, 53, 15, 0.35);
+  border-radius: 0.2rem;
+  background:
+    linear-gradient(90deg, transparent 33%, rgba(120, 53, 15, 0.25) 33%, rgba(120, 53, 15, 0.25) 34%, transparent 34%),
+    linear-gradient(0deg, transparent 48%, rgba(120, 53, 15, 0.25) 48%, rgba(120, 53, 15, 0.25) 52%, transparent 52%);
+}
+
+.pago-plastic-contactless {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: rgba(255, 255, 255, 0.75);
+  border-right-color: rgba(255, 255, 255, 0.45);
+  transform: rotate(45deg);
+  opacity: 0.85;
+}
+
+.pago-plastic-number {
+  margin: 0.15rem 0 0;
+  font-family: var(--font-mono);
+  font-size: clamp(1.05rem, 3.4vw, 1.35rem);
+  letter-spacing: 0.16em;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.pago-plastic-footer {
+  align-items: flex-end;
+  margin-top: auto;
+}
+
+.pago-plastic-footer > div,
+.pago-plastic-balance {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.pago-plastic-footer small,
+.pago-plastic-balance small {
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.pago-plastic-footer strong,
+.pago-plastic-balance strong {
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pago-card-tile .pago-plastic-card {
+  min-height: 10.25rem;
+  padding: 1.05rem 1.1rem 1rem;
+}
+
+.pago-card-tile .pago-plastic-number {
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+}
+
+.pago-detail-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
-  border-radius: 12px;
 }
 
-.pago-card-row strong {
-  margin-right: 0.5rem;
-}
-
-.pago-card-details {
-  display: grid;
-  gap: 0.5rem;
-  margin: 0 0 1rem;
-}
-
-.pago-card-details div {
+.pago-detail-meta {
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
 }
 
-.pago-card-details dt {
-  color: var(--muted, #8b93a7);
-}
-
-.pago-card-details dd {
-  margin: 0;
+.pago-balance-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-height: 1.85rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-pill);
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #e0f2fe;
   font-variant-numeric: tabular-nums;
+}
+
+.pago-balance-chip small {
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(186, 230, 253, 0.8);
+}
+
+.pago-balance-chip strong {
+  font-size: 0.92rem;
+}
+
+.pago-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pago-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.85rem;
+  padding: 0.2rem 0.7rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: var(--text-secondary);
+}
+
+.pago-status-pill.is-active {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+  color: #86efac;
+}
+
+.pago-status-pill.is-pending {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: #fcd34d;
+}
+
+.pago-status-pill.is-frozen,
+.pago-status-pill.is-suspended {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+}
+
+.pago-topup-form {
+  margin-top: 0.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 640px) {
+  .pago-card-list {
+    grid-template-columns: 1fr;
+  }
+
+  .pago-plastic-card {
+    aspect-ratio: auto;
+    min-height: 11rem;
+  }
+
 }
 
 

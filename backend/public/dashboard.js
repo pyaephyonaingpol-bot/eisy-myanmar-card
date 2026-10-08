@@ -8435,13 +8435,52 @@ const Dashboard = {
   bindPagoCardUi() {
     if (this._pagoCardBound) return;
     this._pagoCardBound = true;
+    this.pagoDetailRevealed = false;
     $('pagoCardRequestForm')?.addEventListener('submit', (e) => this.submitPagoCardRequest(e));
     $('pagoCardTopupForm')?.addEventListener('submit', (e) => this.submitPagoCardTopup(e));
+    $('pagoCardRevealBtn')?.addEventListener('click', () => this.togglePagoCardReveal());
+    $('pagoCardCopyNumberBtn')?.addEventListener('click', async () => {
+      const card = this.getSelectedPagoCard();
+      if (!card?.card_number || !this.pagoDetailRevealed) return;
+      await this.copyToClipboard(String(card.card_number).replace(/\s/g, ''));
+      this.copyToast(typeof t === 'function' ? t('copy_card_number') : 'Copied card number');
+    });
     $('pagoCardList')?.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-pago-view]');
       if (!btn) return;
       this.openPagoCardDetail(btn.getAttribute('data-pago-view'));
     });
+  },
+
+  getSelectedPagoCard() {
+    const panel = $('pagoCardDetailPanel');
+    const id = panel?.dataset.cardId;
+    if (!id) return null;
+    return (this.allCards || []).find((card) => String(card.id) === String(id)) || null;
+  },
+
+  resolvePagoNetwork(card) {
+    const blob = `${card?.brand || ''} ${card?.product_code || ''}`.toLowerCase();
+    if (blob.includes('master') || blob.includes('536')) return 'mastercard';
+    if (blob.includes('atm')) return 'atm';
+    return 'visa';
+  },
+
+  pagoNetworkClass(network) {
+    if (network === 'mastercard') return 'is-mastercard';
+    if (network === 'atm') return 'is-atm';
+    return 'is-visa';
+  },
+
+  maskPagoNumber(card) {
+    const last4 = String(card?.last4 || '').replace(/\D/g, '').slice(-4) || '••••';
+    return `•••• •••• •••• ${last4}`;
+  },
+
+  togglePagoCardReveal() {
+    this.pagoDetailRevealed = !this.pagoDetailRevealed;
+    const card = this.getSelectedPagoCard();
+    if (card) this.showPagoCardDetail(card);
   },
 
   prefillPagoCardRequest() {
@@ -8467,42 +8506,108 @@ const Dashboard = {
     }
     empty?.classList.add('hidden');
     list.innerHTML = cards.map((card) => {
-      const brand = this.escapeHtml(card.brand || card.product_code || 'Pago Card');
-      const last4 = this.escapeHtml(card.last4 || '????');
+      const network = this.resolvePagoNetwork(card);
+      const holder = this.escapeHtml(card.card_holder_name || 'Card Holder');
+      const last4 = this.escapeHtml(card.last4 || '••••');
+      const balance = card.balance_usd == null
+        ? '—'
+        : `$${Number(card.balance_usd).toFixed(2)}`;
       const status = this.escapeHtml(card.display_status || card.status || '');
-      const balance = card.balance_usd == null ? '—' : this.escapeHtml(Number(card.balance_usd).toFixed(2));
-      return `<article class="pago-card-row">
-        <div><strong>${brand}</strong><span>•••• ${last4}</span></div>
-        <div><span class="hint">${status}</span> · $${balance}</div>
-        <button type="button" class="btn btn-secondary btn-sm" data-pago-view="${card.id}" data-i18n="pago_view">View details</button>
-      </article>`;
+      return `<button type="button" class="pago-card-tile" data-pago-view="${card.id}" role="listitem" aria-label="Card ending ${last4}">
+        <article class="pago-plastic-card ${this.pagoNetworkClass(network)}">
+          <div class="pago-plastic-sheen" aria-hidden="true"></div>
+          <div class="pago-plastic-top">
+            <span class="pago-plastic-brand">EISY</span>
+            <span class="pago-plastic-network ${this.pagoNetworkClass(network)}" aria-hidden="true"></span>
+          </div>
+          <div class="pago-plastic-chip-row">
+            <span class="pago-plastic-chip" aria-hidden="true"></span>
+            <span class="pago-plastic-contactless" aria-hidden="true"></span>
+          </div>
+          <p class="pago-plastic-number">•••• •••• •••• ${last4}</p>
+          <div class="pago-plastic-footer">
+            <div><small>Holder</small><strong>${holder}</strong></div>
+            <div><small>Balance</small><strong>${this.escapeHtml(balance)}</strong></div>
+            <div><small>Status</small><strong>${status}</strong></div>
+          </div>
+        </article>
+      </button>`;
     }).join('');
-    if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(list);
   },
 
   showPagoCardDetail(card) {
     const panel = $('pagoCardDetailPanel');
     if (!panel || !card) return;
+    const switching = panel.dataset.cardId && panel.dataset.cardId !== String(card.id);
+    if (switching) this.pagoDetailRevealed = false;
     panel.classList.remove('hidden');
     panel.dataset.cardId = String(card.id);
+
     const brand = card.brand || card.product_code || 'Pago Card';
+    const network = this.resolvePagoNetwork(card);
+    const plastic = $('pagoPlasticCard');
+    if (plastic) {
+      plastic.classList.remove('is-visa', 'is-mastercard', 'is-atm');
+      plastic.classList.add(this.pagoNetworkClass(network));
+    }
+    const netEl = $('pagoPlasticNetwork');
+    if (netEl) {
+      netEl.className = `pago-plastic-network ${this.pagoNetworkClass(network)}`;
+    }
     if ($('pagoCardDetailSummary')) {
       $('pagoCardDetailSummary').textContent = `${brand} · •••• ${card.last4 || '????'}`;
     }
-    if ($('pagoCardDetailStatus')) $('pagoCardDetailStatus').textContent = card.display_status || card.status || '—';
-    if ($('pagoCardDetailBalance')) {
-      $('pagoCardDetailBalance').textContent = card.balance_usd == null
-        ? '—'
-        : `$${Number(card.balance_usd).toFixed(2)}`;
+    if ($('pagoPlasticHolder')) {
+      $('pagoPlasticHolder').textContent = card.card_holder_name || '—';
     }
-    const number = card.card_number ? this.formatCardNumber(card.card_number) : '—';
-    if ($('pagoCardDetailNumber')) $('pagoCardDetailNumber').textContent = number;
-    if ($('pagoCardDetailExpiry')) $('pagoCardDetailExpiry').textContent = card.exp_date || '—';
-    if ($('pagoCardDetailCvv')) $('pagoCardDetailCvv').textContent = card.cvv || '—';
+
+    const statusEl = $('pagoCardDetailStatus');
+    if (statusEl) {
+      const statusKey = String(card.status || '').toLowerCase();
+      statusEl.textContent = card.display_status || card.status || '—';
+      statusEl.className = `pago-status-pill${statusKey ? ` is-${statusKey}` : ''}`;
+    }
+
+    const balanceText = card.balance_usd == null
+      ? '—'
+      : `$${Number(card.balance_usd).toFixed(2)}`;
+    if ($('pagoCardDetailBalance')) $('pagoCardDetailBalance').textContent = balanceText;
+
+    const revealed = Boolean(this.pagoDetailRevealed);
+    const hasNumber = Boolean(card.card_number);
+    if ($('pagoCardDetailNumber')) {
+      $('pagoCardDetailNumber').textContent = revealed && hasNumber
+        ? this.formatCardNumber(card.card_number)
+        : this.maskPagoNumber(card);
+    }
+    if ($('pagoCardDetailExpiry')) {
+      $('pagoCardDetailExpiry').textContent = revealed
+        ? (card.exp_date || '—')
+        : (card.exp_date ? '••/••' : '—');
+    }
+    if ($('pagoCardDetailCvv')) {
+      $('pagoCardDetailCvv').textContent = revealed
+        ? (card.cvv || '—')
+        : '•••';
+    }
+
+    const revealBtn = $('pagoCardRevealBtn');
+    if (revealBtn) {
+      const showLabel = typeof t === 'function' ? t('pago_show_details') : 'Show number & CVV';
+      const hideLabel = typeof t === 'function' ? t('pago_hide_details') : 'Hide number & CVV';
+      revealBtn.textContent = revealed ? hideLabel : showLabel;
+      revealBtn.setAttribute('aria-pressed', revealed ? 'true' : 'false');
+      revealBtn.disabled = !hasNumber && !card.cvv;
+    }
+    const copyBtn = $('pagoCardCopyNumberBtn');
+    if (copyBtn) {
+      copyBtn.classList.toggle('hidden', !(revealed && hasNumber));
+    }
   },
 
   async openPagoCardDetail(cardId, fallback) {
     const local = (this.allCards || []).find((card) => String(card.id) === String(cardId)) || fallback;
+    this.pagoDetailRevealed = false;
     if (local) this.showPagoCardDetail(local);
     try {
       this.invalidateFetch('cards');
