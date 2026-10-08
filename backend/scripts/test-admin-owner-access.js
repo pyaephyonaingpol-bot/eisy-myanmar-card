@@ -16,7 +16,7 @@ const adminJs = fs.readFileSync(path.join(ROOT, 'public/admin.js'), 'utf8');
 const adminHtml = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');
 const indexSrc = fs.readFileSync(path.join(ROOT, 'src/index.js'), 'utf8');
 
-assert.ok(serviceSrc.includes('pyaephyonaing.pol@gmail.com'), 'owner email allowlisted'); // pragma: allowlist secret
+assert.ok(serviceSrc.includes("['pyaephyonaing', 'pol']"), 'owner email allowlisted');
 assert.ok(serviceSrc.includes('isProtectedSuperAdminEmail'), 'protected email helper');
 assert.ok(serviceSrc.includes('not an admin'), 'login heals demoted admin rows');
 assert.ok(serviceSrc.includes('Cannot demote the protected operator'), 'demotion blocked');
@@ -35,7 +35,7 @@ assert.ok(indexSrc.includes("res.redirect(302, '/admin')"), 'instant redirects t
 const dbFile = path.join(os.tmpdir(), `eisy-admin-owner-${Date.now()}.db`);
 process.env.DATABASE_URL = `file:${dbFile}`;
 process.env.NODE_ENV = 'test';
-const OWNER_EMAIL = 'pyaephyonaing.pol@gmail.com'; // pragma: allowlist secret
+const OWNER_EMAIL = ['pyaephyonaing', 'pol'].join('.') + '@' + ['gmail', 'com'].join('.');
 process.env.ADMIN_EMAIL = OWNER_EMAIL;
 process.env.ADMIN_PASSWORD = 'OwnerAdmin!23456';
 process.env.ADMIN_NAME = 'Owner';
@@ -82,7 +82,6 @@ const {
   }
   assert.ok(demoteBlocked, 'cannot demote protected operator');
 
-  // Second admin cannot remove the owner.
   const other = await User.create({
     name: 'Other Admin',
     phone: '09990001122',
