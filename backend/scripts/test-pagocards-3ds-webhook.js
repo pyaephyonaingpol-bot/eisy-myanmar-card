@@ -26,9 +26,9 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pago3dsPanel"'), '3DS panel present');
   assert.ok(doc.includes('id="pago3dsCode"'), '3DS code element present');
   assert.ok(doc.includes('id="pago3dsCopyBtn"'), '3DS copy button present');
-  assert.ok(doc.includes('styles.css?v=20261008pago3ds'), 'CSS cache-bust bumped');
-  assert.ok(doc.includes('dashboard.js?v=20261008pago3ds'), 'JS cache-bust bumped');
-  assert.ok(doc.includes('i18n.js?v=20261008pago3ds'), 'i18n cache-bust bumped');
+  assert.ok(doc.includes('styles.css?v=20261008pago3ds2'), 'CSS cache-bust bumped');
+  assert.ok(doc.includes('dashboard.js?v=20261008pago3ds2'), 'JS cache-bust bumped');
+  assert.ok(doc.includes('i18n.js?v=20261008pago3ds2'), 'i18n cache-bust bumped');
 }
 
 assert.ok(css.includes('.pago-3ds-panel'), '3DS panel styles');
@@ -105,5 +105,30 @@ assert.strictEqual(nested.merchantName, 'Shop');
 
 assert.strictEqual(normalizePagocardsWebhook(null), null);
 assert.strictEqual(normalizePagocardsWebhook({ foo: 1 }), null);
+
+
+// Alternate field names / nested envelopes
+const alt = normalizePagocardsWebhook({
+  body: JSON.stringify({
+    event_id: 'alt-1',
+    type: '3ds',
+    verification_code: '445566',
+    card_id: 'card_alt_1',
+    merchant_name: 'ALT',
+  }),
+});
+assert.ok(alt);
+assert.strictEqual(alt.otp, '445566');
+assert.strictEqual(alt.cardId, 'card_alt_1');
+
+const deep = normalizePagocardsWebhook({
+  eventId: 'deep-1',
+  eventType: 'virtualcard.3ds',
+  data: { otp: '112233', card: { cardId: 'card_deep' } },
+});
+assert.ok(deep);
+assert.strictEqual(deep.otp, '112233');
+assert.strictEqual(deep.cardId, 'card_deep');
+assert.ok(deep.is3ds);
 
 console.log('pagocards 3ds webhook checks passed');

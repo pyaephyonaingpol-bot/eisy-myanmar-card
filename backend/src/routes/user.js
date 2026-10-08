@@ -532,11 +532,16 @@ router.get('/cards/:id/3ds', requireAuth, requireSensitive, async (req, res) => 
     if (!card) return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
 
     const { listUser3dsEvents } = require('../services/pago3dsWebhookService');
-    const events = await listUser3dsEvents(req.user.id, { localCardId: cardId, limit: 20 });
+    const events = await listUser3dsEvents(req.user.id, {
+      localCardId: cardId,
+      pagoCardId: card.pago_card_id || null,
+      limit: 20,
+    });
     const latest = events.find((item) => item.otp) || events[0] || null;
     res.json({
       success: true,
       card_id: cardId,
+      pago_card_id: card.pago_card_id || null,
       latest,
       events,
     });

@@ -96,6 +96,11 @@ router.post('/pagocards', async (req, res) => {
       eventType: result.event?.eventType || null,
       is3ds: Boolean(result.event?.is3ds),
       hasOtp: Boolean(result.event?.otp),
+      // Echo otp so operators can confirm extraction in Pagocards delivery logs.
+      // Dashboard still loads codes from pago_3ds_events via /api/user/cards/:id/3ds.
+      otp: result.event?.otp || null,
+      cardId: result.event?.cardId || null,
+      linked: Boolean(result.row?.user_id && result.row?.local_card_id),
       saved: result.saved,
       duplicate: result.duplicate,
       ignored: Boolean(result.ignored),
