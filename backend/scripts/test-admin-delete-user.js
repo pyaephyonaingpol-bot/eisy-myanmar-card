@@ -28,7 +28,7 @@ async function main() {
 
   const User = require('../src/models/User');
   const DepositRequest = require('../src/models/DepositRequest');
-  const { deleteAdminUser } = require('../src/services/adminUserDeleteService');
+  const { deleteAdminUser, cleanupStatements } = require('../src/services/adminUserDeleteService');
   const { OWNER_SUPER_ADMIN_EMAILS } = require('../src/services/adminAuthService');
 
   const adminJs = fs.readFileSync(path.join(__dirname, '../public/admin.js'), 'utf8');
@@ -40,6 +40,11 @@ async function main() {
   assert.ok(adminHtml.includes('id="deleteUserModal"'), 'delete confirmation modal');
   assert.ok(adminHtml.includes('id="deleteUserConfirmInput"'), 'typed confirmation field');
   assert.ok(routeSrc.includes("'/users/:userId/delete'"), 'delete route');
+  const deleteSrc = fs.readFileSync(path.join(__dirname, '../src/services/adminUserDeleteService.js'), 'utf8');
+  assert.ok(!deleteSrc.includes('PRAGMA foreign_key_list'), 'delete does not scan every foreign key at request time');
+  const plan = cleanupStatements(1);
+  assert.ok(plan.length <= 20, 'delete is a fixed statement batch');
+  assert.ok(plan.some((step) => step.sql.includes('DELETE FROM users')), 'batch removes the user row');
 
   const stamp = Date.now();
   const userA = await User.create({
@@ -73,6 +78,22 @@ async function main() {
     ) VALUES (?, 'Delete Me', 'NRC', '12/TEST', '/tmp/front.jpg', '/tmp/back.jpg', '/tmp/selfie.jpg', 'PENDING_REVIEW')`,
     userA.id
   );
+  const ad = await db.run(
+    `INSERT INTO p2p_ads (
+      user_id, side, network, price_mmk_per_usdt, total_volume_usdt, available_volume_usdt
+    ) VALUES (?, 'sell', 'TRC20', 4500, 100, 100)`,
+    userA.id
+  );
+  await db.run(
+    `INSERT INTO p2p_buy_orders (
+      user_id, ad_id, maker_user_id, ref_code, amount_usdt, amount_mmk,
+      price_mmk_per_usdt, payment_method
+    ) VALUES (?, ?, ?, ?, 10, 45000, 4500, 'KPay')`,
+    userB.id,
+    ad.lastID,
+    userA.id,
+    `KEEP${stamp}`
+  );
 
   await assert.rejects(
     () => deleteAdminUser(userA.id, { confirm: 'yes', adminId: 999, adminEmail: 'ops@example.com' }),
@@ -99,6 +120,15 @@ async function main() {
   );
   assert.ok(!leftoverKyc, 'non-cascade KYC rows are removed');
   assert.ok(await User.findById(userB.id), 'other users stay');
+  const keptOrder = await db.get(
+    'SELECT id, ad_id, maker_user_id FROM p2p_buy_orders WHERE user_id = ?',
+    userB.id
+  );
+  assert.ok(keptOrder, 'another user order stays');
+  assert.strictEqual(keptOrder.ad_id, null, 'their ad link is cleared instead of deleting the order');
+  assert.strictEqual(keptOrder.maker_user_id, null, 'maker link is cleared');
+  const leftoverAd = await db.get('SELECT id FROM p2p_ads WHERE user_id = ?', userA.id);
+  assert.ok(!leftoverAd, 'deleted user ads are gone');
 
   const ownerEmail = OWNER_SUPER_ADMIN_EMAILS[0];
   const owner = await User.create({
