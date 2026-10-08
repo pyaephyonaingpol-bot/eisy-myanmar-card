@@ -197,6 +197,11 @@
       // Cards page
       cards_page_desc: 'View card status, reveal details when needed, and reload your virtual cards.',
       pago_cards_heading: 'Your virtual card',
+      pago_cards_heading_many: 'Your virtual cards',
+      pago_card_switch_hint: 'Choose a card to see its balance, details, and transactions.',
+      pago_card_prev: 'Previous card',
+      pago_card_next: 'Next card',
+      pago_card_position: '{n} of {total}',
       pago_copy_card: 'Copy Card',
       pago_copy_card_done: 'Card number copied',
       pago_cards_empty: 'No virtual cards yet. Request one below.',
@@ -718,6 +723,11 @@
 
       cards_page_desc: 'ကဒ်အခြေအနေ ကြည့်ရှု၊ လိုအပ်ပါက အသေးစိတ်ပြသခြင်း၊ virtual card များကို reload လုပ်ပါ။',
       pago_cards_heading: 'သင်၏ virtual ကဒ်',
+      pago_cards_heading_many: 'သင်၏ virtual ကတ်များ',
+      pago_card_switch_hint: 'လက်ကျန်၊ အသေးစိတ်နှင့် အသုံးစရိတ်ကြည့်ရန် ကတ်တစ်ခု ရွေးပါ။',
+      pago_card_prev: 'ယခင်ကတ်',
+      pago_card_next: 'နောက်ကတ်',
+      pago_card_position: '{total} ခုအနက် {n}',
       pago_copy_card: 'ကဒ်ကူးမည်',
       pago_copy_card_done: 'ကဒ်နံပါတ် ကူးယူပြီးပါပြီ',
       pago_cards_empty: 'virtual ကဒ် မရှိသေးပါ။ အောက်တွင် တောင်းဆိုပါ။',
