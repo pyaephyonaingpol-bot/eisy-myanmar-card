@@ -9,6 +9,7 @@
 
   /** Core admin modules shown in the sidebar (Instant/Hub split removed). */
   const CORE_ADMIN_PAGES = new Set([
+    'overview',
     'users',
     'deposits',
     'kyc-requests',
@@ -60,6 +61,9 @@
     },
 
     pipelineDefaultPage(_pipeline) {
+      if (this.hasPermission('master_wallet') && (!this.pages?.length || this.pages.includes('overview'))) {
+        return 'overview';
+      }
       if (this.pages?.includes('users')) return 'users';
       if (this.pages?.includes('deposits')) return 'deposits';
       if (this.pages?.includes('cards')) return 'cards';
@@ -545,7 +549,7 @@
         this.switchTab('deposits');
         return;
       }
-      if (name === 'overview' || name === 'transactions' || name === 'revenue' || name === 'support' || name === 'mmk-withdrawals') {
+      if (name === 'transactions' || name === 'revenue' || name === 'support' || name === 'mmk-withdrawals') {
         // Legacy Instant/Hub pages — land on the closest core module.
         const fallback = name === 'support' ? 'users' : (name === 'mmk-withdrawals' ? 'deposits' : this.pipelineDefaultPage());
         this.switchTab(fallback);
@@ -3080,7 +3084,7 @@
         this._tronSweepInFlight = false;
         buttons.forEach((b, i) => {
           b.disabled = false;
-          b.textContent = prevLabels[i] || 'Sweep';
+          b.textContent = prevLabels[i] || 'Sweep Wallet';
         });
       }
     },
