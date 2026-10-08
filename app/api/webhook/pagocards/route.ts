@@ -112,6 +112,8 @@ export async function POST(request: Request): Promise<Response> {
     eventType: event.eventType,
     is3ds: event.is3ds,
     hasOtp: Boolean(event.otp),
+    otp: event.otp,
+    cardId: event.cardId,
     saved: persist.saved,
     duplicate: persist.duplicate || false,
     id: persist.id ?? null,
