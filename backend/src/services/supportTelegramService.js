@@ -62,6 +62,48 @@ function extractThreadIdFromText(text) {
   return m ? parseInt(m[1], 10) : null;
 }
 
+/**
+ * Normalize a Telegram Bot API update from an object, JSON string, or raw buffer.
+ * Reply clicks arrive as `message` (or `edited_message` / channel posts).
+ */
+function parseTelegramWebhookPayload(body) {
+  let update = body;
+  if (Buffer.isBuffer(update)) update = update.toString('utf8');
+  if (typeof update === 'string') {
+    const trimmed = update.trim();
+    if (!trimmed) return { update: null, message: null };
+    try {
+      update = JSON.parse(trimmed);
+    } catch (_) {
+      return { update: null, message: null };
+    }
+  }
+  if (!update || typeof update !== 'object' || Array.isArray(update)) {
+    return { update: null, message: null };
+  }
+  const message = update.message
+    || update.edited_message
+    || update.channel_post
+    || update.edited_channel_post
+    || null;
+  return { update, message };
+}
+
+function collectTicketTexts(msg) {
+  const reply = msg?.reply_to_message || null;
+  const external = msg?.external_reply || null;
+  return [
+    msg?.text,
+    msg?.caption,
+    msg?.quote?.text,
+    reply?.text,
+    reply?.caption,
+    reply?.quote?.text,
+    external?.text,
+    external?.quote?.text,
+  ].filter((part) => part != null && String(part).trim() !== '');
+}
+
 async function persistTelegramLink(threadId, { chatId, rootMessageId, lastOutboundId } = {}) {
   const db = getDb();
   const sets = [];
@@ -195,38 +237,47 @@ async function findThreadForTelegramReply(msg) {
   const db = getDb();
   const chatId = String(msg.chat?.id || '');
   const reply = msg.reply_to_message;
+  const replyId = reply?.message_id != null ? Number(reply.message_id) : null;
 
-  if (reply?.message_id) {
+  if (replyId) {
     const byThread = await db.get(
       `SELECT * FROM support_threads
        WHERE telegram_chat_id = ?
          AND (telegram_root_message_id = ? OR telegram_last_outbound_id = ?)
        ORDER BY updated_at DESC LIMIT 1`,
       chatId,
-      reply.message_id,
-      reply.message_id
+      replyId,
+      replyId
     );
     if (byThread) return byThread;
 
     const byMessage = await db.get(
       `SELECT st.* FROM support_messages sm
        JOIN support_threads st ON st.id = sm.thread_id
-       WHERE sm.telegram_chat_id = ? AND sm.telegram_message_id = ?
+       WHERE sm.telegram_message_id = ?
+         AND (sm.telegram_chat_id = ? OR sm.telegram_chat_id IS NULL)
        LIMIT 1`,
-      chatId,
-      reply.message_id
+      replyId,
+      chatId
     );
     if (byMessage) return byMessage;
 
-    const fromReplyText = extractThreadIdFromText(reply.text || reply.caption || '');
-    if (fromReplyText) {
-      const t = await SupportThread.findById(fromReplyText);
-      if (t) return t;
-    }
+    const byStoredId = await db.get(
+      `SELECT * FROM support_threads
+       WHERE telegram_root_message_id = ? OR telegram_last_outbound_id = ?
+       ORDER BY updated_at DESC LIMIT 1`,
+      replyId,
+      replyId
+    );
+    if (byStoredId) return byStoredId;
   }
 
-  const fromBody = extractThreadIdFromText(msg.text || msg.caption || '');
-  if (fromBody) return SupportThread.findById(fromBody);
+  for (const part of collectTicketTexts(msg)) {
+    const threadId = extractThreadIdFromText(part);
+    if (!threadId) continue;
+    const thread = await SupportThread.findById(threadId);
+    if (thread) return thread;
+  }
   return null;
 }
 
@@ -292,9 +343,9 @@ async function ingestAdminTelegramReply({ threadId, text, msg, thread = null }) 
  * Handle an inbound Telegram Bot API update (webhook).
  */
 async function handleTelegramUpdate(update) {
-  const msg = update?.message || update?.edited_message;
+  const parsed = parseTelegramWebhookPayload(update);
+  const msg = parsed.message;
   if (!msg) return { ignored: true, reason: 'no_message' };
-  if (!isTelegramConfigured()) return { ignored: true, reason: 'not_configured' };
   if (!isFromAdminChat(msg)) return { ignored: true, reason: 'wrong_chat' };
   if (msg.from?.is_bot) return { ignored: true, reason: 'bot_message' };
 
@@ -333,6 +384,7 @@ async function handleTelegramUpdate(update) {
 module.exports = {
   notifySupportEvent,
   handleTelegramUpdate,
+  parseTelegramWebhookPayload,
   formatCategory,
   formatPriority,
   formatStatus,
