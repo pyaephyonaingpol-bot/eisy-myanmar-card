@@ -486,6 +486,11 @@
       width: 100%;
     }
     .actions-cell { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+    #usersTable.users-directory-scroll {
+      max-height: min(70vh, 720px);
+      overflow: auto;
+    }
+    #usersPageLabel { align-self: center; }
   </style>
 </head>
 <body>
@@ -864,13 +869,23 @@
 
       <section id="tabUsers" class="panel app-page is-active" data-page="users">
         <h2 id="adminUsersHeading">Users</h2>
-        <p class="hint" id="adminUsersHint" style="margin-bottom:0.75rem">Search users, review wallets, and block or unblock accounts.</p>
+        <p class="hint" id="adminUsersHint" style="margin-bottom:0.75rem">All registered users and Supabase wallets, newest first. Use the page size to scroll a shorter page or load everyone.</p>
         <div class="admin-toolbar" id="usersToolbar" style="margin-bottom:0.65rem">
           <input id="usersSearchInput" type="search" placeholder="Search name, email, or ID" autocomplete="off" />
           <select id="usersStatusFilter" aria-label="Filter by status">
             <option value="">All statuses</option>
             <option value="active">Active</option>
             <option value="blocked">Blocked</option>
+          </select>
+          <select id="usersSort" aria-label="Sort users">
+            <option value="created_at_desc" selected>Newest first</option>
+            <option value="created_at_asc">Oldest first</option>
+          </select>
+          <select id="usersPageSize" aria-label="Users per page">
+            <option value="25">25 / page</option>
+            <option value="50" selected>50 / page</option>
+            <option value="100">100 / page</option>
+            <option value="10000">All</option>
           </select>
           <button type="button" id="usersSearchBtn" class="btn btn-secondary btn-sm">Search</button>
           <button type="button" id="usersRefreshBtn" class="btn btn-secondary btn-sm">Refresh</button>
@@ -880,7 +895,7 @@
         <p style="margin-bottom:0.75rem">
           <button type="button" id="usersBackfillWalletsBtn" class="btn btn-sm btn-secondary">Sync Supabase wallet mirrors</button>
         </p>
-        <div id="usersTable" class="data-table-wrap"><p class="hint">Loading users…</p></div>
+        <div id="usersTable" class="data-table-wrap users-directory-scroll"><p class="hint">Loading users…</p></div>
         <div class="admin-toolbar" id="usersPager" style="margin-top:0.75rem;display:none">
           <button type="button" id="usersPrevBtn" class="btn btn-secondary btn-sm">Previous</button>
           <span id="usersPageLabel" class="hint"></span>
@@ -1398,6 +1413,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261008sweepWallet" defer></script>
+  <script src="/admin.js?v=20261008allUsers" defer></script>
 </body>
 </html>
