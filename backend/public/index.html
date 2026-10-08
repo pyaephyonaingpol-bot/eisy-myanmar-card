@@ -49,7 +49,7 @@
       touch-action: pan-y !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261008pagoWallet" />
+  <link rel="stylesheet" href="/styles.css?v=20261008pago3ds" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -1331,6 +1331,19 @@
                 </div>
               </div>
 
+              <section class="pago-3ds-panel" id="pago3dsPanel" aria-labelledby="pago3dsHeading" hidden>
+                <div class="pago-3ds-copy">
+                  <h3 id="pago3dsHeading" data-i18n="pago_3ds_heading">3D Secure code</h3>
+                  <p class="hint" id="pago3dsHint" data-i18n="pago_3ds_hint">When a merchant asks for a verification code, it appears here automatically.</p>
+                </div>
+                <div class="pago-3ds-code-row" id="pago3dsCodeRow">
+                  <p class="pago-3ds-code" id="pago3dsCode" aria-live="polite">————</p>
+                  <button type="button" class="btn btn-secondary btn-sm" id="pago3dsCopyBtn" data-i18n="pago_3ds_copy">Copy code</button>
+                </div>
+                <p class="pago-3ds-meta" id="pago3dsMeta"></p>
+                <ul class="pago-3ds-list" id="pago3dsList" role="list"></ul>
+              </section>
+
               <section class="pago-wallet-add" id="pagoWalletAddSection" aria-labelledby="pagoWalletAddHeading">
                 <div class="pago-wallet-add-copy">
                   <h3 id="pagoWalletAddHeading" data-i18n="pago_wallet_heading">Add to Apple Wallet &amp; Google Pay</h3>
@@ -1789,7 +1802,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261008pagoWallet"></script>
+  <script defer src="/i18n.js?v=20261008pago3ds"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1811,7 +1824,7 @@
   <script defer src="/nav.js?v=20260908sidebarPerf"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20261008pagoWallet"></script>
+  <script defer src="/dashboard.js?v=20261008pago3ds"></script>
   <script defer src="/supportChat.js?v=20260911supportChat"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

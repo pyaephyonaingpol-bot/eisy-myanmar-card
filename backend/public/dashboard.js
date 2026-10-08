@@ -8438,6 +8438,8 @@ const Dashboard = {
     this.pagoDetailRevealed = false;
     this.pagoWalletInfo = null;
     this.pagoWalletTarget = null;
+    this.pago3dsEvents = [];
+    this.pago3dsKnownIds = new Set();
     $('pagoCardRequestForm')?.addEventListener('submit', (e) => this.submitPagoCardRequest(e));
     $('pagoCardTopupForm')?.addEventListener('submit', (e) => this.submitPagoCardTopup(e));
     $('pagoCardRevealBtn')?.addEventListener('click', () => this.togglePagoCardReveal());
@@ -8447,6 +8449,7 @@ const Dashboard = {
       await this.copyToClipboard(String(card.card_number).replace(/\s/g, ''));
       this.copyToast(typeof t === 'function' ? t('copy_card_number') : 'Copied card number');
     });
+    $('pago3dsCopyBtn')?.addEventListener('click', () => this.copyPago3dsCode());
     $('pagoAddAppleWalletBtn')?.addEventListener('click', () => this.openPagoWalletGuide('apple'));
     $('pagoAddGooglePayBtn')?.addEventListener('click', () => this.openPagoWalletGuide('google'));
     $('pagoWalletModalClose')?.addEventListener('click', () => this.closePagoWalletModal());
@@ -8460,6 +8463,117 @@ const Dashboard = {
       if (!btn) return;
       this.openPagoCardDetail(btn.getAttribute('data-pago-view'));
     });
+  },
+
+  stopPago3dsPoll() {
+    if (this._pago3dsPollTimer) {
+      clearInterval(this._pago3dsPollTimer);
+      this._pago3dsPollTimer = null;
+    }
+  },
+
+  startPago3dsPoll(cardId) {
+    this.stopPago3dsPoll();
+    if (!cardId) return;
+    this._pago3dsPollCardId = String(cardId);
+    this._pago3dsPollTimer = setInterval(() => {
+      if (String(this._pago3dsPollCardId) !== String(cardId)) return;
+      this.loadPago3dsEvents(cardId, { silent: true }).catch(() => {});
+    }, 5000);
+  },
+
+  async loadPago3dsEvents(cardId, { silent = true } = {}) {
+    if (!cardId || !Auth.isLoggedIn() || Auth.needsPinUnlock()) return null;
+    try {
+      const data = await Auth.api('GET', `/api/user/cards/${cardId}/3ds`, null, {
+        sensitive: true,
+        timeoutMs: 8000,
+      });
+      const events = Array.isArray(data.events) ? data.events : [];
+      const prevIds = this.pago3dsKnownIds || new Set();
+      const incoming = events.filter((ev) => ev?.otp && !prevIds.has(String(ev.id)));
+      this.pago3dsEvents = events;
+      this.pago3dsKnownIds = new Set(events.map((ev) => String(ev.id)));
+      this.renderPago3dsPanel(events);
+
+      for (const ev of incoming) {
+        if (silent && prevIds.size) {
+          this.toast(
+            this.i18nText('pago_3ds_toast', 'New 3D Secure code'),
+            'ok',
+            ev.otp
+          );
+        }
+        if (!ev.seen_at && ev.id) {
+          Auth.api('POST', `/api/user/cards/3ds/${ev.id}/seen`, {}, { sensitive: true })
+            .catch(() => {});
+        }
+      }
+      return data;
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+        this.stopPago3dsPoll();
+        if (!silent) this.openPinUnlockModal();
+        return null;
+      }
+      if (!silent) console.warn('[Dashboard] 3DS poll:', err.message);
+      return null;
+    }
+  },
+
+  renderPago3dsPanel(events) {
+    const panel = $('pago3dsPanel');
+    if (!panel) return;
+    panel.hidden = false;
+    const withOtp = (events || []).filter((ev) => ev && ev.otp);
+    const latest = withOtp[0] || null;
+    const codeEl = $('pago3dsCode');
+    const metaEl = $('pago3dsMeta');
+    const listEl = $('pago3dsList');
+    const copyBtn = $('pago3dsCopyBtn');
+
+    panel.classList.toggle('has-code', Boolean(latest?.otp));
+    if (codeEl) codeEl.textContent = latest?.otp || '————';
+    if (copyBtn) copyBtn.disabled = !latest?.otp;
+    this._pago3dsLatestOtp = latest?.otp || null;
+
+    if (metaEl) {
+      if (!latest) {
+        metaEl.textContent = this.i18nText('pago_3ds_empty', 'No active verification codes for this card.');
+      } else {
+        const bits = [];
+        if (latest.merchant_name) {
+          bits.push(`${this.i18nText('pago_3ds_merchant', 'Merchant')}: ${latest.merchant_name}`);
+        }
+        if (latest.transaction_amount) {
+          const cur = latest.transaction_currency || '';
+          bits.push(`${this.i18nText('pago_3ds_amount', 'Amount')}: ${latest.transaction_amount}${cur ? ` ${cur}` : ''}`);
+        }
+        if (latest.received_at) bits.push(latest.received_at);
+        metaEl.textContent = bits.join(' · ');
+      }
+    }
+
+    if (listEl) {
+      listEl.innerHTML = withOtp.slice(0, 5).map((ev) => {
+        const merchant = this.escapeHtml(ev.merchant_name || '—');
+        const amount = ev.transaction_amount
+          ? this.escapeHtml(`${ev.transaction_amount}${ev.transaction_currency ? ` ${ev.transaction_currency}` : ''}`)
+          : '';
+        return `<li class="pago-3ds-item" role="listitem">
+          <strong>${this.escapeHtml(ev.otp)}</strong>
+          <span>${merchant}</span>
+          ${amount ? `<span>${amount}</span>` : ''}
+        </li>`;
+      }).join('');
+    }
+  },
+
+  async copyPago3dsCode() {
+    const otp = this._pago3dsLatestOtp;
+    if (!otp) return;
+    await this.copyToClipboard(String(otp));
+    this.copyToast(this.i18nText('pago_3ds_copied', '3D Secure code copied'));
   },
 
   i18nText(key, fallback) {
@@ -8786,9 +8900,16 @@ const Dashboard = {
     const panel = $('pagoCardDetailPanel');
     if (!panel || !card) return;
     const switching = panel.dataset.cardId && panel.dataset.cardId !== String(card.id);
-    if (switching) this.pagoDetailRevealed = false;
+    if (switching) {
+      this.pagoDetailRevealed = false;
+      this.pago3dsEvents = [];
+      this.pago3dsKnownIds = new Set();
+      this.renderPago3dsPanel([]);
+    }
     panel.classList.remove('hidden');
     panel.dataset.cardId = String(card.id);
+    this.startPago3dsPoll(card.id);
+    this.loadPago3dsEvents(card.id, { silent: true }).catch(() => {});
 
     const brand = card.brand || card.product_code || 'Pago Card';
     const network = this.resolvePagoNetwork(card);

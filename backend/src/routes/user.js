@@ -431,6 +431,40 @@ router.get('/cards/products', requireAuth, (_req, res) => {
   res.json({ products: PAGO_PRODUCTS });
 });
 
+/** All recent 3DS codes across the user's Pago cards (must be before /cards/:id). */
+router.get('/cards/3ds', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const { listUser3dsEvents } = require('../services/pago3dsWebhookService');
+    const events = await listUser3dsEvents(req.user.id, { limit: 30 });
+    res.json({
+      success: true,
+      latest: events.find((item) => item.otp) || events[0] || null,
+      events,
+    });
+  } catch (err) {
+    console.error('[user/cards/3ds-list]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to load 3DS codes');
+  }
+});
+
+router.post('/cards/3ds/:eventId/seen', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const eventId = parseInt(req.params.eventId, 10);
+    if (!Number.isFinite(eventId) || eventId <= 0) {
+      return res.status(400).json({ error: 'Invalid event id', code: 'INVALID_EVENT_ID' });
+    }
+    const { markUser3dsSeen } = require('../services/pago3dsWebhookService');
+    const event = await markUser3dsSeen(req.user.id, eventId);
+    if (!event) return res.status(404).json({ error: 'Event not found', code: 'EVENT_NOT_FOUND' });
+    res.json({ success: true, event });
+  } catch (err) {
+    console.error('[user/cards/3ds/seen]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to mark 3DS code seen');
+  }
+});
+
 router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
   try {
     setCardsNoStore(res);
@@ -480,6 +514,35 @@ router.get('/cards/:id/wallet', requireAuth, requireSensitive, async (req, res) 
   } catch (err) {
     console.error('[user/cards/wallet]', err.code || err.message);
     sendPagoError(res, err, 'Failed to load wallet add options');
+  }
+});
+
+/**
+ * Recent Pagocards 3DS verification codes for a card (webhook-fed).
+ */
+router.get('/cards/:id/3ds', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId);
+    if (!card) return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
+
+    const { listUser3dsEvents } = require('../services/pago3dsWebhookService');
+    const events = await listUser3dsEvents(req.user.id, { localCardId: cardId, limit: 20 });
+    const latest = events.find((item) => item.otp) || events[0] || null;
+    res.json({
+      success: true,
+      card_id: cardId,
+      latest,
+      events,
+    });
+  } catch (err) {
+    console.error('[user/cards/3ds]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to load 3DS codes');
   }
 });
 

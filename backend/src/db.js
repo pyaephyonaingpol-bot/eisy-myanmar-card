@@ -4,6 +4,7 @@ const { ensureAuthTables } = require('../migrations/patches/ensureAuthTables');
 const { ensureMmkWithdrawalColumns } = require('../migrations/patches/ensureMmkWithdrawalColumns');
 const { ensureUsdtWithdrawalProofColumns } = require('../migrations/patches/ensureUsdtWithdrawalProofColumns');
 const { ensurePagoCardColumns } = require('../migrations/patches/ensurePagoCardColumns');
+const { ensurePago3dsEventsTable } = require('../migrations/patches/ensurePago3dsEventsTable');
 const { createLibsqlDb } = require('./lib/libsqlDb');
 const { getDatabaseConfig, getDatabaseInfo } = require('./lib/databaseConfig');
 
@@ -53,6 +54,7 @@ async function initDb() {
   await ensureMmkWithdrawalColumns(db, columnExists, tableExists);
   await ensureUsdtWithdrawalProofColumns(db, columnExists, tableExists);
   await ensurePagoCardColumns(db, columnExists, tableExists);
+  await ensurePago3dsEventsTable(db, tableExists);
 
   try {
     const { migrateAllLegacyUsdBalances } = require('./services/walletService');

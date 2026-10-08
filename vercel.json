@@ -62,7 +62,7 @@
     "api/index.js": {
       "memory": 1024,
       "maxDuration": 60,
-      "includeFiles": "{backend/**,server/**,lib/pagocard.ts}",
+      "includeFiles": "{backend/**,server/**,lib/pagocard.ts,lib/pagocardsWebhook.ts,app/api/webhook/pagocards/**}",
       "excludeFiles": "{**/node_modules/sqlite3/**,**/node_modules/sqlite/**,backend/node_modules/sqlite3/**,backend/node_modules/sqlite/**,backend/data/**,backend/uploads/**}"
     }
   }

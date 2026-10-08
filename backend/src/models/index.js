@@ -7,6 +7,7 @@ const SupportThread = require('./SupportThread');
 const SupportMessage = require('./SupportMessage');
 const TransactionLog = require('./TransactionLog');
 const Transaction = require('./Transaction');
+const Pago3dsEvent = require('./Pago3dsEvent');
 
 module.exports = {
   User,
@@ -18,4 +19,5 @@ module.exports = {
   SupportMessage,
   TransactionLog,
   Transaction,
+  Pago3dsEvent,
 };
