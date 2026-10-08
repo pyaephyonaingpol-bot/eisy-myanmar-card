@@ -1,4 +1,5 @@
 const { getDb } = require('../db');
+const { safeRollback } = require('../lib/dbTransaction');
 const { syncCardApplication } = require('../services/supabaseSyncService');
 
 const Card = {
@@ -350,7 +351,12 @@ const Card = {
     email,
     metadata,
   }) {
-    const existing = await this.findByPagoCardId(pagoCardId);
+    const id = String(pagoCardId || '').trim();
+    if (!id) {
+      throw new Error('pago_card_id is required');
+    }
+
+    const existing = await this.findByPagoCardId(id);
     if (existing && Number(existing.user_id) === Number(userId)) {
       return this.updateFromPago(existing.id, {
         productCode,
@@ -376,13 +382,14 @@ const Card = {
     const siblings = await this.findByUserId(userId);
     const isPrimary = !siblings.some((row) => Number(row.is_primary) === 1);
     const last4 = String(lastFour || '').replace(/\D/g, '').slice(-4);
-    const digits = String(cardNumber || '').replace(/\s/g, '');
-    const storedNumber = digits || (last4 ? `************${last4}` : `PAGO-${pagoCardId}`);
+    const digits = String(cardNumber || '').replace(/\D/g, '');
+    const storedNumber = digits || (last4 ? `************${last4}` : `PAGO-${id}`);
     const storedExp = expDate || [expiryMonth, expiryYear].filter(Boolean).join('/') || '—';
-    const storedCvv = cvv || '—';
+    const storedCvv = String(cvv || '').replace(/\D/g, '') || '—';
+    const localStatus = String(status || 'active').toLowerCase();
     const meta = {
       provider: 'pago',
-      pago_card_id: pagoCardId,
+      pago_card_id: id,
       product_code: productCode || null,
       brand: brand || null,
       pago_status: pagoStatus || null,
@@ -415,20 +422,26 @@ const Card = {
         )
       `,
         userId, storedNumber, storedExp, storedCvv, cardHolderName || 'Card Holder',
-        balanceCurrency || 'USD', status, isPrimary ? 1 : 0, JSON.stringify(meta),
-        pagoCardId, pagoStatus || null, productCode || null, brand || null, last4 || null,
+        balanceCurrency || 'USD', localStatus, isPrimary ? 1 : 0, JSON.stringify(meta),
+        id, pagoStatus || null, productCode || null, brand || null, last4 || null,
         expiryMonth || null, expiryYear || null,
         balanceDisplayUsd ?? null, balanceAmount ?? null, balanceCurrency || null,
-        status);
+        localStatus);
 
       await db.run('COMMIT');
       const row = await this.findById(result.lastID);
+      if (!row) {
+        throw new Error(`cards_v2 insert succeeded but row ${result.lastID} was not readable`);
+      }
       syncCardApplication(row).catch((err) => console.warn('[supabase] card sync:', err.message));
       return row;
     } catch (err) {
-      await db.run('ROLLBACK');
-      if (/pago_card_id/i.test(String(err.message || ''))) {
-        return this.findByPagoCardId(pagoCardId);
+      await safeRollback(db);
+      const msg = String(err.message || err || '');
+      // Only recover from a real unique conflict — not "no such column: pago_card_id".
+      if (/unique/i.test(msg) && /pago_card_id/i.test(msg)) {
+        const raced = await this.findByPagoCardId(id);
+        if (raced) return raced;
       }
       throw err;
     }
@@ -463,7 +476,9 @@ const Card = {
       current = {};
     }
     const last4 = String(lastFour || existing.last_four || '').replace(/\D/g, '').slice(-4);
-    const digits = String(cardNumber || '').replace(/\s/g, '');
+    const digits = String(cardNumber || '').replace(/\D/g, '');
+    const storedCvv = String(cvv || '').replace(/\D/g, '') || null;
+    const localStatus = status != null ? String(status).toLowerCase() : null;
     const nextMeta = {
       ...current,
       provider: 'pago',
@@ -504,9 +519,9 @@ const Card = {
     `,
       digits || null,
       expDate || null,
-      cvv || null,
+      storedCvv,
       cardHolderName || null,
-      status || null,
+      localStatus,
       JSON.stringify(nextMeta),
       pagoStatus || null,
       productCode || null,
@@ -518,7 +533,7 @@ const Card = {
       balanceAmount ?? null,
       balanceCurrency || null,
       balanceCurrency || null,
-      status || existing.status,
+      localStatus || existing.status,
       id);
 
     const row = await this.findById(id);

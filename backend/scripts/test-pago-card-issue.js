@@ -102,12 +102,25 @@ async function run() {
   await db.run('UPDATE users SET balance_usdt = 100 WHERE id = ?', user.id);
 
   let calls = 0;
+  let detailCalls = 0;
   const client = {
     async createVirtualCard(input) {
       calls += 1;
       assert.strictEqual(input.product_code, 'us_493_visa_bin_v2');
       assert.strictEqual(input.initial_load, 10.12);
-      return sampleCard();
+      // Provider create often omits PAN/CVV — local save must enrich via getCardDetails.
+      return sampleCard({ card_number: null, cvv: null, status: 'active' });
+    },
+    async getCardDetails(cardId) {
+      detailCalls += 1;
+      assert.strictEqual(cardId, 'card_pago_1');
+      return sampleCard({
+        status: 'normal',
+        card_number: '4111111111114242',
+        cardnumber: '4111111111114242',
+        cvv: '123',
+        expiredate: '12/30',
+      });
     },
     async topUpCard(cardId, amount) {
       assert.strictEqual(cardId, 'card_pago_1');
@@ -132,11 +145,17 @@ async function run() {
     initialLoad: 10.129,
   }, { client });
   assert.strictEqual(calls, 1);
+  assert.strictEqual(detailCalls, 1, 'create without PAN/CVV must call getCardDetails');
   assert.strictEqual(issued.card.pago_card_id, 'card_pago_1');
   assert.strictEqual(issued.card.provider, 'pago');
   assert.strictEqual(issued.card.status, 'active');
   assert.strictEqual(issued.card.last_four, '4242');
   assert.strictEqual(issued.card.product_code, 'us_493_visa_bin_v2');
+  assert.strictEqual(issued.card.card_number, '4111111111114242');
+  assert.strictEqual(issued.card.cvv, '123');
+  assert.strictEqual(issued.card.exp_date, '12/30');
+  assert.strictEqual(issued.card.expiry_month, '12');
+  assert.strictEqual(issued.card.expiry_year, '30');
   assert.strictEqual(Number(issued.card.balance_display_usd), 10);
   assert.strictEqual(issued.debited_usdt, 10.12);
   assert.strictEqual(await balanceOf(user.id), 89.88);
@@ -185,6 +204,68 @@ async function run() {
   assert.strictEqual(topped.transaction_id, 'txn_pago_1');
   assert.strictEqual(Number(topped.card.balance_display_usd), 15);
   assert.strictEqual(await balanceOf(user.id), Math.round((89.88 - topped.debited_usdt) * 100) / 100);
+
+  // Missing Pago columns (prod Turso drift) must be repaired by the ensure patch.
+  const { ensurePagoCardColumns, PAGO_CARD_COLUMNS } = require('../migrations/patches/ensurePagoCardColumns');
+  const { columnExists, tableExists } = require('../migrations/runner');
+  await db.exec('DROP VIEW IF EXISTS active_cards');
+  await db.exec('DROP TABLE cards_v2');
+  await db.exec(`
+    CREATE TABLE cards_v2 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      card_number TEXT NOT NULL,
+      exp_date TEXT NOT NULL,
+      cvv TEXT NOT NULL,
+      card_holder_name TEXT NOT NULL,
+      card_type TEXT DEFAULT 'virtual',
+      currency TEXT DEFAULT 'USD',
+      status TEXT DEFAULT 'pending',
+      is_primary INTEGER DEFAULT 0,
+      issued_by_admin_id INTEGER,
+      admin_notes TEXT,
+      daily_limit_usd REAL,
+      metadata TEXT,
+      activated_at TEXT,
+      cancelled_at TEXT,
+      suspended_at TEXT,
+      status_reason TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+  assert.strictEqual(await columnExists(db, 'cards_v2', 'pago_card_id'), false);
+  await ensurePagoCardColumns(db, columnExists, tableExists);
+  for (const [name] of PAGO_CARD_COLUMNS) {
+    assert.ok(await columnExists(db, 'cards_v2', name), `ensure adds cards_v2.${name}`);
+  }
+
+  const repairedClient = {
+    async createVirtualCard() {
+      return sampleCard({
+        card_id: 'card_pago_repaired',
+        card_number: '4937241043245430',
+        cvv: '298',
+        status: 'normal',
+      });
+    },
+    async getCardDetails() {
+      throw new Error('should not be called when PAN/CVV already present');
+    },
+  };
+  const repaired = await issuePagoCardForUser({
+    userId: user.id,
+    productCode: 'us_404_visa_bin',
+    firstName: 'Pago',
+    lastName: 'Tester',
+    email: user.email,
+    initialLoad: 10,
+  }, { client: repairedClient });
+  assert.strictEqual(repaired.card.pago_card_id, 'card_pago_repaired');
+  assert.strictEqual(repaired.card.status, 'active', 'Pago status normal maps to active');
+  assert.strictEqual(repaired.card.card_number, '4937241043245430');
+  assert.strictEqual(repaired.card.cvv, '298');
+  assert.strictEqual(Number(repaired.card.balance_display_usd), 10);
 
   console.log('pago card issue checks passed');
 }
