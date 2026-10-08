@@ -725,10 +725,36 @@ async function topUpPagoCard({ userId, localCardId, amountUsd }, deps = {}) {
       pago_transaction_id: funded?.transaction_id || null,
       top_up_usd: fundAmount,
       reload_fee_usd: pricing.reload_fee_usd,
+      provider_cost_usd: pricing.provider_cost_usd,
+      net_profit_usd: pricing.net_profit_usd,
       debited_usdt: pricing.deposit_usdt,
     },
     createdBy: 'user',
   }).catch((err) => console.warn('[pago] top-up log skipped:', err.message));
+
+  if (Number(pricing.net_profit_usd) > 0) {
+    try {
+      const { recordPlatformUsdFee, PLATFORM_FEE_TYPES } = require('./platformRevenueService');
+      await recordPlatformUsdFee(pricing.net_profit_usd, {
+        feeType: PLATFORM_FEE_TYPES.CARD_RELOAD,
+        description: `Card top-up markup — ${card.pago_card_id}`,
+        referenceType: 'cards_v2',
+        referenceId: card.id,
+        relatedUserId: userId,
+        createdBy: 'user',
+        metadata: {
+          provider: 'pago',
+          pago_card_id: card.pago_card_id,
+          top_up_usd: fundAmount,
+          reload_fee_usd: pricing.reload_fee_usd,
+          provider_cost_usd: pricing.provider_cost_usd,
+          net_profit_usd: pricing.net_profit_usd,
+        },
+      });
+    } catch (err) {
+      console.warn('[pago] top-up fee ledger skipped:', err.message);
+    }
+  }
 
   return {
     card: updated,

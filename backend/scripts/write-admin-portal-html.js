@@ -28,7 +28,7 @@ function writeAdminPipeline(pipeline) {
   });
   html = html.replace(/<title>[^<]*<\/title>/i, '<title>Eisymyanmar</title>');
   // Cache-bust admin.js so pipeline isolation ships with HTML shells.
-  html = html.replace(/admin\.js\?v=[^"']+/g, 'admin.js?v=20261008feeFormula');
+  html = html.replace(/admin\.js\?v=[^"']+/g, 'admin.js?v=20261008netRevenue');
   const out = path.join(PUBLIC, `admin-${pipeline}.html`);
   fs.writeFileSync(out, html);
   console.log(`[write-admin-portal-html] wrote ${out}`);

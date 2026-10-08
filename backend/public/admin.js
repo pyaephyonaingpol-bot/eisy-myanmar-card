@@ -14,6 +14,7 @@
     'deposits',
     'kyc-requests',
     'cards',
+    'revenue',
     'settings',
     'admins',
   ]);
@@ -549,7 +550,7 @@
         this.switchTab('deposits');
         return;
       }
-      if (name === 'transactions' || name === 'revenue' || name === 'support' || name === 'mmk-withdrawals') {
+      if (name === 'transactions' || name === 'support' || name === 'mmk-withdrawals') {
         // Legacy Instant/Hub pages — land on the closest core module.
         const fallback = name === 'support' ? 'users' : (name === 'mmk-withdrawals' ? 'deposits' : this.pipelineDefaultPage());
         this.switchTab(fallback);
@@ -628,6 +629,12 @@
       if (refreshBtn) refreshBtn.addEventListener('click', () => this.loadAll());
 
       $('btnRefreshRevenue')?.addEventListener('click', () => this.loadRevenueDashboard());
+      $('netRevenuePanel')?.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-net-period]');
+        if (!btn || !this._netRevenue) return;
+        this._netRevenuePeriod = btn.getAttribute('data-net-period') || 'all_time';
+        this.renderNetRevenue(this._netRevenue);
+      });
 
       $('adminCreateForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -4688,16 +4695,109 @@
       }
     },
 
+    moneyUsd(value) {
+      return '$' + Number(value || 0).toFixed(2);
+    },
+
+    renderNetRevenue(report) {
+      const panel = $('netRevenuePanel');
+      if (!panel) return;
+      this._netRevenue = report;
+      const periods = report?.periods || {};
+      const periodOrder = [
+        ['today', 'Today'],
+        ['this_month', 'This Month'],
+        ['all_time', 'All Time'],
+      ];
+      const selected = periodOrder.some(([key]) => key === this._netRevenuePeriod)
+        ? this._netRevenuePeriod
+        : 'all_time';
+      this._netRevenuePeriod = selected;
+      const colors = {
+        tron_deposit_fees_usd: '#38bdf8',
+        withdrawal_fees_usd: '#c4b5fd',
+        card_issue_profit_usd: '#4ade80',
+        card_topup_markup_usd: '#fbbf24',
+      };
+      const breakdown = Array.isArray(report?.breakdown) ? report.breakdown : [];
+      const selectedPeriod = periods[selected] || {};
+      const maxValue = breakdown.reduce((max, row) => Math.max(max, Number(selectedPeriod[row.key] || row[selected] || 0)), 0);
+      const total = Number(selectedPeriod.total_net_usd || 0);
+      const formula = report?.formula || {};
+
+      const periodCards = periodOrder.map(([key, label]) => {
+        const row = periods[key] || {};
+        return '<button type="button" class="net-revenue-period' + (key === selected ? ' is-active' : '') + '" data-net-period="' + key + '">' +
+          '<span class="net-revenue-kicker">' + label + '</span>' +
+          '<strong>' + this.moneyUsd(row.total_net_usd) + '</strong>' +
+          '<span class="net-revenue-sub">' + Number(row.transaction_count || 0) + ' revenue records</span>' +
+          '</button>';
+      }).join('');
+
+      const bars = breakdown.map((row) => {
+        const value = Number(selectedPeriod[row.key] || 0);
+        const width = maxValue > 0 ? Math.max(2, Math.round((value / maxValue) * 100)) : 0;
+        const share = total > 0 ? Math.round((value / total) * 100) : 0;
+        return '<div class="net-revenue-bar">' +
+          '<div class="net-revenue-bar-meta"><span><i class="net-revenue-swatch" style="background:' + colors[row.key] + '"></i>' + this.esc(row.label) + '</span><strong>' + this.moneyUsd(value) + '</strong></div>' +
+          '<div class="net-revenue-track"><span style="width:' + (value > 0 ? width : 0) + '%;background:' + colors[row.key] + '"></span></div>' +
+          '<small style="color:#64748b">' + share + '% of this period</small>' +
+          '</div>';
+      }).join('');
+
+      const stack = total > 0
+        ? breakdown.map((row) => {
+          const value = Number(selectedPeriod[row.key] || 0);
+          const width = (value / total) * 100;
+          return width > 0 ? '<span style="width:' + width + '%;background:' + colors[row.key] + '"></span>' : '';
+        }).join('')
+        : '';
+
+      const sources = breakdown.map((row) => (
+        '<div class="net-revenue-source">' +
+        '<div><b><i class="net-revenue-swatch" style="background:' + colors[row.key] + '"></i>' + this.esc(row.label) + '</b>' +
+        '<small>Today ' + this.moneyUsd(row.today) + ' · Month ' + this.moneyUsd(row.this_month) + '</small></div>' +
+        '<div style="text-align:right"><b>' + this.moneyUsd(row.all_time) + '</b><small>All time</small></div>' +
+        '</div>'
+      )).join('');
+
+      const selectedLabel = (periodOrder.find(([key]) => key === selected) || ['', 'All Time'])[1];
+      panel.innerHTML =
+        '<div class="net-revenue-periods">' + periodCards + '</div>' +
+        '<div class="net-revenue-layout">' +
+          '<div class="net-revenue-chart">' +
+            '<h3>Breakdown · ' + selectedLabel + '</h3>' +
+            '<div class="net-revenue-stack" aria-hidden="true">' + (stack || '<span style="width:100%;background:rgba(148,163,184,0.2)"></span>') + '</div>' +
+            (bars || '<p class="hint">No revenue recorded for this period.</p>') +
+            '<p class="net-revenue-note">Issuing profit = issuing fee − $' + Number(formula.card_issue_provider_cost_usd ?? 1.5).toFixed(2) +
+              ' provider cost. Top-up markup = reload fee − $' + Number(formula.card_reload_provider_cost_usd ?? 1.5).toFixed(2) + ' provider cost.</p>' +
+          '</div>' +
+          '<div class="net-revenue-sources">' +
+            '<h3>All-time sources</h3>' +
+            sources +
+          '</div>' +
+        '</div>';
+    },
+
     async loadRevenueDashboard() {
       const metricsEl = $('revenueMetricsGrid');
       const periodEl = $('revenuePeriodRow');
       const dailyEl = $('revenueDailyTable');
       const auditEl = $('revenueAuditTable');
-      if (!metricsEl) return;
+      const netEl = $('netRevenuePanel');
+      if (!metricsEl && !netEl) return;
 
-      metricsEl.innerHTML = '<p class="hint">Loading revenue metrics…</p>';
+      if (netEl) netEl.innerHTML = '<p class="hint">Loading total net revenue…</p>';
+      if (metricsEl) metricsEl.innerHTML = '<p class="hint">Loading revenue metrics…</p>';
       if (dailyEl) dailyEl.innerHTML = '<p class="hint">Loading…</p>';
       if (auditEl) auditEl.innerHTML = '<p class="hint">Loading…</p>';
+
+      try {
+        const report = await this.api('GET', '/api/admin/revenue');
+        this.renderNetRevenue(report);
+      } catch (err) {
+        if (netEl) netEl.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+      }
 
       try {
         const data = await this.api('GET', '/api/admin/revenue/dashboard');

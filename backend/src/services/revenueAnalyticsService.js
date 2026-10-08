@@ -1,7 +1,7 @@
 const { getDb } = require('../db');
 const { PLATFORM_FEE_TYPES } = require('../constants/platformFeeTypes');
 const PlatformFeeEvent = require('../models/PlatformFeeEvent');
-const { getCardPricingSettings } = require('./settingsService');
+const { getCardPricingSettings, parseRecordMetadata } = require('./settingsService');
 const { getPlatformUsdtRevenueBalance, getSubBalance } = require('./platformRevenueService');
 
 function round2(n) {
@@ -282,6 +282,275 @@ async function getRevenueDashboard() {
   };
 }
 
+const EXCLUDED_WITHDRAWAL_STATUSES = new Set(['cancelled', 'rejected', 'failed']);
+
+function emptyNetBucket() {
+  return {
+    tron_deposit_fees_usd: 0,
+    withdrawal_fees_usd: 0,
+    card_issue_profit_usd: 0,
+    card_topup_markup_usd: 0,
+    total_net_usd: 0,
+    counts: {
+      tron_deposits: 0,
+      withdrawals: 0,
+      card_issues: 0,
+      card_topups: 0,
+    },
+  };
+}
+
+function addNetAmount(buckets, occurredAt, field, amount, countKey) {
+  const value = round2(amount);
+  if (!(value > 0)) return;
+  const key = dateKey(occurredAt);
+  const targets = [buckets.all_time];
+  if (isToday(key)) targets.push(buckets.today);
+  if (isThisMonth(key)) targets.push(buckets.this_month);
+  for (const bucket of targets) {
+    bucket[field] = round2(bucket[field] + value);
+    bucket.counts[countKey] += 1;
+  }
+}
+
+function finalizeNetBucket(bucket) {
+  bucket.total_net_usd = round2(
+    bucket.tron_deposit_fees_usd
+    + bucket.withdrawal_fees_usd
+    + bucket.card_issue_profit_usd
+    + bucket.card_topup_markup_usd
+  );
+  const counts = bucket.counts;
+  bucket.transaction_count = counts.tron_deposits
+    + counts.withdrawals
+    + counts.card_issues
+    + counts.card_topups;
+  return bucket;
+}
+
+function positiveNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function finiteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function isTronDeposit(row) {
+  const network = String(row.usdt_network || '').trim().toUpperCase();
+  if (network === 'TRC20' || network === 'TRON') return true;
+  if (network === 'BEP20' || network === 'ERC20') return false;
+  const method = String(row.payment_method || '').toUpperCase();
+  if (method.includes('BEP20') || method.includes('ERC20') || method.includes('BSC')) return false;
+  if (method.includes('TRC20') || method.includes('TRON')) return true;
+  const meta = parseRecordMetadata(row.metadata);
+  const channel = String(meta.deposit_channel || meta.usdt_network || meta.network || '').toUpperCase();
+  return channel === 'TRC20' || channel === 'TRON';
+}
+
+function tronDepositFeeUsd(row) {
+  const stored = Number(row.platform_profit_usd);
+  if (Number.isFinite(stored) && stored > 0) return stored;
+  const meta = parseRecordMetadata(row.metadata);
+  return positiveNumber(
+    meta.platform_profit_usd
+    ?? meta.fee_usdt
+    ?? meta.payment_fee?.fee_usdt
+    ?? meta.pricing?.fee_usdt
+  );
+}
+
+function cardIssueProfitUsd(row, providerCost, fallbackIssuance) {
+  const meta = parseRecordMetadata(row.metadata);
+  const direct = finiteNumber(meta.card_issuance_fee_usd);
+  const nested = finiteNumber(meta.pricing?.card_issuance_fee_usd);
+  const issuance = direct != null ? direct : (nested != null ? nested : fallbackIssuance);
+  return round2(Math.max(0, issuance - providerCost));
+}
+
+function markupProfitUsd(fee, explicitCost, defaultCost, explicitNet) {
+  const net = finiteNumber(explicitNet);
+  if (net != null) return round2(Math.max(0, net));
+  const amount = Number(fee);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const cost = finiteNumber(explicitCost);
+  return round2(Math.max(0, amount - (cost != null ? cost : defaultCost)));
+}
+
+function topupDedupeKey(userId, cardId, occurredAt, fee) {
+  if (userId == null || cardId == null) return null;
+  return `${userId}|${cardId}|${dateKey(occurredAt) || ''}|${round2(fee)}`;
+}
+
+/**
+ * Net revenue from source transaction rows (not the capped fee-ledger sample).
+ * Tron deposit fees, withdrawal fees, card issuing profit, and card top-up markup.
+ */
+async function getNetRevenueReport() {
+  const db = getDb();
+  const settings = await getCardPricingSettings();
+  const issueProviderCost = round2(
+    Number.isFinite(Number(settings.card_issue_provider_cost_usd))
+      ? settings.card_issue_provider_cost_usd
+      : 1.5
+  );
+  const reloadProviderCost = round2(
+    Number.isFinite(Number(settings.card_reload_provider_cost_usd))
+      ? settings.card_reload_provider_cost_usd
+      : 1.5
+  );
+  const issuanceFallback = round2(
+    Number.isFinite(Number(settings.card_issuance_fee_usd))
+      ? settings.card_issuance_fee_usd
+      : 5
+  );
+
+  const buckets = {
+    today: emptyNetBucket(),
+    this_month: emptyNetBucket(),
+    all_time: emptyNetBucket(),
+  };
+
+  const deposits = await db.all(`
+    SELECT platform_profit_usd, metadata, usdt_network, payment_method,
+           COALESCE(verified_at, updated_at, created_at) AS occurred_at
+    FROM deposit_requests_v2
+    WHERE status = 'VERIFIED'
+  `);
+  for (const row of deposits) {
+    if (!isTronDeposit(row)) continue;
+    addNetAmount(
+      buckets,
+      row.occurred_at,
+      'tron_deposit_fees_usd',
+      tronDepositFeeUsd(row),
+      'tron_deposits'
+    );
+  }
+
+  const withdrawals = await db.all(`
+    SELECT fee_usdt, status, created_at AS occurred_at
+    FROM usdt_withdrawal_requests
+  `);
+  for (const row of withdrawals) {
+    const status = String(row.status || '').trim().toLowerCase();
+    if (EXCLUDED_WITHDRAWAL_STATUSES.has(status)) continue;
+    addNetAmount(
+      buckets,
+      row.occurred_at,
+      'withdrawal_fees_usd',
+      positiveNumber(row.fee_usdt),
+      'withdrawals'
+    );
+  }
+
+  const issues = await db.all(`
+    SELECT amount, metadata, collected_at AS occurred_at
+    FROM platform_fee_events
+    WHERE fee_type = ?
+  `, PLATFORM_FEE_TYPES.CARD_ISSUE);
+  for (const row of issues) {
+    addNetAmount(
+      buckets,
+      row.occurred_at,
+      'card_issue_profit_usd',
+      cardIssueProfitUsd(row, issueProviderCost, issuanceFallback),
+      'card_issues'
+    );
+  }
+
+  const topups = await db.all(`
+    SELECT user_id, reference_type, reference_id, metadata, created_at AS occurred_at
+    FROM transaction_logs
+    WHERE type = 'card_topup'
+  `);
+  const seenTopups = new Set();
+  for (const row of topups) {
+    const meta = parseRecordMetadata(row.metadata);
+    const fee = finiteNumber(meta.reload_fee_usd ?? meta.pricing?.reload_fee_usd);
+    const cardId = row.reference_type === 'cards_v2'
+      ? row.reference_id
+      : (meta.card_id ?? null);
+    const key = topupDedupeKey(row.user_id, cardId, row.occurred_at, fee || 0);
+    if (key) seenTopups.add(key);
+    addNetAmount(
+      buckets,
+      row.occurred_at,
+      'card_topup_markup_usd',
+      markupProfitUsd(
+        fee,
+        meta.provider_cost_usd ?? meta.pricing?.provider_cost_usd,
+        reloadProviderCost,
+        meta.net_profit_usd ?? meta.pricing?.net_profit_usd
+      ),
+      'card_topups'
+    );
+  }
+
+  const reloads = await db.all(`
+    SELECT user_id, card_id, reload_fee_usd, pricing_json, status,
+           COALESCE(reviewed_at, updated_at, created_at) AS occurred_at,
+           created_at
+    FROM card_reload_requests
+    WHERE status = 'approved'
+  `);
+  for (const row of reloads) {
+    const pricing = parseRecordMetadata(row.pricing_json);
+    const fee = finiteNumber(row.reload_fee_usd ?? pricing.reload_fee_usd) || 0;
+    const reviewedKey = topupDedupeKey(row.user_id, row.card_id, row.occurred_at, fee);
+    const createdKey = topupDedupeKey(row.user_id, row.card_id, row.created_at, fee);
+    if ((reviewedKey && seenTopups.has(reviewedKey)) || (createdKey && seenTopups.has(createdKey))) {
+      continue;
+    }
+    addNetAmount(
+      buckets,
+      row.occurred_at,
+      'card_topup_markup_usd',
+      markupProfitUsd(fee, pricing.provider_cost_usd, reloadProviderCost, pricing.net_profit_usd),
+      'card_topups'
+    );
+  }
+
+  const periods = {
+    today: finalizeNetBucket(buckets.today),
+    this_month: finalizeNetBucket(buckets.this_month),
+    all_time: finalizeNetBucket(buckets.all_time),
+  };
+
+  const sources = [
+    ['tron_deposit_fees_usd', 'Tron deposit fees'],
+    ['withdrawal_fees_usd', 'Withdrawal fees'],
+    ['card_issue_profit_usd', 'Card issuing profit'],
+    ['card_topup_markup_usd', 'Card top-up markup'],
+  ];
+
+  return {
+    generated_at: new Date().toISOString(),
+    currency: 'USD',
+    total_net_usd: periods.all_time.total_net_usd,
+    formula: {
+      tron_deposit_fees: 'Verified TRC20 deposit platform fee',
+      withdrawal_fees: 'USDT withdrawal fee, excluding cancelled, rejected, and failed',
+      card_issue_profit: 'Issuing fee minus card issue provider cost',
+      card_topup_markup: 'Reload fee minus card reload provider cost',
+      card_issue_provider_cost_usd: issueProviderCost,
+      card_reload_provider_cost_usd: reloadProviderCost,
+      card_issuance_fee_fallback_usd: issuanceFallback,
+    },
+    periods,
+    breakdown: sources.map(([key, label]) => ({
+      key,
+      label,
+      today: periods.today[key],
+      this_month: periods.this_month[key],
+      all_time: periods.all_time[key],
+    })),
+  };
+}
+
 module.exports = {
   getRevenueDashboard,
+  getNetRevenueReport,
 };

@@ -62,7 +62,7 @@ const {
   rejectP2pSellOrder,
   listP2pSellOrdersForAdmin,
 } = require('../services/p2pSellOrderService');
-const { getRevenueDashboard } = require('../services/revenueAnalyticsService');
+const { getRevenueDashboard, getNetRevenueReport } = require('../services/revenueAnalyticsService');
 const {
   listP2pAdminTransactions,
   listCardReloadAdminTransactions,
@@ -1781,6 +1781,16 @@ router.post('/p2p-orders/:orderType/:id/messages', requirePermission('p2p'), upl
   } catch (err) {
     console.error('[admin/p2p-messages POST]', err);
     res.status(400).json({ error: err.message || 'Failed to send message' });
+  }
+});
+
+router.get('/revenue', requirePermission('revenue'), async (_req, res) => {
+  try {
+    const report = await getNetRevenueReport();
+    res.json({ success: true, ...report });
+  } catch (err) {
+    console.error('[admin/revenue]', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
