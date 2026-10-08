@@ -138,4 +138,85 @@ router.get('/pagocards', (_req, res) => {
   });
 });
 
+/**
+ * Incoming USDT deposit webhook.
+ * Register: https://YOUR_DOMAIN/api/webhook/deposit
+ * Optional secret: DEPOSIT_WEBHOOK_SECRET via header x-deposit-webhook-secret.
+ * The transfer is always checked on-chain. Body flags cannot skip that check.
+ * A confirmed transfer credits the custodial-address owner once (net after fee).
+ */
+router.post('/deposit', async (req, res) => {
+  try {
+    const secret = process.env.DEPOSIT_WEBHOOK_SECRET || '';
+    if (secret) {
+      const header = req.get('x-deposit-webhook-secret') || '';
+      if (header !== secret) {
+        return res.status(401).json({
+          ok: false,
+          credited: false,
+          error: 'Invalid webhook secret',
+          code: 'DEPOSIT_WEBHOOK_UNAUTHORIZED',
+        });
+      }
+    }
+
+    const body = req.body || {};
+    const txHash = body.tx_hash || body.txHash || body.txn_id || '';
+    const toAddress = body.to_address || body.toAddress || body.address || '';
+    const amountUsdt = body.amount_usdt ?? body.amountUsdt ?? body.amount;
+    const network = body.network || 'TRC20';
+    const depositId = body.deposit_id || body.depositId || null;
+
+    if (!String(txHash).trim()) {
+      return res.status(400).json({
+        ok: false,
+        credited: false,
+        error: 'tx_hash is required',
+        code: 'MISSING_TX_HASH',
+      });
+    }
+
+    const { verifyUsdtTransaction } = require('../services/usdtBlockchainService');
+    const { applyIncomingDepositCredit } = require('../services/depositCreditService');
+    const result = await applyIncomingDepositCredit({
+      source: 'blockchain_webhook',
+      depositId,
+      txHash,
+      toAddress,
+      amountUsdt,
+      network,
+      adminNote: `Blockchain webhook credit (${network})`,
+      createdBy: 'blockchain',
+      verifyTransfer: (params) => verifyUsdtTransaction({
+        network: params.network,
+        txHash: params.txHash,
+        expectedAddress: params.expectedAddress,
+        expectedAmountUsdt: params.expectedAmountUsdt,
+      }),
+    });
+
+    return res.status(200).json({
+      ok: true,
+      credited: result.credited,
+      alreadyVerified: result.alreadyVerified,
+      balance_usdt: result.balance_usdt,
+      net_usdt: result.net_usdt ?? null,
+      fee_usdt: result.fee_usdt ?? null,
+      deposit_id: result.deposit?.id ?? null,
+      ref_code: result.deposit?.ref_code ?? null,
+    });
+  } catch (err) {
+    const code = err.code || 'DEPOSIT_WEBHOOK_ERROR';
+    const status = err.status
+      || (code === 'DEPOSIT_WEBHOOK_UNAUTHORIZED' ? 401 : 400);
+    console.error('[webhook/deposit]', err.message, code);
+    return res.status(status).json({
+      ok: false,
+      credited: false,
+      error: err.message || 'Deposit webhook failed',
+      code,
+    });
+  }
+});
+
 module.exports = router;
