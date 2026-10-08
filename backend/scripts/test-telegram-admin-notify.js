@@ -159,6 +159,36 @@ async function run() {
   assert.strictEqual(retryCalls.length, 2);
   assert.ok(!retryCalls[1].parse_mode);
 
+  const vercel = read('vercel.json');
+  assert.ok(vercel.includes('lib/telegram.ts'), 'Vercel bundle includes lib/telegram.ts');
+
+  const topicCalls = [];
+  const topic = await lib.sendAdminMessage('Support ping', {
+    token: 'test-token',
+    chatId: '555',
+    messageThreadId: 77,
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body);
+      topicCalls.push(body);
+      if (body.message_thread_id) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ ok: false, description: 'Bad Request: message thread not found' }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, result: { message_id: 88 } }),
+      };
+    },
+  });
+  assert.strictEqual(topic.ok, true);
+  assert.strictEqual(topic.message.message_id, 88);
+  assert.ok(topicCalls[0].message_thread_id);
+  assert.ok(topicCalls.some((body) => body.text === 'Support ping' && !body.message_thread_id));
+
   console.log('telegram admin notify checks passed');
 }
 

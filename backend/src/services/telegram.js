@@ -23,8 +23,11 @@ function getAdminChatId() {
 }
 
 function isTelegramConfigured() {
+  const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
   const chatId = getAdminChatId();
-  return Boolean(getBot() && chatId && chatId !== 'your_admin_chat_id_here');
+  if (!token || token === 'your_telegram_bot_token_here') return false;
+  if (!chatId || chatId === 'your_admin_chat_id_here') return false;
+  return true;
 }
 
 /**

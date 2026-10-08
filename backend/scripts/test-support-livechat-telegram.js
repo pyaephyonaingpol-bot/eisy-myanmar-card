@@ -97,6 +97,10 @@ async function main() {
   process.env.NODE_ENV = 'test';
   process.env.TELEGRAM_BOT_TOKEN = '';
   process.env.TELEGRAM_ADMIN_CHAT_ID = '';
+  require('../src/lib/loadEnv');
+  for (const key of Object.keys(process.env)) {
+    if (/SUPABASE|TURSO/i.test(key)) delete process.env[key];
+  }
 
   const { initDb, closeDb } = require('../src/db');
   await initDb();
@@ -137,6 +141,64 @@ async function main() {
   });
   assert.ok(first.id);
   assert.strictEqual(first.source || 'web', 'web');
+
+  console.log('\n== Outbound customer support message ==');
+  process.env.TELEGRAM_ADMIN_CHAT_ID = '-100123';
+  process.env.TELEGRAM_BOT_TOKEN = '000000:TEST';
+  delete process.env.TELEGRAM_SUPPORT_TOPIC_ID;
+  delete process.env.TELEGRAM_FORUM_TOPIC_ID;
+
+  const { notifySupportEvent, isTelegramConfigured } = require('../src/services/supportTelegramService');
+  assert.strictEqual(isTelegramConfigured(), true);
+
+  const sentBodies = [];
+  const previousFetch = global.fetch;
+  global.fetch = async (url, init) => {
+    sentBodies.push({ url: String(url), body: JSON.parse(init.body) });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, result: { message_id: 9100 + sentBodies.length } }),
+    };
+  };
+  try {
+    const opened = await notifySupportEvent({
+      thread,
+      message: first,
+      user,
+      isNewTicket: true,
+    });
+    assert.strictEqual(opened.ok, true, JSON.stringify(opened));
+    assert.strictEqual(sentBodies.length, 1);
+    assert.match(String(sentBodies[0].url), /\/sendMessage$/);
+    assert.strictEqual(String(sentBodies[0].body.chat_id), '-100123');
+    assert.match(sentBodies[0].body.text, /Please check my MMK payout/);
+    assert.match(sentBodies[0].body.text, new RegExp(`#T${thread.id}`));
+
+    const follow = await SupportMessage.create({
+      threadId: thread.id,
+      senderType: 'user',
+      senderId: user.id,
+      message: 'Any update on the payout?',
+      source: 'web',
+    });
+    const continued = await notifySupportEvent({
+      thread,
+      message: follow,
+      user,
+      isNewTicket: false,
+    });
+    assert.strictEqual(continued.ok, true, JSON.stringify(continued));
+    assert.strictEqual(sentBodies.length, 2);
+    assert.match(sentBodies[1].body.text, /Any update on the payout\?/);
+    assert.strictEqual(Number(sentBodies[1].body.reply_to_message_id), 9101);
+  } finally {
+    global.fetch = previousFetch;
+  }
+
+  const linked = await SupportThread.findById(thread.id);
+  assert.strictEqual(Number(linked.telegram_root_message_id), 9101);
+  assert.strictEqual(String(linked.telegram_chat_id), '-100123');
 
   // Simulate Telegram linkage + inbound admin reply.
   const { getDb } = require('../src/db');

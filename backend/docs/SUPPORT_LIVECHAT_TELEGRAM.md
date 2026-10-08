@@ -2,7 +2,7 @@
 
 ## Overview
 
-Customers open categorized tickets (**MMK Payouts**, **Card Issuing Issues**) from a floating live-chat widget. Admins manage the same threads in **Admin → Support** with filters (category / priority / status) and live updates. Every customer message also notifies the admin Telegram group; admin replies in that Telegram thread sync back into the web chat in real time.
+Customers open categorized tickets (**MMK Payouts**, **Card Issuing Issues**) from a floating live-chat widget. Admins manage the same threads in **Admin → Support** with filters (category / priority / status) and live updates. Every customer Support message is delivered to the admin Telegram chat by the same connected bot (`TELEGRAM_BOT_TOKEN`, @eisyadminbot) and `TELEGRAM_ADMIN_CHAT_ID`. Admin replies in that Telegram thread sync back into the web chat in real time.
 
 ## Categories / Priority / Status
 
