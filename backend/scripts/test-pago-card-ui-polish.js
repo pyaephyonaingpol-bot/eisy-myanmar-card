@@ -24,7 +24,7 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pagoCardDetailBalance"'), 'balance chip present');
   assert.ok(doc.includes('pago-balance-chip') || doc.includes('pagoCardDetailBalance'), 'balance display wired');
   assert.ok(doc.includes('styles.css?v=20261008pagoTx'), 'CSS cache-bust present');
-  assert.ok(doc.includes('dashboard.js?v=20261008pagoTx'), 'JS cache-bust present');
+  assert.ok(doc.includes('dashboard.js?v=20261008pago3ds'), 'JS cache-bust present');
   assert.ok(doc.includes('id="pagoCardCopyNumberBtn"') && doc.includes('pago_copy_card'), 'Copy Card action present');
   assert.ok(doc.includes('class="pago-card-component'), 'single card component present');
   assert.ok((doc.match(/class="pago-plastic-card"/g) || []).length === 1, 'only one plastic card shell');
