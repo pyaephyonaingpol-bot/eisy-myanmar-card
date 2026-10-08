@@ -37,7 +37,7 @@
   function registerWorker() {
     if (!supported()) return Promise.resolve(null);
     if (!registrationPromise) {
-      registrationPromise = navigator.serviceWorker.register(SW_URL, { scope: '/' })
+      registrationPromise = navigator.serviceWorker.register(SW_URL, { scope: '/', updateViaCache: 'none' })
         .catch((err) => {
           registrationPromise = null;
           console.warn('[push] service worker:', err.message || err);
@@ -55,25 +55,17 @@
     const ready = await navigator.serviceWorker.ready;
     const title = payload.title || t('push_app_title', 'Eisy Myanmar');
     const body = payload.body || '';
-    const options = {
+    const message = {
+      type: 'SHOW_NOTIFICATION',
+      title,
       body,
-      icon: '/brand/logo-icon.png',
-      badge: '/brand/logo-icon.png',
+      url: payload.url || '/',
       tag: payload.tag || 'eisy',
-      renotify: true,
-      data: { url: payload.url || '/' },
     };
-    try {
-      await ready.showNotification(title, options);
-    } catch (_) {
-      await ready.showNotification(title, {
-        body: options.body,
-        icon: options.icon,
-        badge: options.badge,
-        tag: options.tag,
-        data: options.data,
-      });
-    }
+    const worker = ready.active || ready.waiting || ready.installing;
+    if (worker) worker.postMessage(message);
+    else if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage(message);
+    else await ready.showNotification(title, { body, tag: message.tag, data: { url: message.url } });
     return true;
   }
 
@@ -183,6 +175,13 @@
     });
     if (supported() && Notification.permission === 'denied') {
       setStatus(t('push_denied', 'Permission was not granted. Allow notifications in the browser settings.'));
+    }
+    if (supported()) {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        const msg = event.data || {};
+        if (msg.type !== 'PUSH_SUBSCRIPTION_CHANGED') return;
+        sync().catch(() => {});
+      });
     }
   }
 

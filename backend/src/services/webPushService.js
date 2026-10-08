@@ -134,6 +134,19 @@ function toWebPushSubscription(row) {
   };
 }
 
+function pushTopic(tag) {
+  const raw = String(tag || 'eisy').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32);
+  return raw || 'eisy';
+}
+
+function pushOptions(tag) {
+  return {
+    TTL: 24 * 60 * 60,
+    urgency: 'high',
+    topic: pushTopic(tag),
+  };
+}
+
 /**
  * Deliver one payload to every subscription for a user.
  * 404/410 endpoints are dropped so expired browsers stop receiving retries.
@@ -151,13 +164,14 @@ async function notifyUserPush(userId, payload = {}, deps = {}) {
     url: cleanText(payload.url, 300) || '/',
     tag: cleanText(payload.tag, 80) || 'eisy',
   });
-  const send = deps.sendNotification || ((sub, data) => webpush.sendNotification(sub, data));
+  const send = deps.sendNotification || ((sub, data, options) => webpush.sendNotification(sub, data, options));
+  const options = pushOptions(payload.tag);
 
   let sent = 0;
   let removed = 0;
   for (const row of rows) {
     try {
-      await send(toWebPushSubscription(row), body);
+      await send(toWebPushSubscription(row), body, options);
       sent += 1;
     } catch (err) {
       const status = Number(err?.statusCode || err?.status || 0);
