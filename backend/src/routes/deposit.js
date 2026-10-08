@@ -18,7 +18,7 @@ const {
 } = require('../services/p2pDepositService');
 const { enrichDeposit } = require('../services/depositEnrichment');
 const { walletPayload } = require('../services/walletService');
-const { getUsdtDepositSettings } = require('../services/settingsService');
+const { getUsdtDepositSettings, getDepositFeeSettings } = require('../services/settingsService');
 const { listPaymentMethods } = require('../services/depositPaymentMethodService');
 const { getMasterWalletAddress } = require('../services/tronMasterWalletService');
 
@@ -259,6 +259,30 @@ router.post('/submit', requireAuth, requireSensitive, (req, res, next) => {
       return res.status(400).json({ success: false, error: msg, code: err.code || undefined });
     }
     res.status(500).json({ success: false, error: msg });
+  }
+});
+
+router.get('/fees', requireAuth, async (_req, res) => {
+  try {
+    const settings = await getDepositFeeSettings();
+    res.json({
+      deposit_service_fee_mode: settings.deposit_service_fee_mode,
+      deposit_service_fee_percent: settings.deposit_service_fee_percent,
+      deposit_service_fee_fixed_usdt: settings.deposit_service_fee_fixed_usdt,
+      deposit_service_fee_minimum_usdt: settings.deposit_service_fee_minimum_usdt,
+      payment_service_fee_mode: settings.payment_service_fee_mode,
+      payment_service_fee_percent: settings.payment_service_fee_percent,
+      payment_service_fee_fixed_usdt: settings.payment_service_fee_fixed_usdt,
+      payment_service_fee_minimum_usdt: settings.payment_service_fee_minimum_usdt,
+      minimum_usdt_deposit: settings.minimum_usdt_deposit,
+      mmk_to_usd_rate: settings.mmk_to_usd_rate,
+      fee_rule: settings.payment_service_fee_mode === 'off'
+        ? 'fee = 0'
+        : 'fee = max(fixed + amount * percent/100, minimum)',
+    });
+  } catch (err) {
+    console.error('[deposit/fees GET]', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

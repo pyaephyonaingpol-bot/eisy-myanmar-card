@@ -57,19 +57,19 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
   assert.strictEqual(depositFees.payment_service_fee_mode, 'off');
 
   const withdrawalFees = await getWithdrawalFeeSettings();
-  assert.strictEqual(withdrawalFees.withdrawal_service_fee_mode, 'percent');
-  assert.strictEqual(withdrawalFees.payment_service_fee_mode, 'percent');
-  // Runtime fee API always exposes the forced 4% markup.
-  assert.strictEqual(withdrawalFees.payment_service_fee_percent, 4);
-  assert.strictEqual(withdrawalFees.withdrawal_service_fee_percent, 4);
+  assert.strictEqual(withdrawalFees.withdrawal_service_fee_mode, 'fixed_plus_percent');
+  assert.strictEqual(withdrawalFees.payment_service_fee_mode, 'fixed_plus_percent');
+  assert.strictEqual(withdrawalFees.payment_service_fee_percent, 5);
+  assert.strictEqual(withdrawalFees.withdrawal_service_fee_percent, 5);
+  assert.strictEqual(withdrawalFees.withdrawal_service_fee_minimum_usdt, 2);
 
   const depositBreakdown = calculateDepositFeeBreakdown(100, { currency: 'USDT', settings: depositFees });
   assert.strictEqual(depositBreakdown.fee_usdt, 0, 'deposit fee off => zero fee');
 
   const withdrawalBreakdown = calculateWithdrawalBreakdown(100, 'BANK', withdrawalFees);
-  assert.strictEqual(withdrawalBreakdown.fee_usdt, 4, 'withdrawal forced to the 4% markup');
-  assert.strictEqual(withdrawalBreakdown.network_fee_usdt, 3);
-  assert.strictEqual(withdrawalBreakdown.platform_margin_usdt, 1);
+  assert.strictEqual(withdrawalBreakdown.fee_usdt, 5, '100 USDT at 5% with min 2 = 5');
+  assert.strictEqual(withdrawalBreakdown.network_fee_usdt, 3.75);
+  assert.strictEqual(withdrawalBreakdown.platform_margin_usdt, 1.25);
 
   console.log('Separate deposit vs withdrawal admin fees — ok');
   await closeDb();

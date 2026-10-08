@@ -4848,6 +4848,18 @@ const Dashboard = {
     }
   },
 
+  async loadDepositFees() {
+    if (!Auth.isLoggedIn()) return;
+    try {
+      const data = await Auth.api('GET', '/api/deposit/fees');
+      this.depositFees = data || {};
+      this.updateUsdtDepositFeePreview();
+      this.updateMmkDepositFeePreview();
+    } catch (err) {
+      console.warn('[Dashboard] deposit fees:', err.message);
+    }
+  },
+
   calculateUsdtDepositFeePreviewClient(amountUsdt) {
     const fees = this.depositFees || this.pricingSettings || {};
     if (window.EisyHooks?.depositFees?.calculateUsdtDepositFeePreview) {
@@ -4875,15 +4887,17 @@ const Dashboard = {
     const cfg = (window.Eisy && window.Eisy.config) || {};
     const amount = Math.round(Number(amountMmk) || 0);
     if (!(amount > 0)) return null;
-    const mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
-    const feePercent = Number(fees.payment_service_fee_percent ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
+    const mode = String(fees.deposit_service_fee_mode || fees.payment_service_fee_mode || 'fixed_plus_percent').toLowerCase();
+    const feePercent = Number(fees.deposit_service_fee_percent ?? fees.payment_service_fee_percent ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
     const rate = Number(fees.mmk_to_usd_rate || this.pricingSettings?.mmk_to_usd_rate || 4500);
-    const minimumFee = Math.round(Number(fees.payment_service_fee_minimum_usdt ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1) * rate);
+    const minimumFee = Math.round(Number(fees.deposit_service_fee_minimum_usdt ?? fees.payment_service_fee_minimum_usdt ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1) * rate);
+    const fixedFee = Math.round(Number(fees.deposit_service_fee_fixed_usdt ?? fees.payment_service_fee_fixed_usdt ?? 0) * rate);
     const percentFee = Math.round(amount * feePercent / 100);
     let fee = 0;
     if (mode === 'off') fee = 0;
     else if (mode === 'percent') fee = percentFee;
     else if (mode === 'fixed') fee = minimumFee;
+    else if (mode === 'fixed_plus_percent') fee = Math.max(fixedFee + percentFee, minimumFee);
     else fee = Math.max(percentFee, minimumFee);
     const net = amount - fee;
     let feeLabel = 'No service fee';
@@ -4951,6 +4965,7 @@ const Dashboard = {
 
     $('usdtAmount')?.addEventListener('input', () => this.updateUsdtDepositFeePreview());
 
+    this.loadDepositFees().catch(() => {});
     this.updateUsdtDepositFeePreview();
 
     $('btnCreateTronDeposit')?.addEventListener('click', async () => {
@@ -6870,9 +6885,9 @@ const Dashboard = {
     const topUp = parseFloat(amountUsdt);
     const feePercent = Number(p.card_reload_fee_percent ?? 0);
     const feeFixed = Number(p.card_reload_fee_usd ?? 0);
-    const fee = feePercent > 0
-      ? Math.round(topUp * feePercent) / 100
-      : feeFixed;
+    const feeMinimum = Number(p.card_reload_fee_minimum_usd ?? 0);
+    const additive = (Number.isFinite(feeFixed) ? feeFixed : 0) + (topUp * (Number.isFinite(feePercent) ? feePercent : 0) / 100);
+    const fee = Math.max(additive, Number.isFinite(feeMinimum) ? feeMinimum : 0);
     const minUsdt = p.minimum_usdt_reload ?? 5;
 
     if (!Number.isFinite(topUp) || topUp <= 0) return null;
@@ -6979,6 +6994,16 @@ const Dashboard = {
           ?? rawFees.withdrawal_service_fee_percent
           ?? data.payment_service_fee_percent
           ?? rawFees.payment_service_fee_percent,
+        withdrawal_service_fee_fixed_usdt:
+          data.withdrawal_service_fee_fixed_usdt
+          ?? rawFees.withdrawal_service_fee_fixed_usdt
+          ?? data.payment_service_fee_fixed_usdt
+          ?? rawFees.payment_service_fee_fixed_usdt
+          ?? 0,
+        payment_service_fee_fixed_usdt:
+          data.payment_service_fee_fixed_usdt
+          ?? rawFees.payment_service_fee_fixed_usdt
+          ?? 0,
         withdrawal_service_fee_minimum_usdt:
           data.withdrawal_service_fee_minimum_usdt
           ?? rawFees.withdrawal_service_fee_minimum_usdt
@@ -7132,7 +7157,7 @@ const Dashboard = {
     let mode = String(
       fees.withdrawal_service_fee_mode
       || fees.payment_service_fee_mode
-      || 'max_percent_or_min'
+      || 'fixed_plus_percent'
     ).toLowerCase();
     let feePercent = Number(
       fees.withdrawal_service_fee_percent
@@ -7144,6 +7169,12 @@ const Dashboard = {
       ?? fees.payment_service_fee_minimum_usdt
       ?? 0
     );
+    let fixedFee = Number(
+      fees.withdrawal_service_fee_fixed_usdt
+      ?? fees.payment_service_fee_fixed_usdt
+      ?? 0
+    );
+    if (!Number.isFinite(fixedFee) || fixedFee < 0) fixedFee = 0;
     if (hook?.normalizeFeeMode) mode = hook.normalizeFeeMode(mode);
     else if (mode === 'max_percent_or_minimum' || mode === 'percent_with_minimum' || mode === 'legacy' || mode === 'max') {
       mode = 'max_percent_or_min';
@@ -7154,7 +7185,7 @@ const Dashboard = {
     const hasScopedPercent = Number.isFinite(
       Number(fees.withdrawal_service_fee_percent ?? fees.payment_service_fee_percent)
     );
-    if (mode === 'fixed' || (!hasScopedPercent && mode !== 'off' && mode !== 'percent' && mode !== 'max_percent_or_min')) {
+    if (mode !== 'fixed_plus_percent' && (mode === 'fixed' || (!hasScopedPercent && mode !== 'off' && mode !== 'percent' && mode !== 'max_percent_or_min'))) {
       const feeAmountKey = isBank
         ? 'usdt_withdraw_fee_bank'
         : net === 'BEP20'
@@ -7166,10 +7197,12 @@ const Dashboard = {
     }
 
     const percentFee = Math.round(amountUsdt * feePercent) / 100;
+    const additive = Math.round((fixedFee + percentFee) * 100) / 100;
     let feeUsdt = 0;
     if (mode === 'off') feeUsdt = 0;
     else if (mode === 'percent') feeUsdt = Math.round(percentFee * 100) / 100;
     else if (mode === 'fixed') feeUsdt = Math.round(minimumFee * 100) / 100;
+    else if (mode === 'fixed_plus_percent') feeUsdt = Math.round(Math.max(additive, minimumFee) * 100) / 100;
     else feeUsdt = Math.round(Math.max(percentFee, minimumFee) * 100) / 100;
     const netUsdt = Math.round((amountUsdt - feeUsdt) * 100) / 100;
     const min = Number(fees.minimum_usdt_withdrawal ?? 10);
@@ -7179,11 +7212,14 @@ const Dashboard = {
 
     let feeLabel = 'No service fee';
     if (feeUsdt > 0) {
-      if (mode === 'fixed') feeLabel = `fixed $${feeUsdt.toFixed(2)}`;
+      if (mode === 'fixed_plus_percent') {
+        if (minimumFee > additive + 0.0001) feeLabel = `min $${minimumFee.toFixed(2)}`;
+        else if (fixedFee > 0) feeLabel = `$${fixedFee.toFixed(2)} + ${feePercent}% ($${feeUsdt.toFixed(2)})`;
+        else feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
+      } else if (mode === 'fixed') feeLabel = `fixed $${feeUsdt.toFixed(2)}`;
       else if (mode === 'percent' || feePercent === 4 || Number(fees.withdraw_markup_percent) === 4) {
         feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
-      } else if (mode === 'percent') feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
-      else if (usedMinimum) feeLabel = `min $${minimumFee.toFixed(2)} (${feePercent}% = $${percentFee.toFixed(2)})`;
+      } else if (usedMinimum) feeLabel = `min $${minimumFee.toFixed(2)} (${feePercent}% = $${percentFee.toFixed(2)})`;
       else feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
     }
 
@@ -7598,22 +7634,28 @@ const Dashboard = {
     const fees = this.withdrawalFees || {};
     const amount = Math.round(Number(amountMmk) || 0);
     if (!Number.isFinite(amount) || amount <= 0) return null;
-    const mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
-    const feePercent = Number(fees.payment_service_fee_percent ?? fees.mmk_withdraw_fee_percent ?? 2);
+    const mode = String(fees.withdrawal_service_fee_mode || fees.payment_service_fee_mode || 'fixed_plus_percent').toLowerCase();
+    const feePercent = Number(fees.withdrawal_service_fee_percent ?? fees.payment_service_fee_percent ?? fees.mmk_withdraw_fee_percent ?? 4);
     const rate = Number(fees.mmk_to_usd_rate || 4500);
-    const minimumFee = Math.round(Number(fees.payment_service_fee_minimum_usdt ?? 1) * rate);
+    const minimumFee = Math.round(Number(fees.withdrawal_service_fee_minimum_usdt ?? fees.payment_service_fee_minimum_usdt ?? 0) * rate);
+    const fixedFee = Math.round(Number(fees.withdrawal_service_fee_fixed_usdt ?? fees.payment_service_fee_fixed_usdt ?? 0) * rate);
     const percentFee = Math.round(amount * feePercent / 100);
     let feeMmk = 0;
     if (mode === 'off') feeMmk = 0;
     else if (mode === 'percent') feeMmk = percentFee;
     else if (mode === 'fixed') feeMmk = minimumFee;
+    else if (mode === 'fixed_plus_percent') feeMmk = Math.max(fixedFee + percentFee, minimumFee);
     else feeMmk = Math.max(percentFee, minimumFee);
     const netMmk = amount - feeMmk;
     const min = Number(fees.minimum_mmk_withdrawal || 10000);
     const usedMinimum = mode === 'max_percent_or_min' && percentFee < minimumFee;
     let feeLabel = 'No service fee';
     if (feeMmk > 0) {
-      if (mode === 'fixed') feeLabel = `fixed ${feeMmk.toLocaleString()} MMK`;
+      if (mode === 'fixed_plus_percent') {
+        feeLabel = fixedFee > 0
+          ? `fixed ${fixedFee.toLocaleString()} MMK + ${feePercent}% (${feeMmk.toLocaleString()} MMK)`
+          : `${feePercent}% (${feeMmk.toLocaleString()} MMK)`;
+      } else if (mode === 'fixed') feeLabel = `fixed ${feeMmk.toLocaleString()} MMK`;
       else if (mode === 'percent') feeLabel = `${feePercent}% (${feeMmk.toLocaleString()} MMK)`;
       else if (usedMinimum) {
         feeLabel = `min ${minimumFee.toLocaleString()} MMK (${feePercent}% = ${percentFee.toLocaleString()} MMK)`;
@@ -8066,16 +8108,21 @@ const Dashboard = {
     if (reloadFeeEl) reloadFeeEl.textContent = '$3.50 fixed (+ $2.00 platform profit per reload)';
 
     const wf = p.withdrawal_fees || this.withdrawalFees || {};
-    const mode = String(wf.withdrawal_service_fee_mode || wf.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
-    const pct = Number(wf.withdrawal_service_fee_percent ?? wf.payment_service_fee_percent ?? 2);
-    const minFee = Number(wf.withdrawal_service_fee_minimum_usdt ?? wf.payment_service_fee_minimum_usdt ?? 1);
+    const mode = String(wf.withdrawal_service_fee_mode || wf.payment_service_fee_mode || 'fixed_plus_percent').toLowerCase();
+    const pct = Number(wf.withdrawal_service_fee_percent ?? wf.payment_service_fee_percent ?? 4);
+    const minFee = Number(wf.withdrawal_service_fee_minimum_usdt ?? wf.payment_service_fee_minimum_usdt ?? 0);
+    const fixedFee = Number(wf.withdrawal_service_fee_fixed_usdt ?? wf.payment_service_fee_fixed_usdt ?? 0);
     const unifiedLabel = mode === 'off'
       ? 'No service fee'
       : mode === 'fixed'
         ? `fixed $${minFee.toFixed(2)}`
-        : mode === 'percent'
-          ? `${pct}%`
-          : `${pct}% (min $${minFee.toFixed(2)})`;
+        : mode === 'fixed_plus_percent'
+          ? (fixedFee > 0
+            ? `$${fixedFee.toFixed(2)} + ${pct}% (min $${minFee.toFixed(2)})`
+            : `${pct}% (min $${minFee.toFixed(2)})`)
+          : mode === 'percent'
+            ? `${pct}%`
+            : `${pct}% (min $${minFee.toFixed(2)})`;
     if ($('ratesWithdrawFeeTrc20')) {
       $('ratesWithdrawFeeTrc20').textContent = unifiedLabel;
     }
@@ -9416,10 +9463,15 @@ const Dashboard = {
   async ensurePagoTopupPricing() {
     if (this.pagoTopupPricing) return this.pagoTopupPricing;
     const data = await Auth.api('GET', '/api/user/cards/topup-pricing', null, { sensitive: true });
+    const num = (value, fallback) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    };
     this.pagoTopupPricing = {
-      card_reload_fee_percent: Number(data.card_reload_fee_percent) || 0,
-      card_reload_fee_usd: Number(data.card_reload_fee_usd) || 0,
-      minimum_usdt_reload: Number(data.minimum_usdt_reload) || 5,
+      card_reload_fee_percent: num(data.card_reload_fee_percent, 0),
+      card_reload_fee_usd: num(data.card_reload_fee_usd, 0),
+      card_reload_fee_minimum_usd: num(data.card_reload_fee_minimum_usd, 0),
+      minimum_usdt_reload: num(data.minimum_usdt_reload, 5),
     };
     return this.pagoTopupPricing;
   },

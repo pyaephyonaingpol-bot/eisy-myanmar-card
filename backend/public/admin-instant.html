@@ -1151,13 +1151,22 @@
                 <h3 id="pricingBlockCardReloadTitle" class="pricing-block-title">
                   <span class="pricing-block-num">3</span>Card Reload Fee (%)
                 </h3>
-                <p class="pricing-block-desc">Percentage fee applied on top of each card reload amount.</p>
+                <p class="pricing-block-desc">Card reload fee = max(fixed + percent of top-up, minimum fee). Min USDT reload is the smallest top-up amount.</p>
               </div>
               <div class="sa-rates-form">
                 <div class="field">
+                  <label for="settingCardReloadFixed">Fixed fee (USD)</label>
+                  <input id="settingCardReloadFixed" type="number" step="0.01" min="0" required />
+                  <small class="hint">Added to the percentage. Use 0 for percent only.</small>
+                </div>
+                <div class="field">
                   <label for="settingReloadFeePercent">Reload fee (%)</label>
                   <input id="settingReloadFeePercent" type="number" step="0.01" min="0" max="50" required />
-                  <small class="hint">Charged as a percent of the top-up amount</small>
+                </div>
+                <div class="field">
+                  <label for="settingCardReloadMinFee">Minimum fee (USD)</label>
+                  <input id="settingCardReloadMinFee" type="number" step="0.01" min="0" required />
+                  <small class="hint">Fee = max(fixed + amount × %, this minimum)</small>
                 </div>
                 <div class="field">
                   <label for="settingMinUsdtReload">Min USDT reload</label>
@@ -1171,9 +1180,13 @@
                 <h3 id="pricingBlockUsdtDepositTitle" class="pricing-block-title">
                   <span class="pricing-block-num">4</span>USDT Deposit Fee / Rate
                 </h3>
-                <p class="pricing-block-desc">Service fee taken from user USDT deposits before net balance is credited.</p>
+                <p class="pricing-block-desc">Service fee taken from user USDT deposits before net balance is credited. Fee = max(fixed + percent, minimum).</p>
               </div>
               <div class="sa-rates-form">
+                <div class="field">
+                  <label for="settingDepositFeeFixed">Fixed fee (USDT)</label>
+                  <input id="settingDepositFeeFixed" type="number" step="0.01" min="0" required />
+                </div>
                 <div class="field">
                   <label for="settingDepositFeePercent">Deposit fee (%)</label>
                   <input id="settingDepositFeePercent" type="number" step="0.01" min="0" max="20" required />
@@ -1181,7 +1194,7 @@
                 <div class="field">
                   <label for="settingDepositFeeMinUsdt">Minimum fee (USDT)</label>
                   <input id="settingDepositFeeMinUsdt" type="number" step="0.01" min="0" required />
-                  <small class="hint">Fee charged = max(percent of deposit, this minimum)</small>
+                  <small class="hint">Fee charged = max(fixed + percent of deposit, this minimum)</small>
                 </div>
                 <div class="field">
                   <label for="settingMinUsdtDeposit">Min USDT deposit</label>
@@ -1195,9 +1208,13 @@
                 <h3 id="pricingBlockUsdtWithdrawTitle" class="pricing-block-title">
                   <span class="pricing-block-num">5</span>USDT Withdrawal Fee
                 </h3>
-                <p class="pricing-block-desc">Withdrawal markup: 4% (3% network fee + 1% platform). Processed within 48 hours.</p>
+                <p class="pricing-block-desc">Withdrawal fee = max(fixed + percent of amount, minimum fee). Payouts are processed within 48 hours.</p>
               </div>
               <div class="sa-rates-form">
+                <div class="field">
+                  <label for="settingWithdrawFeeFixed">Fixed fee (USDT)</label>
+                  <input id="settingWithdrawFeeFixed" type="number" step="0.01" min="0" required />
+                </div>
                 <div class="field">
                   <label for="settingWithdrawFeePercent">Withdrawal fee (%)</label>
                   <input id="settingWithdrawFeePercent" type="number" step="0.01" min="0" max="20" required />
@@ -1205,7 +1222,7 @@
                 <div class="field">
                   <label for="settingWithdrawFeeMinUsdt">Minimum fee (USDT)</label>
                   <input id="settingWithdrawFeeMinUsdt" type="number" step="0.01" min="0" required />
-                  <small class="hint">Use 0 with percent mode for a flat 4% markup (3% network + 1% platform)</small>
+                  <small class="hint">Fee charged = max(fixed + percent of withdrawal, this minimum)</small>
                 </div>
                 <div class="field">
                   <label for="settingMinUsdtWithdrawal">Min USDT withdrawal</label>
@@ -1428,6 +1445,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261008deleteYesNo" defer></script>
+  <script src="/admin.js?v=20261008feeFormula" defer></script>
 </body>
 </html>

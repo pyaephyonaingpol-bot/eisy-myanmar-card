@@ -98,7 +98,7 @@ section('backend routes guard Tron Wallet + Scan Pay');
   console.log('ok');
 }
 
-section('4% markup forced even with drifted settings');
+section('Admin fixed + percent formula replaces a drifted flat network fee');
 {
   const {
     calculateWithdrawalBreakdown,
@@ -106,6 +106,7 @@ section('4% markup forced even with drifted settings');
   const drifted = {
     withdrawal_service_fee_mode: 'fixed',
     withdrawal_service_fee_percent: 2,
+    withdrawal_service_fee_fixed_usdt: 0,
     withdrawal_service_fee_minimum_usdt: 2,
     payment_service_fee_mode: 'fixed',
     payment_service_fee_percent: 2,
@@ -120,17 +121,16 @@ section('4% markup forced even with drifted settings');
     mmk_to_usd_rate: 4500,
   };
   const trc20 = calculateWithdrawalBreakdown(100, 'TRC20', drifted);
-  assert.strictEqual(trc20.fee_usdt, 4, 'forced 4% fee on drifted settings');
-  assert.strictEqual(trc20.net_usdt, 96);
-  assert.strictEqual(trc20.network_fee_usdt, 3);
-  assert.strictEqual(trc20.platform_margin_usdt, 1);
+  assert.strictEqual(trc20.fee_usdt, 2, 'minimum fee floors 2% of 100');
+  assert.strictEqual(trc20.net_usdt, 98);
+  assert.strictEqual(trc20.network_fee_usdt, 1.5);
+  assert.strictEqual(trc20.platform_margin_usdt, 0.5);
   assert.strictEqual(trc20.processing_hours, 48);
   assert.strictEqual(trc20.payout_provider, 'platform');
-  assert.ok(trc20.fee_label.includes('4%'));
 
   const bank = calculateWithdrawalBreakdown(100, 'BANK', drifted);
-  assert.strictEqual(bank.fee_usdt, 4);
-  assert.strictEqual(bank.net_usdt, 96);
+  assert.strictEqual(bank.fee_usdt, 2);
+  assert.strictEqual(bank.net_usdt, 98);
   console.log('ok');
 }
 

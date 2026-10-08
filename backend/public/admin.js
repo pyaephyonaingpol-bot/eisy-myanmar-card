@@ -1073,13 +1073,17 @@
               card_issuance_fee_usd: parseFloat($('settingCardFee').value),
               card_funding_fee_percent: parseFloat($('settingFundingFeePercent')?.value || '0'),
               minimum_initial_deposit_usd: parseFloat($('settingMinDeposit').value),
+              card_reload_fee_usd: parseFloat($('settingCardReloadFixed')?.value || '0'),
               card_reload_fee_percent: parseFloat($('settingReloadFeePercent')?.value || '0'),
+              card_reload_fee_minimum_usd: parseFloat($('settingCardReloadMinFee')?.value || '0'),
               minimum_usdt_deposit: parseFloat($('settingMinUsdtDeposit')?.value || '5'),
               minimum_usdt_reload: parseFloat($('settingMinUsdtReload')?.value || '5'),
-              deposit_service_fee_mode: 'max_percent_or_min',
+              deposit_service_fee_mode: 'fixed_plus_percent',
+              deposit_service_fee_fixed_usdt: parseFloat($('settingDepositFeeFixed')?.value || '0'),
               deposit_service_fee_percent: parseFloat($('settingDepositFeePercent')?.value || '2'),
               deposit_service_fee_minimum_usdt: parseFloat($('settingDepositFeeMinUsdt')?.value || '1'),
-              withdrawal_service_fee_mode: 'percent',
+              withdrawal_service_fee_mode: 'fixed_plus_percent',
+              withdrawal_service_fee_fixed_usdt: parseFloat($('settingWithdrawFeeFixed')?.value || '0'),
               withdrawal_service_fee_percent: parseFloat($('settingWithdrawFeePercent')?.value || '4'),
               withdrawal_service_fee_minimum_usdt: parseFloat($('settingWithdrawFeeMinUsdt')?.value || '0'),
               minimum_usdt_withdrawal: parseFloat($('settingMinUsdtWithdrawal')?.value || '10'),
@@ -3443,16 +3447,28 @@
           $('settingFundingFeePercent').value = p.card_funding_fee_percent ?? 0;
         }
         if ($('settingMinDeposit')) $('settingMinDeposit').value = p.minimum_initial_deposit_usd ?? 10;
+        if ($('settingCardReloadFixed')) {
+          $('settingCardReloadFixed').value = p.card_reload_fee_usd ?? 3.5;
+        }
         if ($('settingReloadFeePercent')) {
           $('settingReloadFeePercent').value = p.card_reload_fee_percent ?? 0;
         }
+        if ($('settingCardReloadMinFee')) {
+          $('settingCardReloadMinFee').value = p.card_reload_fee_minimum_usd ?? 0;
+        }
         if ($('settingMinUsdtDeposit')) $('settingMinUsdtDeposit').value = p.minimum_usdt_deposit ?? data.settings?.minimum_usdt_deposit ?? 5;
         if ($('settingMinUsdtReload')) $('settingMinUsdtReload').value = p.minimum_usdt_reload ?? data.settings?.minimum_usdt_reload ?? 5;
+        if ($('settingDepositFeeFixed')) {
+          $('settingDepositFeeFixed').value = p.deposit_service_fee_fixed_usdt ?? 0;
+        }
         if ($('settingDepositFeePercent')) {
           $('settingDepositFeePercent').value = p.deposit_service_fee_percent ?? p.payment_service_fee_percent ?? 2;
         }
         if ($('settingDepositFeeMinUsdt')) {
           $('settingDepositFeeMinUsdt').value = p.deposit_service_fee_minimum_usdt ?? p.payment_service_fee_minimum_usdt ?? 1;
+        }
+        if ($('settingWithdrawFeeFixed')) {
+          $('settingWithdrawFeeFixed').value = p.withdrawal_service_fee_fixed_usdt ?? 0;
         }
         if ($('settingWithdrawFeePercent')) {
           $('settingWithdrawFeePercent').value = p.withdrawal_service_fee_percent ?? p.payment_service_fee_percent ?? 4;

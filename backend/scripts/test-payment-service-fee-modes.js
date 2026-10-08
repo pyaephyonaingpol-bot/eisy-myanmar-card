@@ -99,6 +99,24 @@ function main() {
   assert.strictEqual(mmkOff.fee_mmk, 0);
   assert.strictEqual(mmkOff.net_mmk, 100000);
 
+  const formulaFloor = calculateUsdtPaymentFeeBreakdown(100, settings({
+    payment_service_fee_mode: 'fixed_plus_percent',
+    payment_service_fee_percent: 2,
+    payment_service_fee_fixed_usdt: 1,
+    payment_service_fee_minimum_usdt: 5,
+  }));
+  assert.strictEqual(formulaFloor.fee_usdt, 5);
+  assert.strictEqual(formulaFloor.fixed_fee_usdt, 1);
+
+  const formulaAdd = calculateUsdtPaymentFeeBreakdown(100, settings({
+    payment_service_fee_mode: 'fixed_plus_percent',
+    payment_service_fee_percent: 2,
+    payment_service_fee_fixed_usdt: 1,
+    payment_service_fee_minimum_usdt: 0,
+  }));
+  assert.strictEqual(formulaAdd.fee_usdt, 3);
+  assert.strictEqual(formulaAdd.net_usdt, 97);
+
   console.log('payment service fee mode tests passed.');
 }
 
