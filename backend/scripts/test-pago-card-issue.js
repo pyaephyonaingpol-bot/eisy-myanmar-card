@@ -71,6 +71,11 @@ async function run() {
   assert.ok(dash.includes('/api/user/cards/${cardId}/topup') || dash.includes('/api/user/cards/${cardId}/topup'.replace('cardId', 'cardId')), 'top-up route');
   assert.ok(dash.includes('`/api/user/cards/${cardId}/topup`'), 'reload and top-up use the Pago route');
   assert.ok(!dash.includes("page === 'cards'") || dash.includes('prefillPagoCardRequest'), 'cards page stays open');
+  assert.ok(dash.includes('refreshCardsAfterMutation'), 'create/top-up force-refresh cards list');
+  assert.ok(dash.includes('applyCardsPayload'), 'card payloads update local + localStorage cache');
+  assert.ok(dash.includes('_cardsEpoch'), 'stale in-flight GET cannot overwrite newer cards');
+  const userRoutes = fs.readFileSync(path.join(root, 'backend/src/routes/user.js'), 'utf8');
+  assert.ok(userRoutes.includes('function setCardsNoStore'), 'cards API sets no-store headers');
 
   const { resetSupabaseClientForTests } = require('../src/lib/supabase');
   process.env.SUPABASE_URL = 'off';
