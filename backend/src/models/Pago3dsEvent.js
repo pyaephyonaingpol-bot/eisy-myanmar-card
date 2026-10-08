@@ -14,6 +14,11 @@ function serializePayload(raw) {
   }
 }
 
+function notExpiredClause() {
+  // Compare as unix times so ISO-Z and SQLite datetime strings both work.
+  return `(expires_at IS NULL OR strftime('%s', expires_at) > strftime('%s', 'now'))`;
+}
+
 const Pago3dsEvent = {
   TABLE,
 
@@ -52,6 +57,29 @@ const Pago3dsEvent = {
     const db = getDb();
     const existing = await this.findByEventId(eventId);
     if (existing) {
+      // Backfill linkage if a later request knows the local card/user.
+      if (
+        (localCardId && !existing.local_card_id)
+        || (userId && !existing.user_id)
+        || (otp && !existing.otp)
+      ) {
+        await db.run(
+          `
+          UPDATE ${TABLE}
+          SET local_card_id = COALESCE(local_card_id, ?),
+              user_id = COALESCE(user_id, ?),
+              otp = COALESCE(otp, ?),
+              pago_card_id = COALESCE(pago_card_id, ?)
+          WHERE id = ?
+        `,
+          localCardId ?? null,
+          userId ?? null,
+          otp || null,
+          pagoCardId || null,
+          existing.id
+        );
+        return { row: await this.findById(existing.id), duplicate: true };
+      }
       return { row: existing, duplicate: true };
     }
 
@@ -90,40 +118,79 @@ const Pago3dsEvent = {
     }
   },
 
-  async listForUser(userId, { localCardId = null, limit = 20, includeExpired = false } = {}) {
+  /**
+   * Attach orphan webhook rows (null user/local ids) to a known local card.
+   */
+  async linkOrphansByPagoCardId(pagoCardId, { localCardId, userId } = {}) {
+    const id = String(pagoCardId || '').trim();
+    if (!id || localCardId == null || userId == null) return 0;
     const db = getDb();
-    const clauses = ['user_id = ?'];
-    const params = [userId];
+    const result = await db.run(
+      `
+      UPDATE ${TABLE}
+      SET local_card_id = COALESCE(local_card_id, ?),
+          user_id = COALESCE(user_id, ?)
+      WHERE pago_card_id = ?
+        AND (local_card_id IS NULL OR user_id IS NULL)
+    `,
+      localCardId,
+      userId,
+      id
+    );
+    return Number(result?.changes || 0);
+  },
 
-    if (localCardId != null) {
-      clauses.push('local_card_id = ?');
-      params.push(localCardId);
+  /**
+   * List events visible to a user.
+   * Matches owned rows and orphans whose pago_card_id belongs to the user's card.
+   * Caller must only pass pagoCardId/localCardId for cards they already authorized.
+   */
+  async listForUser(userId, {
+    localCardId = null,
+    pagoCardId = null,
+    limit = 20,
+    includeExpired = false,
+  } = {}) {
+    const db = getDb();
+    const clauses = [];
+    const params = [];
+    const pagoId = pagoCardId ? String(pagoCardId).trim() : '';
+
+    if (localCardId != null && pagoId) {
+      // Per-card: own linked rows OR orphans for this provider card id.
+      clauses.push(`(
+        (user_id = ? AND (local_card_id = ? OR pago_card_id = ?))
+        OR (user_id IS NULL AND pago_card_id = ?)
+        OR (local_card_id = ? AND user_id IS NULL)
+      )`);
+      params.push(userId, localCardId, pagoId, pagoId, localCardId);
+    } else if (localCardId != null) {
+      clauses.push('(user_id = ? AND local_card_id = ?) OR (local_card_id = ? AND user_id IS NULL)');
+      params.push(userId, localCardId, localCardId);
+    } else if (pagoId) {
+      clauses.push('(user_id = ? AND pago_card_id = ?) OR (user_id IS NULL AND pago_card_id = ?)');
+      params.push(userId, pagoId, pagoId);
+    } else {
+      clauses.push(`(
+        user_id = ?
+        OR (
+          user_id IS NULL
+          AND pago_card_id IS NOT NULL
+          AND pago_card_id IN (
+            SELECT pago_card_id FROM cards_v2
+            WHERE user_id = ? AND pago_card_id IS NOT NULL AND pago_card_id != ''
+          )
+        )
+      )`);
+      params.push(userId, userId);
     }
+
     if (!includeExpired) {
-      clauses.push("(expires_at IS NULL OR datetime(expires_at) > datetime('now'))");
+      clauses.push(notExpiredClause());
     }
 
     params.push(Math.min(Math.max(Number(limit) || 20, 1), 100));
 
-    return db.all(
-      `
-      SELECT * FROM ${TABLE}
-      WHERE ${clauses.join(' AND ')}
-      ORDER BY received_at DESC, id DESC
-      LIMIT ?
-    `,
-      ...params
-    );
-  },
-
-  async listRecentForCard(localCardId, { limit = 10, includeExpired = false } = {}) {
-    const db = getDb();
-    const clauses = ['local_card_id = ?'];
-    const params = [localCardId];
-    if (!includeExpired) {
-      clauses.push("(expires_at IS NULL OR datetime(expires_at) > datetime('now'))");
-    }
-    params.push(Math.min(Math.max(Number(limit) || 10, 1), 50));
     return db.all(
       `
       SELECT * FROM ${TABLE}
@@ -141,12 +208,17 @@ const Pago3dsEvent = {
       `
       UPDATE ${TABLE}
       SET seen_at = datetime('now')
-      WHERE id = ? AND user_id = ? AND seen_at IS NULL
+      WHERE id = ? AND (user_id = ? OR user_id IS NULL) AND seen_at IS NULL
     `,
       id,
       userId
     );
-    return this.findById(id);
+    const row = await this.findById(id);
+    if (row && row.user_id == null && userId) {
+      await db.run(`UPDATE ${TABLE} SET user_id = ? WHERE id = ?`, userId, id);
+      return this.findById(id);
+    }
+    return row && (row.user_id == null || Number(row.user_id) === Number(userId)) ? row : null;
   },
 };
 

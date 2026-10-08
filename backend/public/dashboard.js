@@ -8483,7 +8483,11 @@ const Dashboard = {
   },
 
   async loadPago3dsEvents(cardId, { silent = true } = {}) {
-    if (!cardId || !Auth.isLoggedIn() || Auth.needsPinUnlock()) return null;
+    if (!cardId || !Auth.isLoggedIn()) return null;
+    if (Auth.needsPinUnlock()) {
+      this.renderPago3dsPanel(this.pago3dsEvents || []);
+      return null;
+    }
     try {
       const data = await Auth.api('GET', `/api/user/cards/${cardId}/3ds`, null, {
         sensitive: true,
@@ -8497,13 +8501,12 @@ const Dashboard = {
       this.renderPago3dsPanel(events);
 
       for (const ev of incoming) {
-        if (silent && prevIds.size) {
-          this.toast(
-            this.i18nText('pago_3ds_toast', 'New 3D Secure code'),
-            'ok',
-            ev.otp
-          );
-        }
+        // Toast on first sight of any code (prevIds empty) and on newly arrived codes.
+        this.toast(
+          this.i18nText('pago_3ds_toast', 'New 3D Secure code'),
+          'ok',
+          ev.otp
+        );
         if (!ev.seen_at && ev.id) {
           Auth.api('POST', `/api/user/cards/3ds/${ev.id}/seen`, {}, { sensitive: true })
             .catch(() => {});
@@ -8516,7 +8519,7 @@ const Dashboard = {
         if (!silent) this.openPinUnlockModal();
         return null;
       }
-      if (!silent) console.warn('[Dashboard] 3DS poll:', err.message);
+      console.warn('[Dashboard] 3DS poll:', err.message || err);
       return null;
     }
   },
