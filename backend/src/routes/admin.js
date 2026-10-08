@@ -31,6 +31,7 @@ const SupportThread = require('../models/SupportThread');
 const SupportMessage = require('../models/SupportMessage');
 const User = require('../models/User');
 const { setUserBlockStatus } = require('../services/adminUserBlockService');
+const { deleteAdminUser } = require('../services/adminUserDeleteService');
 const { creditDepositAndVerify } = require('../services/depositService');
 const { enrichDeposit } = require('../services/depositEnrichment');
 const {
@@ -1391,6 +1392,35 @@ router.post('/users/backfill-wallets', requirePermission('users'), async (_req, 
   }
 });
 
+
+router.post('/users/:userId/delete', requirePermission('users'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id', code: 'INVALID_USER_ID' });
+
+    const result = await deleteAdminUser(userId, {
+      confirm: req.body?.confirm,
+      adminId: req.user?.id || null,
+      adminEmail: req.user?.email || null,
+    });
+
+    return res.json({
+      success: true,
+      removed: true,
+      message: 'User deleted',
+      source: result.source,
+      user: result.user,
+      supabase_wallet: result.supabase_wallet || null,
+    });
+  } catch (err) {
+    console.error('[admin/users/delete]', err.message, err.code || '');
+    const code = err.status || 400;
+    return res.status(code >= 400 && code < 600 ? code : 500).json({
+      error: err.message || 'Failed to delete user',
+      code: err.code || 'USER_DELETE_FAILED',
+    });
+  }
+});
 
 router.post('/users/:userId/status', requirePermission('users'), async (req, res) => {
   try {
