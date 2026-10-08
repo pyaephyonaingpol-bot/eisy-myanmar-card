@@ -4,6 +4,10 @@ const CARD_CACHE_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.st
 const Dashboard = {
   pollTimer: null,
   cardsPollTimer: null,
+  /** Local 3DS re-read while the card is open. Never calls the provider. */
+  PAGO_3DS_POLL_MS: 15000,
+  /** Stop the local re-read after two minutes. Refresh Code starts a provider scan. */
+  PAGO_3DS_POLL_LIMIT_MS: 120000,
   /** Bumped on card mutations so in-flight GET /cards cannot overwrite fresher state. */
   _cardsEpoch: 0,
   currentCard: null,
@@ -8489,23 +8493,41 @@ const Dashboard = {
       clearInterval(this._pago3dsPollTimer);
       this._pago3dsPollTimer = null;
     }
+    this._pago3dsPollUntil = 0;
   },
 
+  /**
+   * While the card detail is open, re-read codes already stored by the webhook.
+   * This does not call Pago. It stops itself after PAGO_3DS_POLL_LIMIT_MS.
+   * A live provider scan happens only when the user taps Refresh Code.
+   */
   startPago3dsPoll(cardId) {
     this.stopPago3dsPoll();
     if (!cardId) return;
+    const limitMs = this.PAGO_3DS_POLL_LIMIT_MS || 120000;
+    const everyMs = this.PAGO_3DS_POLL_MS || 15000;
     this._pago3dsPollCardId = String(cardId);
+    this._pago3dsPollUntil = Date.now() + limitMs;
     this._pago3dsPollTimer = setInterval(() => {
+      if (Date.now() >= this._pago3dsPollUntil) {
+        this.stopPago3dsPoll();
+        return;
+      }
       if (String(this._pago3dsPollCardId) !== String(cardId)) return;
       if (this._pago3dsInFlight) return;
-      this.loadPago3dsEvents(cardId, { silent: true, refresh: true }).catch(() => {});
-    }, 10000);
+      const panel = $('pagoCardDetailPanel');
+      if (!panel || panel.classList.contains('hidden')) {
+        this.stopPago3dsPoll();
+        return;
+      }
+      this.loadPago3dsEvents(cardId, { silent: true, refresh: false }).catch(() => {});
+    }, everyMs);
   },
 
   refreshPago3dsCode() {
     const card = this.getSelectedPagoCard?.() || null;
     const cardId = card?.id || this._pago3dsPollCardId;
-    if (!cardId) return;
+    if (!cardId || this._pago3dsInFlight) return;
     this.loadPago3dsEvents(cardId, { silent: false, refresh: true }).catch(() => {});
   },
 
@@ -9064,7 +9086,7 @@ const Dashboard = {
       panel.dataset.cardId = nextId;
       this.startPago3dsPoll(card.id);
       this.renderPago3dsPanel(this.pago3dsEvents || []);
-      this.loadPago3dsEvents(card.id, { silent: true, refresh: true }).catch(() => {});
+      this.loadPago3dsEvents(card.id, { silent: true, refresh: false }).catch(() => {});
       this.loadPagoCardTransactions(card.id).catch(() => {});
     }
     panel.classList.remove('hidden');

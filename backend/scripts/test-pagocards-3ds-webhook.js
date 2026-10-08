@@ -31,7 +31,7 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pago3dsRefreshBtn"'), 'Refresh Code button present');
   assert.ok(doc.includes('pago_3ds_refresh'), 'Refresh Code label key present');
   assert.ok(doc.includes('styles.css?v=20261008pagoTx'), 'CSS cache-bust bumped');
-  assert.ok(doc.includes('dashboard.js?v=20261008pagoTx'), 'JS cache-bust bumped');
+  assert.ok(doc.includes('dashboard.js?v=20261008pago3ds'), 'JS cache-bust bumped');
   assert.ok(doc.includes('i18n.js?v=20261008pagoTx'), 'i18n cache-bust bumped');
 }
 
@@ -46,6 +46,17 @@ assert.ok(dash.includes('copyPago3dsCode'), 'copy 3DS code helper');
 assert.ok(dash.includes('refreshPago3dsCode'), 'refresh 3DS code helper');
 assert.ok(dash.includes('?refresh=1'), 'dashboard asks the API to refresh');
 assert.ok(dash.includes('pago3dsRefreshBtn'), 'refresh button is bound');
+const pollStart = dash.indexOf('startPago3dsPoll(cardId)');
+const pollEnd = dash.indexOf('refreshPago3dsCode()', pollStart);
+const pollBody = dash.slice(pollStart, pollEnd);
+assert.ok(pollBody.includes('refresh: false'), 'background poll reads stored codes only');
+assert.ok(!pollBody.includes('refresh: true'), 'background poll does not scan Pago');
+assert.ok(pollBody.includes('_pago3dsPollUntil'), 'background poll stops after a time limit');
+const openLoad = dash.slice(dash.indexOf('showPagoCardDetail(card)'), dash.indexOf('panel.classList.remove(\'hidden\')'));
+assert.ok(openLoad.includes('refresh: false'), 'opening a card does not start a provider scan');
+const manual = dash.slice(dash.indexOf('refreshPago3dsCode()'), dash.indexOf('setPago3dsRefreshing(on)'));
+assert.ok(manual.includes('refresh: true'), 'Refresh Code scans the provider once');
+assert.ok(manual.includes('_pago3dsInFlight'), 'a second click does not stack another scan');
 
 assert.ok(i18n.includes('pago_3ds_heading:'), 'EN 3DS heading');
 assert.ok(i18n.includes("pago_3ds_refresh: 'Refresh Code'"), 'EN Refresh Code label');
