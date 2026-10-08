@@ -9360,7 +9360,7 @@ const Dashboard = {
     try {
       const initial = $('pagoCardInitialLoad')?.value.trim();
       const data = await Auth.api('POST', '/api/user/cards/request', {
-        product_code: $('pagoCardProduct')?.value,
+        product_code: 'us_404_visa_bin',
         first_name: $('pagoCardFirstName')?.value.trim(),
         last_name: $('pagoCardLastName')?.value.trim(),
         email: $('pagoCardEmail')?.value.trim(),

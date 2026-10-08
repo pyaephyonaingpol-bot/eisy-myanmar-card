@@ -18,6 +18,8 @@ const PAGO_PRODUCTS = [
 ];
 
 const PRODUCT_CODES = new Set(PAGO_PRODUCTS.map((item) => item.code));
+/** New cards are always issued on Visa BIN 404. The request form does not offer a BIN choice. */
+const DEFAULT_ISSUE_PRODUCT = 'us_404_visa_bin';
 const ATM_PRODUCT_CODE = 'us_493_visa_atm';
 const MIN_INITIAL_LOAD = 10;
 const MAX_INITIAL_LOAD = 2500;
@@ -942,6 +944,7 @@ async function listPagoCardTransactions({ userId, localCardId, page = 1 } = {}, 
 
 module.exports = {
   PAGO_PRODUCTS,
+  DEFAULT_ISSUE_PRODUCT,
   CARD_CREATE_TIMEOUT_MS,
   CARD_CREATE_ROUTE_TIMEOUT_MS,
   CARD_FETCH_TIMEOUT_MS,
