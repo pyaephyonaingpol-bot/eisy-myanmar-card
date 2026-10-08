@@ -5,12 +5,14 @@
  * Auth headers: `publickey` = PAGO_CARD_API_KEY, `secretkey` = PAGO_CARD_SECRET_KEY.
  * Base URL: PAGO_CARD_API_BASE_URL. Every request is sent to the DigitalOcean
  * proxy so Pago Card sees the whitelisted server IP.
- * Default: http://165.245.208.221/api/pago
- * A trailing slash on the env value is removed. Paths such as /api/v1/cards
- * are appended, so the proxy receives /api/pago/api/v1/cards.
+ * Default: http://161.35.58.86/api/pago
+ * A trailing slash on the env value is removed. /api/pago is not repeated.
+ * Paths such as /api/v1/cards are appended once, so the proxy receives
+ * /api/pago/api/v1/cards.
  *
  * Card numbers and CVVs are returned to the caller when the provider includes
- * them. This module does not log request headers or response bodies.
+ * them. This module does not log request headers. A non-JSON upstream body is
+ * logged as a short redacted snippet.
  *
  * createVirtualCard(cardholderData) issues a card.
  * getCardDetails(cardId) returns number, CVV, and expiry when the provider sends them.
@@ -19,7 +21,7 @@
  */
 'use strict';
 
-const DEFAULT_BASE_URL = 'http://165.245.208.221/api/pago';
+const DEFAULT_BASE_URL = 'http://161.35.58.86/api/pago';
 const REQUEST_TIMEOUT_MS = 20_000;
 const ATM_PRODUCT_CODE = 'us_493_visa_atm';
 const MIN_INITIAL_LOAD = 10;
@@ -158,6 +160,10 @@ function redact(message: string, secrets: string[]): string {
   return out;
 }
 
+function responseSnippet(text: string): string {
+  return String(text || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+}
+
 function resolveBaseUrl(raw: string | undefined): string {
   const trimmed = String(raw || DEFAULT_BASE_URL).trim().replace(/\/+$/, '');
   return trimmed.replace(/\/api\/v1$/i, '') || DEFAULT_BASE_URL;
@@ -241,11 +247,15 @@ async function pagoRequest<T>(
       payload = JSON.parse(text) as PagoEnvelope<T>;
     } catch {
       const status = response.status;
+      const secrets = [config.apiKey, config.secretKey];
+      const snippet = redact(responseSnippet(text), secrets);
+      const url = `${config.baseUrl}${path}`;
       const proxyDown = status === 502 || status === 503 || status === 504;
       const message = proxyDown
-        ? `Pago proxy ${config.baseUrl} returned HTTP ${status} instead of JSON. The proxy could not reach Pago Card.`
-        : `Pago Card returned a non-JSON response (HTTP ${status}).`;
-      throw new PagoCardError(redact(message, [config.apiKey, config.secretKey]), {
+        ? `Pago proxy returned HTTP ${status} instead of JSON. URL: ${method} ${url}. Upstream body: ${snippet}`
+        : `Pago Card returned a non-JSON response (HTTP ${status}). URL: ${method} ${url}. Upstream body: ${snippet}`;
+      console.error(`[pago] non-JSON HTTP ${status} ${method} ${url} body=${snippet}`);
+      throw new PagoCardError(redact(message, secrets), {
         status,
         code: 'PAGO_BAD_RESPONSE',
       });
