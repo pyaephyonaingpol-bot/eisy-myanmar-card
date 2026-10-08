@@ -496,6 +496,20 @@ async function start() {
   }
 
   try {
+    const { applyOwnerAdminAccount } = require('./services/ownerAdminAccount');
+    const owner = await applyOwnerAdminAccount();
+    console.log(
+      '[admin] owner account set:',
+      owner.email,
+      owner.admin_role,
+      `created=${owner.created}`,
+      `users=${owner.users_before}->${owner.users_after}`
+    );
+  } catch (err) {
+    console.warn('[admin] owner account ensure failed:', err.message);
+  }
+
+  try {
     const { isSupabaseEnabled } = require('./lib/supabase');
     if (isSupabaseEnabled()) {
       const {

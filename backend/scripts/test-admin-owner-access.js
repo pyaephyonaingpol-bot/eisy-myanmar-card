@@ -58,7 +58,7 @@ const {
 
   const ensured = await ensureEnvSuperAdmin({ source: 'test' });
   assert.strictEqual(ensured.ok, true);
-  assert.strictEqual(ensured.user.admin_role, 'super_admin');
+  assert.strictEqual(ensured.user.admin_role, 'ADMIN');
 
   // Demote owner — login with ADMIN_PASSWORD must heal (previous bug: "not an admin").
   const owner = await User.findByEmail(OWNER_EMAIL);
@@ -72,7 +72,7 @@ const {
     ipAddress: '127.0.0.1',
   });
   assert.ok(healed.sessionToken, 'demoted owner can login');
-  assert.strictEqual(healed.user.admin_role, 'super_admin', 'owner restored to super_admin');
+  assert.strictEqual(healed.user.admin_role, 'ADMIN', 'owner restored to ADMIN');
 
   let demoteBlocked = false;
   try {
