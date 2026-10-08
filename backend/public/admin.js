@@ -4806,7 +4806,7 @@
 
         metricsEl.innerHTML = `
           <div class="revenue-metric-card highlight">
-            <div class="revenue-metric-label">Total Net Admin Profit (Today)</div>
+            <div class="revenue-metric-label">Ledger sample (Today)</div>
             <div class="revenue-metric-value">$${Number(s.today_net_admin_profit_usd || s.today_profit_usd || 0).toFixed(2)}</div>
             <div class="revenue-metric-sub">P2P + Card Reload + Withdrawal · ${Math.round(Number(s.today_net_admin_profit_mmk || s.today_profit_mmk || 0)).toLocaleString()} MMK</div>
           </div>
@@ -4831,7 +4831,7 @@
             <div class="revenue-metric-sub">Today · All-time ${Number(s.all_time_withdrawal_profit_usdt || 0).toFixed(2)} USDT · Platform balance ${Number(s.platform_usdt_revenue_balance || 0).toFixed(2)} USDT</div>
           </div>
           <div class="revenue-metric-card">
-            <div class="revenue-metric-label">All-Time Net Admin Profit</div>
+            <div class="revenue-metric-label">Ledger sample (All time)</div>
             <div class="revenue-metric-value">$${Number(s.all_time_net_admin_profit_usd || s.all_time_profit_usd || 0).toFixed(2)}</div>
             <div class="revenue-metric-sub">${Math.round(Number(s.all_time_net_admin_profit_mmk || s.all_time_profit_mmk || 0)).toLocaleString()} MMK · ${Number(data.counts?.total_fee_events || 0)} fee events</div>
           </div>
