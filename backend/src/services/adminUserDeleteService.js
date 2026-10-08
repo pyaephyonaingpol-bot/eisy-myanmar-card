@@ -2,6 +2,14 @@
  * Permanently remove a registered user and the rows that belong to them.
  * The signed-in admin and the protected owner account are refused.
  * Confirmation must be the exact word DELETE.
+ *
+ * The previous implementation walked every table's foreign-key list
+ * once per child row. On remote LibSQL that is one network round trip per
+ * table per row, which blows the Vercel gateway limit and returns HTTP 504.
+ * Cleanup is now a fixed batch of indexed statements. SQLite ON DELETE CASCADE
+ * removes the rest when the users row is deleted. There is no worker queue:
+ * a detached job on this serverless runtime is frozen when the response ends,
+ * so the account is removed before the handler returns.
  */
 
 const { getDb } = require('../db');
@@ -9,6 +17,7 @@ const { runInTransaction } = require('../lib/dbTransaction');
 const User = require('../models/User');
 
 const CONFIRM_WORD = 'DELETE';
+const MIRROR_TIMEOUT_MS = 3000;
 
 function httpError(message, code, status) {
   const err = new Error(message);
@@ -17,89 +26,113 @@ function httpError(message, code, status) {
   return err;
 }
 
-function ident(name) {
-  const value = String(name || '');
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
-    throw httpError('Unsafe SQL identifier', 'UNSAFE_IDENTIFIER', 500);
-  }
-  return `"${value}"`;
+/**
+ * Statements that SQLite will not cascade or null for us.
+ * Order matters: detach ads, then delete owning rows, then the user.
+ * Each statement uses an indexed user_id / maker_user_id / ad_id column.
+ */
+function cleanupStatements(userId) {
+  const id = userId;
+  return [
+    {
+      sql: `UPDATE p2p_buy_orders SET ad_id = NULL
+            WHERE ad_id IN (SELECT id FROM p2p_ads WHERE user_id = ?)`,
+      args: [id],
+    },
+    {
+      sql: `UPDATE p2p_sell_orders SET ad_id = NULL
+            WHERE ad_id IN (SELECT id FROM p2p_ads WHERE user_id = ?)`,
+      args: [id],
+    },
+    {
+      sql: 'UPDATE p2p_buy_orders SET maker_user_id = NULL WHERE maker_user_id = ?',
+      args: [id],
+    },
+    {
+      sql: 'UPDATE p2p_sell_orders SET maker_user_id = NULL WHERE maker_user_id = ?',
+      args: [id],
+    },
+    {
+      sql: 'DELETE FROM p2p_order_messages WHERE sender_user_id = ?',
+      args: [id],
+    },
+    {
+      sql: 'DELETE FROM p2p_buy_orders WHERE user_id = ?',
+      args: [id],
+    },
+    {
+      sql: 'DELETE FROM p2p_sell_orders WHERE user_id = ?',
+      args: [id],
+    },
+    {
+      sql: 'DELETE FROM p2p_ads WHERE user_id = ?',
+      args: [id],
+    },
+    {
+      sql: `DELETE FROM card_reload_requests
+            WHERE user_id = ?
+               OR card_id IN (SELECT id FROM cards_v2 WHERE user_id = ?)`,
+      args: [id, id],
+    },
+    {
+      sql: 'DELETE FROM kyc_submissions WHERE user_id = ?',
+      args: [id],
+    },
+    {
+      sql: 'DELETE FROM usdt_scan_payments WHERE user_id = ?',
+      args: [id],
+    },
+    {
+      sql: 'DELETE FROM deposit_requests WHERE user_id = ?',
+      args: [id],
+    },
+    {
+      sql: 'DELETE FROM cards WHERE user_id = ?',
+      args: [id],
+    },
+    {
+      sql: 'DELETE FROM pago_3ds_events WHERE user_id = ?',
+      args: [id],
+    },
+    {
+      sql: 'DELETE FROM push_subscriptions WHERE user_id = ?',
+      args: [id],
+    },
+    {
+      sql: 'DELETE FROM users WHERE id = ?',
+      args: [id],
+    },
+  ];
 }
 
-async function foreignKeysPointingAt(db, parentTable) {
-  const tables = await db.all(
-    `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`
-  );
-  const refs = [];
-  for (const table of tables) {
-    const fks = await db.all(`PRAGMA foreign_key_list(${ident(table.name)})`);
-    for (const fk of fks) {
-      if (String(fk.table || '').toLowerCase() !== String(parentTable).toLowerCase()) continue;
-      refs.push({
-        table: table.name,
-        from: fk.from,
-        to: fk.to || 'id',
-        onDelete: String(fk.on_delete || 'NO ACTION').toUpperCase(),
-      });
-    }
-  }
-  return refs;
-}
-
-async function columnInfo(db, table, column) {
-  const cols = await db.all(`PRAGMA table_info(${ident(table)})`);
-  return cols.find((col) => col.name === column) || null;
-}
-
-async function primaryKeyColumns(db, table) {
-  const cols = await db.all(`PRAGMA table_info(${ident(table)})`);
-  const pk = cols.filter((col) => Number(col.pk) > 0).sort((a, b) => a.pk - b.pk);
-  if (pk.length) return pk.map((col) => col.name);
-  return cols.some((col) => col.name === 'id') ? ['id'] : [];
-}
-
-async function deleteWhere(db, table, column, value, depth, seen) {
-  if (depth > 8) return;
-  const sig = `${table}|${column}|${value}`;
-  if (seen.has(sig)) return;
-  seen.add(sig);
-
-  const pk = await primaryKeyColumns(db, table);
-  const selectPk = pk.length ? pk.map((name) => ident(name)).join(', ') : 'rowid';
-  const rows = pk.length
-    ? await db.all(
-      `SELECT ${selectPk} FROM ${ident(table)} WHERE ${ident(column)} = ?`,
-      value
-    )
-    : [];
-  const incoming = await foreignKeysPointingAt(db, table);
-  for (const row of rows) {
-    for (const fk of incoming) {
-      if (fk.onDelete === 'CASCADE' || fk.onDelete === 'SET NULL') continue;
-      const parentColumn = fk.to && row[fk.to] != null ? fk.to : (pk[0] || null);
-      if (!parentColumn || row[parentColumn] == null) continue;
-      await deleteWhere(db, fk.table, fk.from, row[parentColumn], depth + 1, seen);
-    }
-  }
-  await db.run(`DELETE FROM ${ident(table)} WHERE ${ident(column)} = ?`, value);
+function rowsAffected(result) {
+  if (!result) return 0;
+  if (result.rowsAffected != null) return Number(result.rowsAffected);
+  if (result.changes != null) return Number(result.changes);
+  return 0;
 }
 
 async function deleteUserRow(db, userId) {
-  const refs = await foreignKeysPointingAt(db, 'users');
-  const seen = new Set();
-  for (const fk of refs) {
-    if (fk.onDelete === 'CASCADE' || fk.onDelete === 'SET NULL') continue;
-    const column = await columnInfo(db, fk.table, fk.from);
-    if (column && Number(column.notnull) === 0 && fk.from !== 'user_id') {
-      await db.run(
-        `UPDATE ${ident(fk.table)} SET ${ident(fk.from)} = NULL WHERE ${ident(fk.from)} = ?`,
-        userId
-      );
-      continue;
-    }
-    await deleteWhere(db, fk.table, fk.from, userId, 0, seen);
+  const statements = cleanupStatements(userId);
+  if (db.client && typeof db.client.batch === 'function') {
+    const results = await db.client.batch(
+      statements.map((statement) => ({ sql: statement.sql, args: statement.args })),
+      'write'
+    );
+    const last = Array.isArray(results) ? results[results.length - 1] : null;
+    return rowsAffected(last) === 1;
   }
-  const result = await db.run('DELETE FROM users WHERE id = ?', userId);
-  return Number(result?.changes || 0) === 1;
+
+  let removed = false;
+  await runInTransaction(db, async () => {
+    for (const statement of statements) {
+      const result = await db.run(statement.sql, ...statement.args);
+      if (statement.sql.startsWith('DELETE FROM users')) {
+        removed = rowsAffected(result) === 1;
+      }
+    }
+  });
+  return removed;
 }
 
 async function deleteSupabaseUserWallet(userId) {
@@ -127,6 +160,24 @@ async function deleteSupabaseUserWallet(userId) {
   }
 }
 
+function mirrorWithTimeout(userId) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      resolve({ skipped: true, pending: true });
+    }, MIRROR_TIMEOUT_MS);
+    deleteSupabaseUserWallet(userId).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve({ skipped: true });
+      }
+    );
+  });
+}
+
 async function deleteAdminUser(userId, {
   confirm,
   adminId = null,
@@ -146,7 +197,7 @@ async function deleteAdminUser(userId, {
 
   const user = await User.findById(id);
   if (!user) {
-    const mirror = await deleteSupabaseUserWallet(id);
+    const mirror = await mirrorWithTimeout(id);
     if (mirror.deleted) {
       return {
         removed: true,
@@ -165,18 +216,21 @@ async function deleteAdminUser(userId, {
     throw httpError('Admin accounts cannot be deleted from the user list', 'CANNOT_DELETE_ADMIN', 400);
   }
 
+  const started = Date.now();
   const db = getDb();
-  const removed = await runInTransaction(db, async () => deleteUserRow(db, id));
+  const removed = await deleteUserRow(db, id);
   if (!removed) {
     throw httpError('User was not deleted', 'USER_DELETE_FAILED', 500);
   }
 
-  const mirror = await deleteSupabaseUserWallet(id);
+  const mirror = await mirrorWithTimeout(id);
+  const supabase = mirror.deleted ? 'deleted' : (mirror.pending ? 'pending' : 'skipped');
   console.info('[admin/users/delete] removed user', {
     id,
     email: user.email || null,
     by: adminEmail || adminId || null,
-    supabase: mirror.deleted ? 'deleted' : (mirror.skipped ? 'skipped' : 'unknown'),
+    supabase,
+    ms: Date.now() - started,
   });
 
   return {
@@ -187,11 +241,12 @@ async function deleteAdminUser(userId, {
       email: user.email || null,
       name: user.name || null,
     },
-    supabase_wallet: mirror.deleted ? 'deleted' : 'skipped',
+    supabase_wallet: supabase,
   };
 }
 
 module.exports = {
   deleteAdminUser,
   CONFIRM_WORD,
+  cleanupStatements,
 };
