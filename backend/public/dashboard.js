@@ -8445,6 +8445,7 @@ const Dashboard = {
     $('pagoCardRevealBtn')?.addEventListener('click', () => this.togglePagoCardReveal());
     $('pagoCardCopyNumberBtn')?.addEventListener('click', () => this.copyPagoCard());
     $('pago3dsCopyBtn')?.addEventListener('click', () => this.copyPago3dsCode());
+    $('pago3dsRefreshBtn')?.addEventListener('click', () => this.refreshPago3dsCode());
     $('pagoAddAppleWalletBtn')?.addEventListener('click', () => this.openPagoWalletGuide('apple'));
     $('pagoAddGooglePayBtn')?.addEventListener('click', () => this.openPagoWalletGuide('google'));
     $('pagoWalletModalClose')?.addEventListener('click', () => this.closePagoWalletModal());
@@ -8478,20 +8479,43 @@ const Dashboard = {
     this._pago3dsPollCardId = String(cardId);
     this._pago3dsPollTimer = setInterval(() => {
       if (String(this._pago3dsPollCardId) !== String(cardId)) return;
-      this.loadPago3dsEvents(cardId, { silent: true }).catch(() => {});
-    }, 5000);
+      if (this._pago3dsInFlight) return;
+      this.loadPago3dsEvents(cardId, { silent: true, refresh: true }).catch(() => {});
+    }, 10000);
   },
 
-  async loadPago3dsEvents(cardId, { silent = true } = {}) {
+  refreshPago3dsCode() {
+    const card = this.getSelectedPagoCard?.() || null;
+    const cardId = card?.id || this._pago3dsPollCardId;
+    if (!cardId) return;
+    this.loadPago3dsEvents(cardId, { silent: false, refresh: true }).catch(() => {});
+  },
+
+  setPago3dsRefreshing(on) {
+    const btn = $('pago3dsRefreshBtn');
+    if (!btn) return;
+    btn.disabled = Boolean(on);
+    btn.setAttribute('aria-busy', on ? 'true' : 'false');
+    const key = on ? 'pago_3ds_refreshing' : 'pago_3ds_refresh';
+    btn.setAttribute('data-i18n', key);
+    const fallback = on ? 'Refreshing…' : 'Refresh Code';
+    btn.textContent = (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(key) : this.i18nText(key, fallback);
+  },
+
+  async loadPago3dsEvents(cardId, { silent = true, refresh = false } = {}) {
     if (!cardId || !Auth.isLoggedIn()) return null;
     if (Auth.needsPinUnlock()) {
       this.renderPago3dsPanel(this.pago3dsEvents || []);
       return null;
     }
+    if (this._pago3dsInFlight) return null;
+    this._pago3dsInFlight = true;
+    if (refresh) this.setPago3dsRefreshing(true);
     try {
-      const data = await Auth.api('GET', `/api/user/cards/${cardId}/3ds`, null, {
+      const path = `/api/user/cards/${cardId}/3ds${refresh ? '?refresh=1' : ''}`;
+      const data = await Auth.api('GET', path, null, {
         sensitive: true,
-        timeoutMs: 8000,
+        timeoutMs: refresh ? 25000 : 8000,
       });
       const events = Array.isArray(data.events) ? data.events : [];
       const prevIds = this.pago3dsKnownIds || new Set();
@@ -8520,7 +8544,11 @@ const Dashboard = {
         return null;
       }
       console.warn('[Dashboard] 3DS poll:', err.message || err);
+      if (!silent) this.toast(err.message || 'Could not refresh 3DS code', 'error');
       return null;
+    } finally {
+      this._pago3dsInFlight = false;
+      this.setPago3dsRefreshing(false);
     }
   },
 
@@ -8922,7 +8950,8 @@ const Dashboard = {
       }
       panel.dataset.cardId = nextId;
       this.startPago3dsPoll(card.id);
-      this.loadPago3dsEvents(card.id, { silent: true }).catch(() => {});
+      this.renderPago3dsPanel(this.pago3dsEvents || []);
+      this.loadPago3dsEvents(card.id, { silent: true, refresh: true }).catch(() => {});
     }
     panel.classList.remove('hidden');
 

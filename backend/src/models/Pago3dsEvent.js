@@ -53,15 +53,18 @@ const Pago3dsEvent = {
     userBankcardId = null,
     rawPayload = null,
     expiresAt = null,
+    renewExpiry = false,
   }) {
     const db = getDb();
     const existing = await this.findByEventId(eventId);
     if (existing) {
       // Backfill linkage if a later request knows the local card/user.
+      // Refresh renews the TTL when the provider still returns the same OTP.
       if (
         (localCardId && !existing.local_card_id)
         || (userId && !existing.user_id)
         || (otp && !existing.otp)
+        || (renewExpiry && expiresAt)
       ) {
         await db.run(
           `
@@ -69,13 +72,17 @@ const Pago3dsEvent = {
           SET local_card_id = COALESCE(local_card_id, ?),
               user_id = COALESCE(user_id, ?),
               otp = COALESCE(otp, ?),
-              pago_card_id = COALESCE(pago_card_id, ?)
+              pago_card_id = COALESCE(pago_card_id, ?),
+              expires_at = CASE WHEN ? = 1 AND ? IS NOT NULL THEN ? ELSE expires_at END
           WHERE id = ?
         `,
           localCardId ?? null,
           userId ?? null,
           otp || null,
           pagoCardId || null,
+          renewExpiry ? 1 : 0,
+          expiresAt || null,
+          expiresAt || null,
           existing.id
         );
         return { row: await this.findById(existing.id), duplicate: true };

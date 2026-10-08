@@ -5155,6 +5155,12 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   margin: 0;
 }
 
+.pago-3ds-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 .pago-3ds-strip .pago-3ds-meta {
   margin: 0.15rem 0 0;
 }
