@@ -126,14 +126,26 @@ router.get('/cards', requireAuth, requireSensitive, async (req, res) => {
       || String(req.query?.sync || '').toLowerCase() === 'true';
 
     let payload = await getUserCardsPayload(req.user.id);
+    let providerTimedOut = false;
     // Empty local list (or explicit ?sync=1): import orphaned provider cards.
     if (wantSync || payload.cards.length === 0) {
       try {
-        const { syncPagoCardsForUser } = require('../services/pagoCardService');
-        await syncPagoCardsForUser(req.user.id, {});
+        const {
+          syncPagoCardsForUser,
+          withCardApiTimeout,
+          CARD_SYNC_BUDGET_MS,
+        } = require('../services/pagoCardService');
+        const synced = await withCardApiTimeout(
+          syncPagoCardsForUser(req.user.id, {}),
+          CARD_SYNC_BUDGET_MS + 1500,
+          'Card fetch'
+        );
+        providerTimedOut = Boolean(synced?.timed_out);
         payload = await getUserCardsPayload(req.user.id);
       } catch (err) {
-        console.warn('[user/cards] pago sync skipped:', err.message);
+        const { isCardTimeoutError } = require('../services/pagoCardService');
+        if (isCardTimeoutError(err)) providerTimedOut = true;
+        console.warn('[user/cards] pago sync skipped:', err.code || err.message);
       }
     }
 
@@ -143,6 +155,7 @@ router.get('/cards', requireAuth, requireSensitive, async (req, res) => {
       user: { id: user.id, name: user.name },
       ...payload,
       card: payload.cards.length ? payload.cards[payload.active_index] : null,
+      provider_timed_out: providerTimedOut,
     });
   } catch (err) {
     console.error('[user/cards]', err);
@@ -355,13 +368,17 @@ router.get('/card', requireAuth, requireSensitive, async (req, res) => {
 });
 
 function sendPagoError(res, err, fallback) {
+  const { isCardTimeoutError } = require('../services/pagoCardService');
+  const timedOut = isCardTimeoutError(err);
   const status = err.code === 'INSUFFICIENT_USDT_BALANCE'
     ? 400
-    : (err.status || 500);
+    : timedOut
+      ? 504
+      : (err.status || 500);
   res.status(status).json({
     success: false,
     error: err.message || fallback,
-    code: err.code || 'PAGO_ERROR',
+    code: timedOut ? (err.code || 'CARD_REQUEST_TIMEOUT') : (err.code || 'PAGO_ERROR'),
     pago_card_id: err.pago_card_id || undefined,
     detail: err.detail || undefined,
   });
@@ -370,15 +387,20 @@ function sendPagoError(res, err, fallback) {
 router.post('/cards/request', requireAuth, requireSensitive, async (req, res) => {
   try {
     setCardsNoStore(res);
-    const { issuePagoCardForUser, PAGO_PRODUCTS } = require('../services/pagoCardService');
-    const result = await issuePagoCardForUser({
+    const {
+      issuePagoCardForUser,
+      PAGO_PRODUCTS,
+      withCardApiTimeout,
+      CARD_CREATE_ROUTE_TIMEOUT_MS,
+    } = require('../services/pagoCardService');
+    const result = await withCardApiTimeout(issuePagoCardForUser({
       userId: req.user.id,
       productCode: req.body?.product_code,
       firstName: req.body?.first_name,
       lastName: req.body?.last_name,
       email: req.body?.email,
       initialLoad: req.body?.initial_load,
-    });
+    }), CARD_CREATE_ROUTE_TIMEOUT_MS, 'Card creation');
     const payload = await getUserCardsPayload(req.user.id);
     const card = payload.cards.find((item) => Number(item.id) === Number(result.card?.id)) || null;
     res.status(201).json({
@@ -402,19 +424,26 @@ router.post('/cards/request', requireAuth, requireSensitive, async (req, res) =>
 router.post('/cards/sync', requireAuth, requireSensitive, async (req, res) => {
   try {
     setCardsNoStore(res);
-    const { syncPagoCardsForUser } = require('../services/pagoCardService');
-    const result = await syncPagoCardsForUser(req.user.id, {
+    const {
+      syncPagoCardsForUser,
+      withCardApiTimeout,
+      CARD_SYNC_BUDGET_MS,
+    } = require('../services/pagoCardService');
+    const result = await withCardApiTimeout(syncPagoCardsForUser(req.user.id, {
       pagoCardId: req.body?.pago_card_id || req.body?.card_id || null,
-    });
+    }), CARD_SYNC_BUDGET_MS + 1500, 'Card fetch');
     const payload = await getUserCardsPayload(req.user.id);
-    const message = result.imported > 0
-      ? `Imported ${result.imported} card${result.imported === 1 ? '' : 's'} from Pago Card.`
-      : (result.updated > 0
-        ? 'Card details refreshed from Pago Card.'
-        : 'No new Pago cards to import.');
+    const message = result.timed_out
+      ? 'Card sync timed out. Showing cards saved so far.'
+      : result.imported > 0
+        ? `Imported ${result.imported} card${result.imported === 1 ? '' : 's'} from Pago Card.`
+        : (result.updated > 0
+          ? 'Card details refreshed from Pago Card.'
+          : 'No new Pago cards to import.');
     res.json({
       success: true,
       message,
+      timed_out: Boolean(result.timed_out),
       imported: result.imported || 0,
       updated: result.updated || 0,
       ...payload,
@@ -472,12 +501,28 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
     if (!Number.isFinite(cardId) || cardId <= 0) {
       return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
     }
-    const { refreshPagoCard } = require('../services/pagoCardService');
-    await refreshPagoCard(req.user.id, cardId);
+    const {
+      refreshPagoCard,
+      withCardApiTimeout,
+      isCardTimeoutError,
+      CARD_FETCH_TIMEOUT_MS,
+    } = require('../services/pagoCardService');
+    let timedOut = false;
+    try {
+      await withCardApiTimeout(
+        refreshPagoCard(req.user.id, cardId),
+        CARD_FETCH_TIMEOUT_MS + 2000,
+        'Card fetch'
+      );
+    } catch (err) {
+      if (!isCardTimeoutError(err)) throw err;
+      timedOut = true;
+      console.warn('[user/cards/detail] timed out, returning saved card');
+    }
     const payload = await getUserCardsPayload(req.user.id);
     const card = payload.cards.find((item) => Number(item.id) === cardId);
     if (!card) return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
-    res.json({ card, ...payload });
+    res.json({ card, ...payload, timed_out: timedOut });
   } catch (err) {
     console.error('[user/cards/detail]', err.code || err.message);
     sendPagoError(res, err, 'Failed to load card details');

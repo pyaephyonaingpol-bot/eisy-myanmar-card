@@ -27,7 +27,7 @@
 'use strict';
 
 const DEFAULT_BASE_URL = 'http://161.35.58.86/api/pago';
-const REQUEST_TIMEOUT_MS = 20_000;
+const REQUEST_TIMEOUT_MS = 12_000;
 const ATM_PRODUCT_CODE = 'us_493_visa_atm';
 const MIN_INITIAL_LOAD = 10;
 const MAX_INITIAL_LOAD = 2500;
@@ -129,6 +129,8 @@ export interface PagoCardClientOptions {
   apiKey?: string;
   secretKey?: string;
   fetchImpl?: typeof fetch;
+  /** Per-request abort. Defaults to PAGO_CARD_REQUEST_TIMEOUT_MS or 12s. */
+  timeoutMs?: number;
 }
 
 export interface PagoCardErrorOptions {
@@ -206,6 +208,22 @@ function requireText(value: unknown, field: string): string {
   return text;
 }
 
+function resolveRequestTimeout(raw: unknown): number {
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed >= 250) return Math.floor(parsed);
+  const fromEnv = Number(process.env.PAGO_CARD_REQUEST_TIMEOUT_MS);
+  if (Number.isFinite(fromEnv) && fromEnv >= 250) return Math.floor(fromEnv);
+  return REQUEST_TIMEOUT_MS;
+}
+
+function isTimeoutError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = String((err as { name?: string }).name || '');
+  if (name === 'TimeoutError' || name === 'AbortError') return true;
+  const message = err instanceof Error ? err.message : String(err);
+  return /timed out|timeout/i.test(message);
+}
+
 function resolveConfig(options: PagoCardClientOptions = {}): ResolvedPagoConfig {
   const apiKey = String(options.apiKey ?? process.env.PAGO_CARD_API_KEY ?? '').trim();
   const secretKey = String(options.secretKey ?? process.env.PAGO_CARD_SECRET_KEY ?? '').trim();
@@ -231,8 +249,9 @@ async function pagoRequest<T>(
   config: ResolvedPagoConfig,
   method: string,
   path: string,
-  options: { body?: unknown; idempotencyKey?: string } = {}
+  options: { body?: unknown; idempotencyKey?: string; timeoutMs?: number } = {}
 ): Promise<T> {
+  const timeoutMs = resolveRequestTimeout(options.timeoutMs);
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'Content-Type': 'application/json',
@@ -247,15 +266,21 @@ async function pagoRequest<T>(
       method,
       headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
+    const timedOut = isTimeoutError(err);
     const message = err instanceof Error ? err.message : 'Pago Card request failed';
-    throw new PagoCardError(redact(message, [config.apiKey, config.secretKey]), {
-      status: 0,
-      code: 'PAGO_NETWORK',
-      cause: err,
-    });
+    throw new PagoCardError(
+      timedOut
+        ? `Pago Card request timed out after ${timeoutMs}ms`
+        : redact(message, [config.apiKey, config.secretKey]),
+      {
+        status: 0,
+        code: timedOut ? 'PAGO_TIMEOUT' : 'PAGO_NETWORK',
+        cause: err,
+      }
+    );
   }
 
   const text = await response.text();
@@ -330,6 +355,8 @@ function normalizeCardholder(input: CardholderData | null | undefined): CreateCa
 }
 
 function createPagoCardClient(options: PagoCardClientOptions = {}) {
+  const requestTimeoutMs = resolveRequestTimeout(options.timeoutMs);
+
   async function createCard(input: CreateCardInput): Promise<PagoCard> {
     const config = resolveConfig(options);
     const productCode = requireText(input?.product_code, 'product_code');
@@ -376,6 +403,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     return pagoRequest<PagoCard>(config, 'POST', '/api/v1/cards', {
       body,
       idempotencyKey: input.idempotencyKey,
+      timeoutMs: requestTimeoutMs,
     });
   }
 
@@ -386,7 +414,9 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
   async function getCardDetails(cardId: string): Promise<PagoCard> {
     const config = resolveConfig(options);
     const id = requireText(cardId, 'card_id');
-    return pagoRequest<PagoCard>(config, 'GET', `/api/v1/cards/${encodeURIComponent(id)}`);
+    return pagoRequest<PagoCard>(config, 'GET', `/api/v1/cards/${encodeURIComponent(id)}`, {
+      timeoutMs: requestTimeoutMs,
+    });
   }
 
   async function getCardBalance(cardId: string): Promise<PagoCardBalance> {
@@ -433,6 +463,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
       {
         body: { amount: fundAmount },
         idempotencyKey: input.idempotencyKey,
+        timeoutMs: requestTimeoutMs,
       }
     );
   }
@@ -469,15 +500,21 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
         method: 'POST',
         headers,
         body: JSON.stringify({ email, product_code: productCode }),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(requestTimeoutMs),
       });
     } catch (err) {
+      const timedOut = isTimeoutError(err);
       const message = err instanceof Error ? err.message : 'Pago Card request failed';
-      throw new PagoCardError(redact(message, [config.apiKey, config.secretKey]), {
-        status: 0,
-        code: 'PAGO_NETWORK',
-        cause: err,
-      });
+      throw new PagoCardError(
+        timedOut
+          ? `Pago Card request timed out after ${requestTimeoutMs}ms`
+          : redact(message, [config.apiKey, config.secretKey]),
+        {
+          status: 0,
+          code: timedOut ? 'PAGO_TIMEOUT' : 'PAGO_NETWORK',
+          cause: err,
+        }
+      );
     }
 
     const text = await response.text();
@@ -541,7 +578,8 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     return pagoRequest(
       config,
       'GET',
-      `/api/v1/cards/${encodeURIComponent(id)}/transactions?pageNum=${page}`
+      `/api/v1/cards/${encodeURIComponent(id)}/transactions?pageNum=${page}`,
+      { timeoutMs: requestTimeoutMs }
     );
   }
 
