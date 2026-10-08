@@ -16,6 +16,7 @@ const {
   recordPlatformUsdFee,
   PLATFORM_FEE_TYPES,
 } = require('./platformRevenueService');
+const { creditUsdtBalanceAtomic } = require('./depositCreditService');
 
 async function syncWalletAndDeposit(userId, depositRow) {
   try {
@@ -710,39 +711,24 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
       throw new Error('USDT deposit net credit must be positive after service fee');
     }
 
-    const balanceBeforeUsdt = Number(user.balance_usdt ?? 0);
-
-    await db.run('BEGIN');
-    try {
-      const claim = await claimDepositOrThrow(deposit, {
-        txnId: creditTxnId,
-        reviewedByAdminId,
-        adminNote,
-      });
-      if (!claim.claimed) {
-        await db.run('ROLLBACK');
-        const freshUser = await User.findById(deposit.user_id);
-        return { deposit: claim.deposit, user: freshUser, alreadyVerified: true };
-      }
-
-      await db.run(`
-        UPDATE users SET balance_usdt = COALESCE(balance_usdt, 0) + ?, updated_at = datetime('now') WHERE id = ?
-      `, netUsdt, deposit.user_id);
-
-      await db.run(`
-        UPDATE deposit_requests SET status = 'VERIFIED', txn_id = COALESCE(?, txn_id)
-        WHERE ref_code = ? AND status != 'VERIFIED'
-      `, creditTxnId, deposit.ref_code).catch(() => {});
-
-      await db.run('COMMIT');
-    } catch (err) {
-      await db.run('ROLLBACK');
-      throw err;
+    const atomic = await creditUsdtBalanceAtomic({
+      deposit,
+      netUsdt,
+      txnId: creditTxnId,
+      reviewedByAdminId,
+      adminNote,
+      network: deposit.usdt_network || metadata.usdt_network || null,
+      counterpartyAddress: metadata.deposit_address || null,
+      description: `USDT deposit verified: ${deposit.ref_code} — ${formatUsdt(netUsdt)} credited after fee`,
+    });
+    if (atomic.alreadyVerified) {
+      return { deposit: atomic.deposit, user: atomic.user, alreadyVerified: true };
     }
 
-    const updatedUser = await User.findById(deposit.user_id);
-    const updatedDeposit = await DepositRequest.findById(deposit.id);
-    const balanceAfterUsdt = Number(updatedUser.balance_usdt ?? 0);
+    const balanceBeforeUsdt = atomic.balanceBefore;
+    const updatedUser = atomic.user;
+    const updatedDeposit = atomic.deposit;
+    const balanceAfterUsdt = atomic.balanceAfter;
 
     await TransactionLog.create({
       userId: deposit.user_id,
