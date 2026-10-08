@@ -23,8 +23,14 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pagoCardCopyNumberBtn"'), 'copy number button present');
   assert.ok(doc.includes('id="pagoCardDetailBalance"'), 'balance chip present');
   assert.ok(doc.includes('pago-balance-chip') || doc.includes('pagoCardDetailBalance'), 'balance display wired');
-  assert.ok(doc.includes('styles.css?v=20261008pagoCards'), 'CSS cache-bust present');
-  assert.ok(doc.includes('dashboard.js?v=20261008pagoCards'), 'JS cache-bust present');
+  assert.ok(doc.includes('styles.css?v=20261008cardEye'), 'CSS cache-bust present');
+  assert.ok(doc.includes('dashboard.js?v=20261008cardEye'), 'JS cache-bust present');
+  assert.ok(doc.includes('pago-plastic-eye'), 'eye toggle sits on the card face');
+  assert.ok(doc.includes('pago-eye-open') && doc.includes('pago-eye-off'), 'eye open and closed icons');
+  assert.ok(doc.includes('pago-plastic-copy'), 'copy control sits beside the card number');
+  assert.ok(doc.includes('id="pagoCardDetailNumber">•••• •••• •••• ••••'), 'card number starts masked');
+  assert.ok(doc.includes('id="pagoCardDetailExpiry">••/••'), 'expiry starts masked');
+  assert.ok(doc.includes('id="pagoCardDetailCvv">•••'), 'CVV starts masked');
   assert.ok(doc.includes('id="pagoCardCarousel"'), 'card carousel present');
   assert.ok(doc.includes('id="pagoCardPrev"'), 'previous card control present');
   assert.ok(doc.includes('id="pagoCardNext"'), 'next card control present');
@@ -34,6 +40,8 @@ for (const doc of [html, instant]) {
 }
 
 assert.ok(css.includes('.pago-plastic-card'), 'plastic card styles exist');
+assert.ok(css.includes('.pago-plastic-eye'), 'eye button styles');
+assert.ok(css.includes('.pago-plastic-copy') || css.includes('.pago-plastic-icon-btn'), 'copy button styles');
 assert.ok(css.includes('.pago-plastic-chip'), 'chip styles exist');
 assert.ok(css.includes('@keyframes pagoSheen'), 'sheen motion present');
 assert.ok(css.includes('.pago-card-chip'), 'compact card switcher styles');
@@ -56,6 +64,9 @@ assert.ok(dash.includes('pagoCardBalanceText'), 'each slide and the detail show 
 assert.ok(dash.includes('copyPagoCard'), 'copy card action wired');
 assert.ok(dash.includes("pago_show_details"), 'show label used');
 assert.ok(dash.includes("pago_hide_details"), 'hide label used');
+const pagoDetailFn = dash.slice(dash.indexOf('showPagoCardDetail(card)'), dash.indexOf('cardTimeoutMessage'));
+assert.ok(pagoDetailFn.includes("revealBtn.setAttribute('aria-label'"), 'eye label does not replace the icon');
+assert.ok(!pagoDetailFn.includes('revealBtn.textContent'), 'pago eye control keeps its icon');
 
 assert.ok(i18n.includes('pago_show_details:'), 'EN show details string');
 assert.ok(i18n.includes('pago_hide_details:'), 'EN hide details string');
