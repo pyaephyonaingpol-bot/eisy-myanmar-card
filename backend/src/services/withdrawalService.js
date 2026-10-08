@@ -1,4 +1,5 @@
 const { getDb } = require('../db');
+const User = require('../models/User');
 const UsdtWithdrawal = require('../models/UsdtWithdrawal');
 const MmkWithdrawal = require('../models/MmkWithdrawal');
 const {
@@ -141,6 +142,28 @@ async function createUsdtWithdrawalRequest(userId, body = {}) {
   return createUsdtCryptoWithdrawalRequest(userId, body);
 }
 
+async function assertUsdtCoversWithdrawal(userId, amountUsdt) {
+  const user = await User.findById(userId);
+  const available = Number(user?.balance_usdt ?? 0);
+  const required = Math.round(Number(amountUsdt) * 100) / 100;
+  if (!(available + 1e-9 >= required)) {
+    const err = new Error('Insufficient balance');
+    err.code = 'INSUFFICIENT_USDT_BALANCE';
+    err.required_usdt = required;
+    err.available_usdt = available;
+    throw err;
+  }
+}
+
+function assertFeeLeavesRemainder(breakdown) {
+  const amount = Math.round(Number(breakdown.amount_usdt) * 100) / 100;
+  const fee = Math.round(Number(breakdown.fee_usdt) * 100) / 100;
+  const net = Math.round(Number(breakdown.net_usdt) * 100) / 100;
+  if (!(fee >= 0) || !(net > 0) || Math.abs((fee + net) - amount) > 0.05) {
+    throw new Error('Withdrawal fee does not match the requested amount');
+  }
+}
+
 async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_address, amount_usdt }) {
   const normalizedNetwork = normalizeNetwork(network);
   if (!normalizedNetwork || normalizedNetwork === 'BANK') {
@@ -169,6 +192,8 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
       `Amount too small — after ${formatUsdt(breakdown.fee_usdt)} service fee, nothing would be sent. Increase the amount.`
     );
   }
+  assertFeeLeavesRemainder(breakdown);
+  await assertUsdtCoversWithdrawal(userId, breakdown.amount_usdt);
 
   const refCode = await uniqueRefCode('usdt_withdrawal_requests', 'WD');
   const feeTypeForDb = ['percent', 'fixed'].includes(String(breakdown.fee_type))
@@ -213,6 +238,13 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
       status: 'cancelled',
       adminNote: `Debit failed: ${err.message}`,
     }).catch(() => {});
+    if (err?.code === 'INSUFFICIENT_USDT_BALANCE') {
+      const wrapped = new Error('Insufficient balance');
+      wrapped.code = 'INSUFFICIENT_USDT_BALANCE';
+      wrapped.required_usdt = err.required_usdt;
+      wrapped.available_usdt = err.available_usdt;
+      throw wrapped;
+    }
     throw err;
   }
 
@@ -365,6 +397,8 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
   if (breakdown.net_usdt <= 0 || !breakdown.amount_mmk || breakdown.amount_mmk <= 0) {
     throw new Error('Amount too small after fee — increase the USDT amount');
   }
+  assertFeeLeavesRemainder(breakdown);
+  await assertUsdtCoversWithdrawal(userId, breakdown.amount_usdt);
 
   const refCode = await uniqueRefCode('usdt_withdrawal_requests', 'WB');
   const feeTypeForDb = ['percent', 'fixed'].includes(String(breakdown.fee_type))
@@ -388,22 +422,37 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
     accountNumber: bank.accountNumber,
   });
 
-  await debitUsdt(userId, breakdown.amount_usdt, {
-    description: `USDT→Bank withdrawal ${refCode} — ${formatMmk(breakdown.amount_mmk)} to ${bank.bankName} (fee ${formatUsdt(breakdown.fee_usdt)})`,
-    referenceType: 'usdt_withdrawal',
-    referenceId: withdrawal.id,
-    createdBy: 'user',
-    metadata: {
-      purpose: 'usdt_bank_withdrawal',
-      payout_method: 'bank',
-      ref_code: refCode,
-      fee_usdt: breakdown.fee_usdt,
-      net_usdt: breakdown.net_usdt,
-      exchange_rate: breakdown.exchange_rate,
-      amount_mmk: breakdown.amount_mmk,
-      bank_name: bank.bankName,
-    },
-  });
+  try {
+    await debitUsdt(userId, breakdown.amount_usdt, {
+      description: `USDT→Bank withdrawal ${refCode} — ${formatMmk(breakdown.amount_mmk)} to ${bank.bankName} (fee ${formatUsdt(breakdown.fee_usdt)})`,
+      referenceType: 'usdt_withdrawal',
+      referenceId: withdrawal.id,
+      createdBy: 'user',
+      metadata: {
+        purpose: 'usdt_bank_withdrawal',
+        payout_method: 'bank',
+        ref_code: refCode,
+        fee_usdt: breakdown.fee_usdt,
+        net_usdt: breakdown.net_usdt,
+        exchange_rate: breakdown.exchange_rate,
+        amount_mmk: breakdown.amount_mmk,
+        bank_name: bank.bankName,
+      },
+    });
+  } catch (err) {
+    await UsdtWithdrawal.updateStatus(withdrawal.id, {
+      status: 'cancelled',
+      adminNote: `Debit failed: ${err.message}`,
+    }).catch(() => {});
+    if (err?.code === 'INSUFFICIENT_USDT_BALANCE') {
+      const wrapped = new Error('Insufficient balance');
+      wrapped.code = 'INSUFFICIENT_USDT_BALANCE';
+      wrapped.required_usdt = err.required_usdt;
+      wrapped.available_usdt = err.available_usdt;
+      throw wrapped;
+    }
+    throw err;
+  }
 
   if (breakdown.fee_usdt > 0) {
     try {
