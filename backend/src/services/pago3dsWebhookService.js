@@ -18,29 +18,41 @@ const OTP_TTL_MINUTES = 15;
 
 let webhookLib = null;
 
-function resolvePagocardsWebhookLibPath() {
-  const candidates = [
+function pagocardsWebhookLibCandidates() {
+  return [
+    path.join(__dirname, '../../../lib/pagocardsWebhook.cjs'),
+    path.join(process.cwd(), 'lib/pagocardsWebhook.cjs'),
     path.join(__dirname, '../../../lib/pagocardsWebhook.js'),
     path.join(process.cwd(), 'lib/pagocardsWebhook.js'),
-    path.join(__dirname, '../../../lib/pagocardsWebhook.ts'),
-    path.join(process.cwd(), 'lib/pagocardsWebhook.ts'),
   ];
-  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
+function resolvePagocardsWebhookLibPath() {
+  return pagocardsWebhookLibCandidates().find((candidate) => fs.existsSync(candidate));
+}
+
+function unwrapWebhookModule(loaded) {
+  if (loaded && typeof loaded.normalizePagocardsWebhook === 'function') return loaded;
+  if (
+    loaded
+    && loaded.default
+    && typeof loaded.default.normalizePagocardsWebhook === 'function'
+  ) {
+    return loaded.default;
+  }
+  return null;
 }
 
 function loadPagocardsWebhookLib() {
   if (webhookLib) return webhookLib;
   const file = resolvePagocardsWebhookLibPath();
   if (!file) {
-    throw new Error('lib/pagocardsWebhook.js is not in the server bundle');
+    throw new Error('lib/pagocardsWebhook.cjs is not in the server bundle');
   }
-  // Prefer the plain CommonJS .js file — never eval ESM `export` on Vercel.
+  // Prefer .cjs — never eval the TS wrapper or ESM `export` on Vercel.
   // eslint-disable-next-line import/no-dynamic-require, global-require
-  webhookLib = require(file);
-  if (
-    !webhookLib
-    || typeof webhookLib.normalizePagocardsWebhook !== 'function'
-  ) {
+  webhookLib = unwrapWebhookModule(require(file));
+  if (!webhookLib || typeof webhookLib.normalizePagocardsWebhook !== 'function') {
     throw new Error('pagocardsWebhook lib missing normalizePagocardsWebhook');
   }
   return webhookLib;
@@ -49,11 +61,14 @@ function loadPagocardsWebhookLib() {
 /** Clear cached module so --watch / deploys pick up lib changes. */
 function resetPagocardsWebhookLibCache() {
   webhookLib = null;
-  try {
-    const file = resolvePagocardsWebhookLibPath();
-    if (file && require.cache[file]) delete require.cache[file];
-  } catch {
-    /* ignore */
+  for (const file of pagocardsWebhookLibCandidates()) {
+    try {
+      if (!fs.existsSync(file)) continue;
+      const resolved = require.resolve(file);
+      if (require.cache[resolved]) delete require.cache[resolved];
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -113,7 +128,7 @@ function payloadDebugKeys(body) {
 
 /**
  * Handle an inbound Pagocards webhook body (Express or Next bridge).
- * @returns {{ saved: boolean, duplicate: boolean, ignored?: boolean, row: object|null, event: object|null }}
+ * @returns {{ saved: boolean, duplicate: boolean, ignored?: boolean, cardUpdated?: boolean, row: object|null, event: object|null }}
  */
 async function handlePagocardsWebhook(body, req = null) {
   if (req) assertWebhookSecret(req);
@@ -123,10 +138,17 @@ async function handlePagocardsWebhook(body, req = null) {
   const event = normalizePagocardsWebhook(body);
   if (!event) {
     console.warn('[webhook/pagocards] unrecognized payload', payloadDebugKeys(body));
-    return { saved: false, duplicate: false, ignored: true, row: null, event: null };
+    return {
+      saved: false,
+      duplicate: false,
+      ignored: true,
+      cardUpdated: false,
+      row: null,
+      event: null,
+    };
   }
 
-  if (!event.otp) {
+  if (event.is3ds && !event.otp) {
     console.warn('[webhook/pagocards] 3DS event without otp field', {
       eventId: event.eventId,
       eventType: event.eventType,
@@ -140,6 +162,7 @@ async function handlePagocardsWebhook(body, req = null) {
     authId: event.authId,
     is3ds: event.is3ds,
     hasOtp: Boolean(event.otp),
+    localStatus: event.localStatus || null,
   });
 
   let localCard = null;
@@ -151,8 +174,17 @@ async function handlePagocardsWebhook(body, req = null) {
     }
   }
 
-  if (!localCard && event.cardId) {
-    console.warn('[webhook/pagocards] no local card for pago_card_id', event.cardId,
+  if (!localCard && event.userBankcardId) {
+    try {
+      localCard = await Card.findByProviderCardId(event.userBankcardId);
+    } catch (err) {
+      console.warn('[webhook/pagocards] bankcard lookup failed:', err.message);
+    }
+  }
+
+  if (!localCard && (event.cardId || event.userBankcardId)) {
+    console.warn('[webhook/pagocards] no local card for pago_card_id',
+      event.cardId || event.userBankcardId,
       '— storing orphan event (UI will match by pago_card_id once card is linked)');
   }
 
@@ -184,6 +216,22 @@ async function handlePagocardsWebhook(body, req = null) {
     }
   }
 
+  let cardUpdated = false;
+  if (localCard && event.localStatus) {
+    try {
+      const updated = await Card.updateFromPago(localCard.id, {
+        status: event.localStatus,
+        pagoStatus: event.cardStatus || event.localStatus,
+      });
+      if (updated) {
+        localCard = updated;
+        cardUpdated = true;
+      }
+    } catch (err) {
+      console.warn('[webhook/pagocards] card status update failed:', err.message);
+    }
+  }
+
   if (duplicate) {
     console.log('[webhook/pagocards] duplicate eventId', event.eventId);
   } else if (event.otp) {
@@ -192,12 +240,19 @@ async function handlePagocardsWebhook(body, req = null) {
       user_id: localCard?.user_id || null,
       row_id: row?.id || null,
     });
+  } else if (cardUpdated) {
+    console.log('[webhook/pagocards] updated card status', {
+      local_card_id: localCard?.id || null,
+      status: event.localStatus,
+      pago_status: event.cardStatus || event.localStatus,
+    });
   }
 
   return {
     saved: !duplicate,
     duplicate,
     ignored: false,
+    cardUpdated,
     row,
     event,
     public: toPublicEvent(row),
