@@ -270,11 +270,11 @@ async function issuePagoCardForUser({
 
   let row;
   try {
-    row = await Card.createFromPago({
+    row = await savePagoCardLocally({
       userId,
-      ...fields,
+      fields,
+      cardEmail,
       cardHolderName: fields.cardHolderName || `${names.first_name} ${names.last_name}`,
-      email: cardEmail,
     });
   } catch (err) {
     console.error('[pago] local cards_v2 save failed:', err.message, {
@@ -283,14 +283,25 @@ async function issuePagoCardForUser({
       has_pan: Boolean(fields.cardNumber),
       has_cvv: Boolean(fields.cvv),
     });
-    const wrapped = httpError(
-      'The card was created at Pago Card but could not be saved locally',
-      500,
-      'PAGO_CARD_SAVE_FAILED'
-    );
-    wrapped.pago_card_id = fields.pagoCardId;
-    wrapped.detail = String(err.message || err);
-    throw wrapped;
+    // Last resort: re-fetch by id and try one more save (covers orphaned provider creates).
+    try {
+      row = await importPagoCardById(userId, fields.pagoCardId, {
+        ...deps,
+        email: cardEmail,
+        productCode: product,
+        cardHolderName: fields.cardHolderName || `${names.first_name} ${names.last_name}`,
+      });
+    } catch (importErr) {
+      const wrapped = httpError(
+        'The card was created at Pago Card but could not be saved locally',
+        500,
+        'PAGO_CARD_SAVE_FAILED'
+      );
+      wrapped.pago_card_id = fields.pagoCardId;
+      wrapped.detail = String(err.message || err);
+      wrapped.import_detail = String(importErr.message || importErr);
+      throw wrapped;
+    }
   }
 
   await TransactionLog.create({
@@ -309,6 +320,173 @@ async function issuePagoCardForUser({
   }).catch((err) => console.warn('[pago] issue log skipped:', err.message));
 
   return { card: row, debited_usdt: debited };
+}
+
+async function ensurePagoSchemaColumns() {
+  try {
+    const { getDb } = require('../db');
+    const { columnExists, tableExists } = require('../../migrations/runner');
+    const { ensurePagoCardColumns } = require('../../migrations/patches/ensurePagoCardColumns');
+    await ensurePagoCardColumns(getDb(), columnExists, tableExists);
+  } catch (err) {
+    console.warn('[pago] ensurePagoCardColumns skipped:', err.message);
+  }
+}
+
+async function savePagoCardLocally({ userId, fields, cardEmail, cardHolderName }) {
+  const payload = {
+    userId,
+    ...fields,
+    cardHolderName: cardHolderName || fields.cardHolderName || 'Card Holder',
+    email: cardEmail,
+  };
+  try {
+    return await Card.createFromPago(payload);
+  } catch (err) {
+    await ensurePagoSchemaColumns();
+    return Card.createFromPago(payload);
+  }
+}
+
+/**
+ * Import one provider card into cards_v2 (idempotent by pago_card_id).
+ * Used after orphaned creates and by the sync endpoint.
+ */
+async function importPagoCardById(userId, pagoCardId, deps = {}) {
+  const id = String(pagoCardId || '').trim();
+  if (!id) throw httpError('pago_card_id is required', 400, 'VALIDATION_ERROR');
+
+  const existing = await Card.findByPagoCardId(id);
+  if (existing && Number(existing.user_id) === Number(userId)) {
+    try {
+      const remote = await getClient(deps).getCardDetails(id);
+      return Card.updateFromPago(existing.id, cardFieldsFromProvider(remote));
+    } catch (_) {
+      return existing;
+    }
+  }
+  if (existing && Number(existing.user_id) !== Number(userId)) {
+    throw httpError('This card is already linked to another account', 409, 'PAGO_CARD_OWNED');
+  }
+
+  const user = await User.findById(userId);
+  let remote;
+  try {
+    remote = await getClient(deps).getCardDetails(id);
+  } catch (err) {
+    rethrowPago(err);
+  }
+  const fields = cardFieldsFromProvider(remote);
+  if (!fields.pagoCardId) fields.pagoCardId = id;
+  return savePagoCardLocally({
+    userId,
+    fields,
+    cardEmail: deps.email || fields.email || user?.email || null,
+    cardHolderName: deps.cardHolderName
+      || fields.cardHolderName
+      || user?.name
+      || 'Card Holder',
+  });
+}
+
+/**
+ * Pull provider cards for the user's email across products and upsert locally.
+ * Heals cases where Pago created a card but local insert failed.
+ */
+async function syncPagoCardsForUser(userId, { pagoCardId = null } = {}, deps = {}) {
+  const user = await User.findById(userId);
+  if (!user) throw httpError('User not found', 404, 'USER_NOT_FOUND');
+
+  const explicitId = String(pagoCardId || '').trim();
+  if (explicitId) {
+    const row = await importPagoCardById(userId, explicitId, {
+      ...deps,
+      email: user.email,
+      cardHolderName: user.name,
+    });
+    return { imported: 1, updated: 0, card: row, cards: [row] };
+  }
+
+  const email = String(user.email || '').trim();
+  if (!email) {
+    throw httpError('Add an email to your profile before syncing cards', 400, 'EMAIL_REQUIRED');
+  }
+
+  const client = getClient(deps);
+  let imported = 0;
+  let updated = 0;
+  const touched = [];
+
+  for (const product of PAGO_PRODUCTS) {
+    let summaries = [];
+    try {
+      if (typeof client.listCardsByEmail !== 'function') {
+        throw httpError('Pago listCardsByEmail is unavailable', 503, 'PAGO_NOT_CONFIGURED');
+      }
+      summaries = await client.listCardsByEmail({
+        email,
+        product_code: product.code,
+      });
+    } catch (err) {
+      console.warn('[pago] listCardsByEmail skipped:', product.code, err.message);
+      continue;
+    }
+
+    for (const summary of summaries || []) {
+      const remoteId = String(summary.card_id || summary.cardid || '').trim();
+      if (!remoteId) continue;
+
+      const existing = await Card.findByPagoCardId(remoteId);
+      if (existing && Number(existing.user_id) !== Number(userId)) {
+        continue;
+      }
+
+      try {
+        let remote;
+        try {
+          remote = await client.getCardDetails(remoteId);
+        } catch (_) {
+          remote = {
+            card_id: remoteId,
+            product_code: summary.product_code || product.code,
+            brand: summary.brand || null,
+            status: 'active',
+            name_on_card: user.name || null,
+            email: summary.useremail || summary.email || email,
+            last_four: summary.last_four || summary.lastfour || null,
+            balance: null,
+            card_number: null,
+            cvv: null,
+          };
+        }
+        const fields = cardFieldsFromProvider(remote);
+        if (!fields.pagoCardId) fields.pagoCardId = remoteId;
+        if (!fields.productCode) fields.productCode = product.code;
+        if (!fields.lastFour && (summary.last_four || summary.lastfour)) {
+          fields.lastFour = String(summary.last_four || summary.lastfour).replace(/\D/g, '').slice(-4);
+        }
+
+        if (existing) {
+          const row = await Card.updateFromPago(existing.id, fields);
+          updated += 1;
+          touched.push(row);
+        } else {
+          const row = await savePagoCardLocally({
+            userId,
+            fields,
+            cardEmail: email,
+            cardHolderName: fields.cardHolderName || user.name || 'Card Holder',
+          });
+          imported += 1;
+          touched.push(row);
+        }
+      } catch (err) {
+        console.warn('[pago] sync card skipped:', remoteId, err.message);
+      }
+    }
+  }
+
+  return { imported, updated, cards: touched };
 }
 
 async function refreshPagoCard(userId, localCardId, deps = {}) {
@@ -424,5 +602,7 @@ module.exports = {
   issuePagoCardForUser,
   refreshPagoCard,
   topUpPagoCard,
+  syncPagoCardsForUser,
+  importPagoCardById,
   mapPagoStatus,
 };
