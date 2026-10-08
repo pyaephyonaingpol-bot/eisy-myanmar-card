@@ -563,6 +563,31 @@ router.get('/cards/:id/wallet', requireAuth, requireSensitive, async (req, res) 
 });
 
 /**
+ * Recent Pagocards spend for one card.
+ * GET /api/v1/cards/{id}/transactions — date, merchant, amount, status.
+ */
+router.get('/cards/:id/transactions', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const page = parseInt(req.query.page, 10);
+    const { listPagoCardTransactions } = require('../services/pagoCardService');
+    const result = await listPagoCardTransactions({
+      userId: req.user.id,
+      localCardId: cardId,
+      page: Number.isFinite(page) ? page : 1,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[user/cards/transactions]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to load card transactions');
+  }
+});
+
+/**
  * Recent Pagocards 3DS verification codes for one card.
  * ?refresh=1 also reads the documented card + transactions endpoints and
  * stores any OTP fields found there. Webhook rows are always included.

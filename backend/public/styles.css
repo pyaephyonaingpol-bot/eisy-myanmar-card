@@ -5709,6 +5709,128 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   letter-spacing: 0.08em;
 }
 
+.pago-tx-panel {
+  margin: 0 0 1.1rem;
+  padding: 1rem 1.05rem 0.35rem;
+  border-radius: var(--radius-md, 0.65rem);
+  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.pago-tx-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.pago-tx-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.pago-tx-meta {
+  margin: 0.45rem 0 0;
+}
+
+.pago-tx-columns {
+  display: none;
+}
+
+.pago-tx-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "merchant amount"
+    "date status";
+  gap: 0.2rem 0.85rem;
+  align-items: center;
+}
+
+.pago-tx-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pago-tx-list:empty {
+  display: none;
+}
+
+.pago-tx-item {
+  padding: 0.72rem 0.1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.pago-tx-merchant {
+  grid-area: merchant;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pago-tx-date {
+  grid-area: date;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.pago-tx-amount {
+  grid-area: amount;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pago-tx-amount.is-credit {
+  color: #86efac;
+}
+
+.pago-tx-status {
+  grid-area: status;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.45rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: var(--text-secondary);
+}
+
+.pago-tx-status.is-completed {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+  color: #86efac;
+}
+
+.pago-tx-status.is-pending {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: #fcd34d;
+}
+
+.pago-tx-status.is-declined {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+}
+
+.pago-tx-status.is-refunded {
+  background: rgba(14, 165, 233, 0.14);
+  border-color: rgba(56, 189, 248, 0.35);
+  color: #7dd3fc;
+}
+
 @media (max-width: 640px) {
   .pago-card-list {
     grid-template-columns: 1fr;
@@ -5722,6 +5844,7 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   .pago-wallet-add-actions {
     grid-template-columns: 1fr;
   }
+
 }
 
 
