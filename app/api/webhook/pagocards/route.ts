@@ -18,32 +18,52 @@ const require = createRequire(path.join(process.cwd(), 'package.json'));
 type PersistResult = {
   saved: boolean;
   duplicate?: boolean;
+  cardUpdated?: boolean;
   id?: number | string | null;
   reason?: string;
 };
 
-function loadNormalizer(): {
-  normalizePagocardsWebhook: (body: unknown) => {
-    eventId: string;
-    eventType: string;
-    authId: string | null;
-    otp: string | null;
-    cardId: string | null;
-    is3ds: boolean;
-  } | null;
-  summarizePagocardsEvent: (event: {
-    eventType: string;
-    otp: string | null;
-    cardId: string | null;
-    merchantName?: string | null;
-    transactionAmount?: string | null;
-    transactionCurrency?: string | null;
-    authId?: string | null;
-    is3ds?: boolean;
-  }) => string;
-} {
-  // Plain CommonJS — safe on Vercel/Node without strip-types / ESM export.
-  return require(path.join(process.cwd(), 'lib/pagocardsWebhook.js'));
+type NormalizedWebhook = {
+  eventId: string;
+  eventType: string;
+  authId: string | null;
+  otp: string | null;
+  cardId: string | null;
+  cardStatus?: string | null;
+  localStatus?: string | null;
+  is3ds: boolean;
+  merchantName?: string | null;
+  transactionAmount?: string | null;
+  transactionCurrency?: string | null;
+};
+
+type WebhookLib = {
+  normalizePagocardsWebhook: (body: unknown) => NormalizedWebhook | null;
+  summarizePagocardsEvent: (event: NormalizedWebhook) => string;
+};
+
+function loadNormalizer(): WebhookLib {
+  const candidates = [
+    path.join(process.cwd(), 'lib/pagocardsWebhook.cjs'),
+    path.join(process.cwd(), 'lib/pagocardsWebhook.js'),
+  ];
+  let lastError: unknown = null;
+  for (const file of candidates) {
+    try {
+      const loaded = require(file) as WebhookLib & { default?: WebhookLib };
+      const resolved =
+        loaded && typeof loaded.normalizePagocardsWebhook === 'function'
+          ? loaded
+          : loaded?.default && typeof loaded.default.normalizePagocardsWebhook === 'function'
+            ? loaded.default
+            : null;
+      if (resolved) return resolved;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  const detail = lastError instanceof Error ? lastError.message : 'normalizePagocardsWebhook is not a function';
+  throw new Error(detail);
 }
 
 async function tryPersist(rawBody: unknown): Promise<PersistResult> {
@@ -54,6 +74,7 @@ async function tryPersist(rawBody: unknown): Promise<PersistResult> {
       return {
         saved: Boolean(result?.saved ?? result?.row),
         duplicate: Boolean(result?.duplicate),
+        cardUpdated: Boolean(result?.cardUpdated),
         id: result?.row?.id ?? result?.id ?? null,
       };
     }
@@ -120,6 +141,9 @@ export async function POST(request: Request): Promise<Response> {
     hasOtp: Boolean(event.otp),
     otp: event.otp,
     cardId: event.cardId,
+    cardStatus: event.localStatus || null,
+    pagoStatus: event.cardStatus || null,
+    cardUpdated: Boolean(persist.cardUpdated),
     saved: persist.saved,
     duplicate: persist.duplicate || false,
     id: persist.id ?? null,
@@ -130,7 +154,7 @@ export async function GET(): Promise<Response> {
   return Response.json({
     ok: true,
     service: 'pagocards-webhook',
-    accepts: ['3ds'],
+    accepts: ['3ds', 'card_status'],
     path: '/api/webhook/pagocards',
   });
 }

@@ -1,9 +1,11 @@
 /**
- * Pagocards webhook payload helpers (3DS OTP / card events).
+ * Pagocards webhook payload helpers (3DS OTP / card status).
  *
- * Runtime exports use CommonJS `module.exports` (same pattern as lib/pagocard.ts)
- * so Express can load this via strip-types without "Unexpected token 'export'".
- * Prefer requiring lib/pagocardsWebhook.js in Node/Express.
+ * Runtime exports use CommonJS `module.exports` (same pattern as lib/pagocard.ts).
+ * The implementation is lib/pagocardsWebhook.cjs. This file assigns that
+ * exports object directly — it must not wrap calls as `impl.fn()`, because a
+ * circular alias left `impl` empty and threw
+ * "impl.normalizePagocardsWebhook is not a function".
  *
  * Docs: https://pagocards.com/documentation
  */
@@ -19,38 +21,32 @@ export type Pagocards3dsEvent = {
   transactionCurrency: string | null;
   verificationType: string | null;
   userBankcardId: string | null;
+  cardStatus: string | null;
+  localStatus: string | null;
   is3ds: boolean;
   raw: Record<string, unknown>;
 };
 
-// Re-export the CommonJS implementation for typed tooling / strip-types loaders.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const impl = require('./pagocardsWebhook.js') as {
+type WebhookLib = {
   unwrapWebhookBody: (body: unknown) => unknown;
   normalizePagocardsWebhook: (body: unknown) => Pagocards3dsEvent | null;
   summarizePagocardsEvent: (event: Pagocards3dsEvent) => string;
   collect3dsOtps: (payload: unknown, fallbackCardId?: string | null) => Pagocards3dsEvent[];
+  mapWebhookCardStatus: (rawStatus: unknown, eventType?: unknown) => string | null;
 };
 
-function unwrapWebhookBody(body: unknown): unknown {
-  return impl.unwrapWebhookBody(body);
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const loaded = require('./pagocardsWebhook.cjs') as WebhookLib & { default?: WebhookLib };
+
+const resolved: WebhookLib | null =
+  loaded && typeof loaded.normalizePagocardsWebhook === 'function'
+    ? loaded
+    : loaded && loaded.default && typeof loaded.default.normalizePagocardsWebhook === 'function'
+      ? loaded.default
+      : null;
+
+if (!resolved || typeof resolved.normalizePagocardsWebhook !== 'function') {
+  throw new Error('pagocardsWebhook.cjs did not export normalizePagocardsWebhook');
 }
 
-function normalizePagocardsWebhook(body: unknown): Pagocards3dsEvent | null {
-  return impl.normalizePagocardsWebhook(body);
-}
-
-function summarizePagocardsEvent(event: Pagocards3dsEvent): string {
-  return impl.summarizePagocardsEvent(event);
-}
-
-function collect3dsOtps(payload: unknown, fallbackCardId?: string | null): Pagocards3dsEvent[] {
-  return impl.collect3dsOtps(payload, fallbackCardId);
-}
-
-module.exports = {
-  unwrapWebhookBody,
-  normalizePagocardsWebhook,
-  summarizePagocardsEvent,
-  collect3dsOtps,
-};
+module.exports = resolved;

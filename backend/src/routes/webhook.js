@@ -100,6 +100,9 @@ router.post('/pagocards', async (req, res) => {
       // Dashboard still loads codes from pago_3ds_events via /api/user/cards/:id/3ds.
       otp: result.event?.otp || null,
       cardId: result.event?.cardId || null,
+      cardStatus: result.event?.localStatus || null,
+      pagoStatus: result.event?.cardStatus || null,
+      cardUpdated: Boolean(result.cardUpdated),
       linked: Boolean(result.row?.user_id && result.row?.local_card_id),
       saved: result.saved,
       duplicate: result.duplicate,
@@ -130,7 +133,7 @@ router.get('/pagocards', (_req, res) => {
   res.json({
     ok: true,
     service: 'pagocards-webhook',
-    accepts: ['3ds'],
+    accepts: ['3ds', 'card_status'],
     path: '/api/webhook/pagocards',
   });
 });

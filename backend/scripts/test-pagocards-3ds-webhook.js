@@ -21,6 +21,7 @@ const service = fs.readFileSync(path.join(root, 'backend/src/services/pago3dsWeb
 const nextRoute = fs.readFileSync(path.join(root, 'app/api/webhook/pagocards/route.ts'), 'utf8');
 const libTs = fs.readFileSync(path.join(root, 'lib/pagocardsWebhook.ts'), 'utf8');
 const libJs = fs.readFileSync(path.join(root, 'lib/pagocardsWebhook.js'), 'utf8');
+const libCjs = fs.readFileSync(path.join(root, 'lib/pagocardsWebhook.cjs'), 'utf8');
 const migration = fs.readFileSync(path.join(root, 'backend/migrations/071_pago_3ds_events.sql'), 'utf8');
 
 for (const doc of [html, instant]) {
@@ -78,12 +79,22 @@ assert.ok(pagoClient.includes('/transactions?pageNum='), 'transactions path matc
 
 assert.ok(nextRoute.includes('export async function POST'), 'Next route POST');
 assert.ok(nextRoute.includes('normalizePagocardsWebhook'), 'Next route normalizes');
-assert.ok(nextRoute.includes('pagocardsWebhook.js'), 'Next route loads CJS helper');
-assert.ok(libJs.includes('module.exports'), 'CJS helper uses module.exports');
-assert.ok(libJs.includes('function normalizePagocardsWebhook'), 'CJS normalizer present');
-assert.ok(libJs.includes('function collect3dsOtps'), 'CJS OTP collector present');
-assert.ok(!/\bexport\s+function\b/.test(libJs), 'CJS helper has no ESM export function');
+assert.ok(nextRoute.includes('pagocardsWebhook.cjs'), 'Next route loads .cjs helper');
+assert.ok(libCjs.includes('module.exports'), 'CJS helper uses module.exports');
+assert.ok(libCjs.includes('function normalizePagocardsWebhook'), 'CJS normalizer present');
+assert.ok(libCjs.includes('function collect3dsOtps'), 'CJS OTP collector present');
+assert.ok(libCjs.includes('function mapWebhookCardStatus'), 'status mapper present');
+assert.ok(!/\bexport\s+function\b/.test(libCjs), 'CJS helper has no ESM export function');
+assert.ok(libJs.includes("require('./pagocardsWebhook.cjs')"), 'JS re-exports CJS implementation');
+assert.ok(!/\bexport\s+function\b/.test(libJs), 'JS re-export has no ESM export function');
 assert.ok(libTs.includes('module.exports'), 'TS helper uses module.exports (pagocard pattern)');
+assert.ok(libTs.includes("require('./pagocardsWebhook.cjs')"), 'TS loads .cjs directly');
+assert.ok(!/impl\.normalizePagocardsWebhook\s*\(/.test(libTs), 'TS does not call impl.normalizePagocardsWebhook');
+assert.ok(!/\bexport\s+function\b/.test(libTs), 'TS helper has no ESM export function');
+assert.ok(service.includes('pagocardsWebhook.cjs'), 'service prefers .cjs');
+assert.ok(service.includes('updateFromPago'), 'service updates card status');
+assert.ok(service.includes('cardUpdated'), 'service reports card update');
+assert.ok(webhookRoute.includes('cardUpdated'), 'Express ACK reports card update');
 assert.ok(migration.includes('CREATE TABLE IF NOT EXISTS pago_3ds_events'), 'migration table');
 
 // Direct CJS require must work without strip-types / Unexpected token export.
@@ -112,6 +123,7 @@ assert.strictEqual(event.eventId, sample.eventId);
 assert.strictEqual(event.otp, '234562');
 assert.strictEqual(event.cardId, sample.cardid);
 assert.strictEqual(event.is3ds, true);
+assert.strictEqual(event.localStatus, null);
 assert.ok(summarizePagocardsEvent(event).includes('otp=234562'));
 
 const nested = normalizePagocardsWebhook({
@@ -129,6 +141,7 @@ assert.ok(nested);
 assert.strictEqual(nested.otp, '998877');
 assert.strictEqual(nested.cardId, 'card_nested');
 assert.strictEqual(nested.merchantName, 'Shop');
+assert.strictEqual(nested.localStatus, null);
 
 assert.strictEqual(normalizePagocardsWebhook(null), null);
 assert.strictEqual(normalizePagocardsWebhook({ foo: 1 }), null);
@@ -187,4 +200,167 @@ const ignored = direct.collect3dsOtps({
 }, 'card_demo');
 assert.strictEqual(ignored.length, 0);
 
-console.log('pagocards 3ds webhook checks passed');
+const frozen = normalizePagocardsWebhook({
+  eventId: 'st-frozen',
+  eventType: 'card.status',
+  cardId: 'card_status_1',
+  status: 'frozen',
+});
+assert.ok(frozen);
+assert.strictEqual(frozen.localStatus, 'frozen');
+assert.strictEqual(frozen.cardStatus, 'frozen');
+assert.strictEqual(frozen.is3ds, false);
+
+const terminated = normalizePagocardsWebhook({
+  type: 'card.terminated',
+  cardid: 'card_term',
+});
+assert.ok(terminated);
+assert.strictEqual(terminated.localStatus, 'terminated');
+assert.strictEqual(terminated.eventId, 'card-status-card_term-terminated');
+
+const active = normalizePagocardsWebhook({
+  card_id: 'card_act',
+  card_status: 'unfrozen',
+});
+assert.ok(active);
+assert.strictEqual(active.localStatus, 'active');
+assert.strictEqual(active.eventId, 'card-status-card_act-active');
+
+assert.strictEqual(direct.mapWebhookCardStatus('blocked', 'card.updated'), 'frozen');
+assert.strictEqual(direct.mapWebhookCardStatus('cancelled', ''), 'terminated');
+assert.strictEqual(direct.mapWebhookCardStatus('activated', ''), 'active');
+assert.strictEqual(direct.mapWebhookCardStatus('weird', 'card.updated'), null);
+assert.strictEqual(direct.mapWebhookCardStatus('frozen', '3ds'), null);
+
+const unknownStatus = normalizePagocardsWebhook({
+  eventId: 'st-unk',
+  cardId: 'card_unk',
+  status: 'weird',
+});
+assert.ok(unknownStatus);
+assert.strictEqual(unknownStatus.localStatus, null);
+assert.strictEqual(normalizePagocardsWebhook({ cardId: 'card_drop', status: 'weird' }), null);
+
+const { execFileSync } = require('child_process');
+execFileSync(process.execPath, ['--experimental-strip-types', '-e', `
+  const lib = require(${JSON.stringify(path.join(root, 'lib/pagocardsWebhook.ts'))});
+  if (typeof lib.normalizePagocardsWebhook !== 'function') {
+    throw new Error('ts export missing normalizePagocardsWebhook');
+  }
+  const event = lib.normalizePagocardsWebhook({
+    eventType: 'card.frozen',
+    cardId: 'c1',
+    status: 'frozen',
+  });
+  if (!event || event.localStatus !== 'frozen') {
+    throw new Error('ts normalize failed ' + JSON.stringify(event));
+  }
+`], { stdio: 'inherit' });
+
+async function assertStatusPersists() {
+  const os = require('os');
+  const dbFile = path.join(os.tmpdir(), `eisy-pago-webhook-status-${process.pid}.db`);
+  for (const suffix of ['', '-journal', '-wal', '-shm']) {
+    try { fs.unlinkSync(dbFile + suffix); } catch (_) { /* fresh */ }
+  }
+  process.env.DATABASE_URL = `file:${dbFile}`;
+  process.env.TURSO_DATABASE_URL = '';
+  process.env.TURSO_AUTH_TOKEN = '';
+  process.env.DATABASE_AUTH_TOKEN = '';
+  process.env.SUPABASE_URL = 'off';
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'off';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'off';
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'off';
+
+  const { resetSupabaseClientForTests } = require('../src/lib/supabase');
+  resetSupabaseClientForTests();
+  const { initDb, closeDb } = require('../src/db');
+  const User = require('../src/models/User');
+  const Card = require('../src/models/Card');
+  const { handlePagocardsWebhook } = require('../src/services/pago3dsWebhookService');
+
+  await initDb();
+  resetSupabaseClientForTests();
+  const stamp = Date.now();
+  const user = await User.create({
+    name: 'Webhook Status',
+    phone: `8${String(stamp).slice(-9)}`,
+    email: `pago-wh-${stamp}@example.com`,
+    pinHash: null,
+  });
+  const pagoId = `card_wh_${stamp}`;
+  const created = await Card.createFromPago({
+    userId: user.id,
+    pagoCardId: pagoId,
+    status: 'active',
+    pagoStatus: 'normal',
+    lastFour: '4242',
+    brand: 'visa',
+  });
+  assert.strictEqual(created.status, 'active');
+
+  const frozenResult = await handlePagocardsWebhook({
+    eventId: `freeze-${stamp}`,
+    eventType: 'card.status',
+    cardId: pagoId,
+    status: 'frozen',
+  });
+  assert.strictEqual(frozenResult.cardUpdated, true);
+  assert.strictEqual(frozenResult.event.localStatus, 'frozen');
+  const frozenRow = await Card.findByProviderCardId(pagoId);
+  assert.strictEqual(frozenRow.status, 'frozen');
+  assert.strictEqual(frozenRow.pago_status, 'frozen');
+
+  const again = await handlePagocardsWebhook({
+    eventId: `freeze-${stamp}`,
+    eventType: 'card.status',
+    cardId: pagoId,
+    status: 'frozen',
+  });
+  assert.strictEqual(again.duplicate, true);
+  assert.strictEqual(again.cardUpdated, true);
+  assert.strictEqual((await Card.findByProviderCardId(pagoId)).status, 'frozen');
+
+  const otpResult = await handlePagocardsWebhook({
+    eventId: `otp-${stamp}`,
+    eventType: '3ds',
+    cardid: pagoId,
+    otp: '234562',
+    status: 'active',
+  });
+  assert.strictEqual(otpResult.event.localStatus, null);
+  assert.strictEqual(otpResult.cardUpdated, false);
+  assert.strictEqual(otpResult.event.otp, '234562');
+  assert.strictEqual((await Card.findByProviderCardId(pagoId)).status, 'frozen');
+
+  const bankcardId = `bank_${stamp}`;
+  await Card.createFromPago({
+    userId: user.id,
+    pagoCardId: bankcardId,
+    status: 'active',
+    pagoStatus: 'normal',
+    lastFour: '1111',
+  });
+  const byBank = await handlePagocardsWebhook({
+    eventId: `term-${stamp}`,
+    eventType: 'card.cancelled',
+    userBankcardId: bankcardId,
+  });
+  assert.strictEqual(byBank.cardUpdated, true);
+  assert.strictEqual((await Card.findByProviderCardId(bankcardId)).status, 'terminated');
+
+  await closeDb();
+  for (const suffix of ['', '-journal', '-wal', '-shm']) {
+    try { fs.unlinkSync(dbFile + suffix); } catch (_) { /* cleaned */ }
+  }
+}
+
+assertStatusPersists()
+  .then(() => {
+    console.log('pagocards 3ds webhook checks passed');
+  })
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
