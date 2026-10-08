@@ -258,7 +258,8 @@ const sampleCard = {
         assert.strictEqual(err.status, 502);
         assert.strictEqual(err.code, 'PAGO_BAD_RESPONSE');
         assert.ok(err.message.includes('HTTP 502'));
-        assert.ok(err.message.includes('https://pagocards.example'));
+        assert.ok(err.message.includes('https://pagocards.example/api/v1/cards'));
+        assert.ok(err.message.includes('502 Bad Gateway'));
         assert.ok(!err.message.includes('sec-test-key'));
         return true;
       }
@@ -269,7 +270,7 @@ const sampleCard = {
     const previousBase = process.env.PAGO_CARD_API_BASE_URL;
     const previousKey = process.env.PAGO_CARD_API_KEY;
     const previousSecret = process.env.PAGO_CARD_SECRET_KEY;
-    const proxy = 'http://165.245.208.221/api/pago';
+    const proxy = 'http://161.35.58.86/api/pago';
     const calls = [];
     const fetchImpl = async (url) => {
       calls.push(String(url));
@@ -292,9 +293,9 @@ const sampleCard = {
       });
     };
     const bases = [
-      'http://165.245.208.221/api/pago/',
-      'http://165.245.208.221/api/pago/api/v1',
-      'http://165.245.208.221/api/pago',
+      'http://161.35.58.86/api/pago/',
+      'http://161.35.58.86/api/pago/api/v1',
+      'http://161.35.58.86/api/pago',
       '',
     ];
     try {
