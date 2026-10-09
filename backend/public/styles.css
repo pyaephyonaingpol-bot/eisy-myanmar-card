@@ -5557,9 +5557,23 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   75%, 100% { transform: translateX(120%); }
 }
 
-.pago-plastic-card > *:not(.pago-plastic-sheen) {
+.pago-plastic-card > *:not(.pago-plastic-sheen):not(.pago-plastic-mark) {
   position: relative;
   z-index: 1;
+}
+
+.pago-plastic-mark {
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+  right: -12%;
+  top: 50%;
+  height: 152%;
+  width: auto;
+  max-width: none;
+  transform: translateY(-50%);
+  opacity: 0.3;
+  user-select: none;
 }
 
 .pago-plastic-top,

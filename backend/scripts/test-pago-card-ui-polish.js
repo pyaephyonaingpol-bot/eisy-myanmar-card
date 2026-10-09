@@ -23,8 +23,10 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pagoCardCopyNumberBtn"'), 'copy number button present');
   assert.ok(doc.includes('id="pagoCardDetailBalance"'), 'balance chip present');
   assert.ok(doc.includes('pago-balance-chip') || doc.includes('pagoCardDetailBalance'), 'balance display wired');
-  assert.ok(doc.includes('styles.css?v=20261009supportScroll'), 'CSS cache-bust present');
-  assert.ok(doc.includes('dashboard.js?v=20261008issueFee'), 'JS cache-bust present');
+  assert.ok(doc.includes('styles.css?v=20261009cardMark'), 'CSS cache-bust present');
+  assert.ok(doc.includes('class="pago-plastic-mark"'), 'logo watermark sits on the card');
+  assert.ok(doc.includes('/brand/logo-card-mark.png?v=20261009cardMark'), 'watermark uses the metallic logo');
+  assert.ok(doc.includes('dashboard.js?v=20261009userIdentity'), 'JS cache-bust present');
   assert.ok(doc.includes('pago-plastic-eye'), 'eye toggle sits on the card face');
   assert.ok(doc.includes('pago-eye-open') && doc.includes('pago-eye-off'), 'eye open and closed icons');
   assert.ok(doc.includes('pago-plastic-copy'), 'copy control sits beside the card number');
@@ -40,6 +42,8 @@ for (const doc of [html, instant]) {
 }
 
 assert.ok(css.includes('.pago-plastic-card'), 'plastic card styles exist');
+assert.ok(css.includes('.pago-plastic-mark'), 'logo watermark styles exist');
+assert.ok(fs.existsSync(path.join(root, 'backend/public/brand/logo-card-mark.png')), 'transparent logo asset exists');
 assert.ok(css.includes('.pago-plastic-eye'), 'eye button styles');
 assert.ok(css.includes('.pago-plastic-copy') || css.includes('.pago-plastic-icon-btn'), 'copy button styles');
 assert.ok(css.includes('.pago-plastic-chip'), 'chip styles exist');
