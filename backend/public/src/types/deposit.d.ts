@@ -10,7 +10,7 @@ export type DepositStatus =
   | 'FAILED'
   | 'EXPIRED';
 
-export type UsdtNetwork = 'TRC20' | 'BEP20' | 'ERC20';
+export type UsdtNetwork = 'TRC20';
 
 export interface DepositFeeBreakdown {
   amount_usdt?: number;

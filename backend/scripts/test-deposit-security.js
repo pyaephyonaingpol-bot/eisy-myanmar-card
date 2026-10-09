@@ -11,14 +11,11 @@ const path = require('path');
 process.chdir(path.join(__dirname, '..'));
 
 const {
-  TRANSFER_EVENT_TOPIC,
+  verifyUsdtTransaction,
   amountWithinTolerance,
   isMockTxHash,
 } = require('../src/services/usdtBlockchainService');
 const { isUsdtVerificationBypassEnabled } = require('../src/services/depositService');
-
-const EXPECTED_TRANSFER_TOPIC =
-  '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df5bb2db6';
 
 function section(title) {
   console.log(`\n== ${title} ==`);
@@ -54,12 +51,15 @@ async function main() {
   else process.env.NODE_ENV = prevEnv;
   console.log('ok');
 
-  section('BEP20 Transfer event topic (ERC-20 keccak)');
-  assert.strictEqual(
-    TRANSFER_EVENT_TOPIC.toLowerCase(),
-    EXPECTED_TRANSFER_TOPIC,
-    'TRANSFER_EVENT_TOPIC must be keccak256(Transfer(address,address,uint256))'
-  );
+  section('BEP20 verification is refused without a chain call');
+  const bep = await verifyUsdtTransaction({
+    network: 'BEP20',
+    txHash: '0xabc123realhashnotmock',
+    expectedAddress: '0x0000000000000000000000000000000000000001',
+    expectedAmountUsdt: 10,
+  });
+  assert.strictEqual(bep.ok, false);
+  assert.match(bep.message, /TRC20/);
   console.log('ok');
 
   section('Amount tolerance helper');
@@ -76,6 +76,8 @@ async function main() {
 
   section('DB unique indexes + claimForCredit idempotency');
   process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+  process.env.DATABASE_URL = `file:/tmp/eisy-deposit-sec-${Date.now()}.db`;
+  delete process.env.TURSO_DATABASE_URL;
   const { initDb, getDb } = require('../src/db');
   await initDb();
   const db = getDb();
@@ -84,16 +86,16 @@ async function main() {
     SELECT name, sql FROM sqlite_master
     WHERE type = 'index'
       AND name IN (
-        'idx_deposit_v2_tx_hash_uq',
-        'idx_deposit_v2_txn_id_uq',
-        'idx_deposit_v2_kpay_txn_uq'
+        'idx_deposits_v2_tx_hash_unique',
+        'idx_deposits_v2_txn_id_unique',
+        'idx_deposits_v2_kpay_txn_unique'
       )
     ORDER BY name
   `);
   const names = indexes.map((r) => r.name);
-  assert.ok(names.includes('idx_deposit_v2_tx_hash_uq'), 'tx_hash unique index missing');
-  assert.ok(names.includes('idx_deposit_v2_txn_id_uq'), 'txn_id unique index missing');
-  assert.ok(names.includes('idx_deposit_v2_kpay_txn_uq'), 'kpay_transaction_id unique index missing');
+  assert.ok(names.includes('idx_deposits_v2_tx_hash_unique'), 'tx_hash unique index missing');
+  assert.ok(names.includes('idx_deposits_v2_txn_id_unique'), 'txn_id unique index missing');
+  assert.ok(names.includes('idx_deposits_v2_kpay_txn_unique'), 'kpay_transaction_id unique index missing');
   console.log('unique indexes present:', names.join(', '));
 
   // Seed a user + deposit, then attempt duplicate tx_hash.

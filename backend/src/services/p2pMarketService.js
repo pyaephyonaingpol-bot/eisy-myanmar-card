@@ -13,12 +13,12 @@ function parsePaymentMethods(raw) {
   }
 }
 
-async function listP2pMarket({ side = 'sell', network } = {}) {
+async function listP2pMarket({ side = 'sell' } = {}) {
   const settings = await getCardPricingSettings();
   const defaultRate = settings.mmk_to_usd_rate || 4500;
   const normalizedSide = side === 'buy' ? 'buy' : 'sell';
 
-  const rows = await P2PAd.listActive({ side: normalizedSide, network });
+  const rows = await P2PAd.listActive({ side: normalizedSide, network: 'TRC20' });
   const listings = [];
 
   for (const row of rows) {

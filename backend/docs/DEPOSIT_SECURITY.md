@@ -53,8 +53,7 @@ sweeps all USDT back to master. Not started by cron — also available as CLI
 5. **Binance Pay**  
    Query-before-credit enabled by default; paid amount checked vs deposit gross.
 
-6. **BEP20 Transfer topic** corrected (`keccak256(Transfer(address,address,uint256))`);
-   configurable `USDT_MIN_CONFIRMATIONS` on both RPC and BscScan paths.
+6. **TRC20-only deposits.** New BEP20 and other non-Tron USDT deposits are rejected before any chain call. `USDT_MIN_CONFIRMATIONS` still applies to TRC20 verification.
 
 ## Required env (production)
 

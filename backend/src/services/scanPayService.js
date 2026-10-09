@@ -50,9 +50,13 @@ function isMissingScanPayRpc(error) {
 function normalizeNetwork(raw) {
   const value = String(raw || 'TRC20').trim().toUpperCase();
   if (['TRC20', 'TRON', 'TRX'].includes(value)) return 'TRC20';
-  if (['BEP20', 'BSC', 'BNB'].includes(value)) return 'BEP20';
-  if (['ERC20', 'ETH', 'ETHEREUM'].includes(value)) return 'ERC20';
-  return value || 'TRC20';
+  return null;
+}
+
+function rejectNonTrc20(message) {
+  const err = new Error(message || 'USDT payments use TRC20 (Tron) only');
+  err.code = 'TRC20_ONLY';
+  throw err;
 }
 
 function isLikelyEvmAddress(addr) {
@@ -123,21 +127,7 @@ function parsePaymentQrPayload(rawInput) {
   }
 
   if (/^ethereum:/i.test(raw)) {
-    const amountMatch = raw.match(/[?&](?:uint256|amount|value)=(\d+(?:\.\d+)?)/i);
-    let amount = amountMatch ? Number(amountMatch[1]) : null;
-    if (amount != null && amount >= 1000 && Number.isInteger(Number(amountMatch[1]))) {
-      amount = roundUsdt(amount / 1e6);
-    }
-    const addrMatch = raw.match(/ethereum:(0x[a-fA-F0-9]{40})/i)
-      || raw.match(/address=(0x[a-fA-F0-9]{40})/i);
-    return {
-      destination_address: addrMatch ? addrMatch[1] : '',
-      amount_usdt: amount,
-      network: /@56\b/.test(raw) ? 'BEP20' : 'ERC20',
-      recipient_email: null,
-      note: null,
-      raw,
-    };
+    rejectNonTrc20('USDT payments use TRC20 (Tron) only');
   }
 
   if (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(raw)) {
@@ -152,24 +142,19 @@ function parsePaymentQrPayload(rawInput) {
   }
 
   if (isLikelyEvmAddress(raw)) {
-    return {
-      destination_address: raw,
-      amount_usdt: null,
-      network: 'BEP20',
-      recipient_email: null,
-      note: null,
-      raw,
-    };
+    rejectNonTrc20('USDT payments use TRC20 (Tron) only');
   }
 
   const lines = raw.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
-  const addressLine = lines.find((l) => /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(l) || isLikelyEvmAddress(l));
+  const evmLine = lines.find((l) => isLikelyEvmAddress(l));
+  if (evmLine) rejectNonTrc20('USDT payments use TRC20 (Tron) only');
+  const addressLine = lines.find((l) => /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(l));
   const amountLine = lines.find((l) => /^\d+(\.\d+)?$/.test(l) && Number(l) > 0);
   if (addressLine) {
     return {
       destination_address: addressLine,
       amount_usdt: amountLine != null ? Number(amountLine) : null,
-      network: addressLine.startsWith('T') ? 'TRC20' : 'BEP20',
+      network: 'TRC20',
       recipient_email: null,
       note: null,
       raw,
@@ -189,14 +174,11 @@ function validateDestination(address, network) {
     err.code = 'MISSING_ADDRESS';
     throw err;
   }
-  if (net === 'TRC20') {
-    if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(addr) || !isLikelyTronAddress(addr)) {
-      const err = new Error('Invalid TRC20 (Tron) destination address');
-      err.code = 'INVALID_ADDRESS';
-      throw err;
-    }
-  } else if (!isLikelyEvmAddress(addr)) {
-    const err = new Error(`Invalid ${net} destination address`);
+  if (net !== 'TRC20') {
+    rejectNonTrc20('USDT payments use TRC20 (Tron) only');
+  }
+  if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(addr) || !isLikelyTronAddress(addr)) {
+    const err = new Error('Invalid TRC20 (Tron) destination address');
     err.code = 'INVALID_ADDRESS';
     throw err;
   }

@@ -448,27 +448,31 @@ function buildWithdrawalRateChangeNotes(before, payload) {
   return parts.join('; ');
 }
 
+function resolveWithdrawalNetwork(network) {
+  const net = String(network || 'TRC20').toUpperCase();
+  if (net === 'BANK') return 'BANK';
+  if (net === 'TRC20' || net === 'TRON') return 'TRC20';
+  const err = new Error('USDT withdrawals use TRC20 (Tron) only.');
+  err.code = 'TRC20_ONLY';
+  throw err;
+}
+
 function calculateNetworkWithdrawalFee(amountUsdt, network, settings) {
   const {
     calculateUsdtPaymentFeeBreakdown,
   } = require('./paymentFeeService');
 
   const amount = Math.round((parseFloat(amountUsdt) || 0) * 100) / 100;
-  const net = String(network || 'TRC20').toUpperCase();
-  const isBank = net === 'BANK';
-  const isBep20 = net === 'BEP20';
-  const isTrc20 = !isBank && !isBep20;
+  const networkName = resolveWithdrawalNetwork(network);
+  const isBank = networkName === 'BANK';
+  const isTrc20 = networkName === 'TRC20';
 
   const feeTypeKey = isBank
     ? 'usdt_withdraw_fee_bank_type'
-    : isBep20
-      ? 'usdt_withdraw_fee_bep20_type'
-      : 'usdt_withdraw_fee_trc20_type';
+    : 'usdt_withdraw_fee_trc20_type';
   const feeAmountKey = isBank
     ? 'usdt_withdraw_fee_bank'
-    : isBep20
-      ? 'usdt_withdraw_fee_bep20'
-      : 'usdt_withdraw_fee_trc20';
+    : 'usdt_withdraw_fee_trc20';
   const configuredType = settings?.[feeTypeKey] === 'percent' ? 'percent' : 'fixed';
   // Admin withdrawal_service_fee_* (mirrored onto payment_service_fee_*) is the source of truth.
   // Legacy per-network fixed types must not ignore a live percent/min admin config.
@@ -499,7 +503,7 @@ function calculateNetworkWithdrawalFee(amountUsdt, network, settings) {
     }
     const netUsdt = Math.round((amount - feeUsdt) * 100) / 100;
     return {
-      network: isBank ? 'BANK' : isBep20 ? 'BEP20' : 'TRC20',
+      network: networkName,
       amount_usdt: amount,
       fee_usdt: feeUsdt,
       net_usdt: netUsdt,
@@ -516,7 +520,7 @@ function calculateNetworkWithdrawalFee(amountUsdt, network, settings) {
   const feeBreakdown = calculateUsdtPaymentFeeBreakdown(amount, settings);
 
   return {
-    network: isBank ? 'BANK' : isBep20 ? 'BEP20' : 'TRC20',
+    network: networkName,
     amount_usdt: feeBreakdown.amount_usdt,
     fee_usdt: feeBreakdown.fee_usdt,
     net_usdt: feeBreakdown.net_usdt,
@@ -550,10 +554,8 @@ function calculateWithdrawalBreakdown(amountUsdt, network, settings) {
     'withdrawal'
   );
   const feeBreakdown = calculateUsdtPaymentFeeBreakdown(amount, feeSettings);
-  const netName = String(network || 'TRC20').toUpperCase();
-  const isBank = netName === 'BANK';
-  const isBep20 = netName === 'BEP20';
-  const networkName = isBank ? 'BANK' : isBep20 ? 'BEP20' : 'TRC20';
+  const networkName = resolveWithdrawalNetwork(network);
+  const isBank = networkName === 'BANK';
   const minRaw = parseFloat(settings?.minimum_usdt_withdrawal);
   const min = Number.isFinite(minRaw) && minRaw > 0 ? minRaw : 10;
   const rate = parseFloat(settings?.mmk_to_usd_rate) || 4500;
@@ -724,8 +726,6 @@ async function getPublicRatesAndFees() {
       minimum_usdt_withdrawal: withdrawal.minimum_usdt_withdrawal,
       usdt_withdraw_fee_trc20: withdrawal.usdt_withdraw_fee_trc20,
       usdt_withdraw_fee_trc20_type: withdrawal.usdt_withdraw_fee_trc20_type,
-      usdt_withdraw_fee_bep20: withdrawal.usdt_withdraw_fee_bep20,
-      usdt_withdraw_fee_bep20_type: withdrawal.usdt_withdraw_fee_bep20_type,
     },
   };
   return {

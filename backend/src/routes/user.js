@@ -293,7 +293,6 @@ router.get('/wallet/deposit-addresses', requireAuth, async (req, res) => {
     }
     res.json({
       usdt_trc20_address: trc20Address,
-      usdt_bep20_address: null,
       minimum_usdt_deposit: settings.minimum_usdt_deposit,
       trc20_address_source: trc20Source,
       deposit_provider: 'tron-hd',

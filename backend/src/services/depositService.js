@@ -216,16 +216,17 @@ async function createUsdtDepositRequest(userId, {
   const feeBreakdown = calculateDepositFeeBreakdown(amount, { currency: 'USDT', settings });
   assertValidPaymentAmount(feeBreakdown, { kind: 'USDT deposit' });
 
-  const net = String(network || 'TRC20').toUpperCase();
-  if (!['TRC20', 'BEP20'].includes(net)) {
-    throw new Error('network must be TRC20 or BEP20');
+  const requestedNet = String(network || 'TRC20').toUpperCase();
+  if (requestedNet !== 'TRC20' && requestedNet !== 'TRON') {
+    const err = new Error('USDT deposits use TRC20 (Tron) only.');
+    err.code = 'TRC20_ONLY';
+    throw err;
   }
+  const net = 'TRC20';
 
   let depositAddress;
   let addressSource = 'shared';
-  if (net === 'BEP20') {
-    depositAddress = settings.usdt_bep20_address;
-  } else {
+  {
     const { resolveUserTrc20DepositAddress } = require('./tronDepositAddressService');
     const sharedGateway = () => {
       const explicit = String(

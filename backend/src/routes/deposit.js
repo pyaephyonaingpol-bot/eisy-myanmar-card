@@ -331,7 +331,6 @@ router.get('/usdt-addresses', requireAuth, async (_req, res) => {
             ? `/api/qr?size=180&data=${encodeURIComponent(masterWalletAddress)}`
             : null,
         },
-        { id: 'BEP20', label: 'BEP20 (BSC)', address: settings.usdt_bep20_address },
       ],
       master_wallet_address: masterWalletAddress,
       minimum_usdt_deposit: settings.minimum_usdt_deposit,
