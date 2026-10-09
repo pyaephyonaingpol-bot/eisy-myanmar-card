@@ -596,7 +596,9 @@ router.get('/exchange-rate-history', requirePermission('rates'), async (req, res
 
 router.get('/deposits', requirePermission('deposits'), async (req, res) => {
   try {
-    const status = req.query.status;
+    let status = req.query.status;
+    if (status === 'approved') status = 'VERIFIED';
+    if (status === 'rejected') status = 'REJECTED';
     const settings = await getCardPricingSettings();
     const deposits = status && status !== 'pending'
       ? await DepositRequest.listAll({ status: status === 'all' ? null : status, limit: 200 })

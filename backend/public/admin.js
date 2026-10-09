@@ -12,6 +12,9 @@
     'overview',
     'users',
     'deposits',
+    'mmk-withdrawals',
+    'p2p',
+    'support',
     'kyc-requests',
     'cards',
     'revenue',
@@ -550,10 +553,8 @@
         this.switchTab('deposits');
         return;
       }
-      if (name === 'transactions' || name === 'support' || name === 'mmk-withdrawals') {
-        // Legacy Instant/Hub pages — land on the closest core module.
-        const fallback = name === 'support' ? 'users' : (name === 'mmk-withdrawals' ? 'deposits' : this.pipelineDefaultPage());
-        this.switchTab(fallback);
+      if (name === 'transactions') {
+        this.switchTab(this.pipelineDefaultPage());
         return;
       }
       if (name === 'overview') {
@@ -561,15 +562,15 @@
       }
       if (name === 'deposits') {
         this.loadDeposits();
-        this.loadP2pBuyOrders();
-        this.loadP2pDisputes();
-        this.loadP2pSellOrders();
-        this.loadUsdtWithdrawals();
-        if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
         if (this.hasPermission('kyc')) this.loadKycRequests();
       }
       if (name === 'mmk-withdrawals') {
+        this.loadUsdtWithdrawals();
         this.loadMmkWithdrawals();
+        if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
+      }
+      if (name === 'p2p') {
+        this.applyP2pTrackFilter();
       }
       if (name === 'support') this.loadSupportThreads();
       if (name === 'cards') {
@@ -667,6 +668,8 @@
       if (depositFilter) depositFilter.addEventListener('change', () => this.loadDeposits());
 
       $('usdtWithdrawalFilter')?.addEventListener('change', () => this.loadUsdtWithdrawals());
+      $('p2pTrackFilter')?.addEventListener('change', () => this.applyP2pTrackFilter());
+      $('p2pTrackRefreshBtn')?.addEventListener('click', () => this.applyP2pTrackFilter());
       $('mmkWithdrawalFilter')?.addEventListener('change', () => this.loadMmkWithdrawals());
       $('mmkWithdrawalRefreshBtn')?.addEventListener('click', () => this.loadMmkWithdrawals());
       document.querySelectorAll('[data-nav-page]').forEach((btn) => {
@@ -1182,6 +1185,24 @@
           if (reject) this.rejectP2pSellOrder(parseInt(reject.dataset.id, 10));
         });
       }
+
+      const p2pTrackerTable = $('p2pTrackerTable');
+      if (p2pTrackerTable) {
+        p2pTrackerTable.addEventListener('click', (e) => {
+          const release = e.target.closest('[data-action="resolve-p2p-dispute-release"]');
+          const refund = e.target.closest('[data-action="resolve-p2p-dispute-refund"]');
+          if (!release && !refund) return;
+          e.preventDefault();
+          const btn = release || refund;
+          if (btn.disabled) return;
+          this.resolveP2pDispute(
+            btn.dataset.orderType,
+            parseInt(btn.dataset.id, 10),
+            release ? 'force_release' : 'refund',
+            btn
+          );
+        });
+      }
     },
 
     bindI18n() {
@@ -1273,11 +1294,11 @@
       const map = {
         pending: 'Open',
         in_progress: 'In Progress',
-        completed: 'Resolved',
+        completed: 'Closed',
         failed: 'Failed',
         open: 'Open',
-        closed: 'Resolved',
-        resolved: 'Resolved',
+        closed: 'Closed',
+        resolved: 'Closed',
       };
       return map[value] || value || 'Open';
     },
@@ -1322,12 +1343,13 @@
         tasks.push(this.loadPricingSettings());
       }
       if (pageOk('deposits') && this.hasPermission('deposits')) {
-        tasks.push(this.loadDeposits(), this.loadP2pDisputes(), this.loadP2pBuyOrders(), this.loadP2pSellOrders());
+        tasks.push(this.loadDeposits());
+      }
+      if (pageOk('p2p') && this.hasPermission('p2p')) {
+        tasks.push(this.applyP2pTrackFilter());
       }
       if (pageOk('mmk-withdrawals') && this.hasPermission('withdrawals')) {
         tasks.push(this.loadUsdtWithdrawals(), this.loadMmkWithdrawals());
-      } else if (pageOk('deposits') && this.hasPermission('withdrawals')) {
-        tasks.push(this.loadUsdtWithdrawals());
       }
       if (pageOk('cards') && this.hasPermission('cards')) {
         tasks.push(this.loadPendingCards(), this.loadIssuedCards(), this.loadPendingReloads());
@@ -1568,6 +1590,30 @@
         REJECTED: 'err', FAILED: 'err', CANCELLED: 'err', EXPIRED: 'err', TERMINATED: 'err',
       }[s] || 'muted';
       return '<span class="badge badge-' + cls + '">' + this.esc(status) + '</span>';
+    },
+
+    /** Deposit and withdrawal tables: Pending / Approved / Rejected. */
+    financeStatusBadge(status) {
+      const s = String(status || '').toUpperCase();
+      const pending = ['SUBMITTED', 'UNDER_REVIEW', 'PENDING', 'PROCESSING', 'AWAITING_SCREENSHOT'];
+      const approved = ['VERIFIED', 'APPROVED', 'COMPLETED'];
+      const rejected = ['REJECTED', 'FAILED'];
+      let label = status || '—';
+      let cls = 'muted';
+      if (pending.indexOf(s) !== -1) {
+        label = 'Pending';
+        cls = 'warn';
+      } else if (approved.indexOf(s) !== -1) {
+        label = 'Approved';
+        cls = 'ok';
+      } else if (rejected.indexOf(s) !== -1) {
+        label = 'Rejected';
+        cls = 'err';
+      } else if (s === 'CANCELLED') {
+        label = 'Cancelled';
+        cls = 'err';
+      }
+      return '<span class="badge badge-' + cls + '">' + this.esc(label) + '</span>';
     },
 
     cardStatusBadge(status) {
@@ -2592,6 +2638,87 @@
       }
     },
 
+    p2pOrderBucket(order) {
+      if (order && (order.is_disputed || String(order.dispute_status || '') === 'open')) return 'dispute';
+      const s = String(order && order.status || '').toLowerCase();
+      if (['released', 'completed', 'completed_by_admin'].indexOf(s) !== -1) return 'completed';
+      if (['rejected', 'cancelled', 'cancelled_by_admin', 'expired', 'auto_cancelled'].indexOf(s) !== -1) return 'closed';
+      return 'pending';
+    },
+
+    p2pBucketBadge(bucket) {
+      const map = {
+        dispute: ['err', 'Dispute'],
+        pending: ['warn', 'Pending'],
+        completed: ['ok', 'Completed'],
+        closed: ['muted', 'Closed'],
+      };
+      const pair = map[bucket] || ['muted', bucket || '—'];
+      return '<span class="badge badge-' + pair[0] + '">' + this.esc(pair[1]) + '</span>';
+    },
+
+    applyP2pTrackFilter() {
+      const bucket = ($('p2pTrackFilter') && $('p2pTrackFilter').value) || 'dispute';
+      const setShown = (id, on) => {
+        const el = $(id);
+        if (!el) return;
+        el.classList.toggle('hidden', !on);
+      };
+      setShown('p2pDisputesBlock', bucket === 'dispute' || bucket === 'all');
+      setShown('p2pPendingBlock', bucket === 'pending' || bucket === 'all');
+      setShown('p2pTrackerWrap', bucket === 'completed' || bucket === 'all');
+      const tasks = [];
+      if (bucket === 'dispute' || bucket === 'all') tasks.push(this.loadP2pDisputes());
+      if (bucket === 'pending' || bucket === 'all') {
+        tasks.push(this.loadP2pBuyOrders(), this.loadP2pSellOrders());
+      }
+      if (bucket === 'completed' || bucket === 'all') tasks.push(this.loadP2pTracker());
+      return Promise.all(tasks);
+    },
+
+    async loadP2pTracker() {
+      const table = $('p2pTrackerTable');
+      if (!table) return;
+      const bucket = ($('p2pTrackFilter') && $('p2pTrackFilter').value) || 'all';
+      try {
+        const [buy, sell] = await Promise.all([
+          this.api('GET', '/api/admin/p2p-buy-orders?status=all'),
+          this.api('GET', '/api/admin/p2p-sell-orders?status=all'),
+        ]);
+        let rows = []
+          .concat((buy.orders || []).map((o) => Object.assign({}, o, { order_type: 'buy' })))
+          .concat((sell.orders || []).map((o) => Object.assign({}, o, { order_type: 'sell' })));
+        rows = rows.map((o) => Object.assign({}, o, { bucket: this.p2pOrderBucket(o) }));
+        if (bucket === 'completed') rows = rows.filter((o) => o.bucket === 'completed');
+        if (!rows.length) {
+          table.innerHTML = '<p class="hint">No P2P transactions in this status.</p>';
+          return;
+        }
+        table.innerHTML =
+          '<table class="data-table"><thead><tr>' +
+            '<th>Ref</th><th>Type</th><th>User</th><th>Amount</th><th>Order status</th><th>Track</th><th>Actions</th>' +
+          '</tr></thead><tbody>' +
+          rows.map((o) => {
+            const actions = o.bucket === 'dispute'
+              ? ('<button type="button" class="btn btn-sm btn-approve" data-action="resolve-p2p-dispute-release" data-order-type="' + this.esc(o.order_type) + '" data-id="' + o.id + '">Release</button> ' +
+                '<button type="button" class="btn btn-sm btn-reject" data-action="resolve-p2p-dispute-refund" data-order-type="' + this.esc(o.order_type) + '" data-id="' + o.id + '">Refund</button>')
+              : '—';
+            return '<tr>' +
+              '<td><code>' + this.esc(o.ref_code || '') + '</code></td>' +
+              '<td>' + this.esc(o.order_type === 'sell' ? 'Sell USDT' : 'Buy USDT') + '</td>' +
+              '<td>' + this.esc(o.user_name || o.user_email || ('User #' + o.user_id)) + '</td>' +
+              '<td>$' + Number(o.amount_usdt || 0).toFixed(2) + '</td>' +
+              '<td>' + this.esc(o.status || '—') + '</td>' +
+              '<td>' + this.p2pBucketBadge(o.bucket) + '</td>' +
+              '<td class="actions-cell">' + actions + '</td>' +
+            '</tr>';
+          }).join('') +
+          '</tbody></table>';
+      } catch (err) {
+        table.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+      }
+    },
+
     async loadP2pDisputes() {
       const table = $('p2pDisputesTable');
       if (!table) return;
@@ -2623,8 +2750,8 @@
               '<td>' + this.esc(d.dispute_reason || '—') + '</td>' +
               '<td>' + proof + '</td>' +
               '<td class="actions-cell">' +
-                '<button type="button" class="btn btn-sm btn-approve" data-action="resolve-p2p-dispute-release" data-order-type="' + d.order_type + '" data-id="' + d.id + '">Force Release</button> ' +
-                '<button type="button" class="btn btn-sm btn-reject" data-action="resolve-p2p-dispute-refund" data-order-type="' + d.order_type + '" data-id="' + d.id + '">Refund / Reject</button>' +
+                '<button type="button" class="btn btn-sm btn-approve" data-action="resolve-p2p-dispute-release" data-order-type="' + d.order_type + '" data-id="' + d.id + '">Release</button> ' +
+                '<button type="button" class="btn btn-sm btn-reject" data-action="resolve-p2p-dispute-refund" data-order-type="' + d.order_type + '" data-id="' + d.id + '">Refund</button>' +
               '</td>' +
             '</tr>';
           }).join('') +
@@ -2699,9 +2826,7 @@
           ? 'USDT Force Released to Buyer'
           : 'Dispute Rejected - Escrow Refunded to Seller'));
         await Promise.all([
-          this.loadP2pDisputes(),
-          this.loadP2pBuyOrders(),
-          this.loadP2pSellOrders(),
+          this.applyP2pTrackFilter(),
           this.loadUsers(),
           this.loadSettings(),
         ]);
@@ -2709,7 +2834,7 @@
         alert(err.message || 'Failed to resolve dispute');
         if (triggerBtn) {
           triggerBtn.disabled = false;
-          triggerBtn.textContent = prevLabel || (resolution === 'force_release' ? 'Force Release' : 'Refund / Reject');
+          triggerBtn.textContent = prevLabel || (resolution === 'force_release' ? 'Release' : 'Refund');
         }
       }
     },
@@ -3142,7 +3267,7 @@
               ? ('<strong>' + mmkAmount.toLocaleString() + ' MMK</strong>' +
                 '<br><small>Send via bank / KPay / WavePay</small>')
               : ('$' + Number(w.net_usdt || 0).toFixed(2) + ' USDT');
-            const completeLabel = isBank ? 'Mark MMK Sent' : 'Complete';
+            const completeLabel = isBank ? 'Approve' : 'Complete';
             return '<tr>' +
               '<td>' + w.id + '</td>' +
               '<td>' + this.esc(w.user_name || w.user_email || ('#' + w.user_id)) + '<br><small>#' + w.user_id + '</small></td>' +
@@ -3153,7 +3278,7 @@
               '<td>$' + Number(w.fee_usdt || 0).toFixed(2) + '</td>' +
               '<td>' + rateLabel + '</td>' +
               '<td>' + mmkLabel + '</td>' +
-              '<td>' + this.statusBadge(w.status) + '</td>' +
+              '<td>' + this.financeStatusBadge(w.status) + '</td>' +
               '<td class="actions-cell">' +
                 (actionable
                   ? '<button type="button" class="btn btn-sm btn-approve" data-action="complete-usdt-wd" data-id="' + w.id + '"' +
@@ -3280,7 +3405,7 @@
               '<td>' + amountCell + '</td>' +
               '<td>' + feeCell + '</td>' +
               '<td><strong>' + Math.round(Number(w.net_mmk || 0)).toLocaleString() + '</strong></td>' +
-              '<td>' + this.statusBadge(w.status) + '</td>' +
+              '<td>' + this.financeStatusBadge(w.status) + '</td>' +
               '<td class="actions-cell">' + actions + '</td>' +
             '</tr>';
           }).join('') +
@@ -3617,7 +3742,7 @@
                 '<td>' + Number(d.amount_mmk || 0).toLocaleString() + '</td>' +
                 '<td>$' + Number(d.amount_usd || 0).toFixed(2) + '</td>' +
                 '<td>' + this.esc(d.payment_method || 'KBZPay') + '</td>' +
-                '<td>' + this.statusBadge(d.status) + '</td>' +
+                '<td>' + this.financeStatusBadge(d.status) + '</td>' +
                 '<td class="actions-cell">' +
                   '<button type="button" class="btn btn-sm btn-secondary" data-action="view-deposit-receipt" data-id="' + d.id + '">View Receipt</button>' +
                   (pending

@@ -46,7 +46,7 @@ function formatStatus(status) {
   const key = normalizeSupportStatus(status);
   if (key === 'pending') return 'Open';
   if (key === 'in_progress') return 'In Progress';
-  if (key === 'completed') return 'Resolved';
+  if (key === 'completed') return 'Closed';
   if (key === 'failed') return 'Failed';
   return key;
 }
