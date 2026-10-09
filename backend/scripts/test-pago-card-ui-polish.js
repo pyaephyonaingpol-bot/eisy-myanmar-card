@@ -23,7 +23,7 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pagoCardCopyNumberBtn"'), 'copy number button present');
   assert.ok(doc.includes('id="pagoCardDetailBalance"'), 'balance chip present');
   assert.ok(doc.includes('pago-balance-chip') || doc.includes('pagoCardDetailBalance'), 'balance display wired');
-  assert.ok(doc.includes('styles.css?v=20261009otpResend'), 'CSS cache-bust present');
+  assert.ok(doc.includes('styles.css?v=20261009authTabs'), 'CSS cache-bust present');
   assert.ok(doc.includes('class="pago-plastic-mark"'), 'logo watermark sits on the card');
   assert.ok(doc.includes('/brand/logo-card-mark.png?v=20261009cardMark'), 'watermark uses the metallic logo');
   assert.ok(doc.includes('dashboard.js?v=20261009otpResend'), 'JS cache-bust present');

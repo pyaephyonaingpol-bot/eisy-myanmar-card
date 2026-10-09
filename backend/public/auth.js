@@ -703,24 +703,63 @@ const Auth = {
     const emailInput = document.getElementById('loginEmail');
     const pinInput = document.getElementById('loginPin');
     const otpSection = document.getElementById('loginOtpSection');
+    const pinResetSection = document.getElementById('authPinResetSection');
     const showOtpBtn = document.getElementById('showOtpLoginBtn');
+    const showPinResetBtn = document.getElementById('showPinResetBtn');
     const bioBtn = document.getElementById('bioLoginBtn');
+
+    const setLinkOpen = (btn, open, closedLabel) => {
+      if (!btn) return;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (closedLabel && !open) btn.textContent = closedLabel;
+    };
 
     if (emailInput && profile?.email && !emailInput.value.trim()) {
       emailInput.value = profile.email;
     }
 
-    if (otpSection && profile?.email) {
-      otpSection.classList.add('hidden');
-    }
+    if (otpSection) otpSection.classList.add('hidden');
+    if (pinResetSection) pinResetSection.classList.add('hidden');
+    setLinkOpen(showOtpBtn, false, 'Use email OTP instead');
+    setLinkOpen(showPinResetBtn, false, 'Forgot PIN');
 
     if (showOtpBtn && otpSection) {
       showOtpBtn.onclick = () => {
-        otpSection.classList.toggle('hidden');
-        showOtpBtn.textContent = otpSection.classList.contains('hidden')
-          ? 'Use email OTP instead'
-          : 'Back to PIN login';
+        const open = otpSection.classList.contains('hidden');
+        otpSection.classList.toggle('hidden', !open);
+        showOtpBtn.textContent = open ? 'Hide email OTP' : 'Use email OTP instead';
+        showOtpBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open && pinResetSection) {
+          pinResetSection.classList.add('hidden');
+          setLinkOpen(showPinResetBtn, false, 'Forgot PIN');
+        }
       };
+    }
+
+    if (showPinResetBtn && pinResetSection && !showPinResetBtn.dataset.quietBound) {
+      showPinResetBtn.dataset.quietBound = '1';
+      const previous = showPinResetBtn.onclick;
+      showPinResetBtn.onclick = (event) => {
+        if (typeof previous === 'function') previous.call(showPinResetBtn, event);
+        const open = !pinResetSection.classList.contains('hidden');
+        showPinResetBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open && otpSection) {
+          otpSection.classList.add('hidden');
+          setLinkOpen(showOtpBtn, false, 'Use email OTP instead');
+        }
+      };
+    }
+
+    const authTabs = document.getElementById('authTabs');
+    if (authTabs && !authTabs.dataset.ariaBound) {
+      authTabs.dataset.ariaBound = '1';
+      authTabs.addEventListener('click', (event) => {
+        const tab = event.target.closest('.tab');
+        if (!tab || !authTabs.contains(tab)) return;
+        authTabs.querySelectorAll('.tab').forEach((el) => {
+          el.setAttribute('aria-selected', el === tab ? 'true' : 'false');
+        });
+      });
     }
 
     if (bioBtn) {

@@ -58,7 +58,7 @@
       #pageProfile .summary-grid { grid-template-columns: 1fr; }
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261009otpResend" />
+  <link rel="stylesheet" href="/styles.css?v=20261009authTabs" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20261009supportScroll" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -1020,12 +1020,12 @@
         <span id="devOtpHint" class="dev-otp-hint">Auto-filled for testing</span>
       </div>
 
-      <div id="authTabs" class="tabs">
-        <button class="tab active" data-tab="login">Login</button>
-        <button class="tab" data-tab="register">Register</button>
+      <div id="authTabs" class="tabs auth-tabs" role="tablist" aria-label="Account">
+        <button type="button" class="tab active" role="tab" id="authTabLogin" data-tab="login" aria-selected="true" aria-controls="panelLogin">Login</button>
+        <button type="button" class="tab" role="tab" id="authTabRegister" data-tab="register" aria-selected="false" aria-controls="panelRegister">Register</button>
       </div>
 
-      <div id="panelLogin">
+      <div id="panelLogin" role="tabpanel" aria-labelledby="authTabLogin">
         <button type="button" id="googleLoginBtn" class="btn btn-google" data-google-auth>
           <span class="btn-google-icon" aria-hidden="true">
             <svg viewBox="0 0 48 48" width="18" height="18" focusable="false">
@@ -1043,10 +1043,14 @@
           <div class="field"><label for="loginPin">6-digit Security PIN</label><input id="loginPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="current-password" required /></div>
           <button type="submit" id="loginPinBtn" class="btn btn-primary">Login with PIN</button>
         </form>
-        <button type="button" id="bioLoginBtn" class="btn btn-secondary" style="margin-top:0.75rem">Login with Biometrics</button>
-        <button type="button" id="showOtpLoginBtn" class="btn btn-secondary btn-sm" style="margin-top:0.75rem">Use email OTP instead</button>
-        <button type="button" id="showPinResetBtn" class="btn btn-secondary btn-sm" style="margin-top:0.5rem">Forgot PIN — email reset</button>
-        <div id="loginOtpSection" class="hidden" style="margin-top:1rem">
+        <button type="button" id="bioLoginBtn" class="auth-text-link auth-bio-link hidden">Login with Biometrics</button>
+        <div class="auth-quiet-links">
+          <button type="button" id="showOtpLoginBtn" class="auth-text-link" aria-expanded="false" aria-controls="loginOtpSection">Use email OTP instead</button>
+          <span class="auth-quiet-sep" aria-hidden="true">·</span>
+          <button type="button" id="showPinResetBtn" class="auth-text-link" aria-expanded="false" aria-controls="authPinResetSection">Forgot PIN</button>
+        </div>
+        <div id="loginOtpSection" class="auth-extra hidden">
+          <p class="hint">First time on this device? Use a one-time email code, then PIN or biometrics next time.</p>
           <form id="loginSendOtpForm">
             <button type="submit" id="loginSendOtp" class="btn btn-secondary" data-otp-idle="Send Login OTP" data-otp-status="loginOtpResendStatus">Send Login OTP</button>
             <p id="loginOtpResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
@@ -1056,7 +1060,7 @@
             <button type="submit" id="loginVerify" class="btn btn-primary">Verify &amp; Login with OTP</button>
           </form>
         </div>
-        <div id="authPinResetSection" class="hidden" style="margin-top:1rem">
+        <div id="authPinResetSection" class="auth-extra hidden">
           <p class="hint">Reset your 6-digit security PIN with a one-time code emailed to you.</p>
           <form id="authPinResetSendForm">
             <div class="field"><label for="authPinResetEmail">Email</label><input id="authPinResetEmail" type="email" autocomplete="email" required /></div>
@@ -1071,10 +1075,9 @@
             <button type="submit" class="btn btn-primary" style="width:100%">Reset PIN via email</button>
           </form>
         </div>
-        <p class="hint">Returning users: enter your PIN. First time on this device? Use email OTP once, then PIN or biometrics next time.</p>
       </div>
 
-      <div id="panelRegister" class="hidden">
+      <div id="panelRegister" class="hidden" role="tabpanel" aria-labelledby="authTabRegister">
         <button type="button" id="googleRegisterBtn" class="btn btn-google" data-google-auth>
           <span class="btn-google-icon" aria-hidden="true">
             <svg viewBox="0 0 48 48" width="18" height="18" focusable="false">
@@ -1936,7 +1939,7 @@
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
   <script defer src="/i18n.js?v=20261009depositFee"></script>
-  <script defer src="/auth.js?v=20261009idleLogout"></script>
+  <script defer src="/auth.js?v=20261009authTabs"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
   <script defer src="/src/services/usdtWalletApi.js?v=20260909walletPerf"></script>
