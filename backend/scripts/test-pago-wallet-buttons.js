@@ -25,9 +25,9 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pagoWalletModal"'), 'wallet guide modal present');
   assert.ok(doc.includes('id="pagoWalletCopyAllBtn"'), 'copy-all action in modal');
   assert.ok(doc.includes('id="pagoWalletAtmHint"'), 'ATM Google Pay hint present');
-  assert.ok(doc.includes('styles.css?v=20261009walletCopy'), 'CSS cache-bust bumped');
-  assert.ok(doc.includes('dashboard.js?v=20261009p2pSellAd'), 'JS cache-bust bumped');
-  assert.ok(doc.includes('i18n.js?v=20261009walletCopy'), 'i18n cache-bust bumped');
+  assert.ok(doc.includes('styles.css?v=20261009depositFee'), 'CSS cache-bust bumped');
+  assert.ok(doc.includes('dashboard.js?v=20261009depositFee'), 'JS cache-bust bumped');
+  assert.ok(doc.includes('i18n.js?v=20261009depositFee'), 'i18n cache-bust bumped');
   assert.ok(doc.includes('id="pagoWalletCopyNumberBtn"'), 'card number copy button');
   assert.ok(doc.includes('id="pagoWalletCopyExpiryBtn"'), 'expiry copy button');
   assert.ok(doc.includes('id="pagoWalletCopyCvvBtn"'), 'CVV copy button');

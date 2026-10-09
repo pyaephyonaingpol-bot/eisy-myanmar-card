@@ -1974,6 +1974,8 @@ const Dashboard = {
       return;
     }
     $('usdtTopUpModal')?.classList.remove('hidden');
+    this.loadDepositFees().catch(() => {});
+    this.updateUsdtDepositFeePreview();
     this.loadTronHdDepositAddress().catch(() => {});
   },
 
@@ -4976,9 +4978,17 @@ const Dashboard = {
 
   calculateUsdtDepositFeePreviewClient(amountUsdt) {
     const fees = this.depositFees || this.pricingSettings || {};
-    if (window.EisyHooks?.depositFees?.calculateUsdtDepositFeePreview) {
-      return window.EisyHooks.depositFees.calculateUsdtDepositFeePreview(amountUsdt, fees);
-    }
+    const preview = window.EisyHooks?.depositFees?.calculateUsdtDepositFeePreview
+      ? window.EisyHooks.depositFees.calculateUsdtDepositFeePreview(amountUsdt, fees)
+      : this.fallbackUsdtDepositFeePreview(amountUsdt);
+    if (!preview) return null;
+    const min = Number(fees.minimum_usdt_deposit);
+    preview.minimum_usdt_deposit = Number.isFinite(min) ? min : null;
+    preview.below_minimum = Number.isFinite(min) && min > 0 && preview.amount_usdt + 1e-9 < min;
+    return preview;
+  },
+
+  fallbackUsdtDepositFeePreview(amountUsdt) {
     const amount = Math.round((Number(amountUsdt) || 0) * 100) / 100;
     if (!(amount > 0)) return null;
     return {
@@ -4988,6 +4998,20 @@ const Dashboard = {
       fee_label: 'No service fee',
       invalid_net: false,
     };
+  },
+
+  formatDepositUsdt(amount) {
+    const value = Number(amount);
+    if (!Number.isFinite(value)) return '—';
+    return `$${value.toFixed(2)} USDT`;
+  },
+
+  depositPreviewText(key, fallback, params) {
+    if (typeof t === 'function') {
+      const translated = t(key, params);
+      if (translated && translated !== key) return translated;
+    }
+    return fallback;
   },
 
   calculateMmkDepositFeePreviewClient(amountMmk) {
@@ -5036,19 +5060,72 @@ const Dashboard = {
     const preview = this.calculateUsdtDepositFeePreviewClient(amount);
     if (window.EisyComponents?.depositFeePreview?.renderUsdtDepositFeePreview) {
       window.EisyComponents.depositFeePreview.renderUsdtDepositFeePreview(preview);
+    } else {
+      if ($('usdtDepositPreviewGross')) {
+        $('usdtDepositPreviewGross').textContent = preview ? this.formatDepositUsdt(preview.amount_usdt) : '—';
+      }
+      if ($('usdtDepositPreviewFee')) {
+        $('usdtDepositPreviewFee').textContent = preview ? this.formatDepositUsdt(preview.fee_usdt) : '—';
+      }
+      if ($('usdtDepositPreviewFeeLabel')) {
+        $('usdtDepositPreviewFeeLabel').textContent = preview?.fee_label || '';
+      }
+      if ($('usdtDepositPreviewNet')) {
+        $('usdtDepositPreviewNet').textContent = preview && !preview.invalid_net
+          ? this.formatDepositUsdt(preview.net_usdt)
+          : '—';
+      }
+    }
+    this.paintUsdtDepositFeeSummary(preview);
+  },
+
+  paintUsdtDepositFeeSummary(preview) {
+    const min = Number(preview?.minimum_usdt_deposit ?? this.depositFees?.minimum_usdt_deposit);
+    const minHint = $('usdtDepositMinHint');
+    if (minHint) {
+      minHint.textContent = Number.isFinite(min) && min > 0
+        ? this.depositPreviewText(
+          'deposit_preview_min_hint',
+          `Minimum deposit ${min.toFixed(2)} USDT. Smaller transfers are not credited.`,
+          { min: min.toFixed(2) }
+        )
+        : '';
+    }
+    const summary = $('usdtDepositPreviewSummary');
+    if (!summary) return;
+    summary.classList.remove('is-warn');
+    if (!preview) {
+      summary.textContent = this.depositPreviewText(
+        'deposit_preview_empty',
+        'Enter the amount you plan to send to see the fee and wallet credit.'
+      );
       return;
     }
-    if ($('usdtDepositPreviewGross')) {
-      $('usdtDepositPreviewGross').textContent = preview ? `$${preview.amount_usdt.toFixed(2)}` : '—';
+    const amount = this.formatDepositUsdt(preview.amount_usdt);
+    const fee = this.formatDepositUsdt(preview.fee_usdt);
+    const net = this.formatDepositUsdt(preview.net_usdt);
+    if (preview.below_minimum) {
+      summary.classList.add('is-warn');
+      summary.textContent = this.depositPreviewText(
+        'deposit_preview_below_min',
+        `Minimum deposit is ${min.toFixed(2)} USDT. Smaller transfers are not credited.`,
+        { min: Number.isFinite(min) ? min.toFixed(2) : '' }
+      );
+      return;
     }
-    if ($('usdtDepositPreviewFee')) {
-      $('usdtDepositPreviewFee').textContent = preview ? preview.fee_label : '—';
+    if (preview.invalid_net) {
+      summary.classList.add('is-warn');
+      summary.textContent = this.depositPreviewText(
+        'deposit_preview_invalid',
+        'The fee uses the whole deposit, so nothing would be credited. Send a larger amount.'
+      );
+      return;
     }
-    if ($('usdtDepositPreviewNet')) {
-      $('usdtDepositPreviewNet').textContent = preview
-        ? (preview.invalid_net ? 'Invalid' : `$${preview.net_usdt.toFixed(2)}`)
-        : '—';
-    }
+    summary.textContent = this.depositPreviewText(
+      'deposit_preview_summary',
+      `You send ${amount}. Fee ${fee} is deducted. ${net} is credited to your wallet.`,
+      { amount, fee, net }
+    );
   },
 
   updateMmkDepositFeePreview() {
@@ -5078,6 +5155,7 @@ const Dashboard = {
     });
 
     $('usdtAmount')?.addEventListener('input', () => this.updateUsdtDepositFeePreview());
+    document.addEventListener('eisy:langchange', () => this.updateUsdtDepositFeePreview());
 
     this.loadDepositFees().catch(() => {});
     this.updateUsdtDepositFeePreview();
