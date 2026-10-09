@@ -60,7 +60,7 @@
       #pageProfile .summary-grid { grid-template-columns: 1fr; }
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261009walletCopy" />
+  <link rel="stylesheet" href="/styles.css?v=20261009depositFee" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20261009supportScroll" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -275,7 +275,33 @@
         <h3 id="usdtTopUpModalTitle" data-i18n="top_up_wallet">Top Up Wallet</h3>
         <button type="button" id="usdtTopUpModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="deposit_usdt_hint">Send USDT on TRON (TRC20) to your personal HD deposit address. Your wallet is credited after the transfer confirms.</p>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="deposit_usdt_hint">Send USDT on TRON (TRC20) to your personal HD deposit address. The fee is deducted from the amount you send, and the rest is credited after the transfer confirms.</p>
+
+      <form id="usdtDepositForm" class="form usdt-deposit-preview-form">
+        <div class="field">
+          <label for="usdtAmount" data-i18n="deposit_usdt_amount_label">Amount you will send (USDT)</label>
+          <input id="usdtAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="100.00" />
+          <small class="hint" id="usdtDepositMinHint"></small>
+        </div>
+        <div id="usdtDepositFeePreview" class="reload-preview-box" aria-live="polite">
+          <h4 data-i18n="deposit_fee_preview">Before you transfer</h4>
+          <div class="reload-preview-row">
+            <span data-i18n="deposit_preview_gross">Deposit amount</span>
+            <strong id="usdtDepositPreviewGross">—</strong>
+          </div>
+          <div class="reload-preview-row">
+            <span data-i18n="deposit_preview_fee">Fee deducted</span>
+            <strong id="usdtDepositPreviewFee">—</strong>
+          </div>
+          <p id="usdtDepositPreviewFeeLabel" class="hint usdt-deposit-fee-label"></p>
+          <div class="reload-preview-row reload-preview-highlight">
+            <span data-i18n="deposit_preview_net">Credited to wallet</span>
+            <strong id="usdtDepositPreviewNet">—</strong>
+          </div>
+          <p id="usdtDepositPreviewSummary" class="reload-preview-receive" data-i18n="deposit_preview_empty">Enter the amount you plan to send to see the fee and wallet credit.</p>
+        </div>
+        <button type="submit" id="btnCreateTronDeposit" class="hidden" hidden>Show TRON address</button>
+      </form>
 
       <div id="depositUsdtPanel" class="deposit-tab-panel">
         <div id="usdtAddressBox" class="usdt-address-box" aria-live="polite" data-tron-hd-paybox="1">
@@ -1906,7 +1932,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261009walletCopy"></script>
+  <script defer src="/i18n.js?v=20261009depositFee"></script>
   <script defer src="/auth.js?v=20261009idleLogout"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1920,7 +1946,7 @@
   <script defer src="/src/hooks/depositPolling.js?v=20260909scrollSmooth"></script>
   <script defer src="/src/hooks/index.js?v=20260817m2"></script>
   <script defer src="/src/components/toast.js?v=20260817m2"></script>
-  <script defer src="/src/components/depositFeePreview.js?v=20260817m2"></script>
+  <script defer src="/src/components/depositFeePreview.js?v=20261009depositFee"></script>
   <script defer src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
   <script defer src="/src/components/instantAppView.js?v=20261006removeCards"></script>
@@ -1929,7 +1955,7 @@
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261009p2pSellAd"></script>
+  <script defer src="/dashboard.js?v=20261009depositFee"></script>
   <script defer src="/supportChat.js?v=20261009supportClosed"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

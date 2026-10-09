@@ -11,16 +11,25 @@
     return typeof document !== 'undefined' ? document.getElementById(id) : null;
   }
 
+  function formatUsdtAmount(value) {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return '—';
+    return `$${amount.toFixed(2)} USDT`;
+  }
+
   function renderUsdtDepositFeePreview(preview) {
     if ($('usdtDepositPreviewGross')) {
-      $('usdtDepositPreviewGross').textContent = preview ? `$${preview.amount_usdt.toFixed(2)}` : '—';
+      $('usdtDepositPreviewGross').textContent = preview ? formatUsdtAmount(preview.amount_usdt) : '—';
     }
     if ($('usdtDepositPreviewFee')) {
-      $('usdtDepositPreviewFee').textContent = preview ? preview.fee_label : '—';
+      $('usdtDepositPreviewFee').textContent = preview ? formatUsdtAmount(preview.fee_usdt) : '—';
+    }
+    if ($('usdtDepositPreviewFeeLabel')) {
+      $('usdtDepositPreviewFeeLabel').textContent = preview?.fee_label || '';
     }
     if ($('usdtDepositPreviewNet')) {
-      $('usdtDepositPreviewNet').textContent = preview
-        ? (preview.invalid_net ? 'Invalid' : `$${preview.net_usdt.toFixed(2)}`)
+      $('usdtDepositPreviewNet').textContent = preview && !preview.invalid_net
+        ? formatUsdtAmount(preview.net_usdt)
         : '—';
     }
   }

@@ -37,8 +37,8 @@ function testDashboardSource() {
   assert.ok(html.includes('id="ratesCardFee"'), 'issuance fee card');
   assert.ok(html.includes('id="ratesWithdrawFeeTrc20"'), 'trc20 fee card');
   assert.ok(html.includes('id="ratesReloadFee">—'), 'reload placeholder is empty until fetch');
-  assert.ok(html.includes('dashboard.js?v=20261009p2pSellAd'), 'user portal cache bust');
-  assert.ok(instant.includes('dashboard.js?v=20261009p2pSellAd'), 'instant portal cache bust');
+  assert.ok(html.includes('dashboard.js?v=20261009depositFee'), 'user portal cache bust');
+  assert.ok(instant.includes('dashboard.js?v=20261009depositFee'), 'instant portal cache bust');
   assert.ok(!html.includes('BEP20'), 'user portal has no BEP20 option');
   assert.ok(!instant.includes('BEP20'), 'instant portal has no BEP20 option');
 
