@@ -1162,9 +1162,11 @@ const Dashboard = {
         this.loadWithdrawalFees({ force: true }).catch(() => {});
         this.loadCardPricing({ force: true }).catch(() => {});
       }
+      if (page !== 'p2p') this.closeKycGateModal();
       if (page === 'p2p') {
         if (opts.p2pTab) this.switchP2pTab(opts.p2pTab);
         this.loadP2pPage({ force });
+        this.promptP2pKycGate();
       }
       if (page === 'settings') {
         this.loadSupportThreads();
@@ -3029,7 +3031,7 @@ const Dashboard = {
       return;
     }
     if (!this.isKycVerified()) {
-      this.showKycGateModal();
+      this.promptP2pKycGate();
       return;
     }
     if (side === 'buy') {
@@ -3091,15 +3093,41 @@ const Dashboard = {
     const intro = $('kycModalIntro');
     if (intro) {
       if (status === 'VERIFIED') {
-        intro.textContent = 'Your identity is verified. You can use P2P trading and verified banking features.';
+        intro.textContent = 'Your identity is verified. You can post ads and place P2P orders.';
       } else if (status === 'PENDING_REVIEW') {
-        intro.textContent = 'Your submission is under review. You will be notified once approved.';
+        intro.textContent = 'Your ID is under review. P2P trading unlocks after an admin approves it. Virtual cards do not need KYC.';
       } else if (status === 'REJECTED') {
         const reason = this._kycStatus?.latest_submission?.rejection_reason;
-        intro.textContent = reason ? `Previous submission rejected: ${reason}. Please resubmit.` : 'Please resubmit your documents.';
+        intro.textContent = reason
+          ? `Previous submission rejected: ${reason}. Resubmit your NRC or Passport to trade P2P.`
+          : 'Please resubmit your NRC or Passport to trade P2P.';
       } else {
-        intro.textContent = 'Submit your identity documents to unlock P2P trading and verified banking features.';
+        intro.textContent = 'Submit your NRC or Passport to trade P2P. Virtual Visa cards do not need KYC.';
       }
+    }
+  },
+
+  promptP2pKycGate() {
+    if (!Auth.isLoggedIn()) return;
+    const apply = () => {
+      if (typeof AppNav !== 'undefined' && AppNav.currentPage !== 'p2p') return;
+      if (this.isKycVerified()) {
+        this.closeKycGateModal();
+        return;
+      }
+      const status = (this._kycStatus?.kyc_status || Auth.user?.kyc_status || 'UNVERIFIED').toUpperCase();
+      const message = status === 'PENDING_REVIEW'
+        ? 'Your ID is under review. P2P trading unlocks after an admin approves it.'
+        : 'Complete identity verification before posting ads or placing P2P orders.';
+      this.showKycGateModal(message);
+    };
+    if (!this._kycStatus && !Auth.user?.kyc_status) {
+      this.loadKycStatus({ force: true }).then(apply).catch(() => {});
+      return;
+    }
+    apply();
+    if (!this.isKycVerified()) {
+      this.loadKycStatus({ force: true }).then(apply).catch(() => {});
     }
   },
 
@@ -3111,13 +3139,20 @@ const Dashboard = {
     if ($('kycGateMessage')) {
       $('kycGateMessage').textContent = message || 'KYC Verification Required to Trade P2P';
     }
+    const status = (this._kycStatus?.kyc_status || Auth.user?.kyc_status || '').toUpperCase();
+    const completeBtn = $('kycGateCompleteBtn');
+    if (completeBtn) {
+      completeBtn.textContent = status === 'PENDING_REVIEW' ? 'View KYC Status' : 'Complete KYC Now';
+    }
     $('kycGateModal')?.classList.remove('hidden');
     document.body.classList.add('sidebar-scroll-lock');
   },
 
   closeKycGateModal() {
-    $('kycGateModal')?.classList.add('hidden');
-    document.body.classList.remove('sidebar-scroll-lock');
+    const modal = $('kycGateModal');
+    const wasOpen = Boolean(modal && !modal.classList.contains('hidden'));
+    modal?.classList.add('hidden');
+    if (wasOpen) document.body.classList.remove('sidebar-scroll-lock');
   },
 
   openKycModal() {
@@ -4743,7 +4778,7 @@ const Dashboard = {
       return;
     }
     if (!this.isKycVerified()) {
-      this.showKycGateModal();
+      this.promptP2pKycGate();
       return;
     }
     $('p2pPostAdError').textContent = '';
