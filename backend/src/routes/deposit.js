@@ -278,7 +278,7 @@ router.get('/fees', requireAuth, async (_req, res) => {
       mmk_to_usd_rate: settings.mmk_to_usd_rate,
       fee_rule: settings.payment_service_fee_mode === 'off'
         ? 'fee = 0'
-        : 'fee = max(fixed + amount * percent/100, minimum)',
+        : 'fee = fixed + amount * percent/100',
     });
   } catch (err) {
     console.error('[deposit/fees GET]', err);

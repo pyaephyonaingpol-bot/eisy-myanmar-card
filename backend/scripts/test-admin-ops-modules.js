@@ -38,7 +38,7 @@ assert.ok(adminHtml.includes('id="supportTicketModal"'), 'support ticket modal')
 assert.ok(adminHtml.includes('data-support-status="pending">Open'), 'open status button');
 assert.ok(adminHtml.includes('data-support-status="in_progress">In Progress'), 'in progress status button');
 assert.ok(adminHtml.includes('data-support-status="completed">Closed'), 'closed status button');
-assert.ok(adminHtml.includes('admin.js?v=20261009userIdLayout'), 'admin cache');
+assert.ok(adminHtml.includes('admin.js?v=20261009depositNoMin'), 'admin cache');
 
 const depositsBlock = adminHtml.slice(
   adminHtml.indexOf('id="tabDeposits"'),

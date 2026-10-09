@@ -14,7 +14,12 @@ const settingsService = fs.readFileSync(path.join(ROOT, 'backend/src/services/se
 
 assert.ok(adminHtml.includes('USDT Deposit Fee / Rate'), 'deposit fee block label');
 assert.ok(adminHtml.includes('id="settingDepositFeePercent"'), 'deposit fee percent field');
-assert.ok(adminHtml.includes('id="settingDepositFeeMinUsdt"'), 'deposit fee min field');
+assert.ok(!adminHtml.includes('id="settingDepositFeeMinUsdt"'), 'deposit minimum fee field removed');
+assert.ok(adminHtml.includes('Fee = fixed fee + (deposit × percent / 100).'), 'deposit formula is fixed plus percent');
+assert.ok(adminHtml.includes('id="settingMinUsdtDeposit"'), 'minimum deposit amount remains');
+assert.ok(adminHtml.includes('id="settingWithdrawFeeMinUsdt"'), 'withdrawal minimum fee remains');
+assert.ok(!adminJs.includes('settingDepositFeeMinUsdt'), 'admin no longer reads the deposit minimum fee');
+assert.ok(!adminJs.includes('deposit_service_fee_minimum_usdt'), 'admin save omits the deposit minimum fee');
 assert.ok(!adminHtml.includes('id="settingPaymentFeeMode"'), 'legacy unified settings fee mode removed');
 assert.ok(adminHtml.includes('USDT Withdrawal Fee'), 'withdrawal fee block label');
 assert.ok(adminHtml.includes('id="settingWithdrawFeePercent"'), 'withdrawal fee percent field');
