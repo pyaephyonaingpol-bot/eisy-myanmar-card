@@ -36,8 +36,8 @@
       pending: 'Open',
       open: 'Open',
       in_progress: 'In Progress',
-      completed: 'Resolved',
-      closed: 'Resolved',
+      completed: 'Closed',
+      closed: 'Closed',
       failed: 'Failed',
     };
     return map[String(status || '').toLowerCase()] || status || 'Open';

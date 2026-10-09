@@ -47,13 +47,13 @@ async function main() {
   includes(styles, '.support-chat-panel', 'widget panel styles');
 
   includes(adminHtml, 'value="pending">Open', 'Open status label');
-  includes(adminHtml, 'value="completed">Resolved', 'Resolved status label');
+  includes(adminHtml, 'value="completed">Closed', 'Closed status label');
   includes(adminHtml, 'value="mmk_payouts">MMK Payouts', 'admin MMK category');
   includes(adminHtml, 'value="card_issuing">Card Issuing Issues', 'admin card category');
   includes(adminJs, 'startSupportMessagePolling', 'admin live message polling');
   includes(adminJs, 'onSupportMessageRealtime', 'admin message realtime handler');
   includes(adminJs, "pending: 'Open'", 'admin Open status map');
-  includes(adminJs, "completed: 'Resolved'", 'admin Resolved status map');
+  includes(adminJs, "completed: 'Closed'", 'admin Closed status map');
 
   includes(supportRoutes, 'notifySupportEvent', 'telegram notify on customer message');
   includes(supportRoutes, 'syncSupportMessage', 'supabase message sync');
@@ -93,7 +93,7 @@ async function main() {
   assert.strictEqual(normalizeSupportStatus('open'), 'pending');
   assert.strictEqual(normalizeSupportStatus('resolved'), 'completed');
   assert.strictEqual(SUPPORT_STATUS_LABELS.pending, 'Open');
-  assert.strictEqual(SUPPORT_STATUS_LABELS.completed, 'Resolved');
+  assert.strictEqual(SUPPORT_STATUS_LABELS.completed, 'Closed');
   assert.deepStrictEqual([...SUPPORT_MAIN_CATEGORIES], ['mmk_payouts', 'card_issuing']);
   console.log('ok');
 

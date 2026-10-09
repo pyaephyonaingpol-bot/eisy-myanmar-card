@@ -410,7 +410,7 @@ async function adminRefundP2pSellOrder(orderId, { adminNote, reviewedBy = 'admin
 }
 
 async function listP2pSellOrdersForAdmin({ status } = {}) {
-  const rows = await P2PSellOrder.listByStatus(status || 'pending_merchant_mmk');
+  const rows = await P2PSellOrder.listByStatus(status === undefined ? 'pending_merchant_mmk' : status);
   const settings = await getCardPricingSettings();
   const enriched = await Promise.all(rows.map(async (row) => {
     const maker = row.maker_user_id ? await User.findById(row.maker_user_id) : null;
