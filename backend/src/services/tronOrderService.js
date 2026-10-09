@@ -360,13 +360,14 @@ async function fetchIncomingUsdtTransfers({
   address,
   minTimestampMs = 0,
   limit = 200,
+  orderBy = 'block_timestamp,asc',
 } = {}) {
   const params = new URLSearchParams({
     only_to: 'true',
     only_confirmed: 'true',
     contract_address: USDT_TRC20_CONTRACT,
     limit: String(Math.min(Math.max(Number(limit) || 200, 1), 200)),
-    order_by: 'block_timestamp,asc',
+    order_by: String(orderBy || 'block_timestamp,asc'),
   });
   if (minTimestampMs > 0) {
     params.set('min_timestamp', String(Math.floor(minTimestampMs)));
@@ -589,13 +590,37 @@ async function runTronOrderPollSafely() {
   if (pollInFlight) return { skipped: true, reason: 'poll_in_flight' };
   pollInFlight = true;
   try {
-    return await verifyPendingTronOrders();
-  } catch (err) {
-    console.error('[tron/orders/poll]', err.message, err.code || '');
+    let orders;
+    try {
+      orders = await verifyPendingTronOrders();
+    } catch (err) {
+      console.error('[tron/orders/poll]', err.message, err.code || '');
+      orders = {
+        ok: false,
+        error: err.message,
+        code: err.code || 'TRON_ORDER_POLL_FAILED',
+      };
+    }
+
+    let hdDeposits;
+    try {
+      const { creditInboundHdDeposits } = require('./hdDepositCreditService');
+      hdDeposits = await creditInboundHdDeposits();
+    } catch (err) {
+      console.error('[tron/hd] inbound scan failed:', err.message, err.code || '');
+      hdDeposits = {
+        ok: false,
+        error: err.message,
+        code: err.code || 'HD_DEPOSIT_SCAN_FAILED',
+        credited: 0,
+      };
+    }
+
     return {
-      ok: false,
-      error: err.message,
-      code: err.code || 'TRON_ORDER_POLL_FAILED',
+      ...orders,
+      ok: orders.ok !== false && hdDeposits.ok !== false,
+      hd_deposits: hdDeposits,
+      credited: Number(orders.credited || 0) + Number(hdDeposits.credited || 0),
     };
   } finally {
     pollInFlight = false;

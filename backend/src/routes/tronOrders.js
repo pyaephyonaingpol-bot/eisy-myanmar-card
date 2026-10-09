@@ -3,7 +3,6 @@ const crypto = require('crypto');
 const { requireAuth } = require('../middleware/auth');
 const {
   findTronOrderByOrderId,
-  verifyPendingTronOrders,
 } = require('../services/tronOrderService');
 
 const router = express.Router();
@@ -44,7 +43,8 @@ router.post('/check/pending', async (req, res) => {
   }
 
   try {
-    const result = await verifyPendingTronOrders();
+    const { runTronOrderPollSafely } = require('../services/tronOrderService');
+    const result = await runTronOrderPollSafely();
     return res.json({ success: true, provider: 'tron-hd', ...result });
   } catch (err) {
     console.error('[tron/orders/check]', err.message);

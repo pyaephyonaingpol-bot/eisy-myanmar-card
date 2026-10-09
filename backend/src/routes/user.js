@@ -284,6 +284,8 @@ router.get('/wallet/deposit-addresses', requireAuth, async (req, res) => {
         if (assigned?.address) {
           trc20Address = assigned.address;
           trc20Source = assigned.source || 'hd';
+          const { scanUserHdDepositsBestEffort } = require('../services/hdDepositCreditService');
+          await scanUserHdDepositsBestEffort(req.user.id);
         }
       } catch (err) {
         console.warn('[user/wallet/deposit-addresses] HD resolve skipped:', err.message);
@@ -321,6 +323,12 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
 
     // Mirror ensure is non-blocking — balances come from Turso (+ cached overlay).
     ensureSupabaseUserWalletInBackground(req.user.id);
+
+    const { scanUserHdDepositsBestEffort } = require('../services/hdDepositCreditService');
+    const hdScan = await scanUserHdDepositsBestEffort(req.user.id);
+    if (hdScan && Number(hdScan.credited) > 0) {
+      user = await User.findById(req.user.id);
+    }
 
     const localPayload = {
       ...walletPayload(user),

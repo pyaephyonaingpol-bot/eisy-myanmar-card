@@ -272,8 +272,6 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     }
   }
 
-  // Withdrawals are queued for processing within 48 hours.
-  // Auto on-chain master-wallet send remains opt-in via AUTO_ONCHAIN_WITHDRAWALS.
   await UsdtWithdrawal.updateStatus(withdrawal.id, {
     status: 'pending',
     adminNote: `Payout queued — process within ${WITHDRAW_PROCESSING_HOURS} hours (${normalizedNetwork})`,
@@ -292,6 +290,31 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
         amountUsdt: breakdown.net_usdt,
       });
     } catch (err) {
+      if (err.code === 'MASTER_WALLET_TRANSFERS_PAUSED' || err.code === 'WITHDRAWALS_PAUSED') {
+        const queued = await UsdtWithdrawal.updateStatus(withdrawal.id, {
+          status: 'pending',
+          adminNote: 'Payout queued — master wallet transfers are paused',
+        }).catch(() => null);
+        const { notifyAdminWithdrawalForUser } = require('./telegram');
+        notifyAdminWithdrawalForUser(userId, {
+          kind: 'USDT',
+          network: normalizedNetwork,
+          amountUsdt: breakdown.amount_usdt,
+          feeUsdt: breakdown.fee_usdt,
+          netUsdt: breakdown.net_usdt,
+          destination: walletAddress,
+          refCode,
+          status: queued?.status || 'pending',
+          withdrawal: queued,
+        });
+        return {
+          withdrawal: queued || await UsdtWithdrawal.findById(withdrawal.id),
+          breakdown,
+          payout: null,
+          message: `Withdrawal ${refCode} submitted. On-chain sends are paused, so ${formatUsdt(breakdown.net_usdt)} USDT stays queued for the master wallet.`,
+        };
+      }
+
       await UsdtWithdrawal.updateStatus(withdrawal.id, {
         status: 'rejected',
         adminNote: `On-chain transfer failed: ${err.message}`,
@@ -354,7 +377,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     };
   }
 
-  // TRC20 / BEP20: payout queue — processed within 48 hours (no hot-wallet send unless AUTO_ONCHAIN).
+  // BEP20, bank, or TRC20 with AUTO_ONCHAIN_WITHDRAWALS=false stays in the payout queue.
   const refreshed = await UsdtWithdrawal.findById(withdrawal.id);
   const { notifyAdminWithdrawalForUser } = require('./telegram');
   notifyAdminWithdrawalForUser(userId, {

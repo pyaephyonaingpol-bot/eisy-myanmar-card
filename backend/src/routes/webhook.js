@@ -185,36 +185,58 @@ router.get('/pagocards', (_req, res) => {
   });
 });
 
+function depositWebhookUnauthorized(req) {
+  const secret = process.env.DEPOSIT_WEBHOOK_SECRET || '';
+  if (!secret) return false;
+  const header = req.get('x-deposit-webhook-secret') || '';
+  return header !== secret;
+}
+
+function chainVerifier() {
+  const { verifyUsdtTransaction } = require('../services/usdtBlockchainService');
+  return (params) => verifyUsdtTransaction({
+    network: params.network,
+    txHash: params.txHash,
+    expectedAddress: params.expectedAddress,
+    expectedAmountUsdt: params.expectedAmountUsdt,
+  });
+}
+
+function depositCreditResponse(result) {
+  return {
+    ok: true,
+    credited: result.credited,
+    alreadyVerified: result.alreadyVerified,
+    balance_usdt: result.balance_usdt,
+    net_usdt: result.net_usdt ?? null,
+    fee_usdt: result.fee_usdt ?? null,
+    deposit_id: result.deposit?.id ?? null,
+    ref_code: result.deposit?.ref_code ?? null,
+  };
+}
+
 /**
  * Incoming USDT deposit webhook.
  * Register: https://YOUR_DOMAIN/api/webhook/deposit
+ * TronGrid-style bodies are accepted: transaction_id, to, value, token_info.
  * Optional secret: DEPOSIT_WEBHOOK_SECRET via header x-deposit-webhook-secret.
  * The transfer is always checked on-chain. Body flags cannot skip that check.
  * A confirmed transfer credits the custodial-address owner once (net after fee).
  */
 router.post('/deposit', async (req, res) => {
   try {
-    const secret = process.env.DEPOSIT_WEBHOOK_SECRET || '';
-    if (secret) {
-      const header = req.get('x-deposit-webhook-secret') || '';
-      if (header !== secret) {
-        return res.status(401).json({
-          ok: false,
-          credited: false,
-          error: 'Invalid webhook secret',
-          code: 'DEPOSIT_WEBHOOK_UNAUTHORIZED',
-        });
-      }
+    if (depositWebhookUnauthorized(req)) {
+      return res.status(401).json({
+        ok: false,
+        credited: false,
+        error: 'Invalid webhook secret',
+        code: 'DEPOSIT_WEBHOOK_UNAUTHORIZED',
+      });
     }
 
-    const body = req.body || {};
-    const txHash = body.tx_hash || body.txHash || body.txn_id || '';
-    const toAddress = body.to_address || body.toAddress || body.address || '';
-    const amountUsdt = body.amount_usdt ?? body.amountUsdt ?? body.amount;
-    const network = body.network || 'TRC20';
-    const depositId = body.deposit_id || body.depositId || null;
-
-    if (!String(txHash).trim()) {
+    const { parseTronDepositNotices, creditDepositNotice } = require('../services/hdDepositCreditService');
+    const notices = parseTronDepositNotices(req.body || {});
+    if (!notices.length) {
       return res.status(400).json({
         ok: false,
         credited: false,
@@ -223,34 +245,33 @@ router.post('/deposit', async (req, res) => {
       });
     }
 
-    const { verifyUsdtTransaction } = require('../services/usdtBlockchainService');
-    const { applyIncomingDepositCredit } = require('../services/depositCreditService');
-    const result = await applyIncomingDepositCredit({
-      source: 'blockchain_webhook',
-      depositId,
-      txHash,
-      toAddress,
-      amountUsdt,
-      network,
-      adminNote: `Blockchain webhook credit (${network})`,
-      createdBy: 'blockchain',
-      verifyTransfer: (params) => verifyUsdtTransaction({
-        network: params.network,
-        txHash: params.txHash,
-        expectedAddress: params.expectedAddress,
-        expectedAmountUsdt: params.expectedAmountUsdt,
-      }),
-    });
+    const verifyTransfer = chainVerifier();
+    if (notices.length === 1) {
+      const result = await creditDepositNotice(notices[0], { verifyTransfer });
+      return res.status(200).json(depositCreditResponse(result));
+    }
 
+    const results = [];
+    for (const notice of notices) {
+      try {
+        const result = await creditDepositNotice(notice, { verifyTransfer });
+        results.push({ tx_hash: notice.txHash, ...depositCreditResponse(result) });
+      } catch (err) {
+        results.push({
+          ok: false,
+          tx_hash: notice.txHash,
+          credited: false,
+          error: err.message || 'Deposit webhook failed',
+          code: err.code || 'DEPOSIT_WEBHOOK_ERROR',
+        });
+      }
+    }
+    const credited = results.filter((row) => row.credited).length;
     return res.status(200).json({
       ok: true,
-      credited: result.credited,
-      alreadyVerified: result.alreadyVerified,
-      balance_usdt: result.balance_usdt,
-      net_usdt: result.net_usdt ?? null,
-      fee_usdt: result.fee_usdt ?? null,
-      deposit_id: result.deposit?.id ?? null,
-      ref_code: result.deposit?.ref_code ?? null,
+      credited: credited > 0,
+      count: results.length,
+      results,
     });
   } catch (err) {
     const code = err.code || 'DEPOSIT_WEBHOOK_ERROR';
@@ -262,6 +283,75 @@ router.post('/deposit', async (req, res) => {
       credited: false,
       error: err.message || 'Deposit webhook failed',
       code,
+    });
+  }
+});
+
+/**
+ * Tron push webhook. Same credit path as /api/webhook/deposit.
+ * Register: https://YOUR_DOMAIN/api/webhook/tron
+ * On-chain verification is required. DEPOSIT_WEBHOOK_SECRET is not required
+ * here so a TronGrid callback can post; set TRON_WEBHOOK_SECRET to require
+ * header x-tron-webhook-secret.
+ */
+router.post('/tron', async (req, res) => {
+  try {
+    const secret = String(process.env.TRON_WEBHOOK_SECRET || '').trim();
+    if (secret) {
+      const header = req.get('x-tron-webhook-secret') || '';
+      if (header !== secret) {
+        return res.status(401).json({
+          ok: false,
+          credited: false,
+          error: 'Invalid webhook secret',
+          code: 'TRON_WEBHOOK_UNAUTHORIZED',
+        });
+      }
+    }
+
+    const { parseTronDepositNotices, creditDepositNotice } = require('../services/hdDepositCreditService');
+    const notices = parseTronDepositNotices(req.body || {});
+    if (!notices.length) {
+      return res.status(200).json({
+        ok: true,
+        credited: false,
+        ignored: true,
+        reason: 'no_usdt_transfer',
+      });
+    }
+
+    const verifyTransfer = chainVerifier();
+    const results = [];
+    for (const notice of notices) {
+      try {
+        const result = await creditDepositNotice(notice, { verifyTransfer });
+        results.push({ tx_hash: notice.txHash, ...depositCreditResponse(result) });
+      } catch (err) {
+        results.push({
+          ok: false,
+          tx_hash: notice.txHash,
+          credited: false,
+          error: err.message || 'Deposit webhook failed',
+          code: err.code || 'DEPOSIT_WEBHOOK_ERROR',
+        });
+      }
+    }
+    const credited = results.filter((row) => row.credited).length;
+    return res.status(200).json({
+      ok: true,
+      credited: credited > 0,
+      count: results.length,
+      results: results.length === 1 ? undefined : results,
+      ...(results.length === 1 ? results[0] : {}),
+    });
+  } catch (err) {
+    console.error('[webhook/tron]', err.message, err.code || '');
+    return res.status(200).json({
+      ok: false,
+      received: true,
+      credited: false,
+      error: err.message || 'Tron webhook failed',
+      code: err.code || 'TRON_WEBHOOK_ERROR',
     });
   }
 });
