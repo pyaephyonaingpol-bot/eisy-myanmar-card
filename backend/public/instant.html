@@ -869,7 +869,7 @@
         <h3 id="kycModalTitle">KYC Verification</h3>
         <button type="button" id="kycModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" id="kycModalIntro" style="margin-bottom:1rem">Submit your identity documents to unlock P2P trading and verified banking features.</p>
+      <p class="hint" id="kycModalIntro" style="margin-bottom:1rem">Submit your NRC or Passport to trade P2P. Virtual Visa cards do not need KYC.</p>
       <form id="kycForm" class="form">
         <div class="field"><label for="kycFullName">Full Name (as on ID)</label><input id="kycFullName" required placeholder="Legal full name" autocomplete="name" /></div>
         <div class="field"><label for="kycIdType">ID Type</label>
@@ -1812,7 +1812,7 @@
               <div class="settings-card">
                 <h3>KYC Verification</h3>
                 <p id="settingsKycStatus">Identity status: —</p>
-                <p class="hint" id="settingsKycHint" style="margin-top:0.35rem" data-i18n="kyc_hint">Required for P2P trading and verified banking features.</p>
+                <p class="hint" id="settingsKycHint" style="margin-top:0.35rem" data-i18n="kyc_hint">Required only for P2P trading. Virtual Visa cards do not need KYC.</p>
                 <button id="btnOpenKycModal" class="btn btn-primary btn-sm" style="margin-top:0.5rem">Complete KYC</button>
               </div>
               <div class="settings-card">
@@ -1862,7 +1862,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261009trc20only"></script>
+  <script defer src="/i18n.js?v=20261009p2pKyc"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1885,7 +1885,7 @@
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261009trc20only"></script>
+  <script defer src="/dashboard.js?v=20261009p2pKyc"></script>
   <script defer src="/supportChat.js?v=20261009supportClosed"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
