@@ -4652,10 +4652,64 @@ html.doc-scroll .auth-screen {
   .support-chat-panel {
     right: 0.5rem; left: 0.5rem; width: auto;
     bottom: max(4.25rem, calc(env(safe-area-inset-bottom) + 3.75rem));
-    height: min(70vh, calc(100vh - 5.5rem));
+    height: min(70dvh, calc(100dvh - 5.5rem));
+    max-height: calc(100dvh - 5.5rem);
   }
 }
 
+/* Chat drawer scrolls inside itself. The page behind stays fixed while it is open. */
+.support-chat-panel {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  touch-action: manipulation;
+}
+.support-chat-body {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+.support-chat-list,
+.support-chat-messages,
+.support-chat-compose {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  min-height: 0;
+}
+.support-chat-list,
+.support-chat-messages {
+  flex: 1 1 auto;
+}
+html.support-chat-scroll-lock,
+html.doc-scroll.support-chat-scroll-lock {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+html.support-chat-scroll-lock body,
+html.doc-scroll.support-chat-scroll-lock body {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+  top: var(--support-chat-lock-top, 0px) !important;
+}
+html.support-chat-scroll-lock .app-content {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+html.support-chat-scroll-lock .support-chat-list,
+html.support-chat-scroll-lock .support-chat-messages,
+html.support-chat-scroll-lock .support-chat-compose {
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+}
 
 /* —— Scan Pay —— */
 .scan-pay-modal { max-width: 520px; }

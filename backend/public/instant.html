@@ -51,8 +51,8 @@
       touch-action: pan-y !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261008issueFee" />
-  <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
+  <link rel="stylesheet" href="/styles.css?v=20261009supportScroll" />
+  <link rel="stylesheet" href="/android-scroll-fix.css?v=20261009supportScroll" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
     /* Always unlock document scroll on Android / touch / narrow viewports. */
@@ -73,7 +73,7 @@
           root.style.setProperty('position', 'static', 'important');
           document.addEventListener('DOMContentLoaded', function () {
             var b = document.body;
-            if (!b) return;
+            if (!b || root.classList.contains('support-chat-scroll-lock')) return;
             b.style.setProperty('height', 'auto', 'important');
             b.style.setProperty('min-height', '100%', 'important');
             b.style.setProperty('overflow-y', 'auto', 'important');
@@ -1894,7 +1894,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
   <script defer src="/dashboard.js?v=20261009userRates"></script>
-  <script defer src="/supportChat.js?v=20260911supportChat"></script>
+  <script defer src="/supportChat.js?v=20261009supportScroll"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
 </html>
