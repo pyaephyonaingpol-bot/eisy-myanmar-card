@@ -110,6 +110,7 @@ async function upsertUserWallet(user) {
     balance_usdt: Number(user.balance_usdt ?? 0),
     updated_at: nowIso(),
   };
+  if (user.auth_user_id) row.auth_user_id = String(user.auth_user_id);
 
   // Include HD deposit address when already provisioned locally.
   try {

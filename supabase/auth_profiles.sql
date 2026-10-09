@@ -30,6 +30,14 @@ CREATE POLICY "profiles_update_own" ON public.profiles
 
 -- Service role / backend sync bypasses RLS via service key.
 
+-- Local wallet rows keep users.id. This column only records the Auth UUID.
+DO $$
+BEGIN
+  IF to_regclass('public.user_wallets') IS NOT NULL THEN
+    ALTER TABLE public.user_wallets ADD COLUMN IF NOT EXISTS auth_user_id TEXT;
+  END IF;
+END $$;
+
 -- ─── Trigger: create profile row when auth.users row is inserted ─────────────
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
@@ -51,20 +59,33 @@ BEGIN
     phone = COALESCE(EXCLUDED.phone, public.profiles.phone),
     updated_at = NOW();
 
-  -- Optional: seed user_wallets for Realtime sync (uses auth UUID as text id)
-  INSERT INTO public.user_wallets (user_id, email, name, balance_mmk, balance_usdt, updated_at)
-  VALUES (
-    NEW.id::text,
-    NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name'),
-    0,
-    0,
-    NOW()
-  )
-  ON CONFLICT (user_id) DO UPDATE SET
-    email = EXCLUDED.email,
-    name = COALESCE(EXCLUDED.name, public.user_wallets.name),
-    updated_at = NOW();
+  -- Keep the local integer user_id when a wallet already exists for this email.
+  -- The Auth UUID is stored beside it and existing balances are left unchanged.
+  UPDATE public.user_wallets
+  SET auth_user_id = COALESCE(NULLIF(auth_user_id, ''), NEW.id::text),
+      email = COALESCE(user_wallets.email, NEW.email),
+      name = COALESCE(user_wallets.name, NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name'),
+      updated_at = NOW()
+  WHERE NEW.email IS NOT NULL
+    AND LOWER(email) = LOWER(NEW.email);
+
+  IF NOT FOUND THEN
+    INSERT INTO public.user_wallets (user_id, auth_user_id, email, name, balance_mmk, balance_usdt, updated_at)
+    VALUES (
+      NEW.id::text,
+      NEW.id::text,
+      NEW.email,
+      COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name'),
+      0,
+      0,
+      NOW()
+    )
+    ON CONFLICT (user_id) DO UPDATE SET
+      auth_user_id = COALESCE(NULLIF(public.user_wallets.auth_user_id, ''), EXCLUDED.auth_user_id),
+      email = COALESCE(public.user_wallets.email, EXCLUDED.email),
+      name = COALESCE(public.user_wallets.name, EXCLUDED.name),
+      updated_at = NOW();
+  END IF;
 
   RETURN NEW;
 END;

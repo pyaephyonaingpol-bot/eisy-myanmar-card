@@ -159,6 +159,19 @@ const User = {
     return this.findById(userId);
   },
 
+  async rememberAuthUserId(userId, authUserId) {
+    const value = String(authUserId || '').trim();
+    if (!value) return null;
+    const db = getDb();
+    await db.run(`
+      UPDATE users
+      SET auth_user_id = ?, updated_at = datetime('now')
+      WHERE id = ?
+        AND (auth_user_id IS NULL OR TRIM(auth_user_id) = '')
+    `, value, userId);
+    return this.findById(userId);
+  },
+
   async setAdminRole(userId, role) {
     const db = getDb();
     const value = role ? String(role).trim() : null;
@@ -247,7 +260,7 @@ const User = {
     const total = Number(totalRow?.c || 0);
 
     const users = await db.all(
-      `SELECT id, email, name, balance_usdt, auth_status, created_at
+      `SELECT id, email, name, balance_usdt, auth_status, created_at, auth_user_id
        FROM users
        ${whereSql}
        ORDER BY created_at DESC, id DESC

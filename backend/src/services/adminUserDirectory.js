@@ -8,6 +8,7 @@
 
 const User = require('../models/User');
 const { listSupabaseUserWallets } = require('./supabaseSyncService');
+const { normalizeEmail, attachMirrorWallet } = require('../lib/userIdentity');
 
 const DIRECTORY_SCAN_LIMIT = 10000;
 
@@ -33,6 +34,10 @@ function matchesQuery(row, query) {
   if (!query) return true;
   const id = String(row.id ?? '');
   if (id === query) return true;
+  const authId = String(row.auth_user_id || '');
+  const mirrorId = String(row.mirror_user_id || '');
+  if (authId && authId.toLowerCase() === query.toLowerCase()) return true;
+  if (mirrorId && mirrorId === query) return true;
   const hay = `${row.email || ''} ${row.name || ''}`.toLowerCase();
   return hay.includes(query.toLowerCase());
 }
@@ -99,19 +104,41 @@ async function listAdminUserDirectory({
       name: user.name || null,
       balance_usdt: Number(user.balance_usdt ?? 0),
       auth_status: user.auth_status || 'active',
+      auth_user_id: user.auth_user_id || null,
       created_at: user.created_at || null,
       source: 'registry',
     });
+  }
+
+  const byEmail = new Map();
+  for (const row of byId.values()) {
+    const email = normalizeEmail(row.email);
+    if (email && !byEmail.has(email)) byEmail.set(email, row);
   }
 
   let supabaseError = null;
   try {
     const wallets = await listSupabaseUserWallets();
     if (wallets.error) supabaseError = wallets.error;
+    const links = [];
     for (const row of wallets.rows || []) {
       const id = row?.user_id == null ? '' : String(row.user_id);
       if (!id || byId.has(id)) continue;
-      byId.set(id, walletToUser(row));
+      const email = normalizeEmail(row.email);
+      const linked = email ? byEmail.get(email) : null;
+      if (linked && attachMirrorWallet(linked, row)) {
+        if (linked.auth_user_id_linked && linked.source === 'registry') {
+          links.push({ id: linked.id, auth_user_id: linked.auth_user_id });
+        }
+        delete linked.auth_user_id_linked;
+        continue;
+      }
+      const created = walletToUser(row);
+      byId.set(id, created);
+      if (email && !byEmail.has(email)) byEmail.set(email, created);
+    }
+    for (const link of links) {
+      await User.rememberAuthUserId(link.id, link.auth_user_id);
     }
   } catch (err) {
     supabaseError = err.message || String(err);
