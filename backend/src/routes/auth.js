@@ -18,6 +18,15 @@ function deviceInfo(req) {
 
 // ─── Registration ───────────────────────────────────────────────
 
+function sendOtpRouteError(res, err) {
+  const status = err.code === 'OTP_RESEND_COOLDOWN' ? 429 : 400;
+  res.status(status).json({
+    error: err.message,
+    code: err.code,
+    retry_after_seconds: err.retry_after_seconds,
+  });
+}
+
 async function handleRegisterSendOtp(req, res) {
   try {
     const { email } = req.body;
@@ -25,7 +34,7 @@ async function handleRegisterSendOtp(req, res) {
     const result = await authService.sendRegistrationOtp(email, clientIp(req));
     res.json({ success: true, ...result });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    sendOtpRouteError(res, err);
   }
 }
 
@@ -61,7 +70,7 @@ async function handleLoginSendOtp(req, res) {
     const result = await authService.sendLoginOtp(email, clientIp(req));
     res.json({ success: true, ...result });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    sendOtpRouteError(res, err);
   }
 }
 
@@ -156,7 +165,7 @@ router.post('/pin/reset/send-otp', async (req, res) => {
     const result = await authService.sendPinResetOtp(email, clientIp(req));
     res.json({ success: true, ...result });
   } catch (err) {
-    res.status(400).json({ error: err.message, code: err.code });
+    sendOtpRouteError(res, err);
   }
 });
 

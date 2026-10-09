@@ -21,6 +21,18 @@ const OtpCode = {
     return db.get('SELECT * FROM otp_codes WHERE id = ?', id);
   },
 
+  async findLatestAge(email, purpose) {
+    const db = getDb();
+    return db.get(`
+      SELECT id,
+        CAST((julianday('now') - julianday(created_at)) * 86400 AS INTEGER) AS age_seconds
+      FROM otp_codes
+      WHERE email = ? AND purpose = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `, email, purpose);
+  },
+
   async findLatestValid(email, purpose) {
     const db = getDb();
     return db.get(`

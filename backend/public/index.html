@@ -58,7 +58,7 @@
       #pageProfile .summary-grid { grid-template-columns: 1fr; }
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261009depositFee" />
+  <link rel="stylesheet" href="/styles.css?v=20261009otpResend" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20261009supportScroll" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -1048,7 +1048,8 @@
         <button type="button" id="showPinResetBtn" class="btn btn-secondary btn-sm" style="margin-top:0.5rem">Forgot PIN — email reset</button>
         <div id="loginOtpSection" class="hidden" style="margin-top:1rem">
           <form id="loginSendOtpForm">
-            <button type="submit" id="loginSendOtp" class="btn btn-secondary">Send Login OTP</button>
+            <button type="submit" id="loginSendOtp" class="btn btn-secondary" data-otp-idle="Send Login OTP" data-otp-status="loginOtpResendStatus">Send Login OTP</button>
+            <p id="loginOtpResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
           </form>
           <form id="loginVerifyForm" class="hidden" style="margin-top:1rem">
             <div class="field"><label for="loginOtp">6-digit OTP</label><input id="loginOtp" name="otp" maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" required /></div>
@@ -1059,7 +1060,8 @@
           <p class="hint">Reset your 6-digit security PIN with a one-time code emailed to you.</p>
           <form id="authPinResetSendForm">
             <div class="field"><label for="authPinResetEmail">Email</label><input id="authPinResetEmail" type="email" autocomplete="email" required /></div>
-            <button type="submit" class="btn btn-secondary" style="width:100%">Send PIN reset code</button>
+            <button type="submit" id="authPinResetSendBtn" class="btn btn-secondary" style="width:100%" data-otp-idle="Send PIN reset code" data-otp-status="authPinResetResendStatus">Send PIN reset code</button>
+            <p id="authPinResetResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
           </form>
           <form id="authPinResetConfirmForm" class="hidden" style="margin-top:0.75rem">
             <div class="field"><label for="authPinResetOtp">Email code</label><input id="authPinResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
@@ -1091,7 +1093,8 @@
           <div class="field"><label for="regPhone">Phone (optional)</label><input id="regPhone" name="phone" placeholder="+959..." /></div>
           <div class="field"><label for="regPin">6-digit Security PIN <span class="hint">(optional — set after signup)</span></label><input id="regPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="new-password" /></div>
           <p id="regAuthError" class="auth-inline-error hidden"></p>
-          <button type="submit" id="registerSendOtp" class="btn btn-primary">Send Registration OTP</button>
+          <button type="submit" id="registerSendOtp" class="btn btn-primary" data-otp-idle="Send Registration OTP" data-otp-status="registerOtpResendStatus">Send Registration OTP</button>
+          <p id="registerOtpResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
         </form>
         <p class="hint">Use a <strong>new email</strong> (not <code>demo@eisy.myanmar</code> — that account exists; use Login tab).</p>
         <form id="registerCompleteForm" class="hidden" style="margin-top:1rem">
@@ -1158,7 +1161,8 @@
       <div id="pinResetEmailSection" class="hidden" style="margin-top:1rem">
         <p class="hint">We will email a one-time code to reset your PIN. No default PIN is issued.</p>
         <div class="field"><label for="pinResetEmail">Email</label><input id="pinResetEmail" type="email" autocomplete="email" placeholder="you@email.com" /></div>
-        <button type="button" id="pinResetSendOtpBtn" class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:0.5rem">Send reset code</button>
+        <button type="button" id="pinResetSendOtpBtn" class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:0.5rem" data-otp-idle="Send reset code" data-otp-status="pinResetResendStatus">Send reset code</button>
+        <p id="pinResetResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
         <form id="pinResetConfirmForm" class="hidden">
           <div class="field"><label for="pinResetOtp">Email code</label><input id="pinResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
           <div class="field"><label for="pinResetNew">New 6-digit PIN</label><input id="pinResetNew" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
@@ -1852,7 +1856,8 @@
                 <button type="button" id="unlockBtnSettings" class="btn btn-secondary btn-sm">Unlock / Change PIN</button>
                 <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border-subtle)" />
                 <p class="hint" style="margin-bottom:0.5rem">Forgot your PIN? Reset it with an email code.</p>
-                <button type="button" id="settingsPinResetBtn" class="btn btn-secondary btn-sm">Email me a PIN reset code</button>
+                <button type="button" id="settingsPinResetBtn" class="btn btn-secondary btn-sm" data-otp-idle="Email me a PIN reset code" data-otp-status="settingsPinResetResendStatus">Email me a PIN reset code</button>
+                <p id="settingsPinResetResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
                 <form id="settingsPinResetForm" class="form form-compact hidden" style="margin-top:0.75rem">
                   <div class="field"><label for="settingsPinResetOtp">Email code</label><input id="settingsPinResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
                   <div class="field"><label for="settingsPinResetNew">New 6-digit PIN</label><input id="settingsPinResetNew" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
@@ -1953,7 +1958,7 @@
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261009depositFee"></script>
+  <script defer src="/dashboard.js?v=20261009otpResend"></script>
   <script defer src="/supportChat.js?v=20261009supportClosed"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
