@@ -26,7 +26,7 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('styles.css?v=20261009walletCopy'), 'CSS cache-bust present');
   assert.ok(doc.includes('class="pago-plastic-mark"'), 'logo watermark sits on the card');
   assert.ok(doc.includes('/brand/logo-card-mark.png?v=20261009cardMark'), 'watermark uses the metallic logo');
-  assert.ok(doc.includes('dashboard.js?v=20261009walletCopy'), 'JS cache-bust present');
+  assert.ok(doc.includes('dashboard.js?v=20261009p2pSellAd'), 'JS cache-bust present');
   assert.ok(doc.includes('pago-plastic-eye'), 'eye toggle sits on the card face');
   assert.ok(doc.includes('pago-eye-open') && doc.includes('pago-eye-off'), 'eye open and closed icons');
   assert.ok(doc.includes('pago-plastic-copy'), 'copy control sits beside the card number');

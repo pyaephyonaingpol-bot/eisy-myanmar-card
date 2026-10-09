@@ -4845,13 +4845,11 @@ const Dashboard = {
   },
 
   updateP2pAdEscrowHint() {
-    const side = $('p2pAdSide')?.value;
     const hint = $('p2pAdEscrowHint');
     if (hint) {
-      hint.textContent = side === 'sell'
-        ? 'Sell ads: this amount is escrowed from your USDT wallet immediately.'
-        : 'Buy ads: no USDT escrow — you pay MMK externally when sellers accept your ad.';
+      hint.textContent = 'This amount is escrowed from your USDT wallet as soon as the ad is posted.';
     }
+    if ($('p2pAdSide')) $('p2pAdSide').value = 'sell';
   },
 
   openPostP2pAdModal() {
@@ -4878,7 +4876,7 @@ const Dashboard = {
   },
 
   async submitPostP2pAd() {
-    const side = $('p2pAdSide')?.value || 'sell';
+    const side = 'sell';
     const methods = [...document.querySelectorAll('input[name="p2pAdPayMethod"]:checked')].map((el) => el.value);
     if (!methods.length) {
       $('p2pPostAdError').textContent = 'Select at least one payment method';

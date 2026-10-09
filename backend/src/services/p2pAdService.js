@@ -66,7 +66,12 @@ function buildPaymentAccountsFromBody(body) {
 async function createP2pAd(userId, body) {
   const user = await assertVerifiedUser(userId);
 
-  const side = body.side === 'buy' ? 'buy' : 'sell';
+  if (String(body.side || '').toLowerCase() === 'buy') {
+    const err = new Error('Buy ads are closed. Post a sell ad so USDT is escrowed from your wallet.');
+    err.code = 'P2P_BUY_AD_DISABLED';
+    throw err;
+  }
+  const side = 'sell';
   const requestedNetwork = String(body.network || 'TRC20').toUpperCase();
   if (requestedNetwork !== 'TRC20' && requestedNetwork !== 'TRON') {
     const err = new Error('P2P USDT uses TRC20 only');
@@ -162,9 +167,7 @@ async function createP2pAd(userId, body) {
       balance_usdt: refreshedUser.balance_usdt,
       balance_usdt_locked: refreshedUser.balance_usdt_locked,
     },
-    message: side === 'sell'
-      ? `Sell ad posted — ${formatUsdt(roundedVolume)} USDT escrowed from your wallet`
-      : 'Buy ad posted — users can sell USDT to you at your rate',
+    message: `Sell ad posted — ${formatUsdt(roundedVolume)} USDT escrowed from your wallet`,
   };
 }
 

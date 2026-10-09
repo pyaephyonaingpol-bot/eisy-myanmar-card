@@ -200,21 +200,36 @@ async function runTests() {
   assert.strictEqual(sellerBal.locked_usdt, 0, 'Seller A locked balance should be 0');
   console.log('    ✓ Ad cancelled and remaining escrow refunded to Seller A:', sellerBal);
 
-  // 8. Test Buyer B posting a Buy Ad, and Seller A creating a Sell Order against it
-  console.log('[8] Testing Buy Ad & Sell Order flow...');
-  const buyAdResult = await createP2pAd(buyerB.id, {
+  // 8. New buy ads are rejected. A legacy buy-ad row can still take a USDT-escrowed sell order.
+  console.log('[8] Testing rejected buy ad and legacy sell-order escrow...');
+  await assert.rejects(
+    () => createP2pAd(buyerB.id, {
+      side: 'buy',
+      network: 'TRC20',
+      price_mmk_per_usdt: 4400,
+      total_volume_usdt: 30,
+      min_order_usdt: 10,
+      max_order_usdt: 30,
+      payment_methods: ['KPay'],
+      kpay_account_name: 'Buyer B',
+      kpay_account_number: '09222222222',
+    }),
+    (err) => err && err.code === 'P2P_BUY_AD_DISABLED'
+  );
+  const buyAd = await P2PAd.create({
+    userId: buyerB.id,
     side: 'buy',
     network: 'TRC20',
-    price_mmk_per_usdt: 4400,
-    total_volume_usdt: 30,
-    min_order_usdt: 10,
-    max_order_usdt: 30,
-    payment_methods: ['KPay'],
-    kpay_account_name: 'Buyer B',
-    kpay_account_number: '09222222222',
+    priceMmkPerUsdt: 4400,
+    totalVolumeUsdt: 30,
+    availableVolumeUsdt: 30,
+    minOrderUsdt: 10,
+    maxOrderUsdt: 30,
+    paymentMethods: ['KPay'],
+    paymentAccounts: { KPay: { account_name: 'Buyer B', account_number: '09222222222' } },
+    escrowLockedUsdt: 0,
   });
-  const buyAd = buyAdResult.ad;
-  assert.strictEqual(buyAd.escrow_locked_usdt, 0, 'Buy ad should have 0 escrow locked initially');
+  assert.strictEqual(Number(buyAd.escrow_locked_usdt || 0), 0, 'Legacy buy ad should have 0 escrow locked');
 
   // Seller A sells 25 USDT to Buyer B's Buy Ad
   console.log('    Seller A creates Sell Order for 25 USDT against Buyer B ad...');
