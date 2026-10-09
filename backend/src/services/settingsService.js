@@ -695,6 +695,50 @@ async function getCurrentRateSummary() {
   };
 }
 
+/** User-facing rates and fees. Omits wallet addresses, provider cost, and platform profit. */
+async function getPublicRatesAndFees() {
+  const pricing = await getCardPricingSettings();
+  const current = await getCurrentRateSummary();
+  const withdrawal = await getWithdrawalFeeSettings();
+  const publicPricing = {
+    mmk_to_usd_rate: pricing.mmk_to_usd_rate,
+    rate_effective_date: current.effective_date || pricing.rate_effective_date,
+    card_issuance_fee_usd: pricing.card_issuance_fee_usd,
+    card_processing_fee_usd: pricing.card_processing_fee_usd,
+    card_funding_fee_percent: pricing.card_funding_fee_percent,
+    minimum_initial_deposit_usd: pricing.minimum_initial_deposit_usd,
+    card_reload_fee_usd: pricing.card_reload_fee_usd,
+    card_reload_fee_percent: pricing.card_reload_fee_percent,
+    card_reload_fee_minimum_usd: pricing.card_reload_fee_minimum_usd,
+    minimum_usdt_deposit: pricing.minimum_usdt_deposit,
+    minimum_usdt_reload: pricing.minimum_usdt_reload,
+    withdrawal_fees: {
+      withdrawal_service_fee_mode: withdrawal.withdrawal_service_fee_mode,
+      withdrawal_service_fee_percent: withdrawal.withdrawal_service_fee_percent,
+      withdrawal_service_fee_fixed_usdt: withdrawal.withdrawal_service_fee_fixed_usdt,
+      withdrawal_service_fee_minimum_usdt: withdrawal.withdrawal_service_fee_minimum_usdt,
+      payment_service_fee_mode: withdrawal.payment_service_fee_mode,
+      payment_service_fee_percent: withdrawal.payment_service_fee_percent,
+      payment_service_fee_fixed_usdt: withdrawal.payment_service_fee_fixed_usdt,
+      payment_service_fee_minimum_usdt: withdrawal.payment_service_fee_minimum_usdt,
+      minimum_usdt_withdrawal: withdrawal.minimum_usdt_withdrawal,
+      usdt_withdraw_fee_trc20: withdrawal.usdt_withdraw_fee_trc20,
+      usdt_withdraw_fee_trc20_type: withdrawal.usdt_withdraw_fee_trc20_type,
+      usdt_withdraw_fee_bep20: withdrawal.usdt_withdraw_fee_bep20,
+      usdt_withdraw_fee_bep20_type: withdrawal.usdt_withdraw_fee_bep20_type,
+    },
+  };
+  return {
+    pricing: publicPricing,
+    current_rate: {
+      mmk_to_usd_rate: current.mmk_to_usd_rate,
+      card_issuance_fee_usd: current.card_issuance_fee_usd,
+      minimum_initial_deposit_usd: current.minimum_initial_deposit_usd,
+      effective_date: current.effective_date,
+    },
+  };
+}
+
 async function buildRateSnapshot() {
   const pricing = await getCardPricingSettings();
   const summary = await getCurrentRateSummary();
@@ -928,6 +972,7 @@ module.exports = {
   getCardPricingSettings,
   getDepositFeeSettings,
   getCurrentRateSummary,
+  getPublicRatesAndFees,
   buildRateSnapshot,
   listExchangeRateHistory,
   updateSettings,

@@ -209,6 +209,17 @@ router.post('/cards/:id/remove', requireAuth, requireSensitive, async (req, res)
   }
 });
 
+router.get('/pricing', requireAuth, async (_req, res) => {
+  try {
+    const { getPublicRatesAndFees } = require('../services/settingsService');
+    const payload = await getPublicRatesAndFees();
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('[user/pricing]', err.message);
+    res.status(500).json({ error: 'Could not load rates and fees', code: 'RATES_FEES_FAILED' });
+  }
+});
+
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);

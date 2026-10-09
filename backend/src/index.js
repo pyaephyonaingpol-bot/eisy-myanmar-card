@@ -423,6 +423,7 @@ app.use('/api/tron/wallet', require('./routes/tronWallet'));
 app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/settings', require('./routes/publicSettings'));
 app.use('/api/support', supportRoutes);
 app.use('/api/kyc', createKycRateLimiter(), require('./routes/kyc'));
 app.use('/api/p2p', require('./routes/p2p'));
