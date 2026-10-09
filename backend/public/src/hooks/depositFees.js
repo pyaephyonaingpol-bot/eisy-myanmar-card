@@ -4,7 +4,8 @@
  *
  * Modes (`payment_service_fee_mode`) mirror backend paymentFeeService:
  *   off | percent | fixed | max_percent_or_min (default) | fixed_plus_percent
- * fixed_plus_percent: fee = max(fixed + amount × percent/100, minimum)
+ * Deposit fixed_plus_percent: fee = fixed + amount × percent/100
+ * Withdrawal fixed_plus_percent: fee = max(fixed + amount × percent/100, minimum)
  */
 (function (root) {
   'use strict';
@@ -140,10 +141,12 @@
     if (!(amount > 0)) return null;
     const mode = resolveMode(fees, 'deposit');
     const feePercent = resolvePercent(fees, 'deposit');
-    const minimumFee = resolveMinimumUsdt(fees, 'deposit');
     const fixedFee = resolveFixedUsdt(fees, 'deposit');
     const percentFee = Math.round(amount * feePercent) / 100;
-    const fee = calcUsdtFee(amount, feePercent, minimumFee, mode, fixedFee);
+    const minimumFee = mode === FEE_MODE.FIXED_PLUS_PERCENT ? 0 : resolveMinimumUsdt(fees, 'deposit');
+    const fee = mode === FEE_MODE.FIXED_PLUS_PERCENT
+      ? Math.round((fixedFee + percentFee) * 100) / 100
+      : calcUsdtFee(amount, feePercent, minimumFee, mode, fixedFee);
     const net = Math.round((amount - fee) * 100) / 100;
     return {
       amount_usdt: amount,
@@ -162,14 +165,16 @@
     const mode = resolveMode(fees, 'deposit');
     const feePercent = resolvePercent(fees, 'deposit');
     const rate = Number(fees.mmk_to_usd_rate || fees.usdt_to_mmk_rate || 4500);
-    const minimumFee = Math.round(resolveMinimumUsdt(fees, 'deposit') * rate);
     const fixedFee = Math.round(resolveFixedUsdt(fees, 'deposit') * rate);
     const percentFee = Math.round(amount * feePercent / 100);
+    const minimumFee = mode === FEE_MODE.FIXED_PLUS_PERCENT
+      ? 0
+      : Math.round(resolveMinimumUsdt(fees, 'deposit') * rate);
     let fee = 0;
     if (mode === FEE_MODE.OFF) fee = 0;
     else if (mode === FEE_MODE.PERCENT) fee = percentFee;
     else if (mode === FEE_MODE.FIXED) fee = minimumFee;
-    else if (mode === FEE_MODE.FIXED_PLUS_PERCENT) fee = Math.max(fixedFee + percentFee, minimumFee);
+    else if (mode === FEE_MODE.FIXED_PLUS_PERCENT) fee = fixedFee + percentFee;
     else fee = Math.max(percentFee, minimumFee);
     const net = amount - fee;
     return {

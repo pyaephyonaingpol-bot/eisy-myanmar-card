@@ -1132,7 +1132,6 @@
               deposit_service_fee_mode: 'fixed_plus_percent',
               deposit_service_fee_fixed_usdt: parseFloat($('settingDepositFeeFixed')?.value || '0'),
               deposit_service_fee_percent: parseFloat($('settingDepositFeePercent')?.value || '2'),
-              deposit_service_fee_minimum_usdt: parseFloat($('settingDepositFeeMinUsdt')?.value || '1'),
               withdrawal_service_fee_mode: 'fixed_plus_percent',
               withdrawal_service_fee_fixed_usdt: parseFloat($('settingWithdrawFeeFixed')?.value || '0'),
               withdrawal_service_fee_percent: parseFloat($('settingWithdrawFeePercent')?.value || '4'),
@@ -3635,9 +3634,6 @@
         }
         if ($('settingDepositFeePercent')) {
           $('settingDepositFeePercent').value = p.deposit_service_fee_percent ?? p.payment_service_fee_percent ?? 2;
-        }
-        if ($('settingDepositFeeMinUsdt')) {
-          $('settingDepositFeeMinUsdt').value = p.deposit_service_fee_minimum_usdt ?? p.payment_service_fee_minimum_usdt ?? 1;
         }
         if ($('settingWithdrawFeeFixed')) {
           $('settingWithdrawFeeFixed').value = p.withdrawal_service_fee_fixed_usdt ?? 0;

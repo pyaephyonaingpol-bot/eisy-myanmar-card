@@ -127,6 +127,16 @@ function main() {
   assert.strictEqual(preview.fee_usdt, 1);
   assert.strictEqual(preview.net_usdt, 9);
 
+  const strictDeposit = sandbox.EisyHooks.depositFees.calculateUsdtDepositFeePreview(20, {
+    deposit_service_fee_mode: 'fixed_plus_percent',
+    deposit_service_fee_fixed_usdt: 0,
+    deposit_service_fee_percent: 2,
+    deposit_service_fee_minimum_usdt: 5,
+  });
+  assert.strictEqual(strictDeposit.fee_usdt, 0.4);
+  assert.strictEqual(strictDeposit.net_usdt, 19.6);
+  assert.ok(!String(strictDeposit.fee_label).includes('min'), 'deposit preview label does not use a minimum fee');
+
   console.log('Frontend modular layers (steps 3–5) smoke checks passed.');
 }
 

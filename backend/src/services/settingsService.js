@@ -43,7 +43,7 @@ const DEFAULTS = {
   payment_service_fee_mode: 'percent',
   deposit_service_fee_percent: '2',
   deposit_service_fee_fixed_usdt: '0',
-  deposit_service_fee_minimum_usdt: '1',
+  deposit_service_fee_minimum_usdt: '0',
   deposit_service_fee_mode: 'fixed_plus_percent',
   withdrawal_service_fee_percent: '4',
   withdrawal_service_fee_fixed_usdt: '0',
@@ -177,7 +177,7 @@ function resolveScopedServiceFeeFields(raw, scope) {
     [`${prefix}_mode`]: normalizeFeeMode(modeRaw),
     [`${prefix}_percent`]: parseNonNegative(percentRaw, isWithdrawal ? 4 : 2),
     [`${prefix}_fixed_usdt`]: parseNonNegative(fixedRaw, 0),
-    [`${prefix}_minimum_usdt`]: parseNonNegative(minimumRaw, isWithdrawal ? 0 : 1),
+    [`${prefix}_minimum_usdt`]: parseNonNegative(minimumRaw, 0),
   };
 }
 
@@ -194,7 +194,7 @@ function withScopedPaymentFeeShape(settings, scope) {
   };
 }
 
-/** Live deposit/withdrawal charges use Fixed + Percentage, floored by Minimum. Explicit off stays off. */
+/** Withdrawals use Fixed + Percentage floored by Minimum. Deposits use Fixed + Percentage with no fee floor. Explicit off stays off. */
 function applyAdminFeeFormula(settings, scope) {
   const prefix = scope === 'withdrawal' ? 'withdrawal_service_fee' : 'deposit_service_fee';
   const scopedMode = settings?.[`${prefix}_mode`] || settings?.payment_service_fee_mode;
@@ -250,9 +250,37 @@ async function getCardPricingSettings() {
   };
 }
 
+/** Live USDT/MMK deposit math ignores any stored deposit fee minimum. */
+function withoutDepositFeeFloor(settings) {
+  const feeSettings = applyAdminFeeFormula(withScopedPaymentFeeShape(settings, 'deposit'), 'deposit');
+  if (feeSettings.payment_service_fee_mode === 'off' || feeSettings.deposit_service_fee_mode === 'off') {
+    return feeSettings;
+  }
+  return {
+    ...feeSettings,
+    deposit_service_fee_minimum_usdt: 0,
+    payment_service_fee_minimum_usdt: 0,
+  };
+}
+
+function stampStrictDepositFeeRule(breakdown) {
+  if (!breakdown || breakdown.fee_mode === 'off' || breakdown.fee_mode !== 'fixed_plus_percent') {
+    return breakdown;
+  }
+  const next = {
+    ...breakdown,
+    fee_rule: 'fee = fixed + amount * percent/100',
+    used_minimum_fee: false,
+    minimum_fee: 0,
+  };
+  if (Object.prototype.hasOwnProperty.call(breakdown, 'minimum_fee_usdt')) next.minimum_fee_usdt = 0;
+  if (Object.prototype.hasOwnProperty.call(breakdown, 'minimum_fee_mmk')) next.minimum_fee_mmk = 0;
+  return next;
+}
+
 async function getDepositFeeSettings() {
   const pricing = await getCardPricingSettings();
-  return applyAdminFeeFormula(withScopedPaymentFeeShape(pricing, 'deposit'), 'deposit');
+  return withoutDepositFeeFloor(pricing);
 }
 
 async function getWithdrawalFeeSettings() {
@@ -629,16 +657,16 @@ function calculateDepositFeeBreakdown(amount, { currency = 'USDT', settings = {}
     calculateMmkPaymentFeeBreakdown,
   } = require('./paymentFeeService');
 
-  const feeSettings = applyAdminFeeFormula(withScopedPaymentFeeShape(settings, 'deposit'), 'deposit');
+  const feeSettings = withoutDepositFeeFloor(settings);
 
   if (String(currency).toUpperCase() === 'MMK') {
     return {
-      ...calculateMmkPaymentFeeBreakdown(amount, feeSettings),
+      ...stampStrictDepositFeeRule(calculateMmkPaymentFeeBreakdown(amount, feeSettings)),
       operation: 'deposit',
     };
   }
   return {
-    ...calculateUsdtPaymentFeeBreakdown(amount, feeSettings),
+    ...stampStrictDepositFeeRule(calculateUsdtPaymentFeeBreakdown(amount, feeSettings)),
     operation: 'deposit',
   };
 }
@@ -767,6 +795,7 @@ async function updateSettings(updates) {
   const allowed = Object.keys(DEFAULTS).filter((k) => k !== 'rate_effective_date');
 
   for (const key of allowed) {
+    if (key === 'deposit_service_fee_minimum_usdt') continue;
     if (numericUpdates[key] === undefined || numericUpdates[key] === null || numericUpdates[key] === '') continue;
     const strVal = String(numericUpdates[key]).trim();
     if (NUMERIC_KEYS.has(key)) {

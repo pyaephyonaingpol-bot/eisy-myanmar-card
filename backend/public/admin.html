@@ -1372,7 +1372,7 @@
                 <h3 id="pricingBlockUsdtDepositTitle" class="pricing-block-title">
                   <span class="pricing-block-num">4</span>USDT Deposit Fee / Rate
                 </h3>
-                <p class="pricing-block-desc">Service fee taken from user USDT deposits before net balance is credited. Fee = max(fixed + percent, minimum).</p>
+                <p class="pricing-block-desc">Service fee taken from user USDT deposits before net balance is credited. Fee = fixed fee + (deposit × percent / 100).</p>
               </div>
               <div class="sa-rates-form">
                 <div class="field">
@@ -1382,11 +1382,6 @@
                 <div class="field">
                   <label for="settingDepositFeePercent">Deposit fee (%)</label>
                   <input id="settingDepositFeePercent" type="number" step="0.01" min="0" max="20" required />
-                </div>
-                <div class="field">
-                  <label for="settingDepositFeeMinUsdt">Minimum fee (USDT)</label>
-                  <input id="settingDepositFeeMinUsdt" type="number" step="0.01" min="0" required />
-                  <small class="hint">Fee charged = max(fixed + percent of deposit, this minimum)</small>
                 </div>
                 <div class="field">
                   <label for="settingMinUsdtDeposit">Min USDT deposit</label>
@@ -1637,6 +1632,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261009userIdLayout" defer></script>
+  <script src="/admin.js?v=20261009depositNoMin" defer></script>
 </body>
 </html>
