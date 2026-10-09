@@ -61,7 +61,7 @@ async function main() {
   assertIncludes(adminHtml, 'id="supportUrgentToast"', 'urgent realtime toast');
   assertIncludes(adminHtml, 'id="supportTaskMeta"', 'task meta editor');
   assertIncludes(adminHtml, 'id="supportSaveTaskMetaBtn"', 'save task meta button');
-  assertIncludes(adminHtml, 'admin.js?v=20261009userIdentity', 'admin.js cache bust');
+  assertIncludes(adminHtml, 'admin.js?v=20261009userIdLayout', 'admin.js cache bust');
 
   assertIncludes(adminJs, 'supportFilters', 'filter state');
   assertIncludes(adminJs, 'onSupportRealtime', 'realtime handler');

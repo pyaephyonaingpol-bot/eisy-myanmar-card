@@ -51,6 +51,15 @@
       touch-action: pan-y !important;
     }
   </style>
+  <style id="user-identity-display">
+    #pageProfile .summary-grid {
+      grid-template-columns: minmax(8.5rem, 0.9fr) minmax(15rem, 1.6fr) minmax(5.5rem, 0.55fr) minmax(8rem, 0.8fr);
+    }
+    #sumEmail { font-size: 1rem; line-height: 1.35; overflow-wrap: anywhere; }
+    @media (max-width: 900px) {
+      #pageProfile .summary-grid { grid-template-columns: 1fr; }
+    }
+  </style>
   <link rel="stylesheet" href="/styles.css?v=20261009supportScroll" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20261009supportScroll" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>

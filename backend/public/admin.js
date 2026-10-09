@@ -55,7 +55,7 @@
     },
 
     userIdentityHtml(row) {
-      return this.esc(this.userIdentityText(row)).replace(/ · /g, '<br>');
+      return '<span class="user-identity">' + this.esc(this.userIdentityText(row)).replace(/ · /g, '<br>') + '</span>';
     },
 
     /** Unified admin portal — no Instant/Hub chooser. */
@@ -4281,13 +4281,13 @@
     renderUsersRowsHtml(users) {
       return users.map((u) =>
         '<tr>' +
-          '<td>' + this.esc(u.id) +
-            (u.auth_user_id ? '<br><small>' + this.esc(u.auth_user_id) + '</small>' : '') +
+          '<td class="user-id-cell">' + this.esc(u.id) +
+            (u.auth_user_id ? '<span class="user-auth-id">' + this.esc(u.auth_user_id) + '</span>' : '') +
           '</td>' +
-          '<td>' + this.esc(u.name || '—') +
+          '<td class="user-name-cell">' + this.esc(u.name || '—') +
             (u.source === 'supabase' ? ' <span class="hint">Supabase</span>' : '') +
           '</td>' +
-          '<td>' + this.esc(u.email || '—') + '</td>' +
+          '<td class="user-email-cell">' + this.esc(u.email || '—') + '</td>' +
           '<td><strong>$' + Number(u.balance_usdt || 0).toFixed(2) + ' USDT</strong></td>' +
           '<td>' + this.esc(this.formatUserAuthStatus(u.auth_status)) + '</td>' +
           '<td>' + this.formatUserCreated(u.created_at) + '</td>' +

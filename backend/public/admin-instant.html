@@ -607,6 +607,20 @@
       max-height: min(70vh, 720px);
       overflow: auto;
     }
+    .user-identity { display: inline-block; white-space: nowrap; line-height: 1.4; }
+    #usersTable .data-table { width: max-content; min-width: 100%; }
+    #usersTable .user-id-cell,
+    #usersTable .user-name-cell,
+    #usersTable .user-email-cell { white-space: nowrap; vertical-align: top; }
+    #usersTable .user-auth-id {
+      display: block;
+      margin-top: 0.2rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.68rem;
+      line-height: 1.35;
+      color: #94a3b8;
+      font-weight: 500;
+    }
     #usersPageLabel { align-self: center; }
   </style>
 </head>
@@ -1625,6 +1639,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261009userIdentity" defer></script>
+  <script src="/admin.js?v=20261009userIdLayout" defer></script>
 </body>
 </html>
