@@ -127,8 +127,9 @@ router.get('/cards', requireAuth, requireSensitive, async (req, res) => {
 
     let payload = await getUserCardsPayload(req.user.id);
     let providerTimedOut = false;
-    // Empty local list (or explicit ?sync=1): import orphaned provider cards.
-    if (wantSync || payload.cards.length === 0) {
+    // Local rows return immediately. Provider import runs only for ?sync=1
+    // so an empty list does not sit on the Pago timeout during dashboard paint.
+    if (wantSync) {
       try {
         const {
           syncPagoCardsForUser,
@@ -323,10 +324,16 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
     // Mirror ensure is non-blocking — balances come from Turso (+ cached overlay).
     ensureSupabaseUserWalletInBackground(req.user.id);
 
-    const { scanUserHdDepositsBestEffort } = require('../services/hdDepositCreditService');
-    const hdScan = await scanUserHdDepositsBestEffort(req.user.id);
-    if (hdScan && Number(hdScan.credited) > 0) {
-      user = await User.findById(req.user.id);
+    // ?fast=1 paints the saved balance without waiting on TronGrid.
+    // The dashboard follows up with a normal wallet read that still scans.
+    const fast = req.query.fast === '1' || req.query.fast === 'true';
+    let hdScan = { skipped: true, reason: fast ? 'fast' : 'not_run', credited: 0 };
+    if (!fast) {
+      const { scanUserHdDepositsBestEffort } = require('../services/hdDepositCreditService');
+      hdScan = await scanUserHdDepositsBestEffort(req.user.id);
+      if (hdScan && Number(hdScan.credited) > 0) {
+        user = await User.findById(req.user.id);
+      }
     }
 
     const localPayload = {
@@ -357,6 +364,8 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
       balance: balances.balance_mmk ?? user.balance_mmk ?? 0,
       currency: 'MMK',
       legacy_migration: legacyMigration.migrated ? legacyMigration : null,
+      scan_deferred: Boolean(fast),
+      hd_scan: hdScan?.reason || (Number(hdScan?.credited) > 0 ? 'credited' : 'checked'),
     });
   } catch (err) {
     console.error('[user/wallet]', err);

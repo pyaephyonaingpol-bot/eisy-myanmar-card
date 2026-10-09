@@ -58,7 +58,7 @@
       #pageProfile .summary-grid { grid-template-columns: 1fr; }
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261009cardMark" />
+  <link rel="stylesheet" href="/styles.css?v=20261009fastLoad" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20261009supportScroll" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -100,7 +100,18 @@
     (function () {
       try {
         var keys = (window.Eisy && window.Eisy.storageKeys) || {};
-        var raw = localStorage.getItem(keys.AUTH || 'eisy_auth');
+        var authKey = keys.AUTH || 'eisy_auth';
+        var raw = null;
+        try { raw = sessionStorage.getItem(authKey); } catch (_) {}
+        if (!raw) {
+          try {
+            raw = localStorage.getItem(authKey);
+            if (raw) {
+              sessionStorage.setItem(authKey, raw);
+              localStorage.removeItem(authKey);
+            }
+          } catch (_) {}
+        }
         if (!raw) return;
         var data = JSON.parse(raw);
         if (data && data.sessionToken) {
@@ -959,6 +970,7 @@
         <h1 class="auth-brand-title">Eisymyanmar</h1>
         <p class="subtitle auth-brand-sub">USDT wallet on TRON</p>
       </div>
+      <p id="authSessionNotice" class="auth-session-notice hidden" role="status"></p>
 
       <div id="devOtpBanner" class="dev-otp-banner hidden" role="alert">
         <strong>Dev OTP</strong>
@@ -1335,6 +1347,11 @@
                 <button type="button" class="pago-card-carousel-nav" id="pagoCardNext" data-pago-step="1" aria-label="Next card">›</button>
               </div>
               <p id="pagoCardCarouselMeta" class="pago-card-carousel-meta hidden"></p>
+              <div id="pagoCardSkeleton" class="pago-card-skeleton hidden" aria-hidden="true">
+                <div class="pago-card-skeleton-face"></div>
+                <div class="pago-card-skeleton-line"></div>
+                <div class="pago-card-skeleton-line short"></div>
+              </div>
               <p id="pagoCardEmpty" class="hint" data-i18n="pago_cards_empty">No virtual cards yet. Request one below.</p>
 
               <div class="pago-card-component hidden" id="pagoCardDetailPanel">
@@ -1872,7 +1889,7 @@
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
   <script defer src="/i18n.js?v=20261009p2pKyc"></script>
-  <script defer src="/auth.js?v=20261005googleCallback"></script>
+  <script defer src="/auth.js?v=20261009idleLogout"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
   <script defer src="/src/services/usdtWalletApi.js?v=20260909walletPerf"></script>
@@ -1894,7 +1911,7 @@
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261009userIdentity"></script>
+  <script defer src="/dashboard.js?v=20261009fastLoad"></script>
   <script defer src="/supportChat.js?v=20261009supportClosed"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

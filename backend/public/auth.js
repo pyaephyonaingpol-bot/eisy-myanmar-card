@@ -13,10 +13,27 @@ const Auth = {
   /** In-memory session mirror — avoids repeated JSON.parse on every getter. */
   _mem: undefined,
 
+  /** Live session dies with the tab. A leftover localStorage copy is moved once. */
+  readStoredSession() {
+    try {
+      const current = sessionStorage.getItem(this.STORAGE_KEY);
+      if (current) return current;
+    } catch (_) { /* private mode */ }
+    try {
+      const legacy = localStorage.getItem(this.STORAGE_KEY);
+      if (!legacy) return null;
+      try { sessionStorage.setItem(this.STORAGE_KEY, legacy); } catch (_) { /* ignore */ }
+      try { localStorage.removeItem(this.STORAGE_KEY); } catch (_) { /* ignore */ }
+      return legacy;
+    } catch (_) {
+      return null;
+    }
+  },
+
   load() {
     if (this._mem !== undefined) return this._mem;
     try {
-      this._mem = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || 'null');
+      this._mem = JSON.parse(this.readStoredSession() || 'null');
     } catch {
       this._mem = null;
     }
@@ -25,16 +42,65 @@ const Auth = {
 
   save(data) {
     this._mem = data;
+    const raw = JSON.stringify(data);
     try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+      sessionStorage.setItem(this.STORAGE_KEY, raw);
     } catch (err) {
-      console.error('[Auth] Failed to persist session to localStorage:', err);
+      console.error('[Auth] Failed to persist session:', err);
     }
+    try { localStorage.removeItem(this.STORAGE_KEY); } catch (_) { /* tab session only */ }
   },
 
   clear() {
     this._mem = null;
-    localStorage.removeItem(this.STORAGE_KEY);
+    try { sessionStorage.removeItem(this.STORAGE_KEY); } catch (_) { /* ignore */ }
+    try { localStorage.removeItem(this.STORAGE_KEY); } catch (_) { /* ignore */ }
+  },
+
+  IDLE_LIMIT_MS: 20 * 60 * 1000,
+
+  startIdleWatch() {
+    if (this._idleWatching) return;
+    this._idleWatching = true;
+    this._lastActivityAt = Date.now();
+    const bump = () => {
+      const now = Date.now();
+      if (now - (this._lastActivityAt || 0) < 1000) return;
+      this._lastActivityAt = now;
+    };
+    ['mousemove', 'mousedown', 'click', 'keydown', 'touchstart', 'scroll', 'wheel'].forEach((name) => {
+      window.addEventListener(name, bump, { passive: true });
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') this.checkIdle();
+    });
+    this._idleTimer = setInterval(() => this.checkIdle(), 15000);
+  },
+
+  checkIdle() {
+    if (!this.isLoggedIn() || this._idleLoggingOut) return;
+    const idleFor = Date.now() - (this._lastActivityAt || Date.now());
+    if (idleFor >= this.IDLE_LIMIT_MS) this.logoutForInactivity();
+  },
+
+  async logoutForInactivity() {
+    if (this._idleLoggingOut || !this.isLoggedIn()) return;
+    this._idleLoggingOut = true;
+    const token = this.sessionToken;
+    try { sessionStorage.setItem('eisy_logout_notice', 'inactive'); } catch (_) { /* ignore */ }
+    this.clear();
+    window.dispatchEvent(new CustomEvent('eisy:session-end', { detail: { reason: 'inactive' } }));
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: '{}',
+      });
+    } catch (_) { /* the tab session is already gone */ }
+    this._idleLoggingOut = false;
   },
 
   getDeviceProfile() {
