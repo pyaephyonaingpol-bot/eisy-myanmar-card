@@ -30,7 +30,7 @@ assert.ok(mobile.includes('html.doc-scroll.support-chat-scroll-lock'), 'mobile s
 assert.ok(mobile.includes('touch-action: pan-y !important'), 'chat list still pans on touch');
 assert.ok(html.includes('support-chat-scroll-lock'), 'boot script does not unlock an open chat');
 assert.ok(html.includes('supportChat.js?v=20261009supportClosed'), 'chat script cache bust');
-assert.ok(html.includes('styles.css?v=20261009supportScroll'), 'styles cache bust');
+assert.ok(html.includes('styles.css?v=20261009cardMark'), 'styles cache bust');
 assert.ok(html.includes('android-scroll-fix.css?v=20261009supportScroll'), 'mobile sheet cache bust');
 assert.ok(instant.includes('supportChat.js?v=20261009supportClosed'), 'instant portal chat cache bust');
 
