@@ -16,6 +16,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env.local') });
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 require('dotenv').config();
+process.env.AUTO_ONCHAIN_WITHDRAWALS = 'false';
 
 const assert = require('assert');
 const { initDb, closeDb, getDb } = require('../src/db');

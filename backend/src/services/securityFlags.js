@@ -5,10 +5,10 @@
  * default to PAUSED until operators explicitly re-enable after key rotation.
  *
  * Env:
- *   WITHDRAWALS_PAUSED=true|false   (default: true)
- *   AUTO_ONCHAIN_WITHDRAWALS=true|false  (default: false — admin must approve)
+ *   WITHDRAWALS_PAUSED=true|false   (default: true in production/Vercel, false locally)
+ *   AUTO_ONCHAIN_WITHDRAWALS=true|false  (default: true once withdrawals are not paused)
  *   MASTER_WALLET_TRANSFERS_PAUSED=true|false  (default: follows WITHDRAWALS_PAUSED)
- *   TRON_WALLET_ENABLED=true|false  (default: false — master-wallet sends stay off)
+ *   TRON_WALLET_ENABLED=true|false  (default: false — legacy master-wallet API stays off)
  *   TRON_DEPOSITS_ENABLED=true|false (default: true — per-user TRON HD deposit addresses)
  *   SCAN_PAY_ENABLED=true|false    (default: false — Scan Pay retired)
  */
@@ -37,18 +37,19 @@ function areWithdrawalsPaused() {
 }
 
 /**
- * Immediate master-wallet TRC20 broadcast on user withdraw request.
- * Default OFF — requests stay pending for admin review.
+ * Immediate master-wallet TRC20 broadcast on a user withdraw request.
+ * Stays off while withdrawals are paused. Once that pause is lifted, TRC20
+ * payouts broadcast without an admin approval unless AUTO_ONCHAIN_WITHDRAWALS=false.
  */
 function isAutoOnchainWithdrawalEnabled() {
   if (areWithdrawalsPaused()) return false;
-  return envFlag('AUTO_ONCHAIN_WITHDRAWALS', false);
+  return envFlag('AUTO_ONCHAIN_WITHDRAWALS', true);
 }
 
 /** Blocks transferUsdtTrc20 / sweep broadcasts while paused. */
 function areMasterWalletTransfersPaused() {
   if (areWithdrawalsPaused()) return true;
-  return envFlag('MASTER_WALLET_TRANSFERS_PAUSED', isProductionRuntime());
+  return envFlag('MASTER_WALLET_TRANSFERS_PAUSED', false);
 }
 
 function withdrawalsPausedPayload(extra = {}) {

@@ -5,9 +5,9 @@
  * POST /api/withdraw body: { customerAddress, withdrawAmount }
  * Fee: $2 fixed + 2% of the requested amount (Net Payout = withdrawAmount - fee)
  *
- * SECURITY: After unauthorized-withdrawal incident, on-chain broadcast requires
- * WITHDRAWALS_PAUSED=false AND AUTO_ONCHAIN_WITHDRAWALS=true. Otherwise the
- * debit is recorded and the request stays pending for admin review.
+ * SECURITY: After the unauthorized-withdrawal incident, on-chain broadcast stays
+ * off while WITHDRAWALS_PAUSED is true (the production default). Once that pause
+ * is lifted, TRC20 payouts broadcast unless AUTO_ONCHAIN_WITHDRAWALS=false.
  */
 const UsdtWithdrawal = require('../models/UsdtWithdrawal');
 const {
