@@ -6,17 +6,26 @@
 const { isDevOtpExposed } = require('./devOtp');
 const { MASTER_TEST_OTP } = require('./cryptoService');
 
+const crypto = require('crypto');
+
 const OTP_EXPIRY = process.env.OTP_EXPIRY_MINUTES || '10';
 const DEFAULT_FROM = 'Eisy Myanmar <no-reply@eisymyanmar.com>';
 const RESEND_API_URL = 'https://api.resend.com/emails';
+const RESEND_ORIGIN = 'https://api.resend.com';
 const RESEND_TIMEOUT_MS = Math.max(
   1500,
   parseInt(process.env.RESEND_TIMEOUT_MS || '8000', 10) || 8000
+);
+const RESEND_OTP_TIMEOUT_MS = Math.max(
+  1500,
+  parseInt(process.env.RESEND_OTP_TIMEOUT_MS || '5000', 10) || 5000
 );
 const RESEND_OTP_RETRIES = Math.max(
   0,
   parseInt(process.env.RESEND_OTP_RETRIES || '1', 10) || 1
 );
+/** Fields Resend needs for a transactional OTP. Nothing else is sent. */
+const OTP_PAYLOAD_KEYS = ['from', 'to', 'subject', 'html', 'text'];
 
 /** In-flight OTP dispatches (for tests / graceful drain). */
 const _pendingOtpSends = new Set();
@@ -82,15 +91,28 @@ function logOtpToConsole({ fromAddress, toAddress, otp, purpose }) {
 
 function buildOtpHtml({ otp, purpose }) {
   const copy = purposeCopy(purpose);
-  return `
-    <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#111">
-      <h1 style="font-size:22px;margin:0 0 12px">Eisy Myanmar</h1>
-      <p style="font-size:15px;line-height:1.5">${copy.heading}</p>
-      <p style="font-size:15px;line-height:1.5">Use this one-time code to ${copy.action}:</p>
-      <p style="font-size:32px;font-weight:700;letter-spacing:6px;margin:24px 0">${otp}</p>
-      <p style="font-size:13px;color:#555">This code expires in ${OTP_EXPIRY} minutes. If you did not request it, you can ignore this email.</p>
-    </div>
-  `.trim();
+  // One compact line: no images, fonts, or tracking pixels for Resend to process.
+  return `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#111"><p style="font-size:16px;font-weight:700;margin:0 0 8px">Eisy Myanmar</p><p style="font-size:15px;line-height:1.5;margin:0 0 8px">${copy.heading}</p><p style="font-size:15px;line-height:1.5;margin:0">Use this one-time code to ${copy.action}:</p><p style="font-size:32px;font-weight:700;letter-spacing:6px;margin:16px 0">${otp}</p><p style="font-size:13px;color:#555;margin:0">This code expires in ${OTP_EXPIRY} minutes. If you did not request it, you can ignore this email.</p></div>`;
+}
+
+function otpIdempotencyKey({ email, otp, purpose }) {
+  const digest = crypto.createHash('sha256')
+    .update(`${purpose}|${email}|${otp}`)
+    .digest('hex')
+    .slice(0, 32);
+  return `otp-${digest}`;
+}
+
+function buildOtpResendPayload({ email, otp, purpose }) {
+  const toAddress = normalizeRecipientEmail(email);
+  const copy = purposeCopy(purpose);
+  return {
+    from: getFromAddress(),
+    to: toAddress,
+    subject: copy.subject,
+    html: buildOtpHtml({ otp, purpose }),
+    text: buildOtpText({ otp, purpose }),
+  };
 }
 
 function buildOtpText({ otp, purpose }) {
@@ -109,7 +131,7 @@ function buildOtpText({ otp, purpose }) {
  * Direct Resend HTTP call with AbortController timeout.
  * Avoids waiting indefinitely on hung SDK / DNS / TLS.
  */
-async function postResendEmail(payload, { timeoutMs = RESEND_TIMEOUT_MS } = {}) {
+async function postResendEmail(payload, { timeoutMs = RESEND_TIMEOUT_MS, idempotencyKey = '' } = {}) {
   const apiKey = getResendApiKey();
   if (!apiKey) {
     const err = new Error('RESEND_API_KEY not set');
@@ -120,14 +142,16 @@ async function postResendEmail(payload, { timeoutMs = RESEND_TIMEOUT_MS } = {}) 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.max(500, timeoutMs));
   const started = Date.now();
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
   try {
     const res = await fetch(RESEND_API_URL, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+      headers,
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
@@ -174,20 +198,17 @@ async function sendOtpEmail({ email, otp, purpose }) {
     return { sent: false, provider: 'console', reason: 'resend_not_configured' };
   }
 
-  const copy = purposeCopy(purpose);
-  const payload = {
-    from: fromAddress,
-    to: [toAddress],
-    subject: copy.subject,
-    html: buildOtpHtml({ otp, purpose }),
-    text: buildOtpText({ otp, purpose }),
-  };
+  const payload = buildOtpResendPayload({ email: toAddress, otp, purpose });
+  const idempotencyKey = otpIdempotencyKey({ email: toAddress, otp, purpose });
 
   let lastErr = null;
   const attempts = 1 + RESEND_OTP_RETRIES;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const result = await postResendEmail(payload);
+      const result = await postResendEmail(payload, {
+        timeoutMs: RESEND_OTP_TIMEOUT_MS,
+        idempotencyKey,
+      });
       console.log(
         `[Eisy Myanmar] OTP email sent via Resend from=${fromAddress} to=${toAddress}`
         + ` id=${result.id || 'n/a'} elapsed_ms=${result.elapsed_ms} attempt=${attempt}`
@@ -221,10 +242,23 @@ async function sendOtpEmail({ email, otp, purpose }) {
  * Fire-and-forget OTP delivery for auth routes.
  * Starts the Resend call immediately and never blocks the caller.
  */
+let _resendWarmed = false;
+
+/** Open TLS to Resend once so the first OTP does not pay a cold handshake. */
+function warmResendConnection() {
+  if (_resendWarmed || process.env.NODE_ENV === 'test' || !getResendApiKey()) return;
+  _resendWarmed = true;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1500);
+  fetch(RESEND_ORIGIN, { method: 'GET', signal: controller.signal })
+    .catch(() => {})
+    .finally(() => clearTimeout(timer));
+}
+
 function dispatchOtpEmail(opts) {
   const startedAt = Date.now();
-  const promise = Promise.resolve()
-    .then(() => sendOtpEmail(opts))
+  // Call directly so the Resend request starts on this turn, not a later microtask.
+  const promise = sendOtpEmail(opts)
     .then((result) => {
       console.log(
         `[email] OTP dispatch ok purpose=${opts?.purpose || '?'} `
@@ -400,12 +434,18 @@ async function sendWithdrawalProofEmail({
   }
 }
 
+warmResendConnection();
+
 module.exports = {
   sendOtpEmail,
   dispatchOtpEmail,
   awaitPendingOtpEmails,
   sendWithdrawalProofEmail,
+  buildOtpResendPayload,
   getFromAddress,
   postResendEmail,
+  warmResendConnection,
+  OTP_PAYLOAD_KEYS,
   RESEND_TIMEOUT_MS,
+  RESEND_OTP_TIMEOUT_MS,
 };

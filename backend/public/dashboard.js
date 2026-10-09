@@ -5838,6 +5838,75 @@ const Dashboard = {
     }
   },
 
+  otpStatusEl(btn) {
+    const id = btn?.dataset?.otpStatus;
+    return id ? document.getElementById(id) : null;
+  },
+
+  clearOtpResendTimer(btn) {
+    const timer = this._otpResendTimers?.get(btn);
+    if (timer) clearInterval(timer);
+    this._otpResendTimers?.delete(btn);
+  },
+
+  beginOtpSend(btn) {
+    if (!btn) return;
+    if (!btn.dataset.otpIdle) btn.dataset.otpIdle = (btn.textContent || '').trim();
+    this.clearOtpResendTimer(btn);
+    btn.disabled = true;
+    btn.classList.add('is-busy');
+    btn.classList.remove('is-cooldown');
+    btn.setAttribute('aria-busy', 'true');
+    btn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>Sending…</span>';
+  },
+
+  startOtpResendCountdown(btn, seconds) {
+    if (!btn) return;
+    const total = Math.max(1, Math.round(Number(seconds) || 60));
+    const status = this.otpStatusEl(btn);
+    this.clearOtpResendTimer(btn);
+    btn.classList.remove('is-busy');
+    btn.classList.add('is-cooldown');
+    btn.removeAttribute('aria-busy');
+    btn.disabled = true;
+    btn.dataset.otpIdle = 'Resend OTP';
+    let left = total;
+    const paint = () => {
+      if (left <= 0) {
+        this.clearOtpResendTimer(btn);
+        btn.disabled = false;
+        btn.classList.remove('is-cooldown');
+        btn.textContent = 'Resend OTP';
+        if (status) status.textContent = 'You can request a new code.';
+        return;
+      }
+      btn.textContent = `Resend OTP in ${left}s`;
+      if (status && left === total) status.textContent = `Code sent. Resend OTP in ${left}s.`;
+      left -= 1;
+    };
+    paint();
+    if (!this._otpResendTimers) this._otpResendTimers = new Map();
+    this._otpResendTimers.set(btn, setInterval(paint, 1000));
+  },
+
+  finishOtpSend(btn, { ok, seconds, err } = {}) {
+    if (!btn) return;
+    const retry = Number(err?.response?.retry_after_seconds);
+    if (!ok && err?.code === 'OTP_RESEND_COOLDOWN' && retry > 0) {
+      this.startOtpResendCountdown(btn, retry);
+      return;
+    }
+    btn.classList.remove('is-busy');
+    btn.removeAttribute('aria-busy');
+    if (!ok) {
+      btn.disabled = false;
+      btn.classList.remove('is-cooldown');
+      btn.textContent = btn.dataset.otpIdle || 'Resend OTP';
+      return;
+    }
+    this.startOtpResendCountdown(btn, seconds || 60);
+  },
+
   bindAuthForms() {
     const authTabs = $('authTabs');
     if (!authTabs) {
@@ -5921,7 +5990,7 @@ const Dashboard = {
           return;
         }
         const btn = $('loginSendOtp');
-        if (btn) btn.disabled = true;
+        this.beginOtpSend(btn);
         try {
           const data = await Auth.sendLoginOtp(email);
           $('loginVerifyForm')?.classList.remove('hidden');
@@ -5929,11 +5998,11 @@ const Dashboard = {
           this.toast('Login OTP sent!', 'ok', data.dev_otp || null);
           this.log(`OTP sent to ${email}`, 'ok');
           $('loginOtp')?.focus();
+          this.finishOtpSend(btn, { ok: true, seconds: data.resend_after_seconds });
         } catch (err) {
+          this.finishOtpSend(btn, { ok: false, err });
           this.toast(err.message || 'Failed to send OTP', 'error');
           this.log(err.message, 'error');
-        } finally {
-          if (btn) btn.disabled = false;
         }
       });
     }
@@ -5995,10 +6064,7 @@ const Dashboard = {
         }
 
         const btn = $('registerSendOtp');
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = 'Sending…';
-        }
+        this.beginOtpSend(btn);
         try {
           const data = await Auth.sendRegisterOtp(email);
           $('registerCompleteForm')?.classList.remove('hidden');
@@ -6007,11 +6073,13 @@ const Dashboard = {
           if (otp) {
             this.toast('Registration OTP — use this code:', 'ok', otp);
           } else {
-            this.toast('Registration OTP sent! Check server console.', 'ok');
+            this.toast('Registration OTP sent! Check your email.', 'ok');
           }
           this.log(`Registration OTP sent to ${email}`, 'ok');
           $('regOtp')?.focus();
+          this.finishOtpSend(btn, { ok: true, seconds: data.resend_after_seconds });
         } catch (err) {
+          this.finishOtpSend(btn, { ok: false, err });
           const msg = err.message || 'Failed to send registration OTP';
           this.toast(msg, 'error');
           this.setInlineError('regAuthError', msg);
@@ -6019,11 +6087,6 @@ const Dashboard = {
             this.setInlineError('regAuthError', `${msg} — switch to Login tab instead.`);
           }
           this.log(msg, 'error');
-        } finally {
-          if (btn) {
-            btn.disabled = false;
-            btn.textContent = 'Send Registration OTP';
-          }
         }
       });
     }
@@ -6183,8 +6246,8 @@ const Dashboard = {
     const pinResetSendOtpBtn = $('pinResetSendOtpBtn');
     if (pinResetSendOtpBtn) {
       pinResetSendOtpBtn.onclick = async () => {
+        this.beginOtpSend(pinResetSendOtpBtn);
         try {
-          pinResetSendOtpBtn.disabled = true;
           const email = ($('pinResetEmail')?.value || Auth.user?.email || '').trim();
           const data = await Auth.sendPinResetOtp(email);
           const confirmForm = $('pinResetConfirmForm');
@@ -6200,11 +6263,11 @@ const Dashboard = {
               otpInput?.scrollIntoView({ block: 'center', behavior: 'auto' });
             } catch (_) { /* ignore */ }
           }, 300);
+          this.finishOtpSend(pinResetSendOtpBtn, { ok: true, seconds: data.resend_after_seconds });
         } catch (err) {
+          this.finishOtpSend(pinResetSendOtpBtn, { ok: false, err });
           $('pinResetError').textContent = err.message || 'Failed to send reset code';
           this.toast(err.message || 'Failed to send reset code', 'error');
-        } finally {
-          pinResetSendOtpBtn.disabled = false;
         }
       };
     }
@@ -6251,6 +6314,8 @@ const Dashboard = {
       authPinResetSendForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const errEl = $('authPinResetError');
+        const btn = $('authPinResetSendBtn');
+        this.beginOtpSend(btn);
         try {
           if (errEl) errEl.textContent = '';
           const email = $('authPinResetEmail')?.value.trim();
@@ -6258,7 +6323,9 @@ const Dashboard = {
           $('authPinResetConfirmForm')?.classList.remove('hidden');
           this.showDevOtp?.(data, 'authPinResetOtp');
           this.toast(data.message || 'PIN reset code sent', 'ok', data.dev_otp);
+          this.finishOtpSend(btn, { ok: true, seconds: data.resend_after_seconds });
         } catch (err) {
+          this.finishOtpSend(btn, { ok: false, err });
           if (errEl) errEl.textContent = err.message || 'Failed to send reset code';
           this.toast(err.message || 'Failed to send reset code', 'error');
         }
@@ -6293,16 +6360,16 @@ const Dashboard = {
     const settingsPinResetBtn = $('settingsPinResetBtn');
     if (settingsPinResetBtn) {
       settingsPinResetBtn.onclick = async () => {
+        this.beginOtpSend(settingsPinResetBtn);
         try {
-          settingsPinResetBtn.disabled = true;
           const data = await Auth.sendPinResetOtp(Auth.user?.email);
           $('settingsPinResetForm')?.classList.remove('hidden');
           this.showDevOtp?.(data, 'settingsPinResetOtp');
           this.toast(data.message || 'PIN reset code sent', 'ok', data.dev_otp);
+          this.finishOtpSend(settingsPinResetBtn, { ok: true, seconds: data.resend_after_seconds });
         } catch (err) {
+          this.finishOtpSend(settingsPinResetBtn, { ok: false, err });
           this.toast(err.message || 'Failed to send reset code', 'error');
-        } finally {
-          settingsPinResetBtn.disabled = false;
         }
       };
     }

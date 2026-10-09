@@ -1053,6 +1053,12 @@ select {
 .form .btn-primary, .auth-card .btn-primary { width: 100%; }
 .btn-secondary { background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); }
 .btn-secondary:hover { background: var(--bg-elevated); border-color: rgba(148, 163, 184, 0.45); }
+.btn.is-cooldown:disabled { cursor: not-allowed; opacity: 0.9; }
+.otp-resend-status {
+  margin: 0.45rem 0 0;
+  min-height: 1.15em;
+  font-variant-numeric: tabular-nums;
+}
 
 .btn-google {
   display: inline-flex;
