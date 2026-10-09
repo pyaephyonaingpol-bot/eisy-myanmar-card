@@ -791,6 +791,15 @@ const Dashboard = {
 
   init() {
     console.log('[Dashboard] init');
+    Auth.startIdleWatch?.();
+    if (!this._sessionEndBound) {
+      this._sessionEndBound = true;
+      window.addEventListener('eisy:session-end', () => {
+        this._navInitialized = false;
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+        this.refreshAuthUI();
+      });
+    }
     const finishBoot = () => {
       try {
         Auth.initLoginPanel();
@@ -1548,6 +1557,78 @@ const Dashboard = {
   setHomeWalletBalanceDisplay(text) {
     const label = text == null || text === '' ? '—' : String(text);
     if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = label;
+  },
+
+  setBalanceLoading(on) {
+    document.documentElement.classList.toggle('balance-loading', Boolean(on));
+    const el = $('sumBalanceUsdt');
+    if (el) el.setAttribute('aria-busy', on ? 'true' : 'false');
+  },
+
+  setCardsLoading(on) {
+    this._cardsUiLoading = Boolean(on);
+    document.documentElement.classList.toggle('cards-loading', Boolean(on));
+    const skeleton = $('pagoCardSkeleton');
+    const empty = $('pagoCardEmpty');
+    const waiting = Boolean(on) && !(this.allCards || []).length;
+    skeleton?.classList.toggle('hidden', !waiting);
+    if (waiting) empty?.classList.add('hidden');
+    else if (!(this.allCards || []).length) empty?.classList.remove('hidden');
+    skeleton?.setAttribute('aria-busy', waiting ? 'true' : 'false');
+  },
+
+  showIdleLogoutNotice() {
+    const el = $('authSessionNotice');
+    if (!el) return;
+    let reason = '';
+    try {
+      reason = sessionStorage.getItem('eisy_logout_notice') || '';
+      if (reason) sessionStorage.removeItem('eisy_logout_notice');
+    } catch (_) { /* ignore */ }
+    if (reason !== 'inactive') {
+      el.classList.add('hidden');
+      return;
+    }
+    el.textContent = this.i18nText(
+      'session_idle_notice',
+      'You were signed out after 20 minutes of inactivity. Please sign in again.'
+    );
+    el.classList.remove('hidden');
+  },
+
+  saveWalletCache(data) {
+    if (!Auth.user?.id || !data) return;
+    try {
+      sessionStorage.setItem('eisy_wallet_cache', JSON.stringify({
+        userId: Auth.user.id,
+        balance_usdt: data.balance_usdt,
+        balance_usdt_locked: data.balance_usdt_locked || 0,
+        balance_mmk: data.balance_mmk,
+      }));
+    } catch (_) { /* ignore */ }
+  },
+
+  applyCachedWallet() {
+    try {
+      const raw = JSON.parse(sessionStorage.getItem('eisy_wallet_cache') || 'null');
+      if (!raw || Number(raw.userId) !== Number(Auth.user?.id)) return false;
+      if (raw.balance_usdt == null && raw.balance_mmk == null) return false;
+      this.walletUsdt = raw.balance_usdt;
+      this.walletUsdtLocked = raw.balance_usdt_locked || 0;
+      this.walletMmk = raw.balance_mmk;
+      this.renderWalletBalances({
+        balance_usdt: raw.balance_usdt ?? 0,
+        balance_usdt_locked: raw.balance_usdt_locked || 0,
+        balance_mmk: raw.balance_mmk ?? 0,
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  },
+
+  clearWalletCache() {
+    try { sessionStorage.removeItem('eisy_wallet_cache'); } catch (_) { /* ignore */ }
   },
 
   syncModeScopedHomeWallets() {
@@ -6579,8 +6660,14 @@ const Dashboard = {
 
     if (!loggedIn) {
       this.clearCardsCache();
+      this.clearWalletCache();
       this.allCards = [];
+      this.walletUsdt = null;
+      this.walletUsdtLocked = null;
+      this.setBalanceLoading(false);
+      this.setCardsLoading(false);
       this.endHydration();
+      this.showIdleLogoutNotice();
       if (window.location.hash && !window.location.hash.startsWith('#admin')) {
         history.replaceState(null, '', window.location.pathname + window.location.search);
       }
@@ -6601,6 +6688,11 @@ const Dashboard = {
       await this.ensureSessionUser().catch(() => null);
       this.updateProfileFormUI();
 
+      const cachedCards = !Auth.needsPinUnlock() && this.applyCachedCardsIfAvailable();
+      const cachedWallet = !Auth.needsPinUnlock() && this.applyCachedWallet();
+      if (!cachedWallet && !Auth.needsPinUnlock()) this.setBalanceLoading(true);
+      if (!cachedCards && !Auth.needsPinUnlock()) this.setCardsLoading(true);
+
       if (Auth.needsPinUnlock()) {
         const needsSetup = !Auth.user?.has_pin;
         if (needsSetup) {
@@ -6611,24 +6703,37 @@ const Dashboard = {
           $('pinSetupModal')?.classList.add('hidden');
         }
         this.applyCachedCardsIfAvailable();
+        this.setBalanceLoading(false);
+        this.setCardsLoading(false);
         this.setHomeWalletBalanceDisplay('🔒 Locked');
       } else {
         $('pinUnlockModal')?.classList.add('hidden');
         $('pinSetupModal')?.classList.add('hidden');
-        this.applyCachedCardsIfAvailable();
-        this.loadAllCards({ preserveSelection: true, silent: true });
       }
 
-      this.setHomeWalletBalanceDisplay('Loading…');
       if ($('sumName') && $('sumName').textContent === '—' && Auth.user?.name) {
         $('sumName').textContent = Auth.user.name;
       }
 
-      // Home-critical path only — pricing/fees/KYC/methods load on demand per page.
+      // Home-critical path: local balance and local cards in parallel.
+      // The Tron scan and an empty-list Pago import follow without blocking paint.
+      const cardsReady = Auth.needsPinUnlock()
+        ? Promise.resolve()
+        : this.loadAllCards({ preserveSelection: true, silent: true });
       await Promise.allSettled([
-        this.loadWallet({ force: true }),
+        Auth.needsPinUnlock() ? Promise.resolve() : this.loadWallet({ force: true, fast: true }),
+        cardsReady,
         this.loadDepositHistory(),
       ]);
+      if (!Auth.needsPinUnlock()) {
+        this.loadWallet({ force: true, silent: true }).catch(() => {});
+        if (!(this.allCards || []).length) {
+          this.loadAllCards({ preserveSelection: true, silent: true, reconcilePago: true })
+            .finally(() => this.setCardsLoading(false));
+        } else {
+          this.setCardsLoading(false);
+        }
+      }
       this.loadCardPricing().catch(() => {});
     };
 
@@ -8548,18 +8653,25 @@ const Dashboard = {
       return;
     }
 
-    return this._withInflight('wallet', async () => {
-      if (!force && this._isFresh('wallet') && this.renderWalletBalancesFromCache()) return;
+    const showSkeleton = !opts.silent && this.walletUsdt == null;
+    if (showSkeleton) this.setBalanceLoading(true);
 
-      this.setHomeWalletBalanceDisplay('Loading…');
+    return this._withInflight('wallet', async () => {
+      if (!force && this._isFresh('wallet') && this.renderWalletBalancesFromCache()) {
+        this.setBalanceLoading(false);
+        return;
+      }
+
       try {
-        const data = await Auth.api('GET', '/api/user/wallet', null, {
+        const data = await Auth.api('GET', '/api/user/wallet' + (opts.fast ? '?fast=1' : ''), null, {
           sensitive: true,
-          timeoutMs: 8000,
+          timeoutMs: opts.fast ? 8000 : 12000,
         });
         this.renderWalletBalances(data);
         this.walletUsdt = data.balance_usdt;
         this.walletUsdtLocked = data.balance_usdt_locked || 0;
+        this.saveWalletCache(data);
+        this.setBalanceLoading(false);
         this._markFetched('wallet');
         this.updatePagoIssueSummary();
         this.applySessionUserToUI();
@@ -8567,6 +8679,7 @@ const Dashboard = {
           this.syncUsdtWalletBalancesFromPayload(data);
         }
       } catch (err) {
+        this.setBalanceLoading(false);
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
           this.setHomeWalletBalanceDisplay('🔒 Locked');
           if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
@@ -9297,7 +9410,13 @@ const Dashboard = {
     if (!cards.length) {
       list.innerHTML = '';
       list.classList.add('hidden');
-      empty?.classList.remove('hidden');
+      if (this._cardsUiLoading) {
+        empty?.classList.add('hidden');
+        $('pagoCardSkeleton')?.classList.remove('hidden');
+      } else {
+        $('pagoCardSkeleton')?.classList.add('hidden');
+        empty?.classList.remove('hidden');
+      }
       panel?.classList.add('hidden');
       this.stopPago3dsPoll();
       this.renderPagoCardTransactions([], {
@@ -9306,6 +9425,7 @@ const Dashboard = {
       return;
     }
     empty?.classList.add('hidden');
+    $('pagoCardSkeleton')?.classList.add('hidden');
     if (this.activeCardIndex >= cards.length) this.activeCardIndex = 0;
     this.paintPagoCardSwitcher();
     const selected = cards[this.activeCardIndex];
