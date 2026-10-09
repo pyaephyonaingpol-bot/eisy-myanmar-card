@@ -27,11 +27,21 @@ TELEGRAM_WEBHOOK_SECRET=long-random-secret
 
 ### 2) Telegram webhook
 
+Production delivers `POST` (and answers `GET`) at:
+
+`https://eisymyanmar.com/api/webhook/telegram`
+
+That path is the Express route `backend/src/routes/webhook.js` (`router.post('/telegram')`). Vercel rewrites `/api/*` to the Express function. `app/api/webhook/telegram/route.ts` is the same handler for a Next server; it is not a different URL.
+
+`setWebhook` returns `{ "ok": false }` when the URL is not public HTTPS, the host is a protected `*.vercel.app` deployment, the secret contains characters other than `A-Z a-z 0-9 _ -`, or the endpoint answers with a non-2xx status. `GET` and an empty `POST` both return HTTP 200.
+
 ```bash
 curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
-  -d "url=https://YOUR_DOMAIN/api/webhook/telegram" \
-  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET"
+  -H 'content-type: application/json' \
+  -d '{"url":"https://eisymyanmar.com/api/webhook/telegram","secret_token":"'"$TELEGRAM_WEBHOOK_SECRET"'","allowed_updates":["message","edited_message","channel_post","edited_channel_post"]}'
 ```
+
+On Vercel, boot calls that same `setWebhook` unless `TELEGRAM_WEBHOOK_AUTOREGISTER=false`.
 
 Reply to a ticket message in the group (messages contain `#T123`), or use:
 

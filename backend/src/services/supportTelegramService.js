@@ -81,12 +81,65 @@ function parseTelegramWebhookPayload(body) {
   if (!update || typeof update !== 'object' || Array.isArray(update)) {
     return { update: null, message: null };
   }
+  if (update.update && typeof update.update === 'object' && !update.message && !update.edited_message) {
+    return parseTelegramWebhookPayload(update.update);
+  }
   const message = update.message
     || update.edited_message
     || update.channel_post
     || update.edited_channel_post
+    || update.business_message
     || null;
+  if (!message && (update.message_id != null || update.chat)) {
+    return { update, message: update };
+  }
   return { update, message };
+}
+
+const PRODUCTION_WEBHOOK_ORIGIN = 'https://eisymyanmar.com';
+
+function isWebhookSecret(value) {
+  return /^[A-Za-z0-9_-]{1,256}$/.test(String(value || ''));
+}
+
+/**
+ * Public HTTPS URL Telegram must call. Deployment hosts (*.vercel.app) are
+ * often behind Vercel Authentication, which makes setWebhook return ok:false.
+ */
+function canonicalTelegramWebhookUrl() {
+  const override = String(process.env.TELEGRAM_WEBHOOK_URL || '').trim().replace(/\/$/, '');
+  if (override) return override;
+  let base = '';
+  try {
+    const { getPublicBaseUrl } = require('../lib/publicUrl');
+    base = String(getPublicBaseUrl() || '').replace(/\/$/, '');
+  } catch (_) {
+    base = '';
+  }
+  let origin = PRODUCTION_WEBHOOK_ORIGIN;
+  if (base) {
+    try {
+      const host = new URL(base).hostname;
+      if (host && !/vercel\.app$/i.test(host) && !/localhost|127\.0\.0\.1/.test(host)) {
+        origin = base;
+      }
+    } catch (_) { /* keep production origin */ }
+  }
+  return `${origin}/api/webhook/telegram`;
+}
+
+function normalizeChatId(value) {
+  return String(value ?? '').trim();
+}
+
+/** Group ids are negative. A copied id often drops the leading minus. */
+function chatIdsMatch(left, right) {
+  const a = normalizeChatId(left);
+  const b = normalizeChatId(right);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const bare = (id) => (id.startsWith('-') ? id.slice(1) : id);
+  return bare(a) === bare(b);
 }
 
 function collectTicketTexts(msg) {
@@ -235,56 +288,46 @@ async function notifySupportEvent({
 
 async function findThreadForTelegramReply(msg) {
   const db = getDb();
-  const chatId = String(msg.chat?.id || '');
   const reply = msg.reply_to_message;
   const replyId = reply?.message_id != null ? Number(reply.message_id) : null;
 
   if (replyId) {
-    const byThread = await db.get(
-      `SELECT * FROM support_threads
-       WHERE telegram_chat_id = ?
-         AND (telegram_root_message_id = ? OR telegram_last_outbound_id = ?)
-       ORDER BY updated_at DESC LIMIT 1`,
-      chatId,
-      replyId,
-      replyId
-    );
-    if (byThread) return byThread;
+    try {
+      const byMessage = await db.get(
+        `SELECT st.* FROM support_messages sm
+         JOIN support_threads st ON st.id = sm.thread_id
+         WHERE sm.telegram_message_id = ?
+         ORDER BY sm.id DESC LIMIT 1`,
+        replyId
+      );
+      if (byMessage) return { thread: byMessage, via: 'reply_id' };
 
-    const byMessage = await db.get(
-      `SELECT st.* FROM support_messages sm
-       JOIN support_threads st ON st.id = sm.thread_id
-       WHERE sm.telegram_message_id = ?
-         AND (sm.telegram_chat_id = ? OR sm.telegram_chat_id IS NULL)
-       LIMIT 1`,
-      replyId,
-      chatId
-    );
-    if (byMessage) return byMessage;
-
-    const byStoredId = await db.get(
-      `SELECT * FROM support_threads
-       WHERE telegram_root_message_id = ? OR telegram_last_outbound_id = ?
-       ORDER BY updated_at DESC LIMIT 1`,
-      replyId,
-      replyId
-    );
-    if (byStoredId) return byStoredId;
+      const byThread = await db.get(
+        `SELECT * FROM support_threads
+         WHERE telegram_root_message_id = ? OR telegram_last_outbound_id = ?
+         ORDER BY updated_at DESC LIMIT 1`,
+        replyId,
+        replyId
+      );
+      if (byThread) return { thread: byThread, via: 'reply_id' };
+    } catch (err) {
+      console.warn('[support/telegram] reply id lookup skipped:', err.message);
+    }
   }
 
   for (const part of collectTicketTexts(msg)) {
     const threadId = extractThreadIdFromText(part);
     if (!threadId) continue;
     const thread = await SupportThread.findById(threadId);
-    if (thread) return thread;
+    if (thread) return { thread, via: 'tag' };
   }
-  return null;
+  return { thread: null, via: null };
 }
 
 function isFromAdminChat(msg) {
   const adminChat = getAdminChatId();
-  if (!adminChat) return false;
-  return String(msg.chat?.id || '') === String(adminChat);
+  if (!adminChat || adminChat === 'your_admin_chat_id_here') return false;
+  return chatIdsMatch(msg.chat?.id, adminChat);
 }
 
 async function ingestAdminTelegramReply({ threadId, text, msg, thread = null }) {
@@ -319,14 +362,22 @@ async function ingestAdminTelegramReply({ threadId, text, msg, thread = null }) 
   });
 
   if (current.status === 'pending' || current.status === 'open') {
-    await SupportThread.updateMeta(current.id, { status: 'in_progress' });
+    try {
+      await SupportThread.updateMeta(current.id, { status: 'in_progress' });
+    } catch (err) {
+      console.warn('[support/telegram] status update skipped:', err.message);
+    }
   }
 
-  await persistTelegramLink(current.id, {
-    chatId: String(msg.chat.id),
-    rootMessageId: current.telegram_root_message_id || msg.reply_to_message?.message_id || null,
-    lastOutboundId: msg.message_id,
-  });
+  try {
+    await persistTelegramLink(current.id, {
+      chatId: String(msg.chat.id),
+      rootMessageId: current.telegram_root_message_id || msg.reply_to_message?.message_id || null,
+      lastOutboundId: msg.message_id,
+    });
+  } catch (err) {
+    console.warn('[support/telegram] thread link skipped:', err.message);
+  }
 
   try {
     const sync = require('./supabaseSyncService');
@@ -346,15 +397,15 @@ async function handleTelegramUpdate(update) {
   const parsed = parseTelegramWebhookPayload(update);
   const msg = parsed.message;
   if (!msg) return { ignored: true, reason: 'no_message' };
-  if (!isFromAdminChat(msg)) return { ignored: true, reason: 'wrong_chat' };
   if (msg.from?.is_bot) return { ignored: true, reason: 'bot_message' };
 
   const text = String(msg.text || msg.caption || '').trim();
   if (!text) return { ignored: true, reason: 'empty' };
 
-  if (text.startsWith('/')) {
-    const cmdMatch = text.match(/^\/reply(?:@\w+)?\s+#T(\d+)\s+([\s\S]+)/i);
-    if (!cmdMatch) return { ignored: true, reason: 'command' };
+  const fromAdmin = isFromAdminChat(msg);
+  const cmdMatch = text.match(/^\/reply(?:@\w+)?\s+#T(\d+)\s+([\s\S]+)/i);
+  if (cmdMatch) {
+    if (!fromAdmin && getAdminChatId()) return { ignored: true, reason: 'wrong_chat' };
     return ingestAdminTelegramReply({
       threadId: parseInt(cmdMatch[1], 10),
       text: cmdMatch[2].trim(),
@@ -362,8 +413,12 @@ async function handleTelegramUpdate(update) {
     });
   }
 
-  const thread = await findThreadForTelegramReply(msg);
+  if (!fromAdmin) return { ignored: true, reason: 'wrong_chat' };
+
+  const found = await findThreadForTelegramReply(msg);
+  const thread = found?.thread || null;
   if (!thread) {
+    if (text.startsWith('/')) return { ignored: true, reason: 'command' };
     if (msg.reply_to_message) {
       await sendAdminMessage(
         '⚠️ Could not map that reply to a support ticket. Reply directly to a `#T123` ticket message, or use `/reply #T123 your message`.',
@@ -381,10 +436,53 @@ async function handleTelegramUpdate(update) {
   });
 }
 
+/**
+ * Tell Telegram to deliver updates to the live Express route.
+ * Returns the Bot API JSON (`ok: false` includes `description`).
+ */
+async function registerTelegramWebhook({ fetchImpl } = {}) {
+  const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
+  if (!token || token === 'your_telegram_bot_token_here') {
+    return { ok: false, skipped: true, reason: 'token_missing' };
+  }
+  const url = canonicalTelegramWebhookUrl();
+  if (!/^https:\/\//i.test(url)) {
+    return { ok: false, skipped: true, reason: 'url_not_https', url };
+  }
+  const secret = String(process.env.TELEGRAM_WEBHOOK_SECRET || '').trim();
+  const body = {
+    url,
+    allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post'],
+    drop_pending_updates: false,
+  };
+  if (isWebhookSecret(secret)) body.secret_token = secret;
+  else if (secret) {
+    console.warn('[telegram/webhook] TELEGRAM_WEBHOOK_SECRET ignored — use only A-Z, a-z, 0-9, _ and -');
+  }
+
+  const doFetch = fetchImpl || fetch;
+  const response = await doFetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!payload.ok) {
+    console.error('[telegram/webhook] setWebhook failed:', payload.description || response.status, url);
+  } else {
+    console.log('[telegram/webhook] setWebhook ok', url);
+  }
+  return { ...payload, url };
+}
+
 module.exports = {
   notifySupportEvent,
   handleTelegramUpdate,
   parseTelegramWebhookPayload,
+  canonicalTelegramWebhookUrl,
+  registerTelegramWebhook,
+  chatIdsMatch,
+  isWebhookSecret,
   formatCategory,
   formatPriority,
   formatStatus,
