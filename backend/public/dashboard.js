@@ -5267,6 +5267,50 @@ const Dashboard = {
     ].join('\n');
   },
 
+  normalizeWalletExpiry(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return '';
+    const monthYear = text.match(/^(\d{1,2})\s*[/\-.]\s*(\d{2,4})$/);
+    if (monthYear) {
+      const month = Number(monthYear[1]);
+      if (month >= 1 && month <= 12) {
+        return `${String(month).padStart(2, '0')}/${monthYear[2].slice(-2)}`;
+      }
+    }
+    const yearMonth = text.match(/^(\d{4})\s*[/\-.]\s*(\d{1,2})$/);
+    if (yearMonth) {
+      const month = Number(yearMonth[2]);
+      if (month >= 1 && month <= 12) {
+        return `${String(month).padStart(2, '0')}/${yearMonth[1].slice(-2)}`;
+      }
+    }
+    const digits = text.replace(/\D/g, '');
+    if (digits.length === 4 && digits === text.replace(/\s/g, '')) {
+      const month = Number(digits.slice(0, 2));
+      if (month >= 1 && month <= 12) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+    if (digits.length === 6 && digits === text) {
+      const monthFirst = Number(digits.slice(0, 2));
+      if (monthFirst >= 1 && monthFirst <= 12) return `${digits.slice(0, 2)}/${digits.slice(4)}`;
+      const monthLast = Number(digits.slice(4));
+      if (monthLast >= 1 && monthLast <= 12) return `${digits.slice(4)}/${digits.slice(2, 4)}`;
+    }
+    return text;
+  },
+
+  walletClipboardParts(card) {
+    return {
+      number: String(card?.card_number || '').replace(/\D/g, ''),
+      expiry: this.normalizeWalletExpiry(card?.exp_date),
+      cvv: String(card?.cvv || '').replace(/\D/g, ''),
+    };
+  },
+
+  formatWalletClipboard(card) {
+    const parts = this.walletClipboardParts(card);
+    return [parts.number, parts.expiry, parts.cvv].join('\n');
+  },
+
   bindCardCopyButtons() {
     $('cardDetailCopyNumber')?.addEventListener('click', async () => {
       const card = this.getCardDetailModalCard();
@@ -8747,6 +8791,9 @@ const Dashboard = {
     $('pagoAddGooglePayBtn')?.addEventListener('click', () => this.openPagoWalletGuide('google'));
     $('pagoWalletModalClose')?.addEventListener('click', () => this.closePagoWalletModal());
     $('pagoWalletCopyAllBtn')?.addEventListener('click', () => this.copyPagoWalletDetails());
+    $('pagoWalletCopyNumberBtn')?.addEventListener('click', () => this.copyPagoWalletField('number'));
+    $('pagoWalletCopyExpiryBtn')?.addEventListener('click', () => this.copyPagoWalletField('expiry'));
+    $('pagoWalletCopyCvvBtn')?.addEventListener('click', () => this.copyPagoWalletField('cvv'));
     $('pagoWalletOpenAppBtn')?.addEventListener('click', () => this.openPagoWalletDestination());
     $('pagoWalletModal')?.addEventListener('click', (e) => {
       if (e.target === $('pagoWalletModal')) this.closePagoWalletModal();
@@ -9138,11 +9185,17 @@ const Dashboard = {
             : 'Verify with the code Google sends if prompted.'
         ),
       ],
-      note: this.i18nText(
-        'pago_wallet_manual_note',
-        'Pago supports Apple Pay and Google Pay on the network. True 1-click push provisioning is not in the public Pago API yet, so this guided copy-and-add flow is used.'
-      ),
     };
+  },
+
+  fillPagoWalletFieldValues(card) {
+    const parts = this.walletClipboardParts(card);
+    const numberEl = $('pagoWalletNumberValue');
+    if (numberEl) numberEl.textContent = parts.number ? this.formatCardNumber(parts.number) : '—';
+    const expiryEl = $('pagoWalletExpiryValue');
+    if (expiryEl) expiryEl.textContent = parts.expiry || '—';
+    const cvvEl = $('pagoWalletCvvValue');
+    if (cvvEl) cvvEl.textContent = parts.cvv || '—';
   },
 
   closePagoWalletModal() {
@@ -9194,15 +9247,12 @@ const Dashboard = {
       const copy = this.getPagoWalletGuideCopy(this.pagoWalletTarget);
       if ($('pagoWalletModalTitle')) $('pagoWalletModalTitle').textContent = copy.title;
       if ($('pagoWalletModalLead')) $('pagoWalletModalLead').textContent = copy.lead;
-      if ($('pagoWalletModalNote')) $('pagoWalletModalNote').textContent = copy.note;
       const steps = $('pagoWalletModalSteps');
       if (steps) {
         steps.innerHTML = copy.steps.map((step) => `<li>${this.escapeHtml(step)}</li>`).join('');
       }
+      this.fillPagoWalletFieldValues(card);
       $('pagoWalletModal')?.classList.remove('hidden');
-
-      // One-tap convenience: copy details immediately so the wallet app paste is ready.
-      await this.copyPagoWalletDetails({ silentToast: false });
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') return;
       this.toast(err.message || 'Could not prepare wallet add', 'error');
@@ -9221,7 +9271,7 @@ const Dashboard = {
     this.pagoDetailRevealed = true;
     this.showPagoCardDetail(card);
     try {
-      await this.copyToClipboard(this.formatAllCardDetails(card));
+      await this.copyToClipboard(this.formatWalletClipboard(card));
     } catch (err) {
       // Clipboard can fail without window focus (mobile WebView / headless).
       // Details stay revealed on the plastic card so the user can still copy manually.
@@ -9242,6 +9292,41 @@ const Dashboard = {
         this.i18nText('pago_wallet_copied', 'Card details copied — paste them in your wallet app')
       );
     }
+    return true;
+  },
+
+  async copyPagoWalletField(field) {
+    const card = this.getSelectedPagoCard();
+    const parts = this.walletClipboardParts(card);
+    const value = parts[field];
+    if (!value) {
+      this.toast(
+        this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before adding to a wallet.'),
+        'error'
+      );
+      return false;
+    }
+    const notices = {
+      number: ['pago_wallet_copied_number', 'Card number copied'],
+      expiry: ['pago_wallet_copied_expiry', 'Expiry copied'],
+      cvv: ['pago_wallet_copied_cvv', 'CVV copied'],
+    };
+    const notice = notices[field];
+    if (!notice) return false;
+    try {
+      await this.copyToClipboard(value);
+    } catch (err) {
+      this.toast(
+        this.i18nText(
+          'pago_wallet_copy_failed',
+          'Could not auto-copy. Card details are shown — copy them manually into your wallet app.'
+        ),
+        'error'
+      );
+      console.warn('[Dashboard] wallet field clipboard:', err?.message || err);
+      return false;
+    }
+    this.copyToast(this.i18nText(notice[0], notice[1]));
     return true;
   },
 

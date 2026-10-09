@@ -60,7 +60,7 @@
       #pageProfile .summary-grid { grid-template-columns: 1fr; }
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261009fastLoad" />
+  <link rel="stylesheet" href="/styles.css?v=20261009walletCopy" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20261009supportScroll" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -165,7 +165,23 @@
       </div>
       <p id="pagoWalletModalLead" class="hint pago-wallet-modal-lead"></p>
       <ol id="pagoWalletModalSteps" class="pago-wallet-steps"></ol>
-      <p id="pagoWalletModalNote" class="pago-wallet-note hint"></p>
+      <div id="pagoWalletFields" class="pago-wallet-fields">
+        <div class="pago-wallet-field">
+          <span class="pago-wallet-field-label" data-i18n="pago_reveal_number">Card number</span>
+          <code id="pagoWalletNumberValue" class="pago-wallet-field-value">—</code>
+          <button type="button" class="btn btn-secondary btn-sm" id="pagoWalletCopyNumberBtn" data-i18n="btn_copy">Copy</button>
+        </div>
+        <div class="pago-wallet-field">
+          <span class="pago-wallet-field-label" data-i18n="card_expiry">Expiry</span>
+          <code id="pagoWalletExpiryValue" class="pago-wallet-field-value">—</code>
+          <button type="button" class="btn btn-secondary btn-sm" id="pagoWalletCopyExpiryBtn" data-i18n="btn_copy">Copy</button>
+        </div>
+        <div class="pago-wallet-field">
+          <span class="pago-wallet-field-label" data-i18n="pago_reveal_cvv">CVV</span>
+          <code id="pagoWalletCvvValue" class="pago-wallet-field-value">—</code>
+          <button type="button" class="btn btn-secondary btn-sm" id="pagoWalletCopyCvvBtn" data-i18n="btn_copy">Copy</button>
+        </div>
+      </div>
       <div class="pago-wallet-modal-actions">
         <button type="button" class="btn btn-primary" id="pagoWalletCopyAllBtn" data-i18n="copy_all_details">Copy All Details</button>
         <button type="button" class="btn btn-secondary" id="pagoWalletOpenAppBtn" data-i18n="pago_wallet_open_app">Open wallet app</button>
@@ -1890,7 +1906,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261009p2pKyc"></script>
+  <script defer src="/i18n.js?v=20261009walletCopy"></script>
   <script defer src="/auth.js?v=20261009idleLogout"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1913,7 +1929,7 @@
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261009fastLoad"></script>
+  <script defer src="/dashboard.js?v=20261009walletCopy"></script>
   <script defer src="/supportChat.js?v=20261009supportClosed"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

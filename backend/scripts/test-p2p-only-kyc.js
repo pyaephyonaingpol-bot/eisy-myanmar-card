@@ -56,9 +56,9 @@ async function main() {
   assert.ok(html.includes('id="kycGateModal"'), 'user KYC gate modal');
   assert.ok(html.includes('KYC Verification Required to Trade P2P'), 'gate title');
   assert.ok(html.includes('Virtual Visa cards do not need KYC'), 'card users are told KYC is optional');
-  assert.ok(html.includes('dashboard.js?v=20261009fastLoad'), 'dashboard cache bust');
+  assert.ok(html.includes('dashboard.js?v=20261009walletCopy'), 'dashboard cache bust');
   assert.ok(instant.includes('id="kycGateModal"'), 'instant portal keeps the P2P gate markup');
-  assert.ok(instant.includes('dashboard.js?v=20261009fastLoad'), 'instant portal cache bust');
+  assert.ok(instant.includes('dashboard.js?v=20261009walletCopy'), 'instant portal cache bust');
   assert.ok(!html.includes('verified banking') && !instant.includes('verified banking'), 'portal copy dropped banking KYC');
   assert.ok(i18n.includes('Virtual Visa cards do not need KYC'), 'english KYC hint');
   assert.ok(i18n.includes('Virtual Visa Card သုံးရန် KYC မလိုပါ'), 'burmese KYC hint');

@@ -6019,12 +6019,53 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   font-weight: 700;
 }
 
-.pago-wallet-note {
-  margin: 0 0 1rem;
-  padding: 0.65rem 0.75rem;
+.pago-wallet-fields {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0 0 0.9rem;
+}
+
+.pago-wallet-field {
+  display: grid;
+  grid-template-columns: 5.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  padding: 0.4rem 0.45rem 0.4rem 0.65rem;
   border-radius: var(--radius-md, 0.65rem);
-  background: rgba(148, 163, 184, 0.1);
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.pago-wallet-field-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.pago-wallet-field-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92rem;
+  letter-spacing: 0.03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pago-wallet-field .btn {
+  min-height: 2.25rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .pago-wallet-field {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .pago-wallet-field-label {
+    grid-column: 1 / -1;
+  }
 }
 
 .pago-wallet-modal-actions {
