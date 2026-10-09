@@ -50,7 +50,6 @@ async function uniqueRefCode(table, prefix) {
 function normalizeNetwork(network) {
   const n = String(network || '').trim().toUpperCase();
   if (n === 'TRC20' || n === 'TRON') return 'TRC20';
-  if (n === 'BEP20' || n === 'BSC') return 'BEP20';
   if (n === 'BANK') return 'BANK';
   return null;
 }
@@ -78,14 +77,7 @@ function validateWalletAddress(network, address) {
     return addr;
   }
 
-  if (network === 'BEP20') {
-    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
-      throw new Error('Invalid BEP20 address — must be a 42-character hex address starting with 0x');
-    }
-    return addr;
-  }
-
-  throw new Error('Select TRC20 or BEP20 network');
+  throw new Error('USDT withdrawals use TRC20 (Tron) only');
 }
 
 function validateBankDetails({ bank_name, account_name, account_number }) {
@@ -167,7 +159,7 @@ function assertFeeLeavesRemainder(breakdown) {
 async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_address, amount_usdt }) {
   const normalizedNetwork = normalizeNetwork(network);
   if (!normalizedNetwork || normalizedNetwork === 'BANK') {
-    throw new Error('Select withdrawal network: TRC20 or BEP20');
+    throw new Error('USDT withdrawals use TRC20 (Tron) only');
   }
 
   const walletAddress = validateWalletAddress(normalizedNetwork, wallet_address);
@@ -377,7 +369,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     };
   }
 
-  // BEP20, bank, or TRC20 with AUTO_ONCHAIN_WITHDRAWALS=false stays in the payout queue.
+  // Bank payouts, and TRC20 when AUTO_ONCHAIN_WITHDRAWALS=false, stay in the payout queue.
   const refreshed = await UsdtWithdrawal.findById(withdrawal.id);
   const { notifyAdminWithdrawalForUser } = require('./telegram');
   notifyAdminWithdrawalForUser(userId, {
@@ -401,7 +393,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
 
 function payoutCurrencySupported(network) {
   const n = String(network || '').toUpperCase();
-  return n === 'TRC20' || n === 'BEP20';
+  return n === 'TRC20';
 }
 
 async function createUsdtBankWithdrawalRequest(userId, body = {}) {

@@ -716,7 +716,7 @@
       usdt_deposit_addresses: 'TRON HD ငွေသွင်း',
       usdt_deposit_addresses_hint: 'သင့် TRON HD လိပ်စာနှင့် QR။ USDT ကို TRC20 ဖြင့်သာ ပို့ပါ။',
       usdt_link_external_wallet: 'External Wallet ချိတ်ဆက်',
-      usdt_link_external_hint: 'TRC20, BEP20 သို့မဟုတ် ERC20 လိပ်စာကို သိမ်းဆည်းပါ။',
+      usdt_link_external_hint: 'ထုတ်ယူရန် TRC20 (Tron) လိပ်စာကို သိမ်းဆည်းပါ။',
       network: 'Network',
       wallet_address: 'Wallet လိပ်စာ',
       label_optional: 'Label (optional)',

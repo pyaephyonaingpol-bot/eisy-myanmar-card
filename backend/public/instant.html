@@ -822,7 +822,7 @@
         </div>
         <div class="field">
           <label for="p2pAdNetwork">Network</label>
-          <select id="p2pAdNetwork"><option value="TRC20">TRC20</option><option value="BEP20">BEP20</option></select>
+          <select id="p2pAdNetwork"><option value="TRC20">TRC20 (Tron)</option></select>
         </div>
         <div class="field">
           <label for="p2pAdRate">Exchange Rate (MMK per USDT)</label>
@@ -1559,23 +1559,21 @@
 
               <section class="panel">
                 <h2 data-i18n="usdt_link_external_wallet">Link External Wallet</h2>
-                <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_link_external_hint">Save a personal TRC20, BEP20, or ERC20 address for withdrawals and optional on-chain balance checks.</p>
+                <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_link_external_hint">Save a personal TRC20 address for withdrawals and optional on-chain balance checks.</p>
                 <form id="usdtLinkWalletForm" class="form">
                   <div class="field">
                     <label for="usdtLinkNetwork" data-i18n="network">Network</label>
                     <select id="usdtLinkNetwork">
                       <option value="TRC20">TRC20 (Tron)</option>
-                      <option value="BEP20">BEP20 (BSC)</option>
-                      <option value="ERC20">ERC20 (Ethereum)</option>
                     </select>
                   </div>
                   <div class="field">
                     <label for="usdtLinkAddress" data-i18n="wallet_address">Wallet Address</label>
-                    <input id="usdtLinkAddress" type="text" autocomplete="off" spellcheck="false" placeholder="T… or 0x…" required />
+                    <input id="usdtLinkAddress" type="text" autocomplete="off" spellcheck="false" placeholder="T…" required />
                   </div>
                   <div class="field">
                     <label for="usdtLinkLabel" data-i18n="label_optional">Label (optional)</label>
-                    <input id="usdtLinkLabel" type="text" maxlength="64" placeholder="My Binance USDT" />
+                    <input id="usdtLinkLabel" type="text" maxlength="64" placeholder="My TRC20 wallet" />
                   </div>
                   <button type="submit" class="btn btn-primary" data-i18n="link_wallet">Link Wallet</button>
                 </form>
@@ -1665,9 +1663,7 @@
             <div class="p2p-market-toolbar">
               <label class="p2p-filter-label" for="p2pNetworkFilter">Network</label>
               <select id="p2pNetworkFilter" class="p2p-network-select">
-                <option value="">All networks</option>
-                <option value="TRC20">TRC20 (Tron)</option>
-                <option value="BEP20">BEP20 (BSC)</option>
+                <option value="TRC20" selected>TRC20 (Tron)</option>
               </select>
             </div>
 
@@ -1708,10 +1704,6 @@
               <div class="rates-card" data-instant-only>
                 <div class="rates-label">TRC20 Withdrawal Fee</div>
                 <div class="rates-value" id="ratesWithdrawFeeTrc20">—</div>
-              </div>
-              <div class="rates-card" data-instant-only>
-                <div class="rates-label">BEP20 Withdrawal Fee</div>
-                <div class="rates-value" id="ratesWithdrawFeeBep20">—</div>
               </div>
               <div class="rates-card" data-instant-only>
                 <div class="rates-label">Min USDT Withdrawal</div>
@@ -1870,7 +1862,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261008issueFee"></script>
+  <script defer src="/i18n.js?v=20261009trc20only"></script>
   <script defer src="/auth.js?v=20261005googleCallback"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -1893,7 +1885,7 @@
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261009userRates"></script>
+  <script defer src="/dashboard.js?v=20261009trc20only"></script>
   <script defer src="/supportChat.js?v=20261009supportScroll"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

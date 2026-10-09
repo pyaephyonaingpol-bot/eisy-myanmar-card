@@ -7125,7 +7125,7 @@ const Dashboard = {
     if (bankFields) bankFields.classList.toggle('hidden', method !== 'bank');
     if (walletInput) {
       walletInput.required = cryptoLike;
-      walletInput.placeholder = (networkSelect?.value || 'TRC20') === 'BEP20' ? '0x…' : 'T…';
+      walletInput.placeholder = 'T…';
     }
     if (networkSelect) {
       networkSelect.required = cryptoLike;
@@ -7213,9 +7213,7 @@ const Dashboard = {
     if (mode !== 'fixed_plus_percent' && (mode === 'fixed' || (!hasScopedPercent && mode !== 'off' && mode !== 'percent' && mode !== 'max_percent_or_min'))) {
       const feeAmountKey = isBank
         ? 'usdt_withdraw_fee_bank'
-        : net === 'BEP20'
-          ? 'usdt_withdraw_fee_bep20'
-          : 'usdt_withdraw_fee_trc20';
+        : 'usdt_withdraw_fee_trc20';
       mode = 'fixed';
       feePercent = 0;
       minimumFee = Number(fees[feeAmountKey] ?? fees.payment_service_fee_minimum_usdt ?? 2);
@@ -7293,10 +7291,8 @@ const Dashboard = {
     if ($('withdrawPreviewNetwork')) {
       if (method === 'bank') {
         $('withdrawPreviewNetwork').textContent = 'Bank (USDT → MMK) · 48h';
-      } else if (network === 'BEP20') {
-        $('withdrawPreviewNetwork').textContent = 'BEP20 (BSC) · 48h';
       } else {
-        $('withdrawPreviewNetwork').textContent = 'TRC20 · 48h';
+        $('withdrawPreviewNetwork').textContent = 'TRC20 (Tron) · 48h';
       }
     }
 
@@ -8207,7 +8203,6 @@ const Dashboard = {
         minimum: wf.withdrawal_service_fee_minimum_usdt ?? wf.payment_service_fee_minimum_usdt ?? 0,
       });
       setText('ratesWithdrawFeeTrc20', unifiedLabel);
-      setText('ratesWithdrawFeeBep20', unifiedLabel);
       const minWd = Number(wf.minimum_usdt_withdrawal);
       if (Number.isFinite(minWd)) setText('ratesMinWithdrawal', `$${minWd.toFixed(2)}`);
     }

@@ -109,11 +109,7 @@ router.get('/fees', requireAuth, async (_req, res) => {
       },
       networks: [
         buildNetworkMeta('TRC20', {
-          label: 'USDT TRC20 (Master Wallet — admin review)',
-          auto_send: false,
-        }),
-        buildNetworkMeta('BEP20', {
-          label: 'BEP20 (BSC Network — manual)',
+          label: 'USDT TRC20 (Tron)',
           auto_send: false,
         }),
         buildNetworkMeta('BANK', {

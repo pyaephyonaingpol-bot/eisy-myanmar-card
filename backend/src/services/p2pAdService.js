@@ -67,7 +67,13 @@ async function createP2pAd(userId, body) {
   const user = await assertVerifiedUser(userId);
 
   const side = body.side === 'buy' ? 'buy' : 'sell';
-  const network = String(body.network || 'TRC20').toUpperCase();
+  const requestedNetwork = String(body.network || 'TRC20').toUpperCase();
+  if (requestedNetwork !== 'TRC20' && requestedNetwork !== 'TRON') {
+    const err = new Error('P2P USDT uses TRC20 only');
+    err.code = 'TRC20_ONLY';
+    throw err;
+  }
+  const network = 'TRC20';
   const priceMmk = parseFloat(body.price_mmk_per_usdt);
   const totalVolume = parseFloat(body.total_volume_usdt ?? body.total_usdt_volume);
   const minOrder = parseFloat(body.min_order_usdt ?? body.min_deposit ?? 5);
