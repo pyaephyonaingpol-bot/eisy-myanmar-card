@@ -565,6 +565,72 @@ small.hint {
   display: block;
 }
 .tabs { display: flex; gap: 0.65rem; margin-bottom: 1rem; }
+#authTabs.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem;
+  margin: 0.85rem 0 1.15rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.45);
+}
+#authTabs .tab {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 2.55rem;
+}
+#authTabs .tab.active {
+  background: linear-gradient(135deg, var(--accent), #6366f1);
+  color: #fff;
+  box-shadow: 0 4px 14px var(--accent-glow);
+}
+.auth-quiet-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.2rem 0.45rem;
+  margin-top: 0.85rem;
+}
+.auth-text-link {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0.25rem 0.15rem;
+  color: #93c5fd;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+.auth-text-link:hover { color: #dbeafe; }
+.auth-text-link:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.auth-bio-link {
+  display: block;
+  width: 100%;
+  margin-top: 0.7rem;
+  text-align: center;
+  text-decoration: none;
+}
+.auth-quiet-sep {
+  color: var(--text-muted, #94a3b8);
+  user-select: none;
+}
+.auth-extra {
+  margin-top: 0.9rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-subtle);
+}
 .tab {
   flex: 1; padding: 0.65rem 0.85rem; border: 1px solid var(--border-subtle);
   background: var(--bg-surface); color: var(--text-secondary); border-radius: var(--radius-sm);
