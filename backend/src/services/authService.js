@@ -188,6 +188,15 @@ async function resolveRegistrationPhone(normalizedEmail, phone) {
   return candidate;
 }
 
+function notifyNewUserRegistered(user, method) {
+  try {
+    const { notifyAdminNewUser } = require('./telegram');
+    notifyAdminNewUser({ user, method });
+  } catch (err) {
+    console.warn('[auth] signup telegram notify hook failed:', err.message);
+  }
+}
+
 async function sendRegistrationOtp(email, ipAddress) {
   const normalized = normalizeEmail(email);
   const existing = await User.findByEmail(normalized);
@@ -241,6 +250,7 @@ async function completeRegistration({ email, otp, name, phone, pin, ipAddress, d
     throw mapUserPersistenceError(err);
   }
   await User.verifyEmail(user.id);
+  notifyNewUserRegistered(user, 'email_otp');
 
   ensureSupabaseUserWalletInBackground(user.id, { syncIfExists: false });
   try {
@@ -790,6 +800,7 @@ async function loginWithGoogleOAuth({
       await User.verifyEmail(user.id);
       user.email_verified = 1;
       created = true;
+      notifyNewUserRegistered(user, 'google');
       ensureSupabaseUserWalletInBackground(user.id, { syncIfExists: false });
       try {
         const { isTronWalletEnabled } = require('./securityFlags');

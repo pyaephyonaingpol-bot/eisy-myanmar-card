@@ -14,12 +14,19 @@ function getBot() {
 }
 
 function getAdminChatId() {
-  return String(
-    process.env.TELEGRAM_ADMIN_CHAT_ID
-    || process.env.TELEGRAM_CHAT_ID
-    || process.env.TELEGRAM_SUPPORT_CHAT_ID
-    || ''
-  ).trim();
+  const placeholders = new Set(['your_admin_chat_id_here', 'your_admin_group_id_here']);
+  const candidates = [
+    process.env.ADMIN_GROUP_ID,
+    process.env.TELEGRAM_ADMIN_CHAT_ID,
+    process.env.TELEGRAM_CHAT_ID,
+    process.env.TELEGRAM_SUPPORT_CHAT_ID,
+  ];
+  for (const value of candidates) {
+    const chatId = String(value || '').trim();
+    if (!chatId || placeholders.has(chatId)) continue;
+    return chatId;
+  }
+  return '';
 }
 
 function isTelegramConfigured() {
@@ -61,6 +68,11 @@ function notifyAdminCardCreated(payload) {
 function notifyAdminWithdrawalRequest(payload) {
   const { loadTelegramClient } = require('./loadTelegramClient');
   return queueAdminNotify(() => loadTelegramClient().notifyAdminWithdrawalRequest(payload));
+}
+
+function notifyAdminNewUser(payload) {
+  const { loadTelegramClient } = require('./loadTelegramClient');
+  return queueAdminNotify(() => loadTelegramClient().notifyAdminNewUser(payload));
 }
 
 function notifyAdminDepositForUser(userId, payload) {
@@ -214,6 +226,7 @@ module.exports = {
   notifyAdminCardCreated,
   notifyAdminWithdrawalRequest,
   notifyAdminWithdrawalForUser,
+  notifyAdminNewUser,
   notifyAdminDepositVerified,
   notifyAdminP2pDepositPending,
   notifyAdminP2pBuyOrderPending,

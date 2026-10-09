@@ -3,8 +3,8 @@
  *
  * Runtime exports use CommonJS `module.exports` (same pattern as lib/pagocard.ts).
  * Express loads this file through backend/src/services/loadTelegramClient.js.
- * Bot token: TELEGRAM_BOT_TOKEN. Chat: TELEGRAM_ADMIN_CHAT_ID, then
- * TELEGRAM_CHAT_ID, then TELEGRAM_SUPPORT_CHAT_ID.
+ * Bot token: TELEGRAM_BOT_TOKEN. Chat: ADMIN_GROUP_ID, then
+ * TELEGRAM_ADMIN_CHAT_ID, TELEGRAM_CHAT_ID, then TELEGRAM_SUPPORT_CHAT_ID.
  * A missing token or chat skips the send and does not throw.
  */
 'use strict';
@@ -34,24 +34,32 @@ type Person = {
 };
 
 const PLACEHOLDER_TOKEN = 'your_telegram_bot_token_here';
-const PLACEHOLDER_CHAT = 'your_admin_chat_id_here';
+const PLACEHOLDER_CHATS = new Set([
+  'your_admin_chat_id_here',
+  'your_admin_group_id_here',
+]);
+
+function firstConfigured(values: Array<string | undefined>) {
+  for (const value of values) {
+    const text = String(value ?? '').trim();
+    if (!text || text === PLACEHOLDER_TOKEN || PLACEHOLDER_CHATS.has(text)) continue;
+    return text;
+  }
+  return '';
+}
 
 function readToken(override?: string) {
-  const token = String(override ?? process.env.TELEGRAM_BOT_TOKEN ?? '').trim();
-  if (!token || token === PLACEHOLDER_TOKEN) return '';
-  return token;
+  return firstConfigured([override, process.env.TELEGRAM_BOT_TOKEN]);
 }
 
 function readChatId(override?: string) {
-  const chatId = String(
-    override
-    ?? process.env.TELEGRAM_ADMIN_CHAT_ID
-    ?? process.env.TELEGRAM_CHAT_ID
-    ?? process.env.TELEGRAM_SUPPORT_CHAT_ID
-    ?? ''
-  ).trim();
-  if (!chatId || chatId === PLACEHOLDER_CHAT) return '';
-  return chatId;
+  return firstConfigured([
+    override,
+    process.env.ADMIN_GROUP_ID,
+    process.env.TELEGRAM_ADMIN_CHAT_ID,
+    process.env.TELEGRAM_CHAT_ID,
+    process.env.TELEGRAM_SUPPORT_CHAT_ID,
+  ]);
 }
 
 function money(value: unknown) {
@@ -279,11 +287,38 @@ async function notifyAdminWithdrawalRequest(input: {
   return result;
 }
 
+function signupMethodLabel(method?: string) {
+  const key = String(method || '').trim().toLowerCase();
+  if (key === 'google' || key === 'google_oauth') return 'Google';
+  if (key === 'email' || key === 'email_otp' || key === 'otp') return 'Email OTP';
+  return String(method || '').trim() || 'Email OTP';
+}
+
+async function notifyAdminNewUser(input: {
+  user?: Person | null;
+  method?: string;
+  fetchImpl?: typeof fetch;
+  token?: string;
+  chatId?: string;
+} = {}) {
+  const lines = [
+    '🆕 *New user registered*',
+    '',
+    `👤 Name: ${input.user?.name || 'Unknown'}`,
+    `✉️ Email: ${input.user?.email || 'N/A'}`,
+    `🔐 Method: ${signupMethodLabel(input.method)}`,
+  ];
+  const result = await sendAdminMessage(lines.join('\n'), input);
+  console.log('[Telegram] New user notification', input.user?.email || '');
+  return result;
+}
+
 module.exports = {
   sendAdminMessage,
   notifyAdminDepositRequest,
   notifyAdminCardCreated,
   notifyAdminWithdrawalRequest,
+  notifyAdminNewUser,
   readToken,
   readChatId,
 };
