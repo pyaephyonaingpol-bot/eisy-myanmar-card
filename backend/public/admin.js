@@ -993,9 +993,11 @@
         supportReplyForm.addEventListener('submit', async (e) => {
           e.preventDefault();
           if (!this.activeThreadId) return;
+          const message = ($('supportReplyText')?.value || '').trim();
+          if (!message) return;
           try {
             await this.api('POST', '/api/admin/support/threads/' + this.activeThreadId + '/reply', {
-              message: $('supportReplyText').value.trim(),
+              message,
             });
             $('supportReplyText').value = '';
             this.openThread(this.activeThreadId);
@@ -1015,12 +1017,34 @@
             const replyForm = $('supportReplyForm');
             if (replyForm) replyForm.classList.add('hidden');
             $('supportTaskMeta')?.classList.add('hidden');
+            this.closeSupportTicketModal();
             this.loadSupportThreads();
           } catch (err) {
             alert(err.message);
           }
         });
       }
+
+      $('supportTicketModalClose')?.addEventListener('click', () => this.closeSupportTicketModal());
+      $('supportTicketModalBackdrop')?.addEventListener('click', () => this.closeSupportTicketModal());
+      document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const modal = $('supportTicketModal');
+        if (modal && !modal.classList.contains('hidden')) this.closeSupportTicketModal();
+      });
+      document.querySelectorAll('[data-support-status]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const value = btn.getAttribute('data-support-status') || 'pending';
+          if ($('supportTaskStatus')) $('supportTaskStatus').value = value;
+          this.syncSupportStatusButtons(value);
+          if (this.activeThreadId) this.saveSupportTaskMeta();
+        });
+      });
+      $('supportTaskStatus')?.addEventListener('change', () => {
+        const value = $('supportTaskStatus')?.value || 'pending';
+        this.syncSupportStatusButtons(value);
+        if (this.activeThreadId) this.saveSupportTaskMeta();
+      });
 
       ['supportCategoryFilter', 'supportPriorityFilter', 'supportStatusFilter'].forEach((id) => {
         $(id)?.addEventListener('change', () => {
@@ -4724,7 +4748,14 @@
         }).join('');
 
         list.querySelectorAll('.thread-item').forEach((el) => {
-          el.addEventListener('click', () => this.openThread(parseInt(el.dataset.id, 10)));
+          const open = () => this.openThread(parseInt(el.dataset.id, 10));
+          el.addEventListener('click', open);
+          el.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              open();
+            }
+          });
         });
       } catch (err) {
         list.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
@@ -4743,27 +4774,70 @@
 
         const title = $('supportThreadTitle');
         if (title) title.textContent = thread.subject || 'Task';
+        const subtitle = $('supportTicketSubtitle');
+        if (subtitle) {
+          const who = thread.name || thread.email || (thread.user_id ? ('User #' + thread.user_id) : 'User');
+          subtitle.textContent = who + ' · ' + this.supportCategoryLabel(thread.category);
+        }
 
         const meta = $('supportTaskMeta');
+        const statusValue = thread.status === 'open'
+          ? 'pending'
+          : (thread.status === 'closed' ? 'completed' : (thread.status || 'pending'));
         if (meta) {
           meta.classList.remove('hidden');
           if ($('supportTaskCategory')) $('supportTaskCategory').value = thread.category || 'general';
           if ($('supportTaskPriority')) $('supportTaskPriority').value = (thread.priority === 'urgent' ? 'high' : thread.priority === 'normal' ? 'medium' : (thread.priority || 'medium'));
-          if ($('supportTaskStatus')) {
-            const st = thread.status === 'open' ? 'pending' : thread.status === 'closed' ? 'completed' : (thread.status || 'pending');
-            $('supportTaskStatus').value = st;
-          }
+          if ($('supportTaskStatus')) $('supportTaskStatus').value = statusValue;
         }
+        this.syncSupportStatusButtons(statusValue);
 
         const replyForm = $('supportReplyForm');
         if (replyForm) replyForm.classList.remove('hidden');
 
         this.renderSupportMessages(messages);
+        this.openSupportTicketModal();
         this.loadSupportThreads();
         this.startSupportMessagePolling(id);
       } catch (err) {
         alert(err.message);
       }
+    },
+
+    openSupportTicketModal() {
+      const modal = $('supportTicketModal');
+      if (!modal) return;
+      const wasHidden = modal.classList.contains('hidden');
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('sidebar-scroll-lock');
+      if (wasHidden) {
+        const resetScroll = () => {
+          modal.scrollTop = 0;
+          const box = modal.querySelector('.support-ticket-modal');
+          if (box) box.scrollTop = 0;
+        };
+        $('supportReplyText')?.focus({ preventScroll: true });
+        resetScroll();
+        requestAnimationFrame(resetScroll);
+      }
+    },
+
+    closeSupportTicketModal() {
+      const modal = $('supportTicketModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+      document.body.classList.remove('sidebar-scroll-lock');
+      this.stopSupportMessagePolling();
+    },
+
+    syncSupportStatusButtons(status) {
+      const value = status === 'open' ? 'pending' : (status === 'closed' ? 'completed' : (status || 'pending'));
+      document.querySelectorAll('[data-support-status]').forEach((btn) => {
+        btn.classList.toggle('is-active', btn.getAttribute('data-support-status') === value);
+      });
     },
 
     renderSupportMessages(messages) {

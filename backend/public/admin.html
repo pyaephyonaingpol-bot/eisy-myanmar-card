@@ -37,7 +37,7 @@
       -webkit-overflow-scrolling: touch !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261008deleteUser" />
+  <link rel="stylesheet" href="/styles.css?v=20261009supportModal4" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -1149,7 +1149,7 @@
       <section id="tabSupport" class="panel app-page" data-page="support" data-admin-pipeline="shared">
         <h2>Support Task Management</h2>
         <p class="hint" style="margin-bottom:0.75rem">
-          Open a ticket to read the chat and send an Admin Reply. Set status to Open, In Progress, or Closed.
+          Click a ticket in the queue to open the chat. Reply in the popup and set the status to Open, In Progress, or Closed.
           Focus queues for <strong>MMK Payouts</strong> and <strong>Card Issuing Issues</strong>.
         </p>
         <div class="p2p-market-toolbar support-task-toolbar" style="margin-bottom:1rem">
@@ -1181,53 +1181,65 @@
           <button type="button" id="btnRefreshSupportTasks" class="btn btn-secondary btn-sm">Refresh</button>
         </div>
         <div id="supportUrgentToast" class="support-urgent-toast hidden" role="status" aria-live="assertive"></div>
-        <div class="grid-2">
-          <div>
-            <h3 style="font-size:1rem;margin-bottom:0.65rem">Task Queue</h3>
-            <div id="supportThreadsList" class="thread-list"><p class="hint">Loading…</p></div>
-          </div>
-          <div>
-            <h3 id="supportThreadTitle" style="font-size:1rem;margin-bottom:0.65rem">Select a task</h3>
-            <div id="supportTaskMeta" class="support-task-meta hidden">
-              <div class="field">
-                <label for="supportTaskCategory">Category</label>
-                <select id="supportTaskCategory">
-                  <option value="mmk_payouts">MMK Payouts</option>
-                  <option value="card_issuing">Card Issuing Issues</option>
-                  <option value="general">General</option>
-                  <option value="deposit">Deposit</option>
-                  <option value="account">Account</option>
-                  <option value="technical">Technical</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="supportTaskPriority">Priority</label>
-                <select id="supportTaskPriority">
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="supportTaskStatus">Status</label>
-                <select id="supportTaskStatus">
-                  <option value="pending">Open</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Closed</option>
-                  <option value="failed">Failed</option>
-                </select>
-              </div>
-              <button type="button" id="supportSaveTaskMetaBtn" class="btn btn-secondary btn-sm">Save Task</button>
-            </div>
-            <div id="supportMessages" class="support-messages"></div>
-            <form id="supportReplyForm" class="form hidden">
-              <div class="field"><label for="supportReplyText">Reply</label><textarea id="supportReplyText" rows="3"></textarea></div>
-              <button type="submit" class="btn btn-primary">Send Reply</button>
-              <button type="button" id="supportCloseBtn" class="btn btn-secondary">Mark Closed</button>
-            </form>
-          </div>
+        <div class="support-queue">
+          <h3 style="font-size:1rem;margin-bottom:0.65rem">Task Queue</h3>
+          <div id="supportThreadsList" class="thread-list"><p class="hint">Loading…</p></div>
         </div>
       </section>
+
+      <div id="supportTicketModal" class="proof-lightbox hidden" role="dialog" aria-modal="true" aria-labelledby="supportThreadTitle" aria-hidden="true">
+        <div class="proof-lightbox-backdrop" id="supportTicketModalBackdrop"></div>
+        <div class="proof-lightbox-inner kyc-doc-viewer-inner support-ticket-modal">
+          <button type="button" id="supportTicketModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+          <p class="support-ticket-kicker">Support ticket</p>
+          <h3 id="supportThreadTitle" class="kyc-doc-viewer-title">Select a task</h3>
+          <p id="supportTicketSubtitle" class="hint support-ticket-subtitle"></p>
+          <div class="support-status-actions" role="group" aria-label="Ticket status">
+            <button type="button" class="support-status-btn" data-support-status="pending">Open</button>
+            <button type="button" class="support-status-btn" data-support-status="in_progress">In Progress</button>
+            <button type="button" class="support-status-btn" data-support-status="completed">Closed</button>
+          </div>
+          <div id="supportTaskMeta" class="support-task-meta hidden">
+            <div class="field">
+              <label for="supportTaskCategory">Category</label>
+              <select id="supportTaskCategory">
+                <option value="mmk_payouts">MMK Payouts</option>
+                <option value="card_issuing">Card Issuing Issues</option>
+                <option value="general">General</option>
+                <option value="deposit">Deposit</option>
+                <option value="account">Account</option>
+                <option value="technical">Technical</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="supportTaskPriority">Priority</label>
+              <select id="supportTaskPriority">
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="supportTaskStatus">Status</label>
+              <select id="supportTaskStatus">
+                <option value="pending">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Closed</option>
+                <option value="failed">Failed</option>
+              </select>
+            </div>
+            <button type="button" id="supportSaveTaskMetaBtn" class="btn btn-secondary btn-sm">Save Task</button>
+          </div>
+          <div id="supportMessages" class="support-messages" aria-live="polite"></div>
+          <form id="supportReplyForm" class="form support-compose hidden">
+            <div class="field"><label for="supportReplyText">Reply</label><textarea id="supportReplyText" rows="3" placeholder="Write a reply to the user"></textarea></div>
+            <div class="support-reply-actions">
+              <button type="submit" class="btn btn-primary">Send Reply</button>
+              <button type="button" id="supportCloseBtn" class="btn btn-secondary">Mark Closed</button>
+            </div>
+          </form>
+        </div>
+      </div>
 
       <section id="tabKycRequests" class="panel app-page hidden" data-page="kyc-requests" aria-hidden="true" hidden>
         <p class="hint">KYC approvals live under Deposits &amp; KYC.</p>
@@ -1611,6 +1623,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261009adminOps" defer></script>
+  <script src="/admin.js?v=20261009ticketModal" defer></script>
 </body>
 </html>

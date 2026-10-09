@@ -34,7 +34,11 @@ assert.ok(adminHtml.includes('value="rejected">Rejected'), 'deposit rejected fil
 assert.ok(adminHtml.includes('value="completed">Closed'), 'support closed status');
 assert.ok(adminHtml.includes('>Mark Closed<'), 'close ticket button');
 assert.ok(adminHtml.includes('id="supportReplyForm"'), 'admin reply form');
-assert.ok(adminHtml.includes('admin.js?v=20261009adminOps'), 'admin cache');
+assert.ok(adminHtml.includes('id="supportTicketModal"'), 'support ticket modal');
+assert.ok(adminHtml.includes('data-support-status="pending">Open'), 'open status button');
+assert.ok(adminHtml.includes('data-support-status="in_progress">In Progress'), 'in progress status button');
+assert.ok(adminHtml.includes('data-support-status="completed">Closed'), 'closed status button');
+assert.ok(adminHtml.includes('admin.js?v=20261009ticketModal'), 'admin cache');
 
 const depositsBlock = adminHtml.slice(
   adminHtml.indexOf('id="tabDeposits"'),
@@ -64,6 +68,8 @@ assert.ok(adminJs.includes('financeStatusBadge'), 'pending/approved/rejected bad
 assert.ok(adminJs.includes("isBank ? 'Approve' : 'Complete'"), 'USDT to MMK approve label');
 assert.ok(adminJs.includes("completed: 'Closed'"), 'support closed label');
 assert.ok(adminJs.includes('async loadSupportThreads()'), 'support inbox loader');
+assert.ok(adminJs.includes('openSupportTicketModal'), 'ticket click opens the modal');
+assert.ok(adminJs.includes('closeSupportTicketModal'), 'ticket modal can close');
 assert.ok(adminJs.includes("'/reply'"), 'admin reply posts to the ticket');
 
 assert.ok(adminRoles.includes("p2p: 'p2p'"), 'p2p page permission');
