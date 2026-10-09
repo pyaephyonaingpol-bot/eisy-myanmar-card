@@ -1159,9 +1159,8 @@ const Dashboard = {
       if (page === 'usdt-wallet') this.loadUsdtWalletPage(force);
       if (page === 'rates') {
         this.renderRatesPage();
-        // Honor TTL — force only when explicitly requested.
-        this.loadWithdrawalFees({ force }).catch(() => {});
-        this.loadCardPricing().catch(() => {});
+        this.loadWithdrawalFees({ force: true }).catch(() => {});
+        this.loadCardPricing({ force: true }).catch(() => {});
       }
       if (page === 'p2p') {
         if (opts.p2pTab) this.switchP2pTab(opts.p2pTab);
@@ -6730,8 +6729,35 @@ const Dashboard = {
     this.mountInstantAppUi();
   },
 
-  async loadCardPricing() {
-    return;
+  async loadCardPricing({ force = false } = {}) {
+    if (!Auth.isLoggedIn()) return;
+    if (!force && this.cardPricing && this._isFresh('pricing')) {
+      this.renderRatesPage();
+      this.updateHomeRateSummary();
+      return;
+    }
+    return this._withInflight('pricing', async () => {
+      try {
+        const data = await Auth.api('GET', '/api/user/pricing');
+        const pricing = data.pricing || data;
+        this.cardPricing = {
+          ...(this.cardPricing || {}),
+          ...pricing,
+          rate_effective_date: pricing.rate_effective_date
+            || data.current_rate?.effective_date
+            || this.cardPricing?.rate_effective_date,
+          withdrawal_fees: {
+            ...(pricing.withdrawal_fees || {}),
+            ...(this.withdrawalFees || {}),
+          },
+        };
+        this._markFetched('pricing');
+        this.renderRatesPage();
+        this.updateHomeRateSummary();
+      } catch (err) {
+        console.warn('[Dashboard] card pricing:', err.message);
+      }
+    }, { force });
   },
 
   updateCardPricingBreakdown() {
@@ -7016,14 +7042,13 @@ const Dashboard = {
           ?? rawFees.payment_service_fee_mode,
       };
       this._markFetched('withdrawalFees');
-      // Keep Rates page in sync with the live withdrawal fee endpoint (not a stale cardPricing cache).
       if (this.cardPricing) {
         this.cardPricing.withdrawal_fees = {
           ...(this.cardPricing.withdrawal_fees || {}),
           ...this.withdrawalFees,
         };
-        this.renderRatesPage();
       }
+      this.renderRatesPage();
       this.updateWithdrawUsdtHint();
       const min = Number(this.withdrawalFees.minimum_usdt_withdrawal ?? 10);
       const minInput = $('withdrawAmountUsdt');
@@ -8086,70 +8111,105 @@ const Dashboard = {
     el.textContent = `Card issue: 1 USDT ≈ 1 USD · Fee $${cardFee} · Min $${minDep} · Reload: USDT wallet only${eff}`;
   },
 
+  formatRatesFeeLabel({ mode, fixed, percent, minimum } = {}) {
+    const modeName = String(mode || 'fixed_plus_percent').toLowerCase();
+    const pct = Number(percent);
+    const minFee = Number(minimum);
+    const fixedFee = Number(fixed);
+    const safePct = Number.isFinite(pct) ? pct : 0;
+    const safeMin = Number.isFinite(minFee) ? minFee : 0;
+    const safeFixed = Number.isFinite(fixedFee) ? fixedFee : 0;
+    const money = (n) => `$${n.toFixed(2)}`;
+    const pctLabel = String(Math.round(safePct * 100) / 100);
+    if (modeName === 'off') return 'No service fee';
+    if (modeName === 'fixed') return `fixed ${money(safeMin)}`;
+    if (modeName === 'percent') {
+      return safeMin > 0 ? `${pctLabel}% (min ${money(safeMin)})` : `${pctLabel}%`;
+    }
+    if (safeFixed > 0 && safePct > 0) {
+      const base = `${money(safeFixed)} + ${pctLabel}%`;
+      return safeMin > 0 ? `${base} (min ${money(safeMin)})` : base;
+    }
+    if (safeFixed > 0) {
+      return safeMin > safeFixed ? `${money(safeFixed)} (min ${money(safeMin)})` : `${money(safeFixed)} fixed`;
+    }
+    if (safePct > 0) {
+      return safeMin > 0 ? `${pctLabel}% (min ${money(safeMin)})` : `${pctLabel}%`;
+    }
+    if (safeMin > 0) return `min ${money(safeMin)}`;
+    return money(0);
+  },
+
   renderRatesPage() {
     const p = this.cardPricing;
-    if (!p) return;
+    const wf = (p && p.withdrawal_fees) || this.withdrawalFees || null;
+    if (!p && !wf) return;
 
-    const rate = p.mmk_to_usd_rate || 4500;
-    const fee = p.card_issuance_fee_usd || 0;
-    const min = p.minimum_initial_deposit_usd || 10;
-    const eff = p.rate_effective_date || '';
+    const setText = (id, text) => {
+      const el = $(id);
+      if (el && text != null && text !== '') el.textContent = text;
+    };
 
-    if ($('ratesExchangeValue')) {
-      $('ratesExchangeValue').textContent = `1 USD = ${rate.toLocaleString()} MMK`;
-    }
-    if ($('ratesEffectiveDate')) {
-      $('ratesEffectiveDate').textContent = eff ? `Effective: ${eff}` : '';
-    }
-    if ($('ratesCardFee')) $('ratesCardFee').textContent = `$${fee.toFixed(2)}`;
-    if ($('ratesMinDeposit')) $('ratesMinDeposit').textContent = `$${min.toFixed(2)}`;
+    if (p && p.mmk_to_usd_rate != null) {
+      const rate = Number(p.mmk_to_usd_rate);
+      const fee = Number(p.card_issuance_fee_usd);
+      const min = Number(p.minimum_initial_deposit_usd);
+      const eff = p.rate_effective_date || '';
+      if (Number.isFinite(rate) && rate > 0) {
+        setText('ratesExchangeValue', `1 USD = ${rate.toLocaleString()} MMK`);
+      }
+      setText('ratesEffectiveDate', eff ? `Effective: ${eff}` : '');
+      if (Number.isFinite(fee)) setText('ratesCardFee', `$${fee.toFixed(2)}`);
+      if (Number.isFinite(min)) setText('ratesMinDeposit', `$${min.toFixed(2)}`);
+      if (
+        p.card_reload_fee_usd != null
+        || p.card_reload_fee_percent != null
+        || p.card_reload_fee_minimum_usd != null
+      ) {
+        setText('ratesReloadFee', this.formatRatesFeeLabel({
+          mode: 'fixed_plus_percent',
+          fixed: p.card_reload_fee_usd,
+          percent: p.card_reload_fee_percent,
+          minimum: p.card_reload_fee_minimum_usd,
+        }));
+      }
 
-    const reloadFeeEl = $('ratesReloadFee');
-    if (reloadFeeEl) reloadFeeEl.textContent = '$3.50 fixed (+ $2.00 platform profit per reload)';
-
-    const wf = p.withdrawal_fees || this.withdrawalFees || {};
-    const mode = String(wf.withdrawal_service_fee_mode || wf.payment_service_fee_mode || 'fixed_plus_percent').toLowerCase();
-    const pct = Number(wf.withdrawal_service_fee_percent ?? wf.payment_service_fee_percent ?? 4);
-    const minFee = Number(wf.withdrawal_service_fee_minimum_usdt ?? wf.payment_service_fee_minimum_usdt ?? 0);
-    const fixedFee = Number(wf.withdrawal_service_fee_fixed_usdt ?? wf.payment_service_fee_fixed_usdt ?? 0);
-    const unifiedLabel = mode === 'off'
-      ? 'No service fee'
-      : mode === 'fixed'
-        ? `fixed $${minFee.toFixed(2)}`
-        : mode === 'fixed_plus_percent'
-          ? (fixedFee > 0
-            ? `$${fixedFee.toFixed(2)} + ${pct}% (min $${minFee.toFixed(2)})`
-            : `${pct}% (min $${minFee.toFixed(2)})`)
-          : mode === 'percent'
-            ? `${pct}%`
-            : `${pct}% (min $${minFee.toFixed(2)})`;
-    if ($('ratesWithdrawFeeTrc20')) {
-      $('ratesWithdrawFeeTrc20').textContent = unifiedLabel;
-    }
-    if ($('ratesWithdrawFeeBep20')) {
-      $('ratesWithdrawFeeBep20').textContent = unifiedLabel;
-    }
-    if ($('ratesMinWithdrawal')) {
-      $('ratesMinWithdrawal').textContent = `$${Number(wf.minimum_usdt_withdrawal || 10).toFixed(2)}`;
+      const fundingPercent = Number(p.card_funding_fee_percent) || 0;
+      const fundingFee = Math.round((min * fundingPercent / 100) * 100) / 100;
+      const processingFee = Number(p.card_processing_fee_usd);
+      const processingFeeUsd = Number.isFinite(processingFee) && processingFee >= 0 ? processingFee : 1.5;
+      const totalUsd = Math.round((min + fee + fundingFee + processingFeeUsd) * 100) / 100;
+      const totalMmk = Math.ceil(totalUsd * rate);
+      const sample = $('ratesSampleBreakdown');
+      if (sample && Number.isFinite(rate) && Number.isFinite(fee) && Number.isFinite(min)) {
+        sample.innerHTML = `
+          <div class="pricing-row"><span>Initial Card Load (min)</span><strong>$${min.toFixed(2)}</strong></div>
+          <div class="pricing-row"><span>+ Card Issuance Fee</span><strong>$${fee.toFixed(2)}</strong></div>
+          <div class="pricing-row"><span>+ Funding Fee</span><strong>$${fundingFee.toFixed(2)}</strong></div>
+          <div class="pricing-row"><span>+ Processing Fee</span><strong>$${processingFeeUsd.toFixed(2)}</strong></div>
+          <div class="pricing-row pricing-total"><span>= Total USD Required</span><strong>$${totalUsd.toFixed(2)}</strong></div>
+          <div class="pricing-row pricing-mmk"><span>Total Payable (MMK)</span><strong>${totalMmk.toLocaleString()} MMK</strong></div>
+          <p class="hint pricing-rate">At today's rate: 1 USD = ${rate.toLocaleString()} MMK</p>
+        `;
+      }
     }
 
-    const fundingPercent = Number(p.card_funding_fee_percent) || 0;
-    const fundingFee = Math.round((min * fundingPercent / 100) * 100) / 100;
-    const processingFee = Number(p.card_processing_fee_usd);
-    const processingFeeUsd = Number.isFinite(processingFee) && processingFee >= 0 ? processingFee : 1.5;
-    const totalUsd = Math.round((min + fee + fundingFee + processingFeeUsd) * 100) / 100;
-    const totalMmk = Math.ceil(totalUsd * rate);
-    const sample = $('ratesSampleBreakdown');
-    if (sample) {
-      sample.innerHTML = `
-        <div class="pricing-row"><span>Initial Card Load (min)</span><strong>$${min.toFixed(2)}</strong></div>
-        <div class="pricing-row"><span>+ Card Issuance Fee</span><strong>$${fee.toFixed(2)}</strong></div>
-        <div class="pricing-row"><span>+ Funding Fee</span><strong>$${fundingFee.toFixed(2)}</strong></div>
-        <div class="pricing-row"><span>+ Processing Fee</span><strong>$${processingFeeUsd.toFixed(2)}</strong></div>
-        <div class="pricing-row pricing-total"><span>= Total USD Required</span><strong>$${totalUsd.toFixed(2)}</strong></div>
-        <div class="pricing-row pricing-mmk"><span>Total Payable (MMK)</span><strong>${totalMmk.toLocaleString()} MMK</strong></div>
-        <p class="hint pricing-rate">At today's rate: 1 USD = ${rate.toLocaleString()} MMK</p>
-      `;
+    if (wf && (
+      wf.withdrawal_service_fee_percent != null
+      || wf.withdrawal_service_fee_fixed_usdt != null
+      || wf.minimum_usdt_withdrawal != null
+      || wf.payment_service_fee_percent != null
+    )) {
+      const unifiedLabel = this.formatRatesFeeLabel({
+        mode: wf.withdrawal_service_fee_mode || wf.payment_service_fee_mode || 'fixed_plus_percent',
+        fixed: wf.withdrawal_service_fee_fixed_usdt ?? wf.payment_service_fee_fixed_usdt ?? 0,
+        percent: wf.withdrawal_service_fee_percent ?? wf.payment_service_fee_percent ?? 0,
+        minimum: wf.withdrawal_service_fee_minimum_usdt ?? wf.payment_service_fee_minimum_usdt ?? 0,
+      });
+      setText('ratesWithdrawFeeTrc20', unifiedLabel);
+      setText('ratesWithdrawFeeBep20', unifiedLabel);
+      const minWd = Number(wf.minimum_usdt_withdrawal);
+      if (Number.isFinite(minWd)) setText('ratesMinWithdrawal', `$${minWd.toFixed(2)}`);
     }
   },
 
