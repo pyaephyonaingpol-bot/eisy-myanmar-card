@@ -539,6 +539,18 @@ async function start() {
   }, 60 * 1000);
   expiryInterval.unref?.();
 
+  if (process.env.VERCEL && process.env.NODE_ENV !== 'test' && process.env.TELEGRAM_WEBHOOK_AUTOREGISTER !== 'false') {
+    try {
+      const { registerTelegramWebhook } = require('./services/supportTelegramService');
+      const registered = await registerTelegramWebhook();
+      if (registered.ok === false && !registered.skipped) {
+        console.error('[telegram/webhook] setWebhook ok:false', registered.description || '');
+      }
+    } catch (err) {
+      console.warn('[telegram/webhook] setWebhook failed:', err.message);
+    }
+  }
+
   const { isTronDepositEnabled } = require('./services/securityFlags');
   const pollTron = String(process.env.TRON_ORDER_POLL_ENABLED || 'true').toLowerCase() !== 'false';
   if (isTronDepositEnabled() && pollTron) {

@@ -104,6 +104,20 @@ async function bootstrap() {
     } catch (err) {
       console.warn('[vercel] user mirror bootstrap check skipped:', err.message);
     }
+    if (process.env.NODE_ENV !== 'test' && process.env.TELEGRAM_WEBHOOK_AUTOREGISTER !== 'false') {
+      try {
+        const { registerTelegramWebhook } = require('../src/services/supportTelegramService');
+        const registered = await registerTelegramWebhook();
+        if (registered.skipped) {
+          console.log('[vercel] telegram setWebhook skipped:', registered.reason || 'skipped');
+        } else if (registered.ok === false) {
+          console.error('[vercel] telegram setWebhook ok:false', registered.description || '');
+        }
+      } catch (err) {
+        console.warn('[vercel] telegram setWebhook failed:', err.message);
+      }
+    }
+
     console.log('[vercel] Express serverless handler ready', {
       env: process.env.VERCEL_ENV || process.env.NODE_ENV,
       hasBinanceKey: Boolean(process.env.BINANCE_API_KEY || process.env.BINANCE_PAY_API_KEY),
