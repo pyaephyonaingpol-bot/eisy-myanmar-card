@@ -41,6 +41,23 @@
     _pipeline: null,
     _pipelineIsolated: false,
 
+    userIdentityText(row) {
+      const id = row && row.user_id != null && row.user_id !== '' ? row.user_id : row && row.id;
+      const name = String((row && (row.user_name || row.name)) || '').trim();
+      const email = String((row && (row.user_email || row.email)) || '').trim();
+      const authId = String((row && row.auth_user_id) || '').trim();
+      const parts = [];
+      if (name) parts.push(name);
+      if (email && email.toLowerCase() !== name.toLowerCase()) parts.push(email);
+      if (id != null && id !== '') parts.push('#' + id);
+      if (authId && authId !== String(id || '')) parts.push(authId);
+      return parts.join(' · ') || 'User';
+    },
+
+    userIdentityHtml(row) {
+      return '<span class="user-identity">' + this.esc(this.userIdentityText(row)).replace(/ · /g, '<br>') + '</span>';
+    },
+
     /** Unified admin portal — no Instant/Hub chooser. */
     getPipeline() {
       return 'instant';
@@ -1282,7 +1299,7 @@
       if (!el) return;
       const cat = this.supportCategoryLabel(row.category);
       const subject = row.subject || 'Support task';
-      const who = row.user_name || row.user_email || ('User #' + (row.user_id || '?'));
+      const who = this.userIdentityText(row);
       const verb = String(eventType).toUpperCase() === 'INSERT' ? 'New' : 'Updated';
       el.classList.remove('hidden');
       el.innerHTML =
@@ -1846,8 +1863,7 @@
         const usd = Number(deposit.amount_usd || 0).toFixed(2);
         const method = deposit.payment_method || 'KBZPay';
         metaEl.innerHTML =
-          '<div><dt>User ID</dt><dd>#' + this.esc(deposit.user_id) + '</dd></div>' +
-          '<div><dt>User</dt><dd>' + this.esc(deposit.name || deposit.email || '—') + '</dd></div>' +
+          '<div><dt>User</dt><dd>' + this.userIdentityHtml(deposit) + '</dd></div>' +
           '<div><dt>Amount (MMK)</dt><dd>' + mmk + ' MMK</dd></div>' +
           '<div><dt>Amount (USD)</dt><dd>$' + usd + '</dd></div>' +
           '<div><dt>Payment Method</dt><dd>' + this.esc(method) + '</dd></div>' +
@@ -2563,7 +2579,7 @@
             reloads.map((r) =>
               '<tr>' +
                 '<td>' + r.id + '</td>' +
-                '<td>#' + r.user_id + '<br><small>' + this.esc(r.user_name || r.user_email || '') + '</small></td>' +
+                '<td>' + this.userIdentityHtml(r) + '</td>' +
                 '<td><code>**** ' + this.esc(r.card_last4 || '????') + '</code></td>' +
                 '<td><strong>$' + Number(r.top_up_amount_usd || r.net_usd_to_card || 0).toFixed(2) + '</strong></td>' +
                 '<td>$' + Number(r.fee_profit_usd || r.reload_fee_usd || 0).toFixed(2) + '</td>' +
@@ -2622,7 +2638,7 @@
               : '<small class="hint">' + this.esc(s.rejection_reason || s.reviewed_at || '—') + '</small>';
             return '<tr>' +
               '<td>' + s.id + '</td>' +
-              '<td>' + this.esc(s.user_name || '') + '<br><small class="hint">' + this.esc(s.user_email || '') + '</small></td>' +
+              '<td>' + this.userIdentityHtml(s) + '</td>' +
               '<td>' + this.esc(s.full_name) + '</td>' +
               '<td>' + this.esc(s.id_type) + '</td>' +
               '<td>' + this.esc(s.id_number) + '</td>' +
@@ -2730,7 +2746,7 @@
             return '<tr>' +
               '<td><code>' + this.esc(o.ref_code || '') + '</code></td>' +
               '<td>' + this.esc(o.order_type === 'sell' ? 'Sell USDT' : 'Buy USDT') + '</td>' +
-              '<td>' + this.esc(o.user_name || o.user_email || ('User #' + o.user_id)) + '</td>' +
+              '<td>' + this.userIdentityHtml(o) + '</td>' +
               '<td>$' + Number(o.amount_usdt || 0).toFixed(2) + '</td>' +
               '<td>' + this.esc(o.status || '—') + '</td>' +
               '<td>' + this.p2pBucketBadge(o.bucket) + '</td>' +
@@ -2769,7 +2785,7 @@
             return '<tr>' +
               '<td><code>' + this.esc(d.ref_code) + '</code></td>' +
               '<td>' + this.esc(d.order_type === 'sell' ? 'Sell USDT' : 'Buy USDT') + '</td>' +
-              '<td>' + this.esc(d.user_name || d.user_email || 'User #' + d.user_id) + '</td>' +
+              '<td>' + this.userIdentityHtml(d) + '</td>' +
               '<td>$' + Number(d.amount_usdt).toFixed(2) + ' / ' + Math.round(Number(d.amount_mmk)).toLocaleString() + ' MMK</td>' +
               '<td>' + this.esc(d.dispute_reason || '—') + '</td>' +
               '<td>' + proof + '</td>' +
@@ -2803,7 +2819,7 @@
       if (!modal || !dispute) return;
       $('p2pDisputeReviewTitle').textContent = `Dispute Review — ${dispute.ref_code}`;
       $('p2pDisputeReviewMeta').textContent =
-        `${dispute.order_type === 'sell' ? 'Sell USDT' : 'Buy USDT'} · ${dispute.user_name || dispute.user_email || ('User #' + dispute.user_id)} · $${Number(dispute.amount_usdt).toFixed(2)} USDT / ${Math.round(Number(dispute.amount_mmk)).toLocaleString()} MMK · ${dispute.dispute_reason || 'No reason provided'}`;
+        `${dispute.order_type === 'sell' ? 'Sell USDT' : 'Buy USDT'} · ${this.userIdentityText(dispute)} · $${Number(dispute.amount_usdt).toFixed(2)} USDT / ${Math.round(Number(dispute.amount_mmk)).toLocaleString()} MMK · ${dispute.dispute_reason || 'No reason provided'}`;
 
       const sections = [];
       if (dispute.payment_proof_path || dispute.payment_tx_ref) {
@@ -2895,7 +2911,7 @@
             '<tr>' +
             '<td>' + o.id + '</td>' +
             '<td><code>' + this.esc(o.ref_code) + '</code></td>' +
-            '<td>' + this.esc(o.user_name || o.user_email || ('User #' + o.user_id)) + '</td>' +
+            '<td>' + this.userIdentityHtml(o) + '</td>' +
             '<td>' + this.esc(o.seller_name || ('#' + o.seller_id)) + '</td>' +
             '<td>$' + buyerReceives.toFixed(2) + '</td>' +
             '<td>$' + feeAmt.toFixed(2) + ' <small>(' + feePct + '%)</small></td>' +
@@ -2967,7 +2983,7 @@
             '<tr>' +
             '<td>' + o.id + '</td>' +
             '<td><code>' + this.esc(o.ref_code) + '</code></td>' +
-            '<td>' + this.esc(o.user_name || o.user_email || ('User #' + o.user_id)) + '</td>' +
+            '<td>' + this.userIdentityHtml(o) + '</td>' +
             '<td>' + this.esc(o.seller_name || ('#' + o.seller_id)) + '</td>' +
             '<td>$' + Number(o.amount_usdt).toFixed(2) + '</td>' +
             '<td>' + Math.round(Number(o.amount_mmk)).toLocaleString() + '</td>' +
@@ -3294,7 +3310,7 @@
             const completeLabel = isBank ? 'Approve' : 'Complete';
             return '<tr>' +
               '<td>' + w.id + '</td>' +
-              '<td>' + this.esc(w.user_name || w.user_email || ('#' + w.user_id)) + '<br><small>#' + w.user_id + '</small></td>' +
+              '<td>' + this.userIdentityHtml(w) + '</td>' +
               '<td>' + this.esc(w.ref_code || '') + '</td>' +
               '<td>' + this.esc(method) + '</td>' +
               '<td style="max-width:220px;word-break:break-all">' + dest + '</td>' +
@@ -3759,7 +3775,7 @@
               const pending = ['SUBMITTED', 'UNDER_REVIEW', 'PENDING'].indexOf(String(d.status || '').toUpperCase()) !== -1;
               return '<tr>' +
                 '<td>' + d.id + '</td>' +
-                '<td>' + this.esc(d.name || d.email || ('User #' + d.user_id)) + '<br><small>#' + d.user_id + '</small></td>' +
+                '<td>' + this.userIdentityHtml(d) + '</td>' +
                 '<td>' + this.renderPurposeBadge(d) + '</td>' +
                 '<td>' + this.renderPricingBreakdown(d) + '</td>' +
                 '<td>' + this.renderDepositRefCell(d) + '</td>' +
@@ -3950,7 +3966,7 @@
 
               return '<tr>' +
                 '<td>' + c.id + '</td>' +
-                '<td>' + this.esc(c.name || c.email) + '<br><small>#' + c.user_id + '</small></td>' +
+                '<td>' + this.userIdentityHtml(c) + '</td>' +
                 '<td><span class="badge">' + this.esc(statusLabel) + '</span></td>' +
                 '<td>' + this.esc(c.card_holder_name || c.name || '—') + '</td>' +
                 '<td>' + this.renderPricingBreakdown({ purpose: 'card_issuance', pricing: c.pricing, pricing_breakdown: c.pricing, amount_usd: c.pricing?.total_usd_required, amount_mmk: c.pricing?.total_mmk, metadata: { card_request_id: c.id } }) + '</td>' +
@@ -4008,7 +4024,7 @@
             cards.map((c) =>
               '<tr>' +
                 '<td>' + c.id + '</td>' +
-                '<td>' + this.esc(c.user_name || c.user_email || '—') + '<br><small>#' + c.user_id + '</small></td>' +
+                '<td>' + this.userIdentityHtml(c) + '</td>' +
                 '<td><code>' + this.esc(c.label) + '</code><br><small>' + this.esc(c.card_holder_name || '—') + '</small></td>' +
                 '<td>' + this.cardStatusBadge(c.display_status || c.status) +
                   (c.status_reason ? '<br><small class="hint">' + this.esc(c.status_reason) + '</small>' : '') +
@@ -4265,11 +4281,13 @@
     renderUsersRowsHtml(users) {
       return users.map((u) =>
         '<tr>' +
-          '<td>' + this.esc(u.id) + '</td>' +
-          '<td>' + this.esc(u.name || '—') +
+          '<td class="user-id-cell">' + this.esc(u.id) +
+            (u.auth_user_id ? '<span class="user-auth-id">' + this.esc(u.auth_user_id) + '</span>' : '') +
+          '</td>' +
+          '<td class="user-name-cell">' + this.esc(u.name || '—') +
             (u.source === 'supabase' ? ' <span class="hint">Supabase</span>' : '') +
           '</td>' +
-          '<td>' + this.esc(u.email || '—') + '</td>' +
+          '<td class="user-email-cell">' + this.esc(u.email || '—') + '</td>' +
           '<td><strong>$' + Number(u.balance_usdt || 0).toFixed(2) + ' USDT</strong></td>' +
           '<td>' + this.esc(this.formatUserAuthStatus(u.auth_status)) + '</td>' +
           '<td>' + this.formatUserCreated(u.created_at) + '</td>' +
@@ -4486,8 +4504,7 @@
                   '<td><code>' + this.esc(t.ref_code || ('DEP-' + t.id)) + '</code>' +
                     (t.tron_order_id ? '<br><small>order ' + this.esc(t.tron_order_id) + '</small>' : '') +
                   '</td>' +
-                  '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small>' +
-                    '<br><small>#' + this.esc(String(t.user_id || '')) + '</small></td>' +
+                  '<td>' + this.userIdentityHtml(t) + '</td>' +
                   '<td><strong>$' + Number(t.amount_usdt || 0).toFixed(2) + '</strong></td>' +
                   '<td>' + this.esc(t.network || 'TRC20') + '</td>' +
                   '<td style="max-width:220px">' + addrCell + '</td>' +
@@ -4527,8 +4544,7 @@
                 return '<tr>' +
                   '<td><small>' + this.esc(t.processed_at || t.created_at || '—') + '</small></td>' +
                   '<td><code>' + this.esc(t.ref_code || ('WD-' + t.id)) + '</code></td>' +
-                  '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small>' +
-                    '<br><small>#' + this.esc(String(t.user_id || '')) + '</small></td>' +
+                  '<td>' + this.userIdentityHtml(t) + '</td>' +
                   '<td>' + amounts + '</td>' +
                   '<td>' + this.esc(method) + '</td>' +
                   '<td style="max-width:220px">' + dest + '</td>' +
@@ -4555,7 +4571,7 @@
                   '<td><code>' + this.esc(t.ref_code) + '</code>' +
                     (t.card_last_four ? '<br><small>•••• ' + this.esc(t.card_last_four) + '</small>' : '') +
                   '</td>' +
-                  '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small></td>' +
+                  '<td>' + this.userIdentityHtml(t) + '</td>' +
                   '<td>$' + Number(t.provider_load_usd || 0).toFixed(2) + '</td>' +
                   '<td><strong>$' + Number(t.platform_markup_usd || 0).toFixed(2) + '</strong></td>' +
                   '<td>' + Number(t.total_charge_usdt || 0).toFixed(2) + ' USDT</td>' +
@@ -4585,7 +4601,7 @@
                 return '<tr>' +
                   '<td><small>' + this.esc(t.processed_at || t.created_at || '—') + '</small></td>' +
                   '<td><code>' + this.esc(t.ref_code) + '</code></td>' +
-                  '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small></td>' +
+                  '<td>' + this.userIdentityHtml(t) + '</td>' +
                   '<td>' + Math.round(Number(t.amount_mmk || 0)).toLocaleString() + ' MMK</td>' +
                   '<td>' + Math.round(Number(t.fee_mmk || 0)).toLocaleString() + ' MMK</td>' +
                   '<td><strong>' + Math.round(Number(t.net_mmk || 0)).toLocaleString() + ' MMK</strong></td>' +
@@ -4608,7 +4624,7 @@
               '<tr>' +
                 '<td><small>' + this.esc(t.reviewed_at || t.created_at || '—') + '</small></td>' +
                 '<td><code>' + this.esc(t.ref_code || ('RELOAD-' + t.id)) + '</code></td>' +
-                '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small></td>' +
+                '<td>' + this.userIdentityHtml(t) + '</td>' +
                 '<td>$' + Number(t.reload_amount_usd || 0).toFixed(2) + '</td>' +
                 '<td><strong>$' + Number(t.fee_profit_usd || 0).toFixed(2) + '</strong></td>' +
                 '<td>' + this.esc((t.wallet_type || '—').toUpperCase()) + '</td>' +
@@ -4739,7 +4755,7 @@
                 '<span class="support-badge priority-' + this.esc(pri) + '">' + this.esc(this.supportPriorityLabel(pri)) + '</span>' +
               '</div>' +
               '<small>' +
-                this.esc(t.name || t.email) +
+                this.esc(this.userIdentityText(t)) +
                 ' · <span class="support-badge category">' + this.esc(this.supportCategoryLabel(t.category)) + '</span>' +
                 ' · <span class="support-badge status-' + this.esc(st) + '">' + this.esc(this.supportStatusLabel(st)) + '</span>' +
               '</small>' +
@@ -4776,7 +4792,7 @@
         if (title) title.textContent = thread.subject || 'Task';
         const subtitle = $('supportTicketSubtitle');
         if (subtitle) {
-          const who = thread.name || thread.email || (thread.user_id ? ('User #' + thread.user_id) : 'User');
+          const who = this.userIdentityText(thread);
           subtitle.textContent = who + ' · ' + this.supportCategoryLabel(thread.category);
         }
 

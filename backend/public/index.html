@@ -49,6 +49,15 @@
       touch-action: pan-y !important;
     }
   </style>
+  <style id="user-identity-display">
+    #pageProfile .summary-grid {
+      grid-template-columns: minmax(8.5rem, 0.9fr) minmax(15rem, 1.6fr) minmax(5.5rem, 0.55fr) minmax(8rem, 0.8fr);
+    }
+    #sumEmail { font-size: 1rem; line-height: 1.35; overflow-wrap: anywhere; }
+    @media (max-width: 900px) {
+      #pageProfile .summary-grid { grid-template-columns: 1fr; }
+    }
+  </style>
   <link rel="stylesheet" href="/styles.css?v=20261009supportScroll" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20261009supportScroll" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
@@ -1725,6 +1734,7 @@
               <div class="summary-grid">
                 <div class="summary-item"><span class="label" data-i18n="name">Name</span><span class="value" id="sumName">—</span></div>
                 <div class="summary-item"><span class="label" data-i18n="email">Email</span><span class="value" id="sumEmail">—</span></div>
+                <div class="summary-item"><span class="label">User ID</span><span class="value" id="sumUserId">—</span></div>
                 <div class="summary-item"><span class="label" data-i18n="phone">Phone</span><span class="value" id="sumPhone">—</span></div>
               </div>
               <div class="action-row" style="margin-top:1rem">
@@ -1883,7 +1893,7 @@
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261009p2pKyc"></script>
+  <script defer src="/dashboard.js?v=20261009userIdentity"></script>
   <script defer src="/supportChat.js?v=20261009supportClosed"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>

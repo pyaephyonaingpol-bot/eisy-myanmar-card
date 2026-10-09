@@ -1539,6 +1539,7 @@ const Dashboard = {
     if ($('headerEmail')) $('headerEmail').textContent = profile.email || '—';
     if ($('sumName')) $('sumName').textContent = profile.name || '—';
     if ($('sumEmail')) $('sumEmail').textContent = profile.email || '—';
+    if ($('sumUserId')) $('sumUserId').textContent = profile.id != null && profile.id !== '' ? ('#' + profile.id) : '—';
     if ($('sumPhone')) {
       $('sumPhone').textContent = this.formatUserPhone(profile.phone || profile.phone_display) || '—';
     }
@@ -6261,6 +6262,7 @@ const Dashboard = {
       const parts = [
         user.name || user.email || 'User',
         user.email ? `(${user.email})` : null,
+        user.id != null && user.id !== '' ? `· #${user.id}` : null,
         phoneLabel ? `· ${phoneLabel}` : null,
       ].filter(Boolean);
       acctInfo.textContent = `Signed in as ${parts.join(' ')}`;
