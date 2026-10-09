@@ -25,7 +25,7 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pagoWalletModal"'), 'wallet guide modal present');
   assert.ok(doc.includes('id="pagoWalletCopyAllBtn"'), 'copy-all action in modal');
   assert.ok(doc.includes('id="pagoWalletAtmHint"'), 'ATM Google Pay hint present');
-  assert.ok(doc.includes('styles.css?v=20261008issueFee'), 'CSS cache-bust bumped');
+  assert.ok(doc.includes('styles.css?v=20261009supportScroll'), 'CSS cache-bust bumped');
   assert.ok(doc.includes('dashboard.js?v=20261008issueFee'), 'JS cache-bust bumped');
   assert.ok(doc.includes('i18n.js?v=20261008issueFee'), 'i18n cache-bust bumped');
 }

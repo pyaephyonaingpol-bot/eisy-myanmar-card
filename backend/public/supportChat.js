@@ -15,6 +15,8 @@
     lastMessageId: 0,
     pollTimer: null,
     sending: false,
+    guardBound: false,
+    lastTouchY: null,
   };
 
   function el(id) {
@@ -96,6 +98,138 @@
     });
   }
 
+  function pageScrollY() {
+    return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+  }
+
+  function restoreImportant(node, prop, value) {
+    if (!node) return;
+    if (value) node.style.setProperty(prop, value, 'important');
+    else node.style.removeProperty(prop);
+  }
+
+  /** Block the gesture when it would chain out of the chat into the page. */
+  function shouldBlockNestedScroll(scroller, deltaY) {
+    if (!scroller || !(deltaY < 0 || deltaY > 0)) return true;
+    if (scroller.scrollHeight <= scroller.clientHeight + 1) return true;
+    const atTop = scroller.scrollTop <= 0;
+    const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+    if (deltaY < 0 && atTop) return true;
+    if (deltaY > 0 && atBottom) return true;
+    return false;
+  }
+
+  function chatScroller(target) {
+    if (!target || !target.closest) return null;
+    return target.closest('.support-chat-messages, .support-chat-list, .support-chat-compose');
+  }
+
+  function isTypingTarget(target) {
+    return !!(target && target.closest && target.closest('input, textarea, select'));
+  }
+
+  function onGuardWheel(event) {
+    if (!state.open || isTypingTarget(event.target)) return;
+    const panel = el('supportChatPanel');
+    if (!panel || panel.classList.contains('hidden')) return;
+    if (!panel.contains(event.target) || shouldBlockNestedScroll(chatScroller(event.target), event.deltaY)) {
+      event.preventDefault();
+    }
+  }
+
+  function onGuardTouchStart(event) {
+    const touch = event.touches && event.touches[0];
+    state.lastTouchY = touch ? touch.clientY : null;
+  }
+
+  function onGuardTouchMove(event) {
+    if (!state.open || isTypingTarget(event.target)) return;
+    const panel = el('supportChatPanel');
+    if (!panel || panel.classList.contains('hidden')) return;
+    const touch = event.touches && event.touches[0];
+    const deltaY = touch && state.lastTouchY != null ? state.lastTouchY - touch.clientY : 0;
+    if (touch) state.lastTouchY = touch.clientY;
+    if (!panel.contains(event.target) || shouldBlockNestedScroll(chatScroller(event.target), deltaY)) {
+      event.preventDefault();
+    }
+  }
+
+  function bindScrollGuard() {
+    if (state.guardBound) return;
+    document.addEventListener('wheel', onGuardWheel, { passive: false, capture: true });
+    document.addEventListener('touchstart', onGuardTouchStart, { passive: true, capture: true });
+    document.addEventListener('touchmove', onGuardTouchMove, { passive: false, capture: true });
+    state.guardBound = true;
+  }
+
+  function unbindScrollGuard() {
+    if (!state.guardBound) return;
+    document.removeEventListener('wheel', onGuardWheel, { capture: true });
+    document.removeEventListener('touchstart', onGuardTouchStart, { capture: true });
+    document.removeEventListener('touchmove', onGuardTouchMove, { capture: true });
+    state.guardBound = false;
+    state.lastTouchY = null;
+  }
+
+  function lockBackgroundScroll() {
+    const root = document.documentElement;
+    if (root.classList.contains('support-chat-scroll-lock')) return;
+    const body = document.body;
+    const y = pageScrollY();
+    root.dataset.supportChatScrollY = String(y);
+    root.dataset.supportChatPrevOverflowY = root.style.overflowY || '';
+    body.dataset.supportChatPrevOverflowY = body.style.overflowY || '';
+    body.dataset.supportChatPrevPosition = body.style.position || '';
+    body.dataset.supportChatPrevTop = body.style.top || '';
+    body.dataset.supportChatPrevLeft = body.style.left || '';
+    body.dataset.supportChatPrevRight = body.style.right || '';
+    body.dataset.supportChatPrevWidth = body.style.width || '';
+    root.classList.add('support-chat-scroll-lock');
+    root.style.setProperty('--support-chat-lock-top', `-${y}px`);
+    root.style.setProperty('overflow-y', 'hidden', 'important');
+    body.style.setProperty('overflow-y', 'hidden', 'important');
+    body.style.setProperty('position', 'fixed', 'important');
+    body.style.setProperty('top', `-${y}px`, 'important');
+    body.style.setProperty('left', '0', 'important');
+    body.style.setProperty('right', '0', 'important');
+    body.style.setProperty('width', '100%', 'important');
+    document.querySelectorAll('.app-content').forEach((node) => {
+      node.dataset.supportChatPrevOverflowY = node.style.overflowY || '';
+      node.style.setProperty('overflow-y', 'hidden', 'important');
+    });
+    bindScrollGuard();
+  }
+
+  function unlockBackgroundScroll() {
+    const root = document.documentElement;
+    if (!root.classList.contains('support-chat-scroll-lock')) return;
+    const body = document.body;
+    const y = Number(root.dataset.supportChatScrollY || 0);
+    root.classList.remove('support-chat-scroll-lock');
+    root.style.removeProperty('--support-chat-lock-top');
+    restoreImportant(root, 'overflow-y', root.dataset.supportChatPrevOverflowY);
+    restoreImportant(body, 'overflow-y', body.dataset.supportChatPrevOverflowY);
+    restoreImportant(body, 'position', body.dataset.supportChatPrevPosition);
+    restoreImportant(body, 'top', body.dataset.supportChatPrevTop);
+    restoreImportant(body, 'left', body.dataset.supportChatPrevLeft);
+    restoreImportant(body, 'right', body.dataset.supportChatPrevRight);
+    restoreImportant(body, 'width', body.dataset.supportChatPrevWidth);
+    document.querySelectorAll('.app-content').forEach((node) => {
+      restoreImportant(node, 'overflow-y', node.dataset.supportChatPrevOverflowY);
+      delete node.dataset.supportChatPrevOverflowY;
+    });
+    delete root.dataset.supportChatScrollY;
+    delete root.dataset.supportChatPrevOverflowY;
+    delete body.dataset.supportChatPrevOverflowY;
+    delete body.dataset.supportChatPrevPosition;
+    delete body.dataset.supportChatPrevTop;
+    delete body.dataset.supportChatPrevLeft;
+    delete body.dataset.supportChatPrevRight;
+    delete body.dataset.supportChatPrevWidth;
+    unbindScrollGuard();
+    window.scrollTo(0, y);
+  }
+
   function setOpen(open) {
     if (open && !(global.Auth && Auth.isLoggedIn && Auth.isLoggedIn())) {
       alert('Please sign in to chat with support.');
@@ -104,11 +238,13 @@
     state.open = !!open;
     el('supportChatPanel')?.classList.toggle('hidden', !state.open);
     if (state.open) {
+      lockBackgroundScroll();
       state.view = 'list';
       refreshThreads().then(render);
       startPolling();
     } else {
       stopPolling();
+      unlockBackgroundScroll();
     }
   }
 
@@ -392,5 +528,6 @@
     open: () => setOpen(true),
     close: () => setOpen(false),
     refresh: refreshThreads,
+    shouldBlockNestedScroll,
   };
 })(window);

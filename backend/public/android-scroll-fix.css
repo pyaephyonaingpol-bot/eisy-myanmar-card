@@ -116,6 +116,42 @@ html.doc-scroll .app-content {
   padding-top: 1rem !important;
 }
 
+/* Support chat is open: freeze the document scrollport. The chat list keeps its own scroll. */
+html.doc-scroll.support-chat-scroll-lock {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+}
+html.doc-scroll.support-chat-scroll-lock body {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  height: auto !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+  top: var(--support-chat-lock-top, 0px) !important;
+}
+html.doc-scroll.support-chat-scroll-lock .app-content {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+html.doc-scroll.support-chat-scroll-lock .support-chat-panel,
+html.doc-scroll.support-chat-scroll-lock .support-chat-body {
+  overscroll-behavior: contain !important;
+  touch-action: manipulation !important;
+}
+html.doc-scroll.support-chat-scroll-lock .support-chat-list,
+html.doc-scroll.support-chat-scroll-lock .support-chat-messages,
+html.doc-scroll.support-chat-scroll-lock .support-chat-compose {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+}
+
 /* Horizontal tables still pan-x; do not block page vertical scroll. */
 html.doc-scroll .data-table-wrap,
 html.doc-scroll .card-thumbnails {
