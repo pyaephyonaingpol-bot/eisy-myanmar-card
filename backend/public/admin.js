@@ -1005,8 +1005,20 @@
       if (usersTable) {
         usersTable.addEventListener('click', (e) => {
           const btn = e.target.closest('.view-card-requests');
-          if (!btn) return;
-          this.switchTab('cards');
+          if (btn) {
+            this.switchTab('cards');
+            return;
+          }
+          if (e.target.closest('.actions-cell') || e.target.closest('button')) return;
+          const row = e.target.closest('tr.user-directory-row');
+          if (!row || !row.dataset.userId) return;
+          if (typeof this.openUserDetailModal === 'function') {
+            this.openUserDetailModal({
+              id: row.dataset.userId,
+              name: row.dataset.userName || '',
+              email: row.dataset.userEmail || '',
+            });
+          }
         });
       }
 
@@ -4441,7 +4453,7 @@
 
     renderUsersRowsHtml(users) {
       return users.map((u) =>
-        '<tr>' +
+        '<tr class="user-directory-row" data-user-id="' + this.esc(u.id) + '" data-user-email="' + this.esc(u.email || '') + '" data-user-name="' + this.esc(u.name || '') + '" title="Open user details">' +
           '<td class="user-id-cell">' + this.esc(u.id) +
             (u.auth_user_id ? '<span class="user-auth-id">' + this.esc(u.auth_user_id) + '</span>' : '') +
           '</td>' +
