@@ -173,8 +173,35 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 0.85rem;
     }
+    .sa-balance-row.is-triple {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
     @media (max-width: 560px) {
       .sa-balance-row { grid-template-columns: 1fr; }
+      .sa-balance-row.is-triple { grid-template-columns: 1fr; }
+    }
+    .admin-pago-section { margin-bottom: 2rem; }
+    .admin-pago-logs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    @media (max-width: 900px) {
+      .admin-pago-logs { grid-template-columns: 1fr; }
+    }
+    .admin-pago-log-card {
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      background: rgba(8, 14, 26, 0.45);
+      padding: 0.85rem 0.95rem 1rem;
+      min-height: 8rem;
+    }
+    .admin-pago-log-card h4 {
+      margin: 0 0 0.65rem;
+      font-size: 0.92rem;
+      font-weight: 650;
+      color: #e2e8f0;
     }
     .sa-balance {
       padding: 1rem 1.05rem;
@@ -922,6 +949,48 @@
         <h2 id="adminCardsHeading">Virtual Cards</h2>
         <p class="hint" id="adminCardsHint" style="margin-bottom:1rem">Review Pago virtual cards, pending requests, and reload approvals.</p>
 
+        <div class="admin-pago-section sa-card" id="adminPagoDashboard" data-admin-perm="cards">
+          <div class="sa-card-header">
+            <div>
+              <p class="sa-card-eyebrow">Pagocards Admin API</p>
+              <h3 class="sa-card-title" style="font-size:1.05rem">Platform wallets &amp; all issued cards</h3>
+              <p class="sa-card-sub">Live funding, Visa, and gift card balances plus cross-user card inventory from Pagocards.</p>
+            </div>
+            <div class="sa-card-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="adminPagoRefreshBtn">Refresh all</button>
+            </div>
+          </div>
+          <div id="adminPagoBalanceRow" class="sa-balance-row is-triple" aria-live="polite">
+            <p class="hint" style="margin:0;grid-column:1/-1">Loading Pagocards wallet balances…</p>
+          </div>
+          <div class="admin-toolbar" style="margin:1.15rem 0 0.75rem">
+            <select id="adminPagoBrandFilter" aria-label="Filter by brand">
+              <option value="visa" selected>Visa</option>
+              <option value="mastercard">Mastercard</option>
+              <option value="all">All brands</option>
+            </select>
+            <input id="adminPagoEmailFilter" type="search" placeholder="Filter by user email" autocomplete="off" />
+            <select id="adminPagoPerPage" aria-label="Cards per page">
+              <option value="20" selected>20 per page</option>
+              <option value="50">50 per page</option>
+              <option value="100">100 per page</option>
+            </select>
+            <button type="button" class="btn btn-primary btn-sm" id="adminPagoCardsSearchBtn">Load cards</button>
+          </div>
+          <div id="adminPagoCardsTable" class="data-table-wrap"><p class="hint">Load cards to view the Pagocards inventory.</p></div>
+          <p class="hint" id="adminPagoCardsMeta" style="margin:0.5rem 0 0"></p>
+          <div class="admin-pago-logs">
+            <div class="admin-pago-log-card">
+              <h4>Recent Pagocards deposits</h4>
+              <div id="adminPagoDepositsTable" class="data-table-wrap" style="max-height:16rem;overflow:auto"><p class="hint">Loading…</p></div>
+            </div>
+            <div class="admin-pago-log-card">
+              <h4>Recent Pagocards transactions</h4>
+              <div id="adminPagoTransactionsTable" class="data-table-wrap" style="max-height:16rem;overflow:auto"><p class="hint">Loading…</p></div>
+            </div>
+          </div>
+        </div>
+
         <h3 style="margin-top:0.5rem;font-size:1rem">Card Requests</h3>
         <p class="hint" style="margin-bottom:0.65rem">Pending applications awaiting admin review.</p>
         <div id="pendingCardsTable" class="data-table-wrap"><p class="hint">Loading card requests…</p></div>
@@ -1495,6 +1564,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261010globalUsdtAdmin" defer></script>
+  <script src="/admin.js?v=20261010pagoAdminDash" defer></script>
 </body>
 </html>

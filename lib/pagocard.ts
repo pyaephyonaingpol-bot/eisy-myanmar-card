@@ -625,6 +625,64 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     }));
   }
 
+  /** Pagocards Admin API — platform wallet balances (funding, visa, giftcard). */
+  async function getAdminBalance(): Promise<Record<string, unknown>> {
+    const config = resolveConfig(options);
+    return pagoRequest<Record<string, unknown>>(config, 'GET', '/api/admin/balance', {
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
+  /**
+   * Pagocards Admin API — all issued cards across users.
+   * Docs: POST /api/admin/allcards body `{ brand, per_page }`.
+   */
+  async function listAdminAllCards(input: {
+    brand?: string;
+    per_page?: number;
+    page?: number;
+  } = {}): Promise<Record<string, unknown>> {
+    const config = resolveConfig(options);
+    const brand = String(input?.brand || 'visa').trim() || 'visa';
+    const perPageRaw = Number(input?.per_page);
+    const perPage = Number.isFinite(perPageRaw) && perPageRaw > 0
+      ? Math.min(100, Math.floor(perPageRaw))
+      : 20;
+    const body: Record<string, unknown> = { brand, per_page: perPage };
+    const page = Number(input?.page);
+    if (Number.isFinite(page) && page > 0) body.page = Math.floor(page);
+    return pagoRequest<Record<string, unknown>>(config, 'POST', '/api/admin/allcards', {
+      body,
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
+  async function listAdminTransactions(query: Record<string, string | number | undefined> = {}): Promise<unknown> {
+    const config = resolveConfig(options);
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || String(value).trim() === '') continue;
+      params.set(key, String(value));
+    }
+    const qs = params.toString();
+    return pagoRequest(config, 'GET', `/api/admin/transactions${qs ? `?${qs}` : ''}`, {
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
+  async function listAdminDeposits(query: Record<string, string | number | undefined> = {}): Promise<unknown> {
+    const config = resolveConfig(options);
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || String(value).trim() === '') continue;
+      params.set(key, String(value));
+    }
+    const qs = params.toString();
+    return pagoRequest(config, 'GET', `/api/admin/deposits${qs ? `?${qs}` : ''}`, {
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
   /**
    * Recent card activity. Docs: GET /api/v1/cards/{card_id}/transactions?pageNum=1
    * 3DS OTPs are not a dedicated list endpoint; callers scan rows for otp fields.
@@ -656,6 +714,10 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     blockCard,
     unblockCard,
     terminateCard,
+    getAdminBalance,
+    listAdminAllCards,
+    listAdminTransactions,
+    listAdminDeposits,
     listCardsByEmail,
     listCardTransactions,
   };
@@ -716,6 +778,22 @@ function listCardTransactions(cardId: string, pageNum = 1) {
   return createPagoCardClient().listCardTransactions(cardId, pageNum);
 }
 
+function getAdminBalance() {
+  return createPagoCardClient().getAdminBalance();
+}
+
+function listAdminAllCards(input?: { brand?: string; per_page?: number; page?: number }) {
+  return createPagoCardClient().listAdminAllCards(input);
+}
+
+function listAdminTransactions(query?: Record<string, string | number | undefined>) {
+  return createPagoCardClient().listAdminTransactions(query);
+}
+
+function listAdminDeposits(query?: Record<string, string | number | undefined>) {
+  return createPagoCardClient().listAdminDeposits(query);
+}
+
 module.exports = {
   PagoCardError,
   createPagoCardClient,
@@ -730,6 +808,10 @@ module.exports = {
   terminateCard,
   listCardsByEmail,
   listCardTransactions,
+  getAdminBalance,
+  listAdminAllCards,
+  listAdminTransactions,
+  listAdminDeposits,
   truncateUsd,
   MIN_REMAINING_AFTER_WITHDRAW,
 };
