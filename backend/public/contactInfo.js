@@ -152,6 +152,9 @@
   }
 
   function openContactModal(trigger) {
+    if (global.AppNav && typeof global.AppNav.closeMobileSidebar === 'function') {
+      global.AppNav.closeMobileSidebar();
+    }
     const modal = ensureModal();
     lastFocus = trigger || document.activeElement;
     const body = document.getElementById('officialContactModalBody');
