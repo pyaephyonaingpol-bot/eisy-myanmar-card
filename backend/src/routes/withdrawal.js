@@ -96,9 +96,9 @@ router.get('/fees', requireAuth, async (_req, res) => {
       fees: settings,
       policy: {
         mmk_to_usdt_allowed: false,
-        mmk_bank_withdraw_allowed: true,
+        mmk_bank_withdraw_allowed: false,
         usdt_crypto_withdraw_allowed: true,
-        usdt_bank_withdraw_allowed: true,
+        usdt_bank_withdraw_allowed: false,
         trc20_auto_send: false,
         payout_provider: 'tron_master_wallet',
         service_fee_rule: mode,
@@ -111,11 +111,6 @@ router.get('/fees', requireAuth, async (_req, res) => {
         buildNetworkMeta('TRC20', {
           label: 'USDT TRC20 (Tron)',
           auto_send: false,
-        }),
-        buildNetworkMeta('BANK', {
-          label: 'Bank Account (USDT → MMK)',
-          auto_send: false,
-          exchange_rate: settings.mmk_to_usd_rate,
         }),
       ],
       minimum_usdt_withdrawal: settings.minimum_usdt_withdrawal,
@@ -142,13 +137,13 @@ router.post('/preview', requireAuth, async (req, res) => {
   try {
     const settings = await getWithdrawalFeeSettings();
     const payoutMethod = String(req.body.payout_method || 'crypto').toLowerCase();
-    if (payoutMethod === 'mmk' || req.body.currency === 'MMK') {
-      const breakdown = calculateMmkWithdrawalBreakdown(req.body.amount_mmk, settings);
-      return res.json({ breakdown, settings, payout_method: 'mmk_bank' });
+    if (payoutMethod === 'mmk' || req.body.currency === 'MMK' || payoutMethod === 'bank') {
+      return res.status(410).json({
+        error: 'Local MMK payouts are no longer available. Withdraw USDT on TRON (TRC20) only.',
+        code: 'MMK_PAYOUT_RETIRED',
+      });
     }
-    const network = payoutMethod === 'bank'
-      ? 'BANK'
-      : String(req.body.network || 'TRC20').toUpperCase();
+    const network = String(req.body.network || 'TRC20').toUpperCase();
     const breakdown = calculateWithdrawalBreakdown(req.body.amount_usdt, network, settings);
     res.json({ breakdown, settings });
   } catch (err) {
@@ -239,32 +234,11 @@ router.post('/usdt', requireAuth, requireSensitive, requireWithdrawalsEnabled, a
   }
 });
 
-router.post('/mmk', requireAuth, requireSensitive, requireWithdrawalsEnabled, async (req, res) => {
-  try {
-    const result = await createMmkBankWithdrawalRequest(req.user.id, req.body || {});
-    const user = await User.findById(req.user.id);
-    res.status(201).json({
-      success: true,
-      ref_code: result.withdrawal.ref_code,
-      withdrawal: mapMmkWithdrawal(result.withdrawal),
-      breakdown: result.breakdown,
-      message: result.message,
-      wallet: walletPayload(user),
-    });
-  } catch (err) {
-    console.error('[withdrawal/mmk POST]', err);
-    const status = err.code === 'WITHDRAWALS_PAUSED' || err.code === 'MASTER_WALLET_TRANSFERS_PAUSED'
-      ? 503
-      : err.code === 'INSUFFICIENT_MMK_BALANCE'
-      ? 402
-      : (err.code === 'MMK_TO_USDT_FORBIDDEN' || err.code === 'MMK_WALLET_RESTRICTED' ? 403 : 400);
-    res.status(status).json({
-      error: err.message || 'MMK withdrawal failed',
-      code: err.code,
-      required_mmk: err.required_mmk,
-      available_mmk: err.available_mmk,
-    });
-  }
+router.post('/mmk', requireAuth, requireSensitive, requireWithdrawalsEnabled, async (_req, res) => {
+  res.status(410).json({
+    error: 'Local MMK payouts are no longer available. Withdraw USDT on TRON (TRC20) only.',
+    code: 'MMK_PAYOUT_RETIRED',
+  });
 });
 
 router.get('/history', requireAuth, async (req, res) => {

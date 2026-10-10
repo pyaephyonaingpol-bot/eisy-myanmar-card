@@ -85,7 +85,7 @@ const Dashboard = {
     const available = Number(this.walletUsdt ?? 0);
     const locked = Number(this.walletUsdtLocked ?? 0);
     let text = `Available: $${available.toFixed(2)} USDT`;
-    if (locked > 0.001) text += ` · Locked: $${locked.toFixed(2)} USDT (P2P escrow)`;
+    if (locked > 0.001) text += ` · Locked: $${locked.toFixed(2)} USDT`;
     return text;
   },
 
@@ -2836,6 +2836,7 @@ const Dashboard = {
   },
 
   bindP2pMarket() {
+    if (!document.getElementById('pageP2p')) return;
     this._p2pTab = 'buy';
 
     document.querySelectorAll('.p2p-tab[data-p2p-tab]').forEach((btn) => {
@@ -3548,6 +3549,7 @@ const Dashboard = {
   },
 
   bindP2pSellModal() {
+    if (!document.getElementById('p2pSellModal')) return;
     this._p2pSellListing = null;
     this._p2pSellOrder = null;
 
@@ -3775,6 +3777,7 @@ const Dashboard = {
   },
 
   bindP2pBuyModal() {
+    if (!document.getElementById('p2pBuyModal')) return;
     this._p2pBuyListing = null;
     this._p2pBuyOrder = null;
 
@@ -4835,6 +4838,7 @@ const Dashboard = {
   },
 
   bindP2pPostAdModal() {
+    if (!document.getElementById('p2pPostAdModal')) return;
     $('p2pPostAdModalClose')?.addEventListener('click', () => this.closePostP2pAdModal());
     $('p2pPostAdModal')?.addEventListener('click', (e) => {
       if (e.target.id === 'p2pPostAdModal') this.closePostP2pAdModal();

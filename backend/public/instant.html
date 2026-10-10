@@ -321,71 +321,6 @@
     </div>
   </div>
 
-  <!-- ═══ SELL USDT / CONVERT TO MMK MODAL ═══ -->
-  <div id="sellUsdtMmkModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="sellUsdtMmkModalTitle" aria-modal="true">
-    <div class="modal-box modal-box-wide sell-usdt-mmk-modal-box">
-      <div class="modal-header-row">
-        <h3 id="sellUsdtMmkModalTitle" data-i18n="sell_usdt_mmk_title">Sell USDT / Convert to MMK</h3>
-        <button type="button" id="sellUsdtMmkModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
-      </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="sell_usdt_mmk_hint">Convert USDT from your wallet to MMK at today's admin rate and receive payout to your bank or mobile wallet after review.</p>
-
-      <div class="sell-usdt-notice" role="note">
-        <strong data-i18n="sell_usdt_mmk_notice_title">Processing notice</strong>
-        <p data-i18n="sell_usdt_mmk_notice">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
-      </div>
-
-      <form id="sellUsdtMmkForm" class="form">
-        <div class="field">
-          <label for="sellUsdtBankMethod" data-i18n="sell_usdt_bank_wallet">Bank / Wallet</label>
-          <select id="sellUsdtBankMethod" required>
-            <option value="" data-i18n="sell_usdt_bank_placeholder">— Select bank or wallet —</option>
-            <option value="KPay">KPay</option>
-            <option value="KBZ Bank">KBZ Bank</option>
-            <option value="CB Pay">CB Pay</option>
-            <option value="CB Bank">CB Bank</option>
-            <option value="AYA Pay">AYA Pay</option>
-            <option value="AYA Bank">AYA Bank</option>
-            <option value="WavePay">WavePay</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="sellUsdtAccountName" data-i18n="withdraw_account_name">Account Holder Name</label>
-          <input id="sellUsdtAccountName" type="text" required placeholder="Name on account" autocomplete="name" />
-        </div>
-        <div class="field">
-          <label for="sellUsdtAccountNumber" data-i18n="sell_usdt_account_number_phone">Account Number / Phone Number</label>
-          <input id="sellUsdtAccountNumber" type="text" required placeholder="09… or bank account number" inputmode="tel" autocomplete="off" />
-        </div>
-        <div class="field">
-          <label for="sellUsdtAmount" data-i18n="withdraw_amount_usdt">Withdrawal Amount (USDT)</label>
-          <input id="sellUsdtAmount" type="number" step="0.01" min="0.01" placeholder="50.00" required />
-          <small id="sellUsdtMinHint" class="hint">Minimum withdrawal: —</small>
-          <small id="sellUsdtBalanceHint" class="hint">Available: —</small>
-        </div>
-
-        <div id="sellUsdtPreviewBox" class="reload-preview-box">
-          <h4 data-i18n="sell_usdt_preview">Conversion Preview</h4>
-          <div class="reload-preview-row"><span data-i18n="sell_usdt_preview_rate">Daily Rate</span><strong id="sellUsdtPreviewRate">—</strong></div>
-          <div class="reload-preview-row"><span data-i18n="withdraw_preview_fee">Fee</span><strong id="sellUsdtPreviewFee">—</strong></div>
-          <div class="reload-preview-row"><span data-i18n="withdraw_preview_net_usdt">Net USDT</span><strong id="sellUsdtPreviewNet">—</strong></div>
-          <div class="reload-preview-row reload-preview-highlight">
-            <span data-i18n="withdraw_preview_mmk_payout">MMK to Bank</span>
-            <strong id="sellUsdtPreviewMmk">—</strong>
-          </div>
-          <p id="sellUsdtPreviewSummary" class="reload-preview-receive">Enter an amount to preview the MMK payout.</p>
-        </div>
-
-        <button type="submit" class="btn btn-primary" id="btnSubmitSellUsdtMmk" data-i18n="btn_submit_sell_usdt">Submit Conversion Request</button>
-      </form>
-
-      <div id="sellUsdtSuccessBox" class="ref-box hidden">
-        <div class="ref-code" id="sellUsdtRefCode">WB-0000</div>
-        <p class="status-line" id="sellUsdtSuccessMessage">Conversion request submitted for admin review.</p>
-      </div>
-      <pre class="output hidden" id="sellUsdtOutput" aria-hidden="true"></pre>
-    </div>
-  </div>
 
 
   <!-- Scan Pay modal -->
@@ -475,15 +410,7 @@
       <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">USDT withdrawals are sent on TRON (TRC20) after review.</p>
 
       <form id="withdrawUsdtForm" class="form" data-withdraw-provider="tron">
-        <div class="field">
-          <label for="withdrawPayoutMethod" data-i18n="withdraw_payout_method">Payout Method</label>
-          <select id="withdrawPayoutMethod" required>
-            <option value="crypto" data-i18n="withdraw_method_crypto" selected>USDT (TRC20)</option>
-            <option value="bank" data-i18n="withdraw_method_bank">Bank Account (USDT → MMK)</option>
-          </select>
-          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Send USDT on TRON (TRC20) to your destination address.</small>
-        </div>
-
+        <input type="hidden" id="withdrawPayoutMethod" name="payout_method" value="crypto" />
         <div id="withdrawCryptoFields">
           <div class="field" id="withdrawNetworkField">
             <label for="withdrawNetwork" data-i18n="withdraw_network">Network</label>
@@ -493,35 +420,9 @@
           </div>
           <div class="field">
             <label for="withdrawWalletAddress" data-i18n="withdraw_wallet_address">Destination Wallet Address</label>
-            <input id="withdrawWalletAddress" type="text" placeholder="T…" autocomplete="off" />
+            <input id="withdrawWalletAddress" type="text" placeholder="T…" autocomplete="off" required />
           </div>
-        </div>
-
-        <div id="withdrawBankFields" class="hidden">
-          <div class="field">
-            <label for="withdrawUsdtBankName" data-i18n="sell_usdt_bank_wallet">Bank / Wallet</label>
-            <select id="withdrawUsdtBankName">
-              <option value="" data-i18n="sell_usdt_bank_placeholder">— Select bank or wallet —</option>
-              <option value="KPay">KPay</option>
-              <option value="KBZ Bank">KBZ Bank</option>
-              <option value="CB Pay">CB Pay</option>
-              <option value="CB Bank">CB Bank</option>
-              <option value="AYA Pay">AYA Pay</option>
-              <option value="AYA Bank">AYA Bank</option>
-              <option value="WavePay">WavePay</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="withdrawUsdtAccountName" data-i18n="withdraw_account_name">Account Holder Name</label>
-            <input id="withdrawUsdtAccountName" type="text" placeholder="Name on bank account" autocomplete="name" />
-          </div>
-          <div class="field">
-            <label for="withdrawUsdtAccountNumber" data-i18n="sell_usdt_account_number_phone">Account Number / Phone Number</label>
-            <input id="withdrawUsdtAccountNumber" type="text" placeholder="09… or bank account number" inputmode="tel" autocomplete="off" />
-          </div>
-          <div class="sell-usdt-notice sell-usdt-notice-compact" role="note">
-            <p data-i18n="sell_usdt_mmk_notice">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
-          </div>
+          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Send USDT on TRON (TRC20) to your destination address.</small>
         </div>
 
         <div class="field">
@@ -536,10 +437,6 @@
           <div class="reload-preview-row"><span data-i18n="withdraw_preview_method">Method</span><strong id="withdrawPreviewNetwork">—</strong></div>
           <div class="reload-preview-row"><span data-i18n="withdraw_preview_fee">Fee</span><strong id="withdrawPreviewFee">—</strong></div>
           <div class="reload-preview-row"><span data-i18n="withdraw_preview_net_usdt">Net USDT</span><strong id="withdrawPreviewNet">—</strong></div>
-          <div class="reload-preview-row reload-preview-highlight hidden" id="withdrawPreviewMmkRow">
-            <span data-i18n="withdraw_preview_mmk_payout">MMK to Bank</span>
-            <strong id="withdrawPreviewMmk">—</strong>
-          </div>
           <p id="withdrawPreviewSummary" class="reload-preview-receive">Fee is deducted from your requested amount.</p>
         </div>
 
@@ -554,375 +451,9 @@
     </div>
   </div>
 
-  <div id="withdrawMmkModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="withdrawMmkModalTitle" aria-modal="true">
-    <div class="modal-box modal-box-wide">
-      <div class="modal-header-row">
-        <h3 id="withdrawMmkModalTitle" data-i18n="withdraw_mmk_title">Withdraw MMK to Bank</h3>
-        <button type="button" id="withdrawMmkModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
-      </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_mmk_hint">Transfer your MMK wallet balance directly to your bank account. MMK cannot be converted to USDT inside the app.</p>
 
-      <form id="withdrawMmkForm" class="form">
-        <div class="field">
-          <label for="withdrawMmkBankName" data-i18n="sell_usdt_bank_wallet">Bank / Wallet</label>
-          <select id="withdrawMmkBankName" required>
-            <option value="" data-i18n="sell_usdt_bank_placeholder">— Select bank or wallet —</option>
-            <option value="KPay">KPay</option>
-            <option value="KBZ Bank">KBZ Bank</option>
-            <option value="CB Pay">CB Pay</option>
-            <option value="CB Bank">CB Bank</option>
-            <option value="AYA Pay">AYA Pay</option>
-            <option value="AYA Bank">AYA Bank</option>
-            <option value="WavePay">WavePay</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="withdrawMmkAccountName" data-i18n="withdraw_account_name">Account Holder Name</label>
-          <input id="withdrawMmkAccountName" type="text" required placeholder="Name on bank account" autocomplete="name" />
-        </div>
-        <div class="field">
-          <label for="withdrawMmkAccountNumber" data-i18n="sell_usdt_account_number_phone">Account Number / Phone Number</label>
-          <input id="withdrawMmkAccountNumber" type="text" required placeholder="09… or bank account number" inputmode="tel" autocomplete="off" />
-        </div>
-        <div class="sell-usdt-notice sell-usdt-notice-compact" role="note">
-          <p data-i18n="sell_usdt_mmk_notice">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
-        </div>
-        <div class="field">
-          <label for="withdrawAmountMmk" data-i18n="withdraw_amount_mmk">Withdrawal Amount (MMK)</label>
-          <input id="withdrawAmountMmk" type="number" step="1" min="10000" placeholder="50000" required />
-          <small id="withdrawMmkMinHint" class="hint">Minimum withdrawal: 10,000 MMK</small>
-          <small id="withdrawMmkBalanceHint" class="hint">Available: —</small>
-        </div>
 
-        <div id="withdrawMmkPreviewBox" class="reload-preview-box">
-          <h4 data-i18n="withdraw_preview">Withdrawal Preview</h4>
-          <div class="reload-preview-row"><span data-i18n="withdraw_preview_fee">Fee</span><strong id="withdrawMmkPreviewFee">—</strong></div>
-          <div class="reload-preview-row reload-preview-highlight">
-            <span data-i18n="withdraw_preview_net_mmk">Net to Bank</span>
-            <strong id="withdrawMmkPreviewNet">—</strong>
-          </div>
-          <p id="withdrawMmkPreviewSummary" class="reload-preview-receive">MMK is sent to your bank after admin processing.</p>
-        </div>
 
-        <button type="submit" class="btn btn-primary" id="btnSubmitWithdrawMmk" data-i18n="btn_submit_withdraw">Submit Withdrawal Request</button>
-      </form>
-
-      <div id="withdrawMmkSuccessBox" class="ref-box hidden">
-        <div class="ref-code" id="withdrawMmkRefCode">WM-0000</div>
-        <p class="status-line" id="withdrawMmkSuccessMessage">Withdrawal submitted.</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ P2P Buy USDT Modal (Instant only) ═══ -->
-  <div id="p2pBuyModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="p2pBuyModalTitle" aria-modal="true">
-    <div class="modal-box modal-box-wide">
-      <div class="modal-header-row">
-        <h3 id="p2pBuyModalTitle">Buy USDT</h3>
-        <button type="button" id="p2pBuyModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
-      </div>
-
-      <div id="p2pBuyStepAmount">
-        <p class="hint" id="p2pBuyMerchantSummary" style="margin-bottom:0.5rem">Select amount and payment method.</p>
-        <p class="hint wallet-restriction-note" style="margin-bottom:1rem">You will pay the seller directly via KPay, WavePay, or Bank — not from your internal MMK wallet balance.</p>
-        <div class="p2p-buy-rate-banner" id="p2pBuyRateBanner">Rate: —</div>
-        <div class="field">
-          <label for="p2pBuyAmountUsdt">Amount (USDT) to buy</label>
-          <input id="p2pBuyAmountUsdt" type="number" step="0.01" min="5" placeholder="50.00" />
-          <small class="hint" id="p2pBuyUsdtLimits">Limits: —</small>
-        </div>
-        <div class="field">
-          <label>You receive</label>
-          <div id="p2pBuyNetUsdtPreview" class="p2p-net-usdt-preview">—</div>
-          <small class="hint" id="p2pBuySellerFeeHint">0% Fee for Buyers. Seller pays platform fee upon release.</small>
-        </div>
-        <div class="field">
-          <label>External payment amount (MMK)</label>
-          <div id="p2pBuyExternalMmkAmount" class="p2p-external-mmk-display">—</div>
-          <small class="hint">Pay this amount via KPay, WavePay, or Bank — not from your internal MMK wallet.</small>
-        </div>
-        <div class="field">
-          <label for="p2pBuyPaymentMethod">Payment Method</label>
-          <select id="p2pBuyPaymentMethod"></select>
-        </div>
-        <button type="button" id="p2pBuyContinueBtn" class="btn btn-primary" style="width:100%;margin-top:0.5rem">Continue to Payment</button>
-      </div>
-
-      <div id="p2pBuyStepPayment" class="hidden">
-        <div class="p2p-buy-summary" id="p2pBuyOrderSummary"></div>
-        <div id="p2pBuyTimerBanner" class="p2p-timer-banner hidden">
-          <span>Payment expires in</span>
-          <strong id="p2pBuyTimerDisplay">15:00</strong>
-          <small class="hint">Confirm transfer before auto-cancel</small>
-        </div>
-        <div id="p2pBuyDisputeBanner" class="p2p-dispute-banner hidden">DISPUTED — Admin is reviewing your case</div>
-        <h4 id="p2pBuyPaymentHeading" style="margin:1rem 0 0.65rem;font-size:0.95rem">Send payment to seller account</h4>
-        <div id="p2pBuyPaymentDetails" class="p2p-payment-details"></div>
-        <p class="hint" style="margin:1rem 0">Transfer the exact amount to the seller's external account. Your internal MMK wallet is not used. USDT will be credited to your USDT wallet after seller/admin approval.</p>
-
-        <div id="p2pBuyPaymentProofInline" class="p2p-payment-proof-inline">
-          <div class="field">
-            <label for="p2pBuyPaymentProofFile">Upload Payment Receipt / Payslip Screenshot</label>
-            <input id="p2pBuyPaymentProofFile" type="file" accept="image/*" capture="environment" />
-            <small class="hint">Select a photo from your phone or laptop before confirming transfer.</small>
-            <div id="p2pBuyPaymentProofPreview" class="p2p-proof-preview hidden">
-              <img id="p2pBuyPaymentProofPreviewImg" class="p2p-proof-preview-img hidden" alt="Receipt preview" />
-              <p id="p2pBuyPaymentProofPreviewName" class="hint" style="margin:0.35rem 0 0"></p>
-            </div>
-          </div>
-          <div class="field">
-            <label for="p2pBuyPaymentTxRef">Transaction ID / Ref No. (optional)</label>
-            <input id="p2pBuyPaymentTxRef" type="text" placeholder="KPay / WavePay reference" autocomplete="off" />
-          </div>
-        </div>
-
-        <button type="button" id="p2pBuyConfirmTransferBtn" class="btn btn-primary" style="width:100%;margin-top:0.5rem">I Have Transferred via KPay/Bank</button>
-
-        <button type="button" id="p2pBuyReleaseBtn" class="btn btn-approve hidden" style="width:100%;margin-top:0.5rem">Release USDT to Buyer</button>
-        <div id="p2pBuySellerActions" class="p2p-seller-actions hidden">
-          <button type="button" id="p2pBuyViewReceiptBtn" class="btn btn-secondary btn-sm">View Payment Proof</button>
-          <button type="button" id="p2pBuySellerDisputeBtn" class="btn btn-sm btn-reject">Open Dispute</button>
-        </div>
-        <div id="p2pBuyPaymentProofView" class="p2p-payment-proof-view hidden">
-          <h4 style="margin:0.75rem 0 0.5rem;font-size:0.95rem">Buyer Payment Proof</h4>
-          <div id="p2pBuyPaymentProofViewBody"></div>
-        </div>
-        <div id="p2pBuyTradeTools" class="p2p-trade-tools">
-          <div class="p2p-trade-chat">
-            <div class="p2p-trade-chat-header">Trade Chat</div>
-            <div id="p2pBuyChatMessages" class="p2p-trade-chat-messages"></div>
-            <form id="p2pBuyChatForm" class="p2p-trade-chat-form">
-              <input type="text" id="p2pBuyChatInput" placeholder="Message buyer/seller…" maxlength="500" />
-              <input type="file" id="p2pBuyChatAttachment" accept="image/*,video/*" hidden />
-              <button type="button" id="p2pBuyChatAttachBtn" class="btn btn-secondary btn-sm" title="Attach receipt">📎</button>
-              <button type="submit" class="btn btn-primary btn-sm">Send</button>
-            </form>
-            <p id="p2pBuyChatAttachHint" class="hint p2p-chat-attach-hint hidden"></p>
-          </div>
-          <button type="button" id="p2pBuyOpenDisputeBtn" class="btn btn-secondary btn-sm p2p-dispute-toggle">Need Help? / Open Dispute</button>
-          <form id="p2pBuyDisputeForm" class="p2p-dispute-form hidden">
-            <div class="field">
-              <label for="p2pBuyDisputeReason">Describe the issue</label>
-              <textarea id="p2pBuyDisputeReason" rows="2" placeholder="Payment sent but not credited, wrong amount, etc."></textarea>
-            </div>
-            <div class="field">
-              <label for="p2pBuyDisputeTxRef">TxRef / Transaction ID (optional)</label>
-              <input id="p2pBuyDisputeTxRef" type="text" placeholder="KPay/WavePay reference" />
-            </div>
-            <div class="field">
-              <label for="p2pBuyDisputeProof">Payment screenshot</label>
-              <input id="p2pBuyDisputeProof" type="file" accept="image/*,video/*" />
-            </div>
-            <button type="submit" class="btn btn-primary btn-sm">Submit Dispute</button>
-          </form>
-        </div>
-      </div>
-
-      <div id="p2pBuyStepDone" class="hidden" style="text-align:center">
-        <div class="p2p-buy-done-icon" aria-hidden="true">✓</div>
-        <h4 style="margin:0.5rem 0">Order Submitted</h4>
-        <p id="p2pBuyDoneMessage" class="hint" style="margin-bottom:1rem">Pending seller release.</p>
-        <div class="ref-box" style="margin-bottom:1rem">
-          <div class="ref-code" id="p2pBuyRefCode">P2P-0000</div>
-          <button type="button" id="p2pBuyCopyRefBtn" class="btn btn-secondary btn-sm">Copy Ref</button>
-        </div>
-        <button type="button" id="p2pBuyDoneCloseBtn" class="btn btn-primary">Done</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="p2pReleaseConfirmModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="p2pReleaseConfirmTitle" aria-modal="true">
-    <div class="modal-box" style="max-width:min(440px,100%)">
-      <h3 id="p2pReleaseConfirmTitle" style="margin-top:0">Confirm USDT Release</h3>
-      <p class="hint" style="margin:0.75rem 0 1rem">Have you checked your actual KPay/Bank account and confirmed the money has arrived?</p>
-      <div class="p2p-release-confirm-actions">
-        <button type="button" id="p2pReleaseConfirmYes" class="btn btn-primary">Yes, Release USDT</button>
-        <button type="button" id="p2pReleaseConfirmCancel" class="btn btn-secondary">Cancel</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="p2pSellerDisputeModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="p2pSellerDisputeTitle" aria-modal="true">
-    <div class="modal-box" style="max-width:min(480px,100%)">
-      <div class="modal-header-row">
-        <h3 id="p2pSellerDisputeTitle" style="margin:0">Open Dispute / Appeal</h3>
-        <button type="button" id="p2pSellerDisputeClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
-      </div>
-      <p class="hint" style="margin:0.75rem 0">Report a fake receipt or missing MMK transfer. Escrow will be locked until admin reviews the case.</p>
-      <form id="p2pSellerDisputeForm" class="form">
-        <input type="hidden" id="p2pSellerDisputeOrderType" value="buy" />
-        <input type="hidden" id="p2pSellerDisputeOrderId" />
-        <div class="field">
-          <label for="p2pSellerDisputeReason">Reason for dispute</label>
-          <textarea id="p2pSellerDisputeReason" rows="3" required placeholder="MMK not received, fake receipt, wrong amount, etc."></textarea>
-        </div>
-        <div class="field">
-          <label for="p2pSellerDisputeProof">Supporting screenshot (optional)</label>
-          <input id="p2pSellerDisputeProof" type="file" accept="image/*" />
-        </div>
-        <button type="submit" class="btn btn-reject" style="width:100%">Submit Dispute to Admin</button>
-      </form>
-    </div>
-  </div>
-
-  <!-- ═══ P2P Sell USDT Modal (Instant only) ═══ -->
-  <div id="p2pSellModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="p2pSellModalTitle" aria-modal="true">
-    <div class="modal-box modal-box-wide">
-      <div class="modal-header-row">
-        <h3 id="p2pSellModalTitle">Sell USDT</h3>
-        <button type="button" id="p2pSellModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
-      </div>
-
-      <div id="p2pSellStepAmount">
-        <p class="hint" id="p2pSellMerchantSummary" style="margin-bottom:0.5rem">Select amount and your MMK receiving account.</p>
-        <p class="hint wallet-restriction-note" style="margin-bottom:1rem">USDT will be escrowed from your USDT wallet immediately. The buyer sends MMK to your external KPay/WavePay/Bank account.</p>
-        <div class="p2p-buy-rate-banner" id="p2pSellRateBanner">Rate: —</div>
-        <div class="field">
-          <label for="p2pSellAmountUsdt">Amount (USDT) to sell</label>
-          <input id="p2pSellAmountUsdt" type="number" step="0.01" min="10" placeholder="50.00" />
-          <small class="hint" id="p2pSellUsdtLimits">Limits: —</small>
-        </div>
-        <div class="field">
-          <label>You receive (MMK — external)</label>
-          <div id="p2pSellMmkPreview" class="p2p-external-mmk-display">—</div>
-          <small class="hint">Full MMK amount sent to your external account by the buyer.</small>
-        </div>
-        <div class="field">
-          <label>USDT escrowed from wallet</label>
-          <div id="p2pSellEscrowPreview" class="p2p-net-usdt-preview">—</div>
-          <small class="hint" id="p2pSellEscrowHint">Held in escrow until you confirm MMK receipt and release.</small>
-        </div>
-        <div class="field">
-          <label for="p2pSellPaymentMethod">Receive MMK via</label>
-          <select id="p2pSellPaymentMethod"></select>
-        </div>
-        <div class="field">
-          <label for="p2pSellAccountName">Your Account Name</label>
-          <input id="p2pSellAccountName" type="text" placeholder="Your KPay / Bank account name" required />
-        </div>
-        <div class="field">
-          <label for="p2pSellAccountNumber">Your Account Number</label>
-          <input id="p2pSellAccountNumber" type="text" placeholder="09123456789 or bank account number" required />
-        </div>
-        <div class="field hidden" id="p2pSellBankNameField">
-          <label for="p2pSellBankName">Bank Name</label>
-          <input id="p2pSellBankName" type="text" placeholder="KBZ Bank" />
-        </div>
-        <button type="button" id="p2pSellContinueBtn" class="btn btn-primary" style="width:100%;margin-top:0.5rem">Escrow USDT &amp; Create Order</button>
-      </div>
-
-      <div id="p2pSellStepWaiting" class="hidden">
-        <div class="p2p-buy-summary" id="p2pSellOrderSummary"></div>
-        <div id="p2pSellTimerBanner" class="p2p-timer-banner hidden">
-          <span>Order expires in</span>
-          <strong id="p2pSellTimerDisplay">15:00</strong>
-          <small class="hint">Escrow refunded if MMK not confirmed in time</small>
-        </div>
-        <div id="p2pSellDisputeBanner" class="p2p-dispute-banner hidden">DISPUTED — Admin is reviewing your case</div>
-        <p class="hint" style="margin:1rem 0">Your USDT is escrowed. The buyer will send MMK to your external account. Once you receive the MMK, confirm below to release the escrowed USDT to the buyer.</p>
-        <button type="button" id="p2pSellConfirmMmkBtn" class="btn btn-primary" style="width:100%;margin-bottom:0.5rem">I Have Received MMK — Release USDT</button>
-        <button type="button" id="p2pSellCancelBtn" class="btn btn-secondary" style="width:100%;margin-bottom:0.75rem">Cancel Order &amp; Refund Escrow</button>
-        <div id="p2pSellTradeTools" class="p2p-trade-tools">
-          <div class="p2p-trade-chat">
-            <div class="p2p-trade-chat-header">Trade Chat</div>
-            <div id="p2pSellChatMessages" class="p2p-trade-chat-messages"></div>
-            <form id="p2pSellChatForm" class="p2p-trade-chat-form">
-              <input type="text" id="p2pSellChatInput" placeholder="Message buyer…" maxlength="500" />
-              <input type="file" id="p2pSellChatAttachment" accept="image/*,video/*" hidden />
-              <button type="button" id="p2pSellChatAttachBtn" class="btn btn-secondary btn-sm" title="Attach receipt">📎</button>
-              <button type="submit" class="btn btn-primary btn-sm">Send</button>
-            </form>
-            <p id="p2pSellChatAttachHint" class="hint p2p-chat-attach-hint hidden"></p>
-          </div>
-          <button type="button" id="p2pSellOpenDisputeBtn" class="btn btn-secondary btn-sm p2p-dispute-toggle">Need Help? / Open Dispute</button>
-          <form id="p2pSellDisputeForm" class="p2p-dispute-form hidden">
-            <div class="field">
-              <label for="p2pSellDisputeReason">Describe the issue</label>
-              <textarea id="p2pSellDisputeReason" rows="2" placeholder="MMK not received, wrong amount, etc."></textarea>
-            </div>
-            <div class="field">
-              <label for="p2pSellDisputeTxRef">TxRef (optional)</label>
-              <input id="p2pSellDisputeTxRef" type="text" placeholder="Payment reference" />
-            </div>
-            <div class="field">
-              <label for="p2pSellDisputeProof">Screenshot / receipt</label>
-              <input id="p2pSellDisputeProof" type="file" accept="image/*,video/*" />
-            </div>
-            <button type="submit" class="btn btn-primary btn-sm">Submit Dispute</button>
-          </form>
-        </div>
-      </div>
-
-      <div id="p2pSellStepDone" class="hidden" style="text-align:center">
-        <div class="p2p-buy-done-icon" aria-hidden="true">✓</div>
-        <h4 style="margin:0.5rem 0">Order Complete</h4>
-        <p id="p2pSellDoneMessage" class="hint" style="margin-bottom:1rem">USDT escrow released.</p>
-        <div class="ref-box" style="margin-bottom:1rem">
-          <div class="ref-code" id="p2pSellRefCode">P2S-0000</div>
-          <button type="button" id="p2pSellCopyRefBtn" class="btn btn-secondary btn-sm">Copy Ref</button>
-        </div>
-        <button type="button" id="p2pSellDoneCloseBtn" class="btn btn-primary">Done</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ Post P2P Ad Modal (Instant only) ═══ -->
-  <div id="p2pPostAdModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="p2pPostAdModalTitle" aria-modal="true">
-    <div class="modal-box modal-box-wide">
-      <div class="modal-header-row">
-        <h3 id="p2pPostAdModalTitle">Post P2P Ad</h3>
-        <button type="button" id="p2pPostAdModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
-      </div>
-      <p class="hint" style="margin-bottom:1rem">Verified users can post a sell ad. The USDT amount is locked from your wallet as escrow until the ad is filled or cancelled.</p>
-      <form id="p2pPostAdForm" class="form">
-        <div class="field">
-          <label for="p2pAdSideDisplay">Trade Type</label>
-          <select id="p2pAdSideDisplay" disabled aria-disabled="true">
-            <option value="sell" selected>Sell USDT (I have USDT, want MMK)</option>
-          </select>
-          <input type="hidden" id="p2pAdSide" name="side" value="sell" />
-        </div>
-        <div class="field">
-          <label for="p2pAdNetwork">Network</label>
-          <select id="p2pAdNetwork"><option value="TRC20">TRC20 (Tron)</option></select>
-        </div>
-        <div class="field">
-          <label for="p2pAdRate">Exchange Rate (MMK per USDT)</label>
-          <input id="p2pAdRate" type="number" step="1" min="1" required placeholder="4550" />
-        </div>
-        <div class="field">
-          <label for="p2pAdVolume">Total USDT Volume</label>
-          <input id="p2pAdVolume" type="number" step="0.01" min="5" required placeholder="100.00" />
-          <small class="hint" id="p2pAdEscrowHint">This amount is escrowed from your USDT wallet as soon as the ad is posted.</small>
-        </div>
-        <div class="field">
-          <label for="p2pAdMin">Min Order (USDT)</label>
-          <input id="p2pAdMin" type="number" step="0.01" min="1" value="5" required />
-        </div>
-        <div class="field">
-          <label for="p2pAdMax">Max Order (USDT)</label>
-          <input id="p2pAdMax" type="number" step="0.01" min="1" value="500" required />
-        </div>
-        <div class="field" style="grid-column:1/-1">
-          <label>Accepted Payment Methods</label>
-          <div class="action-row" style="margin-top:0.35rem">
-            <label><input type="checkbox" name="p2pAdPayMethod" value="KPay" checked /> KPay</label>
-            <label><input type="checkbox" name="p2pAdPayMethod" value="WavePay" checked /> WavePay</label>
-            <label><input type="checkbox" name="p2pAdPayMethod" value="KBZ Bank" /> KBZ Bank</label>
-          </div>
-        </div>
-        <div class="field" style="grid-column:1/-1"><strong style="font-size:0.85rem;color:var(--text-secondary)">Your payment accounts (where buyers send MMK)</strong></div>
-        <div class="field"><label for="p2pAdKpayName">KPay Account Name</label><input id="p2pAdKpayName" type="text" placeholder="Your Name" /></div>
-        <div class="field"><label for="p2pAdKpayNumber">KPay Number</label><input id="p2pAdKpayNumber" type="text" placeholder="09..." /></div>
-        <div class="field"><label for="p2pAdWaveName">WavePay Account Name</label><input id="p2pAdWaveName" type="text" placeholder="Your Name" /></div>
-        <div class="field"><label for="p2pAdWaveNumber">WavePay Number</label><input id="p2pAdWaveNumber" type="text" placeholder="09..." /></div>
-        <div class="field"><label for="p2pAdKbzName">KBZ Account Name</label><input id="p2pAdKbzName" type="text" placeholder="Your Name" /></div>
-        <div class="field"><label for="p2pAdKbzNumber">KBZ Account Number</label><input id="p2pAdKbzNumber" type="text" placeholder="Account number" /></div>
-        <p id="p2pPostAdError" class="error-text"></p>
-        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem">Post Ad</button>
-      </form>
-    </div>
-  </div>
 
   <!-- ═══ KYC Verification Modal ═══ -->
   <div id="kycModal" class="modal hidden" role="dialog" aria-labelledby="kycModalTitle" aria-modal="true">
@@ -931,7 +462,7 @@
         <h3 id="kycModalTitle">KYC Verification</h3>
         <button type="button" id="kycModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" id="kycModalIntro" style="margin-bottom:1rem">Submit your NRC or Passport to trade P2P. Virtual Visa cards do not need KYC.</p>
+      <p class="hint" id="kycModalIntro" style="margin-bottom:1rem">Optional identity verification for compliance. Virtual Visa cards do not require KYC.</p>
       <form id="kycForm" class="form">
         <div class="field"><label for="kycFullName">Full Name (as on ID)</label><input id="kycFullName" required placeholder="Legal full name" autocomplete="name" /></div>
         <div class="field"><label for="kycIdType">ID Type</label>
@@ -940,7 +471,7 @@
         <div class="field"><label for="kycIdNumber">ID Number</label><input id="kycIdNumber" required placeholder="NRC or Passport number" autocomplete="off" /></div>
         <div class="field"><label for="kycDateOfBirth">Date of Birth</label>
           <input id="kycDateOfBirth" type="date" required autocomplete="bday" />
-          <small class="hint">Required for identity verification and P2P trading</small>
+          <small class="hint">Used for optional identity verification</small>
         </div>
         <div class="field"><label for="kycAddressLine1">Street Address</label>
           <input id="kycAddressLine1" required placeholder="House / street" autocomplete="address-line1" />
@@ -992,8 +523,8 @@
   <div id="kycGateModal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modal-box" style="max-width:min(420px,100%);text-align:center">
       <div style="font-size:2.5rem;margin-bottom:0.5rem" aria-hidden="true">🛡️</div>
-      <h3 style="margin:0 0 0.5rem">KYC Verification Required to Trade P2P</h3>
-      <p class="hint" id="kycGateMessage" style="margin-bottom:1.25rem">Complete identity verification before posting ads or placing P2P orders.</p>
+      <h3 style="margin:0 0 0.5rem">Identity verification</h3>
+      <p class="hint" id="kycGateMessage" style="margin-bottom:1.25rem">Complete verification when requested for compliance.</p>
       <button type="button" id="kycGateCompleteBtn" class="btn btn-primary" style="width:100%;margin-bottom:0.5rem">Complete KYC Now</button>
       <button type="button" id="kycGateCloseBtn" class="btn btn-secondary" style="width:100%">Cancel</button>
     </div>
@@ -1012,7 +543,7 @@
           alt="Eisymyanmar"
         />
         <h1 class="auth-brand-title">Eisymyanmar</h1>
-        <p class="subtitle auth-brand-sub">USDT wallet on TRON</p>
+        <p class="subtitle auth-brand-sub">Global USDT wallet &amp; virtual Visa cards</p>
       </div>
       <p id="authSessionNotice" class="auth-session-notice hidden" role="status"></p>
 
@@ -1227,10 +758,6 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>
             <span data-i18n="nav_usdt_wallet">USDT Wallet</span>
           </button>
-          <button type="button" class="nav-item" data-page="p2p" data-instant-only>
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1-.2-1.4-.6L7 8.2A2 2 0 0 0 5.2 7H4"/><path d="M13 9h-2a2 2 0 1 0 0 4h3c.6 0 1.1.2 1.4.6L17 15.8A2 2 0 0 0 18.8 17H20"/><circle cx="12" cy="12" r="10"/></svg>
-            <span data-i18n="nav_p2p">P2P Express</span>
-          </button>
           <button type="button" class="nav-item" data-page="rates">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 5 5-9"/></svg>
             <span data-i18n="nav_rates">Exchange Rates &amp; Fees</span>
@@ -1318,7 +845,6 @@
           <span class="hidden" data-page-title="cards" data-i18n="nav_my_cards">My Cards</span>
           <span class="hidden" data-page-title="deposits" data-instant-only data-i18n="deposits_page_title">Deposit &amp; Reload History</span>
           <span class="hidden" data-page-title="usdt-wallet" data-instant-only data-i18n="usdt_wallet_page_title">USDT Wallet</span>
-          <span class="hidden" data-page-title="p2p" data-instant-only data-i18n="nav_p2p">P2P Express</span>
           <span class="hidden" data-page-title="rates" data-i18n="nav_rates">Exchange Rates &amp; Fees</span>
           <span class="hidden" data-page-title="profile" data-i18n="nav_profile">Profile</span>
           <span class="hidden" data-page-title="settings" data-i18n="nav_settings">Settings &amp; Security</span>
@@ -1339,7 +865,7 @@
                       <button type="button" class="btn btn-secondary btn-sm" data-goto="usdt-wallet" data-i18n="btn_manage_usdt_wallet">Manage Wallet</button>
                       <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="nav_my_cards">My Cards</button>
                       <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="btn_top_up_usdt">Top Up USDT</button>
-                      <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdt" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
+                      <button type="button" class="btn btn-primary btn-sm" data-goto="cards" data-i18n="nav_my_cards">Virtual Cards</button>
                       <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawUsdt" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
                       <button type="button" class="btn btn-primary btn-sm hidden" id="btnOpenScanPay" data-i18n="btn_scan_pay" hidden aria-hidden="true" tabindex="-1" data-feature="scan_pay" data-feature-disabled="true">Scan Pay</button>
                     </div>
@@ -1383,7 +909,7 @@
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="nav_my_cards">My Cards</h2>
-                <p class="page-desc" data-i18n="cards_page_desc">View card status, reveal details when needed, and reload your virtual cards.</p>
+                <p class="page-desc" data-i18n="cards_page_desc">Issue a global virtual Visa card, top up with USDT (TRC20), and reveal number, expiry, and CVV securely when you need them.</p>
               </div>
             </div>
 
@@ -1569,7 +1095,7 @@
               </div>
               <div class="action-row">
                 <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="btn_top_up_usdt">Top Up USDT</button>
-                <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdtPage" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
+                <button type="button" class="btn btn-primary btn-sm" data-goto="cards" data-i18n="nav_my_cards">Virtual Cards</button>
                 <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawUsdtPage" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
                 <button type="button" class="btn btn-primary btn-sm hidden" id="btnOpenScanPayPage" data-i18n="btn_scan_pay" hidden aria-hidden="true" tabindex="-1" data-feature="scan_pay" data-feature-disabled="true">Scan Pay</button>
               </div>
@@ -1582,8 +1108,8 @@
                   <div class="wallet-hero-label" data-i18n="usdt_available_balance">Available</div>
                   <div class="wallet-hero-value" id="usdtWalletAvailableBalance">—</div>
                 </div>
-                <div class="wallet-hero-card usdt locked">
-                  <div class="wallet-hero-label" data-i18n="usdt_locked_balance">Locked (Escrow)</div>
+                <div class="wallet-hero-card usdt locked hidden" id="usdtWalletLockedCard" aria-hidden="true">
+                  <div class="wallet-hero-label" data-i18n="usdt_locked_balance">Locked</div>
                   <div class="wallet-hero-value" id="usdtWalletLockedBalance">—</div>
                 </div>
                 <div class="wallet-hero-card usdt total">
@@ -1594,9 +1120,9 @@
               <p class="wallet-hero-hint" id="usdtWalletMinDepositHint" data-i18n="usdt_wallet_hint">Send USDT (TRC20) to your TRON HD deposit address.</p>
             </section>
 
-            <section class="panel" id="usdtEscrowPanel">
-              <h2 data-i18n="usdt_escrow_holds">Active Escrow Holds</h2>
-              <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_escrow_holds_hint">USDT locked during active P2P trades. Released to the buyer when the trade completes, or returned to you if cancelled.</p>
+            <section class="panel hidden" id="usdtEscrowPanel" aria-hidden="true">
+              <h2 data-i18n="usdt_escrow_holds">Reserved balance</h2>
+              <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_escrow_holds_hint">Funds temporarily held for pending card or wallet operations.</p>
               <div id="usdtEscrowHoldsList" class="usdt-escrow-list"><p class="hint" data-i18n="loading">Loading…</p></div>
             </section>
 
@@ -1699,63 +1225,12 @@
             </section>
           </section>
 
-          <!-- ══ PAGE: P2P Express Market (Instant / Master USDT only) ══ -->
-          <section id="pageP2p" class="app-page" data-page="p2p" data-instant-only>
-            <div class="page-header">
-              <div>
-                <h2 class="page-heading">P2P Marketplace</h2>
-                <p class="page-desc">Buy or sell USDT peer-to-peer with verified users. Post your own ad or trade from the market. Payments via KPay, WavePay, or Bank — not from your internal MMK wallet.</p>
-                <span id="p2pBuyerFeeBadge" class="p2p-fee-badge p2p-fee-badge-buyer">0% Fee for Buyers. Seller pays platform fee upon release.</span>
-              </div>
-              <div class="action-row">
-                <button type="button" id="btnPostP2pAd" class="btn btn-primary btn-sm">Post P2P Ad</button>
-                <button type="button" id="btnRefreshP2pMarket" class="btn btn-secondary btn-sm">Refresh</button>
-              </div>
-            </div>
-
-            <section id="p2pMyAdsSection" class="panel hidden" style="margin-bottom:1rem">
-              <div class="p2p-active-orders-header">
-                <h3>My P2P Ads</h3>
-                <button type="button" id="btnRefreshMyP2pAds" class="btn btn-secondary btn-sm">Refresh</button>
-              </div>
-              <div id="p2pMyAdsList" class="p2p-market-list"></div>
-            </section>
-
-            <section id="p2pActiveOrdersSection" class="p2p-active-orders-section hidden">
-              <div class="p2p-active-orders-header">
-                <h3>Active / Pending Orders</h3>
-                <button type="button" id="btnRefreshP2pActiveOrders" class="btn btn-secondary btn-sm">Refresh</button>
-              </div>
-              <div id="p2pActiveOrdersList" class="p2p-active-orders-list">
-                <p class="hint p2p-active-orders-loading hidden">Loading active orders…</p>
-              </div>
-            </section>
-
-            <div class="p2p-market-tabs" role="tablist">
-              <button type="button" class="p2p-tab is-active" data-p2p-tab="buy" role="tab" aria-selected="true">Buy USDT</button>
-              <button type="button" class="p2p-tab" data-p2p-tab="sell" role="tab" aria-selected="false">Sell USDT</button>
-            </div>
-
-            <div class="p2p-market-toolbar">
-              <label class="p2p-filter-label" for="p2pNetworkFilter">Network</label>
-              <select id="p2pNetworkFilter" class="p2p-network-select">
-                <option value="TRC20" selected>TRC20 (Tron)</option>
-              </select>
-            </div>
-
-            <section class="panel">
-              <div id="p2pMarketList" class="p2p-market-list">
-                <p class="hint">Loading P2P orders…</p>
-              </div>
-            </section>
-          </section>
-
           <!-- ══ PAGE: Exchange Rates & Fees ══ -->
           <section id="pageRates" class="app-page" data-page="rates">
             <div class="page-header">
               <div>
                 <h2 class="page-heading">Exchange Rates &amp; Fees</h2>
-                <p class="page-desc">Current USD/MMK rate and card pricing applied to your transactions.</p>
+                <p class="page-desc">USDT (TRC20) deposit and withdrawal fees plus virtual card issuing and reload pricing.</p>
               </div>
             </div>
 
@@ -1890,7 +1365,7 @@
               <div class="settings-card">
                 <h3>KYC Verification</h3>
                 <p id="settingsKycStatus">Identity status: —</p>
-                <p class="hint" id="settingsKycHint" style="margin-top:0.35rem" data-i18n="kyc_hint">Required only for P2P trading. Virtual Visa cards do not need KYC.</p>
+                <p class="hint" id="settingsKycHint" style="margin-top:0.35rem" data-i18n="kyc_hint">Optional for compliance. Virtual Visa cards do not require KYC.</p>
                 <button id="btnOpenKycModal" class="btn btn-primary btn-sm" style="margin-top:0.5rem">Complete KYC</button>
               </div>
               <div class="settings-card">
@@ -1947,7 +1422,6 @@
   <script defer src="/src/services/usdtWalletApi.js?v=20260909walletPerf"></script>
   <script defer src="/src/services/withdrawalApi.js?v=20260817m2"></script>
   <script defer src="/src/services/accountApi.js?v=20260823profile"></script>
-  <script defer src="/src/services/p2pApi.js?v=20260819p2p"></script>
   <script defer src="/src/services/index.js?v=20260817m2"></script>
   <script defer src="/src/hooks/submitBusy.js?v=20260817m2"></script>
   <script defer src="/src/hooks/depositFees.js?v=20261009depositNoMin"></script>
@@ -1959,11 +1433,11 @@
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
   <script defer src="/src/components/instantAppView.js?v=20261006removeCards"></script>
   <script defer src="/src/components/index.js?v=20260928appModes"></script>
-  <script defer src="/nav.js?v=20260908sidebarPerf"></script>
+  <script defer src="/nav.js?v=20261010globalUsdt"></script>
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261009otpResend"></script>
+  <script defer src="/dashboard.js?v=20261010globalUsdt"></script>
   <script defer src="/supportChat.js?v=20261009supportClosed"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
