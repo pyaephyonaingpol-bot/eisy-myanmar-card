@@ -223,6 +223,50 @@
     </div>
   </div>
 
+  <div id="pagoWithdrawModal" class="modal hidden" role="dialog" aria-labelledby="pagoWithdrawModalTitle" aria-modal="true">
+    <div class="modal-box pago-topup-modal-box">
+      <div class="modal-header-row">
+        <h3 id="pagoWithdrawModalTitle" data-i18n="pago_withdraw_heading">Withdraw to wallet</h3>
+        <button type="button" id="pagoWithdrawModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p class="hint pago-topup-lead" data-i18n="pago_withdraw_hint">Move USD from this card back to your USDT wallet. At least $5 must stay on the card.</p>
+      <p id="pagoWithdrawCardLine" class="pago-topup-card-line">—</p>
+      <form id="pagoCardWithdrawForm" class="form pago-topup-form">
+        <div class="field">
+          <label for="pagoWithdrawAmount" data-i18n="pago_withdraw_amount">Withdraw amount (USD)</label>
+          <input id="pagoWithdrawAmount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="10.00" required />
+        </div>
+        <p id="pagoWithdrawMaxHint" class="hint">—</p>
+        <div class="reload-preview-box" id="pagoWithdrawPreview">
+          <div class="reload-preview-row"><span data-i18n="pago_withdraw_from_card">From card</span><strong id="pagoWithdrawFromCard">—</strong></div>
+          <div class="reload-preview-row reload-preview-highlight"><span data-i18n="pago_withdraw_to_wallet">Credited to wallet</span><strong id="pagoWithdrawToWallet">—</strong></div>
+          <div class="reload-preview-row"><span data-i18n="pago_withdraw_remaining">Remaining on card</span><strong id="pagoWithdrawRemaining">—</strong></div>
+        </div>
+        <p id="pagoWithdrawError" class="hint hidden" role="alert"></p>
+        <div class="pago-wallet-modal-actions">
+          <button type="submit" class="btn btn-primary" id="pagoCardWithdrawSubmit" data-i18n="pago_withdraw_confirm">Confirm withdraw</button>
+          <button type="button" class="btn btn-secondary" id="pagoWithdrawCancel" data-i18n="btn_cancel">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="pagoTerminateModal" class="modal hidden" role="dialog" aria-labelledby="pagoTerminateModalTitle" aria-modal="true">
+    <div class="modal-box pago-topup-modal-box">
+      <div class="modal-header-row">
+        <h3 id="pagoTerminateModalTitle" data-i18n="pago_terminate_heading">Terminate this card?</h3>
+        <button type="button" id="pagoTerminateModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p class="hint pago-topup-lead" data-i18n="pago_terminate_lead">This permanently closes the virtual card. You cannot undo this action.</p>
+      <p id="pagoTerminateBalanceWarn" class="pago-terminate-warn hidden" role="alert" data-i18n="pago_terminate_balance_warn">Withdraw your balance first. Any funds left on the card may take several days to refund after termination.</p>
+      <p id="pagoTerminateError" class="hint hidden" role="alert"></p>
+      <div class="pago-wallet-modal-actions">
+        <button type="button" class="btn btn-danger" id="pagoTerminateConfirm" data-i18n="pago_terminate_confirm">Yes, terminate card</button>
+        <button type="button" class="btn btn-secondary" id="pagoTerminateCancel" data-i18n="btn_cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <div id="reloadCardModal" class="modal hidden" role="dialog" aria-labelledby="reloadCardModalTitle" aria-modal="true">
     <div class="modal-box modal-box-wide">
       <div class="modal-header-row">
@@ -1006,6 +1050,18 @@
                 <button type="button" class="pago-action-wallet pago-action-topup" id="pagoCardTopupOpenBtn">
                   <span data-i18n="pago_topup_open">Top Up</span>
                 </button>
+                <button type="button" class="pago-action-wallet pago-action-withdraw" id="pagoCardWithdrawOpenBtn">
+                  <span data-i18n="pago_withdraw_open">Withdraw</span>
+                </button>
+                <button type="button" class="pago-action-wallet pago-action-block hidden" id="pagoCardBlockBtn">
+                  <span data-i18n="pago_block_open">Block card</span>
+                </button>
+                <button type="button" class="pago-action-wallet pago-action-unblock hidden" id="pagoCardUnblockBtn">
+                  <span data-i18n="pago_unblock_open">Unblock card</span>
+                </button>
+                <button type="button" class="pago-action-wallet pago-action-terminate" id="pagoCardTerminateOpenBtn">
+                  <span data-i18n="pago_terminate_open">Terminate</span>
+                </button>
               </div>
               <p id="pagoWalletAtmHint" class="pago-wallet-atm-hint hidden" data-i18n="pago_wallet_atm_hint">Visa ATM cards support contactless spend in Google Pay after you add the card.</p>
 
@@ -1446,7 +1502,7 @@
   <script defer src="/viewport.js?v=20260909pinKb"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
-  <script defer src="/dashboard.js?v=20261010globalUsdt"></script>
+  <script defer src="/dashboard.js?v=20261010pagoLifecycle"></script>
   <script defer src="/contactInfo.js?v=20261010contactModal"></script>
   <script defer src="/supportChat.js?v=20261010contact"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>

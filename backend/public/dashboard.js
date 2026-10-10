@@ -8926,6 +8926,23 @@ const Dashboard = {
     $('pagoTopupModal')?.addEventListener('click', (e) => {
       if (e.target === $('pagoTopupModal')) this.closePagoTopupModal();
     });
+    $('pagoCardWithdrawOpenBtn')?.addEventListener('click', () => this.openPagoWithdrawModal());
+    $('pagoCardWithdrawForm')?.addEventListener('submit', (e) => this.submitPagoCardWithdraw(e));
+    $('pagoWithdrawAmount')?.addEventListener('input', () => this.updatePagoWithdrawPreview());
+    $('pagoWithdrawModalClose')?.addEventListener('click', () => this.closePagoWithdrawModal());
+    $('pagoWithdrawCancel')?.addEventListener('click', () => this.closePagoWithdrawModal());
+    $('pagoWithdrawModal')?.addEventListener('click', (e) => {
+      if (e.target === $('pagoWithdrawModal')) this.closePagoWithdrawModal();
+    });
+    $('pagoCardBlockBtn')?.addEventListener('click', () => this.submitPagoCardBlock());
+    $('pagoCardUnblockBtn')?.addEventListener('click', () => this.submitPagoCardUnblock());
+    $('pagoCardTerminateOpenBtn')?.addEventListener('click', () => this.openPagoTerminateModal());
+    $('pagoTerminateModalClose')?.addEventListener('click', () => this.closePagoTerminateModal());
+    $('pagoTerminateCancel')?.addEventListener('click', () => this.closePagoTerminateModal());
+    $('pagoTerminateConfirm')?.addEventListener('click', () => this.confirmPagoTerminate());
+    $('pagoTerminateModal')?.addEventListener('click', (e) => {
+      if (e.target === $('pagoTerminateModal')) this.closePagoTerminateModal();
+    });
     $('pagoCardRevealBtn')?.addEventListener('click', () => this.togglePagoCardReveal());
     $('pagoCardCopyNumberBtn')?.addEventListener('click', () => this.copyPagoCard());
     $('pago3dsCopyBtn')?.addEventListener('click', () => this.copyPago3dsCode());
@@ -9696,6 +9713,8 @@ const Dashboard = {
     const sameCard = panel.dataset.cardId === nextId && !panel.classList.contains('hidden');
     if (!sameCard) {
       this.closePagoTopupModal();
+      this.closePagoWithdrawModal();
+      this.closePagoTerminateModal();
       if (panel.dataset.cardId && panel.dataset.cardId !== nextId) {
         this.pagoDetailRevealed = false;
         this.pagoWalletInfo = null;
@@ -9769,6 +9788,259 @@ const Dashboard = {
       revealBtn.setAttribute('aria-pressed', revealed ? 'true' : 'false');
     }
     this.updatePagoWalletUi(card);
+    this.updatePagoCardLifecycleUi(card);
+  },
+
+  pagoCardBalanceUsd(card) {
+    const raw = card?.balance_usd ?? card?.balance_display_usd;
+    const amount = Number(raw);
+    return Number.isFinite(amount) ? amount : null;
+  },
+
+  updatePagoCardLifecycleUi(card) {
+    const status = String(card?.status || '').toLowerCase();
+    const terminated = status === 'terminated';
+    const frozen = status === 'frozen';
+    const active = !status || status === 'active';
+    const topupBtn = $('pagoCardTopupOpenBtn');
+    const withdrawBtn = $('pagoCardWithdrawOpenBtn');
+    const blockBtn = $('pagoCardBlockBtn');
+    const unblockBtn = $('pagoCardUnblockBtn');
+    const terminateBtn = $('pagoCardTerminateOpenBtn');
+    if (topupBtn) topupBtn.classList.toggle('hidden', !active || terminated);
+    if (withdrawBtn) withdrawBtn.classList.toggle('hidden', !active || terminated);
+    if (blockBtn) blockBtn.classList.toggle('hidden', !active || terminated);
+    if (unblockBtn) unblockBtn.classList.toggle('hidden', !frozen || terminated);
+    if (terminateBtn) terminateBtn.classList.toggle('hidden', terminated);
+  },
+
+  setPagoWithdrawError(message) {
+    const errEl = $('pagoWithdrawError');
+    if (!errEl) return;
+    const text = String(message || '').trim();
+    errEl.textContent = text;
+    errEl.classList.toggle('hidden', !text);
+  },
+
+  updatePagoWithdrawPreview() {
+    const card = this.getSelectedPagoCard();
+    const balance = this.pagoCardBalanceUsd(card);
+    const minRemain = 5;
+    const amountRaw = $('pagoWithdrawAmount')?.value;
+    const amount = Number(amountRaw);
+    const maxWithdraw = balance != null ? Math.max(0, Math.trunc((balance - minRemain) * 100) / 100) : null;
+    const hint = $('pagoWithdrawMaxHint');
+    if (hint) {
+      hint.textContent = maxWithdraw != null && maxWithdraw > 0
+        ? `${this.i18nText('pago_withdraw_max', 'Maximum withdraw')}: $${maxWithdraw.toFixed(2)} (${this.i18nText('pago_withdraw_min_remain', 'At least $5 must remain on the card')})`
+        : (balance != null && balance <= minRemain
+          ? this.i18nText('pago_withdraw_min_remain', 'At least $5 must remain on the card')
+          : '—');
+    }
+    const set = (id, text) => {
+      const el = $(id);
+      if (el) el.textContent = text;
+    };
+    const valid = Number.isFinite(amount) && amount > 0 && balance != null;
+    const remaining = valid ? Math.trunc((balance - amount) * 100) / 100 : null;
+    const ok = valid && remaining != null && remaining + 1e-9 >= minRemain && amount <= balance + 1e-9;
+    set('pagoWithdrawFromCard', valid ? `$${amount.toFixed(2)}` : '—');
+    set('pagoWithdrawToWallet', ok ? `$${amount.toFixed(2)} USDT` : '—');
+    set('pagoWithdrawRemaining', ok ? `$${remaining.toFixed(2)}` : '—');
+    const submit = $('pagoCardWithdrawSubmit');
+    if (submit && submit.dataset.busy !== '1') {
+      submit.disabled = !ok;
+    }
+    if (valid && !ok) {
+      this.setPagoWithdrawError(this.i18nText('pago_withdraw_min_remain', 'At least $5 must remain on the card'));
+    } else if (submit?.dataset.busy !== '1') {
+      this.setPagoWithdrawError('');
+    }
+  },
+
+  openPagoWithdrawModal() {
+    const card = this.getSelectedPagoCard();
+    if (!card) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
+      return;
+    }
+    const status = String(card.status || '').toLowerCase();
+    if (status && status !== 'active') {
+      this.toast(this.i18nText('pago_withdraw_inactive', 'Only active cards can withdraw balance'), 'error');
+      return;
+    }
+    const line = $('pagoWithdrawCardLine');
+    if (line) {
+      const last4 = card.last4 || '••••';
+      line.textContent = `•••• ${last4} · ${this.pagoCardBalanceText(card)}`;
+    }
+    if ($('pagoWithdrawAmount')) $('pagoWithdrawAmount').value = '';
+    const submit = $('pagoCardWithdrawSubmit');
+    if (submit) {
+      submit.disabled = true;
+      delete submit.dataset.busy;
+    }
+    this.setPagoWithdrawError('');
+    this.updatePagoWithdrawPreview();
+    $('pagoWithdrawModal')?.classList.remove('hidden');
+    $('pagoWithdrawAmount')?.focus();
+  },
+
+  closePagoWithdrawModal() {
+    $('pagoWithdrawModal')?.classList.add('hidden');
+    const submit = $('pagoCardWithdrawSubmit');
+    if (submit) {
+      submit.disabled = false;
+      delete submit.dataset.busy;
+    }
+  },
+
+  async submitPagoCardWithdraw(e) {
+    e.preventDefault();
+    const panel = $('pagoCardDetailPanel');
+    const cardId = panel?.dataset.cardId;
+    const amount = $('pagoWithdrawAmount')?.value;
+    if (!cardId) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
+      return;
+    }
+    const btn = $('pagoCardWithdrawSubmit');
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.busy = '1';
+    }
+    this.setPagoWithdrawError('');
+    try {
+      const data = await Auth.api('POST', `/api/user/cards/${cardId}/withdraw`, {
+        amount_usd: amount,
+      }, { sensitive: true });
+      this.toast(data.message || this.i18nText('pago_withdraw_done', 'Withdraw complete'), 'ok');
+      if ($('pagoWithdrawAmount')) $('pagoWithdrawAmount').value = '';
+      this.closePagoWithdrawModal();
+      const card = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
+      if (card) this.showPagoCardDetail(card);
+      this.loadWallet({ force: true }).catch(() => {});
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      const message = err.message || 'Withdraw failed';
+      this.setPagoWithdrawError(message);
+      this.toast(message, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        delete btn.dataset.busy;
+      }
+      this.updatePagoWithdrawPreview();
+    }
+  },
+
+  setPagoLifecycleBusy(btn, on) {
+    if (!btn) return;
+    btn.disabled = Boolean(on);
+    btn.setAttribute('aria-busy', on ? 'true' : 'false');
+  },
+
+  async submitPagoCardBlock() {
+    const card = this.getSelectedPagoCard();
+    const cardId = card?.id || $('pagoCardDetailPanel')?.dataset.cardId;
+    if (!cardId) return;
+    const btn = $('pagoCardBlockBtn');
+    this.setPagoLifecycleBusy(btn, true);
+    try {
+      const data = await Auth.api('POST', `/api/user/cards/${cardId}/block`, {}, { sensitive: true });
+      this.toast(data.message || this.i18nText('pago_block_done', 'Card blocked'), 'ok');
+      const updated = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
+      if (updated) this.showPagoCardDetail(updated);
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      else this.toast(err.message || 'Could not block card', 'error');
+    } finally {
+      this.setPagoLifecycleBusy(btn, false);
+    }
+  },
+
+  async submitPagoCardUnblock() {
+    const card = this.getSelectedPagoCard();
+    const cardId = card?.id || $('pagoCardDetailPanel')?.dataset.cardId;
+    if (!cardId) return;
+    const btn = $('pagoCardUnblockBtn');
+    this.setPagoLifecycleBusy(btn, true);
+    try {
+      const data = await Auth.api('POST', `/api/user/cards/${cardId}/unblock`, {}, { sensitive: true });
+      this.toast(data.message || this.i18nText('pago_unblock_done', 'Card unblocked'), 'ok');
+      const updated = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
+      if (updated) this.showPagoCardDetail(updated);
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      else this.toast(err.message || 'Could not unblock card', 'error');
+    } finally {
+      this.setPagoLifecycleBusy(btn, false);
+    }
+  },
+
+  openPagoTerminateModal() {
+    const card = this.getSelectedPagoCard();
+    if (!card) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
+      return;
+    }
+    const status = String(card.status || '').toLowerCase();
+    if (status === 'terminated') return;
+    const balance = this.pagoCardBalanceUsd(card);
+    const warn = $('pagoTerminateBalanceWarn');
+    if (warn) {
+      warn.classList.toggle('hidden', !(balance != null && balance > 5));
+    }
+    $('pagoTerminateError')?.classList.add('hidden');
+    if ($('pagoTerminateError')) $('pagoTerminateError').textContent = '';
+    const confirmBtn = $('pagoTerminateConfirm');
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      delete confirmBtn.dataset.busy;
+    }
+    $('pagoTerminateModal')?.classList.remove('hidden');
+  },
+
+  closePagoTerminateModal() {
+    $('pagoTerminateModal')?.classList.add('hidden');
+    const confirmBtn = $('pagoTerminateConfirm');
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      delete confirmBtn.dataset.busy;
+    }
+  },
+
+  async confirmPagoTerminate() {
+    const cardId = $('pagoCardDetailPanel')?.dataset.cardId;
+    if (!cardId) return;
+    const btn = $('pagoTerminateConfirm');
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.busy = '1';
+    }
+    const errEl = $('pagoTerminateError');
+    try {
+      const data = await Auth.api('POST', `/api/user/cards/${cardId}/terminate`, {}, { sensitive: true });
+      this.toast(data.message || this.i18nText('pago_terminate_done', 'Card terminated'), 'ok');
+      this.closePagoTerminateModal();
+      const updated = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
+      if (updated) this.showPagoCardDetail(updated);
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      else {
+        const message = err.message || 'Terminate failed';
+        if (errEl) {
+          errEl.textContent = message;
+          errEl.classList.remove('hidden');
+        }
+        this.toast(message, 'error');
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        delete btn.dataset.busy;
+      }
+    }
   },
 
   cardTimeoutMessage(err) {

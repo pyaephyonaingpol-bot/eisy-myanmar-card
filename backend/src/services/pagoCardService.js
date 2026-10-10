@@ -25,6 +25,8 @@ const ATM_PRODUCT_CODE = 'us_493_visa_atm';
 const MIN_INITIAL_LOAD = 10;
 const MAX_INITIAL_LOAD = 2500;
 const MIN_TOP_UP = 5;
+/** Pagocards rule: at least this USD must stay on the card after withdraw. */
+const MIN_CARD_REMAINING_USD = 5;
 /** Upstream create call. The route backstop is a few seconds longer so a timeout can refund. */
 const CARD_CREATE_TIMEOUT_MS = parseInt(process.env.CARD_CREATE_TIMEOUT_MS || '15000', 10);
 const CARD_CREATE_ROUTE_TIMEOUT_MS = parseInt(process.env.CARD_CREATE_ROUTE_TIMEOUT_MS || '22000', 10);
@@ -766,6 +768,261 @@ async function topUpPagoCard({ userId, localCardId, amountUsd }, deps = {}) {
   };
 }
 
+async function loadOwnedPagoCard(userId, localCardId) {
+  const card = await Card.findById(localCardId);
+  if (!card || Number(card.user_id) !== Number(userId)) {
+    throw httpError('Card not found', 404, 'CARD_NOT_FOUND');
+  }
+  if (!card.pago_card_id) {
+    throw httpError('This card is not a Pago Card', 400, 'NOT_PAGO_CARD');
+  }
+  return card;
+}
+
+function cardStatusKey(card) {
+  return mapPagoStatus(card.pago_status || card.status);
+}
+
+async function syncCardFromProvider(card, remote, fallbackStatus) {
+  const fields = remote && typeof remote === 'object'
+    ? cardFieldsFromProvider(remote)
+    : {};
+  const display = remote?.balance?.display_amount != null
+    ? Number(remote.balance.display_amount)
+    : (remote?.display_amount != null ? Number(remote.display_amount) : null);
+  return Card.updateFromPago(card.id, {
+    productCode: fields.productCode,
+    brand: fields.brand,
+    status: fields.status || fallbackStatus || card.status,
+    pagoStatus: remote?.status || fields.pagoStatus || card.pago_status,
+    cardNumber: fields.cardNumber,
+    expDate: fields.expDate,
+    cvv: fields.cvv,
+    cardHolderName: fields.cardHolderName,
+    lastFour: fields.lastFour,
+    expiryMonth: fields.expiryMonth,
+    expiryYear: fields.expiryYear,
+    email: fields.email,
+    balanceDisplayUsd: Number.isFinite(display)
+      ? display
+      : (fields.balanceDisplayUsd ?? card.balance_display_usd),
+    balanceAmount: fields.balanceAmount,
+    balanceCurrency: fields.balanceCurrency || card.balance_currency || 'USD',
+  });
+}
+
+async function withdrawPagoCard({ userId, localCardId, amountUsd }, deps = {}) {
+  const card = await loadOwnedPagoCard(userId, localCardId);
+  if (cardStatusKey(card) !== 'active' && String(card.status) !== 'active') {
+    throw httpError('Only active cards can withdraw balance', 400, 'CARD_NOT_ACTIVE');
+  }
+
+  const withdrawAmount = truncateUsd(amountUsd);
+  if (!Number.isFinite(withdrawAmount) || withdrawAmount <= 0) {
+    throw httpError('Enter a valid withdraw amount', 400, 'VALIDATION_ERROR');
+  }
+
+  let balance = Number(card.balance_display_usd);
+  if (!Number.isFinite(balance)) {
+    try {
+      const remote = await getClient({
+        ...deps,
+        timeoutMs: deps.timeoutMs || CARD_FETCH_TIMEOUT_MS,
+      }).getCardDetails(card.pago_card_id);
+      balance = Number(readBalance(remote).balance_display_usd);
+    } catch (err) {
+      rethrowPago(err);
+    }
+  }
+  if (!Number.isFinite(balance)) {
+    throw httpError('Could not read card balance', 400, 'VALIDATION_ERROR');
+  }
+
+  const remaining = truncateUsd(balance - withdrawAmount);
+  if (remaining + 1e-9 < MIN_CARD_REMAINING_USD) {
+    throw httpError(
+      `At least $${MIN_CARD_REMAINING_USD.toFixed(2)} must remain on the card`,
+      400,
+      'CARD_MIN_BALANCE'
+    );
+  }
+  if (withdrawAmount + 1e-9 > balance) {
+    throw httpError('Withdraw amount exceeds card balance', 400, 'VALIDATION_ERROR');
+  }
+
+  const client = getClient({
+    ...deps,
+    timeoutMs: deps.timeoutMs || CARD_CREATE_TIMEOUT_MS,
+  });
+  if (typeof client.withdrawCard !== 'function') {
+    throw httpError('Pago card withdraw is unavailable', 503, 'PAGO_NOT_CONFIGURED');
+  }
+
+  let withdrawn;
+  try {
+    withdrawn = await client.withdrawCard(
+      card.pago_card_id,
+      withdrawAmount,
+      { idempotencyKey: `pago-withdraw-${userId}-${card.id}-${crypto.randomBytes(6).toString('hex')}` }
+    );
+  } catch (err) {
+    rethrowPago(err);
+  }
+
+  try {
+    await creditUsdt(userId, withdrawAmount, {
+      txType: 'balance_credit',
+      description: `Pago Card withdraw ${withdrawAmount.toFixed(2)} USD`,
+      referenceType: 'cards_v2',
+      referenceId: card.id,
+      createdBy: 'user',
+      metadata: {
+        provider: 'pago',
+        pago_card_id: card.pago_card_id,
+        withdraw_usd: withdrawAmount,
+        pago_transaction_id: withdrawn?.transaction_id || null,
+      },
+    });
+  } catch (err) {
+    console.error('[pago] withdraw wallet credit failed after provider success:', err.message);
+    throw httpError('Withdraw succeeded at the card provider but wallet credit failed. Contact support.', 502, 'WALLET_CREDIT_FAILED');
+  }
+
+  let remote = null;
+  try {
+    remote = await client.getCardDetails(card.pago_card_id);
+  } catch (err) {
+    console.warn('[pago] getCardDetails after withdraw skipped:', err.message);
+  }
+
+  const display = withdrawn?.display_amount != null
+    ? Number(withdrawn.display_amount)
+    : (remote ? readBalance(remote).balance_display_usd : truncateUsd(balance - withdrawAmount));
+
+  const updated = await syncCardFromProvider(card, remote || withdrawn, 'active');
+
+  await TransactionLog.create({
+    userId,
+    type: 'card_withdraw',
+    description: `Pago Card withdraw ${withdrawAmount.toFixed(2)} USD`,
+    referenceType: 'cards_v2',
+    referenceId: card.id,
+    metadata: {
+      provider: 'pago',
+      pago_card_id: card.pago_card_id,
+      pago_transaction_id: withdrawn?.transaction_id || null,
+      withdraw_usd: withdrawAmount,
+      credited_usdt: withdrawAmount,
+      balance_after_usd: Number.isFinite(display) ? display : updated?.balance_display_usd,
+    },
+    createdBy: 'user',
+  }).catch((err) => console.warn('[pago] withdraw log skipped:', err.message));
+
+  return {
+    card: updated,
+    withdrawn_usd: withdrawAmount,
+    credited_usdt: withdrawAmount,
+    transaction_id: withdrawn?.transaction_id || null,
+    display_status: displayStatusLabel(updated?.status || 'active'),
+  };
+}
+
+async function blockPagoCard({ userId, localCardId }, deps = {}) {
+  const card = await loadOwnedPagoCard(userId, localCardId);
+  const status = cardStatusKey(card);
+  if (status === 'terminated') {
+    throw httpError('This card is already terminated', 400, 'CARD_TERMINATED');
+  }
+  if (status === 'frozen') {
+    throw httpError('This card is already blocked', 400, 'CARD_ALREADY_BLOCKED');
+  }
+  if (status !== 'active' && String(card.status) !== 'active') {
+    throw httpError('Only active cards can be blocked', 400, 'CARD_NOT_ACTIVE');
+  }
+
+  const client = getClient({ ...deps, timeoutMs: deps.timeoutMs || CARD_CREATE_TIMEOUT_MS });
+  if (typeof client.blockCard !== 'function') {
+    throw httpError('Pago card block is unavailable', 503, 'PAGO_NOT_CONFIGURED');
+  }
+
+  let remote;
+  try {
+    remote = await client.blockCard(
+      card.pago_card_id,
+      { idempotencyKey: `pago-block-${userId}-${card.id}-${crypto.randomBytes(6).toString('hex')}` }
+    );
+  } catch (err) {
+    rethrowPago(err);
+  }
+
+  const updated = await syncCardFromProvider(card, remote, 'frozen');
+  return {
+    card: updated,
+    display_status: displayStatusLabel(updated?.status || 'frozen'),
+  };
+}
+
+async function unblockPagoCard({ userId, localCardId }, deps = {}) {
+  const card = await loadOwnedPagoCard(userId, localCardId);
+  const status = cardStatusKey(card);
+  if (status === 'terminated') {
+    throw httpError('Terminated cards cannot be unblocked', 400, 'CARD_TERMINATED');
+  }
+  if (status !== 'frozen' && String(card.status) !== 'frozen') {
+    throw httpError('Only blocked cards can be unblocked', 400, 'CARD_NOT_BLOCKED');
+  }
+
+  const client = getClient({ ...deps, timeoutMs: deps.timeoutMs || CARD_CREATE_TIMEOUT_MS });
+  if (typeof client.unblockCard !== 'function') {
+    throw httpError('Pago card unblock is unavailable', 503, 'PAGO_NOT_CONFIGURED');
+  }
+
+  let remote;
+  try {
+    remote = await client.unblockCard(
+      card.pago_card_id,
+      { idempotencyKey: `pago-unblock-${userId}-${card.id}-${crypto.randomBytes(6).toString('hex')}` }
+    );
+  } catch (err) {
+    rethrowPago(err);
+  }
+
+  const updated = await syncCardFromProvider(card, remote, 'active');
+  return {
+    card: updated,
+    display_status: displayStatusLabel(updated?.status || 'active'),
+  };
+}
+
+async function terminatePagoCard({ userId, localCardId }, deps = {}) {
+  const card = await loadOwnedPagoCard(userId, localCardId);
+  const status = cardStatusKey(card);
+  if (status === 'terminated' || String(card.status) === 'terminated') {
+    throw httpError('This card is already terminated', 400, 'CARD_TERMINATED');
+  }
+
+  const client = getClient({ ...deps, timeoutMs: deps.timeoutMs || CARD_CREATE_TIMEOUT_MS });
+  if (typeof client.terminateCard !== 'function') {
+    throw httpError('Pago card terminate is unavailable', 503, 'PAGO_NOT_CONFIGURED');
+  }
+
+  let remote;
+  try {
+    remote = await client.terminateCard(
+      card.pago_card_id,
+      { idempotencyKey: `pago-terminate-${userId}-${card.id}-${crypto.randomBytes(6).toString('hex')}` }
+    );
+  } catch (err) {
+    rethrowPago(err);
+  }
+
+  const updated = await syncCardFromProvider(card, remote, 'terminated');
+  return {
+    card: updated,
+    display_status: displayStatusLabel(updated?.status || 'terminated'),
+  };
+}
+
 /**
  * Pago Card marketing/fees list Apple Pay & Google Pay as Supported, and the
  * ATM BIN notes contactless Google Pay. Public Business API docs expose create,
@@ -1043,6 +1300,11 @@ module.exports = {
   issuePagoCardForUser,
   refreshPagoCard,
   topUpPagoCard,
+  withdrawPagoCard,
+  blockPagoCard,
+  unblockPagoCard,
+  terminatePagoCard,
+  MIN_CARD_REMAINING_USD,
   syncPagoCardsForUser,
   importPagoCardById,
   mapPagoStatus,

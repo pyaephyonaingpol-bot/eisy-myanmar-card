@@ -5662,11 +5662,43 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
 }
 
 .pago-action-topup {
-  grid-column: 1 / -1;
   color: #042f2e;
   background: linear-gradient(180deg, #99f6e4 0%, #2dd4bf 100%);
   border: 1px solid rgba(15, 118, 110, 0.35);
   box-shadow: 0 8px 18px rgba(13, 148, 136, 0.22);
+}
+
+.pago-action-withdraw {
+  color: #1e3a8a;
+  background: linear-gradient(180deg, #dbeafe 0%, #93c5fd 100%);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  box-shadow: 0 8px 18px rgba(59, 130, 246, 0.18);
+}
+
+.pago-action-block,
+.pago-action-unblock {
+  color: #422006;
+  background: linear-gradient(180deg, #fde68a 0%, #fbbf24 100%);
+  border: 1px solid rgba(180, 83, 9, 0.35);
+}
+
+.pago-action-terminate {
+  grid-column: 1 / -1;
+  color: #fef2f2;
+  background: linear-gradient(180deg, #f87171 0%, #dc2626 100%);
+  border: 1px solid rgba(185, 28, 28, 0.45);
+  box-shadow: 0 8px 18px rgba(220, 38, 38, 0.22);
+}
+
+.pago-terminate-warn {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.75rem;
+  background: rgba(220, 38, 38, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fecaca;
+  font-size: 0.88rem;
+  line-height: 1.45;
 }
 
 .pago-topup-modal-box {
