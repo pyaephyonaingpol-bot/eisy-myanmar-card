@@ -737,6 +737,106 @@ router.post('/cards/:id/topup', requireAuth, requireSensitive, async (req, res) 
   }
 });
 
+router.post('/cards/:id/withdraw', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const amount = req.body?.amount_usd ?? req.body?.amount;
+    const { withdrawPagoCard } = require('../services/pagoCardService');
+    const result = await withdrawPagoCard({
+      userId: req.user.id,
+      localCardId: cardId,
+      amountUsd: amount,
+    });
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId) || null;
+    res.json({
+      success: true,
+      message: `$${Number(result.withdrawn_usd).toFixed(2)} returned to your USDT wallet.`,
+      withdrawn_usd: result.withdrawn_usd,
+      credited_usdt: result.credited_usdt,
+      transaction_id: result.transaction_id,
+      card,
+      ...payload,
+    });
+  } catch (err) {
+    console.error('[user/cards/withdraw]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to withdraw from the card');
+  }
+});
+
+router.post('/cards/:id/block', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const { blockPagoCard } = require('../services/pagoCardService');
+    const result = await blockPagoCard({ userId: req.user.id, localCardId: cardId });
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId) || null;
+    res.json({
+      success: true,
+      message: 'Card blocked. New charges are paused until you unblock it.',
+      card,
+      ...payload,
+    });
+  } catch (err) {
+    console.error('[user/cards/block]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to block the card');
+  }
+});
+
+router.post('/cards/:id/unblock', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const { unblockPagoCard } = require('../services/pagoCardService');
+    const result = await unblockPagoCard({ userId: req.user.id, localCardId: cardId });
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId) || null;
+    res.json({
+      success: true,
+      message: 'Card unblocked. You can use it for purchases again.',
+      card,
+      ...payload,
+    });
+  } catch (err) {
+    console.error('[user/cards/unblock]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to unblock the card');
+  }
+});
+
+router.post('/cards/:id/terminate', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const { terminatePagoCard } = require('../services/pagoCardService');
+    const result = await terminatePagoCard({ userId: req.user.id, localCardId: cardId });
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId) || null;
+    res.json({
+      success: true,
+      message: 'Card terminated. Any remaining balance may take time to refund.',
+      card,
+      ...payload,
+    });
+  } catch (err) {
+    console.error('[user/cards/terminate]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to terminate the card');
+  }
+});
+
 router.post('/card/reload', requireAuth, requireSensitive, async (req, res) => {
   try {
     const cardId = parseInt(req.body?.card_id, 10);

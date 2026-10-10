@@ -32,6 +32,8 @@ const ATM_PRODUCT_CODE = 'us_493_visa_atm';
 const MIN_INITIAL_LOAD = 10;
 const MAX_INITIAL_LOAD = 2500;
 const MIN_TOP_UP = 5;
+/** Pagocards requires at least this USD remain on the card after a withdraw. */
+const MIN_REMAINING_AFTER_WITHDRAW = 5;
 
 export type PagoCardProductCode =
   | 'us_493_visa_bin_v2'
@@ -468,6 +470,67 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     );
   }
 
+  async function withdrawCard(
+    cardIdOrInput: string | { cardId: string; amount: number; idempotencyKey?: string },
+    amount?: number,
+    extra: { idempotencyKey?: string } = {}
+  ): Promise<PagoCardFundResult> {
+    const config = resolveConfig(options);
+    const input = typeof cardIdOrInput === 'object' && cardIdOrInput !== null
+      ? cardIdOrInput
+      : {
+        cardId: String(cardIdOrInput || ''),
+        amount: Number(amount),
+        idempotencyKey: extra.idempotencyKey,
+      };
+    const cardId = requireText(input.cardId, 'card_id');
+    const withdrawAmount = truncateUsd(Number(input.amount));
+    if (!Number.isFinite(withdrawAmount) || withdrawAmount <= 0) {
+      throw new PagoCardError('amount must be greater than zero', {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        details: { amount: ['Enter a valid withdraw amount.'] },
+      });
+    }
+    return pagoRequest<PagoCardFundResult>(
+      config,
+      'POST',
+      `/api/v1/cards/${encodeURIComponent(cardId)}/withdraw`,
+      {
+        body: { amount: withdrawAmount },
+        idempotencyKey: input.idempotencyKey,
+        timeoutMs: requestTimeoutMs,
+      }
+    );
+  }
+
+  async function blockCard(cardId: string, extra: { idempotencyKey?: string } = {}): Promise<PagoCard> {
+    const config = resolveConfig(options);
+    const id = requireText(cardId, 'card_id');
+    return pagoRequest<PagoCard>(config, 'POST', `/api/v1/cards/${encodeURIComponent(id)}/block`, {
+      idempotencyKey: extra.idempotencyKey,
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
+  async function unblockCard(cardId: string, extra: { idempotencyKey?: string } = {}): Promise<PagoCard> {
+    const config = resolveConfig(options);
+    const id = requireText(cardId, 'card_id');
+    return pagoRequest<PagoCard>(config, 'POST', `/api/v1/cards/${encodeURIComponent(id)}/unblock`, {
+      idempotencyKey: extra.idempotencyKey,
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
+  async function terminateCard(cardId: string, extra: { idempotencyKey?: string } = {}): Promise<PagoCard> {
+    const config = resolveConfig(options);
+    const id = requireText(cardId, 'card_id');
+    return pagoRequest<PagoCard>(config, 'POST', `/api/v1/cards/${encodeURIComponent(id)}/terminate`, {
+      idempotencyKey: extra.idempotencyKey,
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
   /**
    * List cards for an email + product. Pago returns `{ cards: [...] }`
    * (not always the usual `{ status, data }` envelope).
@@ -589,6 +652,10 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     getCardDetails,
     getCardBalance,
     topUpCard,
+    withdrawCard,
+    blockCard,
+    unblockCard,
+    terminateCard,
     listCardsByEmail,
     listCardTransactions,
   };
@@ -618,6 +685,26 @@ function topUpCard(
   return createPagoCardClient().topUpCard(cardIdOrInput, amount, extra);
 }
 
+function withdrawCard(
+  cardIdOrInput: string | { cardId: string; amount: number; idempotencyKey?: string },
+  amount?: number,
+  extra?: { idempotencyKey?: string }
+): Promise<PagoCardFundResult> {
+  return createPagoCardClient().withdrawCard(cardIdOrInput, amount, extra);
+}
+
+function blockCard(cardId: string, extra?: { idempotencyKey?: string }): Promise<PagoCard> {
+  return createPagoCardClient().blockCard(cardId, extra);
+}
+
+function unblockCard(cardId: string, extra?: { idempotencyKey?: string }): Promise<PagoCard> {
+  return createPagoCardClient().unblockCard(cardId, extra);
+}
+
+function terminateCard(cardId: string, extra?: { idempotencyKey?: string }): Promise<PagoCard> {
+  return createPagoCardClient().terminateCard(cardId, extra);
+}
+
 function listCardsByEmail(input: {
   email: string;
   product_code: PagoCardProductCode;
@@ -637,7 +724,12 @@ module.exports = {
   getCardDetails,
   getCardBalance,
   topUpCard,
+  withdrawCard,
+  blockCard,
+  unblockCard,
+  terminateCard,
   listCardsByEmail,
   listCardTransactions,
   truncateUsd,
+  MIN_REMAINING_AFTER_WITHDRAW,
 };
