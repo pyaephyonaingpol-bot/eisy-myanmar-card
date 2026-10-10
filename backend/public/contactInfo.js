@@ -1,5 +1,5 @@
 /**
- * Official Eisymyanmar contact details — shared across footer, support, and legal pages.
+ * Official Eisymyanmar contact details — footer mounts, support chat, and contact modal.
  */
 (function initOfficialContact(global) {
   'use strict';
@@ -28,6 +28,9 @@
       '<svg class="official-contact-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="m22 6-10 7L2 6"/></svg>',
   };
 
+  let modalBound = false;
+  let lastFocus = null;
+
   function esc(value) {
     return String(value == null ? '' : value)
       .replace(/&/g, '&amp;')
@@ -37,14 +40,19 @@
   }
 
   /**
-   * @param {'compact'|'default'|'legal'} variant
+   * @param {'compact'|'default'|'legal'|'modal'} variant
    */
   function renderOfficialContact(variant) {
     const v = variant || 'default';
     const showTitle = v !== 'compact';
-    const title = showTitle
-      ? '<h3 class="official-contact-title">Contact Us</h3>'
-      : '<p class="official-contact-eyebrow">Contact Us</p>';
+    let title = '';
+    if (v === 'modal') {
+      title = '';
+    } else if (showTitle) {
+      title = '<h3 class="official-contact-title">Contact Us</h3>';
+    } else {
+      title = '<p class="official-contact-eyebrow">Contact Us</p>';
+    }
 
     const phoneRow =
       '<li class="official-contact-item">' +
@@ -102,16 +110,101 @@
     });
   }
 
+  function ensureModal() {
+    let modal = document.getElementById('officialContactModal');
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+    modal.id = 'officialContactModal';
+    modal.className = 'proof-lightbox contact-us-modal hidden';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'officialContactModalTitle');
+    modal.setAttribute('aria-hidden', 'true');
+    modal.innerHTML =
+      '<div class="proof-lightbox-backdrop contact-us-modal-backdrop" tabindex="-1"></div>' +
+      '<div class="proof-lightbox-inner contact-us-modal-inner">' +
+        '<button type="button" class="proof-lightbox-close contact-us-modal-close" id="officialContactModalClose" aria-label="Close">&times;</button>' +
+        '<h3 id="officialContactModalTitle" class="contact-us-modal-title">Contact Us</h3>' +
+        '<p class="contact-us-modal-lead">Official Eisymyanmar support channels</p>' +
+        '<div id="officialContactModalBody"></div>' +
+      '</div>';
+    document.body.appendChild(modal);
+
+    if (!modalBound) {
+      modalBound = true;
+      modal.querySelector('.contact-us-modal-backdrop')?.addEventListener('click', closeContactModal);
+      modal.querySelector('#officialContactModalClose')?.addEventListener('click', closeContactModal);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+          closeContactModal();
+        }
+      });
+      document.addEventListener('click', (e) => {
+        const trigger = e.target.closest('[data-contact-modal-open]');
+        if (trigger) {
+          e.preventDefault();
+          openContactModal(trigger);
+        }
+      });
+    }
+    return modal;
+  }
+
+  function openContactModal(trigger) {
+    if (global.AppNav && typeof global.AppNav.closeMobileSidebar === 'function') {
+      global.AppNav.closeMobileSidebar();
+    }
+    const modal = ensureModal();
+    lastFocus = trigger || document.activeElement;
+    const body = document.getElementById('officialContactModalBody');
+    if (body) body.innerHTML = renderOfficialContact('modal');
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => {
+      modal.classList.add('is-visible');
+    });
+    document.documentElement.classList.add('contact-modal-open');
+    modal.querySelector('#officialContactModalClose')?.focus();
+  }
+
+  function closeContactModal() {
+    const modal = document.getElementById('officialContactModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    modal.classList.remove('is-visible');
+    modal.setAttribute('aria-hidden', 'true');
+    document.documentElement.classList.remove('contact-modal-open');
+    window.setTimeout(() => {
+      modal.classList.add('hidden');
+      if (lastFocus && typeof lastFocus.focus === 'function') {
+        try {
+          lastFocus.focus();
+        } catch (_) { /* ignore */ }
+      }
+    }, 200);
+  }
+
+  function bindModalTriggers() {
+    ensureModal();
+  }
+
   global.EisyContact = Object.freeze({
     CONTACT,
     renderOfficialContact,
     mount,
     mountAll,
+    openContactModal,
+    closeContactModal,
   });
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mountAll);
-  } else {
+  function onReady() {
     mountAll();
+    bindModalTriggers();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', onReady);
+  } else {
+    onReady();
   }
 })(typeof window !== 'undefined' ? window : globalThis);

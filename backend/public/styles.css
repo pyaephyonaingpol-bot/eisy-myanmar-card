@@ -3288,13 +3288,74 @@ pre.output.hidden { display: none !important; }
 .support-chat-contact .official-contact-static {
   font-size: 0.72rem;
 }
-.auth-official-contact {
+.sidebar-contact-trigger {
   width: 100%;
-  max-width: 420px;
-  margin: 0.75rem auto 0;
+  margin-bottom: 0.35rem;
+  text-align: left;
 }
-.auth-official-contact .official-contact {
+.auth-contact-trigger {
+  margin: 0.65rem auto 0;
+  text-align: center;
+}
+.auth-contact-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--accent, #2dd4bf);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+.auth-contact-link:hover {
+  color: #5eead4;
+}
+
+.contact-us-modal {
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+.contact-us-modal.is-visible {
+  opacity: 1;
+}
+.contact-us-modal-inner {
+  align-items: stretch;
+  width: min(420px, 96vw);
+  padding: 1.25rem 1.15rem 1.15rem;
+  background: var(--bg-elevated, #111827);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 1rem;
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.55);
+  transform: translateY(8px) scale(0.98);
+  transition: transform 0.22s ease;
+}
+.contact-us-modal.is-visible .contact-us-modal-inner {
+  transform: translateY(0) scale(1);
+}
+.contact-us-modal-title {
+  margin: 0 2rem 0.25rem 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.contact-us-modal-lead {
+  margin: 0 0 0.85rem;
+  font-size: 0.82rem;
+  color: var(--muted, #94a3b8);
+}
+.contact-us-modal .official-contact {
   margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+.contact-us-modal .official-contact-link,
+.contact-us-modal .official-contact-static {
+  font-size: 0.88rem;
+}
+html.contact-modal-open,
+html.contact-modal-open body {
+  overflow: hidden;
 }
 
 .auth-legal-copyright {
