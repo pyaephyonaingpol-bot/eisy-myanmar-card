@@ -859,6 +859,85 @@ router.get('/cards/issued', requirePermission('cards'), async (_req, res) => {
   }
 });
 
+function sendPagoAdminError(res, err, fallbackMessage) {
+  const status = Number(err?.status) || 500;
+  const code = err?.code || 'PAGO_ADMIN_ERROR';
+  res.status(status >= 400 && status < 600 ? status : 502).json({
+    success: false,
+    error: err?.message || fallbackMessage,
+    code,
+  });
+}
+
+router.get('/pagocards/balance', requirePermission('cards'), async (_req, res) => {
+  try {
+    const { fetchPagoAdminBalance } = require('../services/pagoAdminService');
+    const balance = await fetchPagoAdminBalance();
+    res.json({ success: true, balance });
+  } catch (err) {
+    console.error('[admin/pagocards/balance]', err.code || err.message);
+    sendPagoAdminError(res, err, 'Failed to load Pagocards wallet balances');
+  }
+});
+
+router.post('/pagocards/allcards', requirePermission('cards'), async (req, res) => {
+  try {
+    const brand = req.body?.brand || 'visa';
+    const perPage = parseInt(req.body?.per_page, 10) || 20;
+    const page = parseInt(req.body?.page, 10) || 1;
+    const email = req.body?.email || req.query?.email || '';
+    const { fetchPagoAdminAllCards } = require('../services/pagoAdminService');
+    const result = await fetchPagoAdminAllCards({
+      brand,
+      perPage,
+      page,
+      email,
+    });
+    res.json({
+      success: true,
+      cards: result.cards,
+      meta: result.meta,
+    });
+  } catch (err) {
+    console.error('[admin/pagocards/allcards]', err.code || err.message);
+    sendPagoAdminError(res, err, 'Failed to load Pagocards cards');
+  }
+});
+
+router.get('/pagocards/transactions', requirePermission('cards'), async (req, res) => {
+  try {
+    const { fetchPagoAdminTransactions } = require('../services/pagoAdminService');
+    const result = await fetchPagoAdminTransactions({
+      page: req.query?.page,
+      per_page: req.query?.per_page,
+    });
+    res.json({
+      success: true,
+      transactions: result.transactions,
+    });
+  } catch (err) {
+    console.error('[admin/pagocards/transactions]', err.code || err.message);
+    sendPagoAdminError(res, err, 'Failed to load Pagocards transactions');
+  }
+});
+
+router.get('/pagocards/deposits', requirePermission('cards'), async (req, res) => {
+  try {
+    const { fetchPagoAdminDeposits } = require('../services/pagoAdminService');
+    const result = await fetchPagoAdminDeposits({
+      page: req.query?.page,
+      per_page: req.query?.per_page,
+    });
+    res.json({
+      success: true,
+      deposits: result.deposits,
+    });
+  } catch (err) {
+    console.error('[admin/pagocards/deposits]', err.code || err.message);
+    sendPagoAdminError(res, err, 'Failed to load Pagocards deposits');
+  }
+});
+
 router.post('/cards/:id/status', requirePermission('cards'), async (req, res) => {
   try {
     const cardId = parseInt(req.params.id, 10);

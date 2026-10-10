@@ -586,6 +586,7 @@
       }
       if (name === 'support') this.loadSupportThreads();
       if (name === 'cards') {
+        this.loadPagoAdminDashboard();
         this.loadPendingCards();
         this.loadIssuedCards();
         this.loadPendingReloads();
@@ -900,6 +901,15 @@
           });
         });
       }
+
+      $('adminPagoRefreshBtn')?.addEventListener('click', () => this.loadPagoAdminDashboard({ force: true }));
+      $('adminPagoCardsSearchBtn')?.addEventListener('click', () => this.loadPagoAdminAllCards());
+      $('adminPagoEmailFilter')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.loadPagoAdminAllCards();
+        }
+      });
 
       const pendingCardsTable = $('pendingCardsTable');
       if (pendingCardsTable) {
@@ -1391,7 +1401,12 @@
         tasks.push(this.loadUsdtWithdrawals());
       }
       if (pageOk('cards') && this.hasPermission('cards')) {
-        tasks.push(this.loadPendingCards(), this.loadIssuedCards(), this.loadPendingReloads());
+        tasks.push(
+          Promise.resolve(this.loadPagoAdminDashboard()),
+          this.loadPendingCards(),
+          this.loadIssuedCards(),
+          this.loadPendingReloads()
+        );
       }
       if (pageOk('users') && this.hasPermission('users')) tasks.push(this.loadUsers());
       if (pageOk('transactions') && this.hasPermission('transactions')) tasks.push(this.loadTransactions());
@@ -3896,6 +3911,180 @@
           btn.textContent = prevLabel || (action === 'approve' ? 'Approve' : 'Reject');
         }
       }
+    },
+
+    formatAdminPagoMoney(value, currency = 'USD') {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return '—';
+      const cur = String(currency || 'USD').toUpperCase();
+      return cur === 'USD' ? `$${n.toFixed(2)}` : `${n.toFixed(2)} ${cur}`;
+    },
+
+    readAdminPagoWalletSlice(balance, keys) {
+      if (!balance || typeof balance !== 'object') return null;
+      for (const key of keys) {
+        const raw = balance[key];
+        if (raw == null) continue;
+        if (typeof raw === 'number') return raw;
+        if (typeof raw === 'object') {
+          if (raw.display_amount != null) return Number(raw.display_amount);
+          if (raw.amount != null) return Number(raw.amount);
+          if (raw.balance != null) return Number(raw.balance);
+        }
+      }
+      return null;
+    },
+
+    renderAdminPagoBalanceTiles(balance) {
+      const tiles = [
+        {
+          label: 'Funding wallet',
+          value: this.readAdminPagoWalletSlice(balance, ['funding', 'funding_wallet', 'funding_balance', 'wallet_funding']),
+        },
+        {
+          label: 'Visa wallet',
+          value: this.readAdminPagoWalletSlice(balance, ['visa', 'visa_wallet', 'visa_balance', 'wallet_visa']),
+        },
+        {
+          label: 'Gift card wallet',
+          value: this.readAdminPagoWalletSlice(balance, ['giftcard', 'gift_card', 'giftcard_wallet', 'gift_card_wallet', 'giftcard_balance']),
+        },
+      ];
+      return tiles.map((tile) =>
+        '<div class="sa-balance">' +
+          '<span class="sa-balance-label">' + this.esc(tile.label) + '</span>' +
+          '<span class="sa-balance-value">' + this.esc(this.formatAdminPagoMoney(tile.value)) + '</span>' +
+        '</div>'
+      ).join('');
+    },
+
+    renderAdminPagoLogTable(rows, columns) {
+      const list = Array.isArray(rows) ? rows : [];
+      if (!list.length) return '<p class="hint" style="margin:0">No rows returned.</p>';
+      const head = columns.map((col) => '<th>' + this.esc(col.label) + '</th>').join('');
+      const body = list.slice(0, 40).map((row) => {
+        const cells = columns.map((col) => {
+          let val = typeof col.pick === 'function' ? col.pick(row) : row[col.key];
+          if (val == null || val === '') val = '—';
+          return '<td>' + this.esc(String(val)) + '</td>';
+        }).join('');
+        return '<tr>' + cells + '</tr>';
+      }).join('');
+      return (
+        '<table class="data-table">' +
+          '<thead><tr>' + head + '</tr></thead>' +
+          '<tbody>' + body + '</tbody>' +
+        '</table>'
+      );
+    },
+
+    async loadPagoAdminBalance() {
+      const row = $('adminPagoBalanceRow');
+      if (!row) return;
+      try {
+        const data = await this.api('GET', '/api/admin/pagocards/balance');
+        const balance = data.balance || data;
+        row.innerHTML = this.renderAdminPagoBalanceTiles(balance);
+      } catch (err) {
+        row.innerHTML = '<p class="hint" style="margin:0;color:#f87171;grid-column:1/-1">' + this.esc(err.message || 'Balance unavailable') + '</p>';
+      }
+    },
+
+    async loadPagoAdminAllCards() {
+      const table = $('adminPagoCardsTable');
+      const metaEl = $('adminPagoCardsMeta');
+      if (!table) return;
+      table.innerHTML = '<p class="hint">Loading Pagocards inventory…</p>';
+      if (metaEl) metaEl.textContent = '';
+      const brand = $('adminPagoBrandFilter')?.value || 'visa';
+      const email = $('adminPagoEmailFilter')?.value?.trim() || '';
+      const perPage = parseInt($('adminPagoPerPage')?.value, 10) || 20;
+      try {
+        const data = await this.api('POST', '/api/admin/pagocards/allcards', {
+          brand,
+          per_page: perPage,
+          page: 1,
+          email,
+        });
+        const cards = Array.isArray(data.cards) ? data.cards : [];
+        if (!cards.length) {
+          table.innerHTML = '<p class="hint">No Pagocards matched this filter.</p>';
+        } else {
+          table.innerHTML =
+            '<table class="data-table">' +
+              '<thead><tr>' +
+                '<th>User</th><th>Brand</th><th>Pago card ID</th><th>Status</th><th>Balance</th><th>Local ID</th>' +
+              '</tr></thead>' +
+              '<tbody>' +
+              cards.map((c) =>
+                '<tr>' +
+                  '<td>' + this.userIdentityHtml({
+                    id: c.local_user_id,
+                    email: c.user_email || c.email,
+                    name: c.user_name,
+                  }) + '</td>' +
+                  '<td>' + this.esc(c.brand || c.product_code || '—') + '</td>' +
+                  '<td><code>' + this.esc(c.pago_card_id || '—') + '</code></td>' +
+                  '<td>' + this.cardStatusBadge(c.status || c.pago_status) + '</td>' +
+                  '<td>' + this.esc(this.formatAdminPagoMoney(c.balance_usd)) + '</td>' +
+                  '<td>' + this.esc(c.local_card_id != null ? String(c.local_card_id) : '—') + '</td>' +
+                '</tr>'
+              ).join('') +
+              '</tbody>' +
+            '</table>';
+        }
+        if (metaEl && data.meta) {
+          const bits = [];
+          if (data.meta.total != null) bits.push('Total: ' + data.meta.total);
+          if (data.meta.page != null) bits.push('Page: ' + data.meta.page);
+          if (data.meta.per_page != null) bits.push('Per page: ' + data.meta.per_page);
+          metaEl.textContent = bits.join(' · ');
+        }
+      } catch (err) {
+        table.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+      }
+    },
+
+    async loadPagoAdminDeposits() {
+      const table = $('adminPagoDepositsTable');
+      if (!table) return;
+      try {
+        const data = await this.api('GET', '/api/admin/pagocards/deposits');
+        const rows = Array.isArray(data.deposits) ? data.deposits : [];
+        table.innerHTML = this.renderAdminPagoLogTable(rows, [
+          { label: 'When', pick: (r) => r.created_at || r.date || r.timestamp },
+          { label: 'Amount', pick: (r) => this.formatAdminPagoMoney(r.amount ?? r.display_amount ?? r.usd, r.currency) },
+          { label: 'Type', pick: (r) => r.type || r.kind || r.status },
+          { label: 'Ref', pick: (r) => r.reference || r.transaction_id || r.id },
+        ]);
+      } catch (err) {
+        table.innerHTML = '<p class="hint" style="margin:0;color:#f87171">' + this.esc(err.message) + '</p>';
+      }
+    },
+
+    async loadPagoAdminTransactions() {
+      const table = $('adminPagoTransactionsTable');
+      if (!table) return;
+      try {
+        const data = await this.api('GET', '/api/admin/pagocards/transactions');
+        const rows = Array.isArray(data.transactions) ? data.transactions : [];
+        table.innerHTML = this.renderAdminPagoLogTable(rows, [
+          { label: 'When', pick: (r) => r.created_at || r.date || r.timestamp },
+          { label: 'Amount', pick: (r) => this.formatAdminPagoMoney(r.amount ?? r.display_amount, r.currency) },
+          { label: 'Card', pick: (r) => r.card_id || r.pago_card_id || r.last_four },
+          { label: 'Detail', pick: (r) => r.description || r.type || r.status },
+        ]);
+      } catch (err) {
+        table.innerHTML = '<p class="hint" style="margin:0;color:#f87171">' + this.esc(err.message) + '</p>';
+      }
+    },
+
+    loadPagoAdminDashboard() {
+      if (!this.hasPermission('cards')) return;
+      this.loadPagoAdminBalance();
+      this.loadPagoAdminAllCards();
+      this.loadPagoAdminDeposits();
+      this.loadPagoAdminTransactions();
     },
 
     async loadPendingCards() {
