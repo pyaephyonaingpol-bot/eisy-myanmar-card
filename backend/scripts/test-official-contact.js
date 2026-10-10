@@ -21,9 +21,12 @@ assert.ok(contactJs.includes('@eisymyanmar'), 'contact module telegram');
 assert.ok(contactJs.includes('Al Batal building 302'), 'contact module address');
 assert.ok(contactJs.includes('official-contact-icon'), 'contact icons');
 
-assert.ok(index.includes('contactInfo.js?v=20261010contact'), 'index loads contactInfo');
-assert.ok(index.includes('data-official-contact="compact"'), 'footer contact mount');
+assert.ok(index.includes('contactInfo.js?v=20261010contactModal'), 'index loads contactInfo');
+assert.ok(index.includes('data-contact-modal-open'), 'contact modal trigger');
+assert.ok(!index.includes('sidebar-footer') || !index.match(/sidebar-footer[\s\S]*data-official-contact="compact"/), 'sidebar inline contact removed');
 assert.ok(index.includes('data-official-contact="default"'), 'settings contact section');
+assert.ok(contactJs.includes('openContactModal'), 'contact modal API');
+assert.ok(contactJs.includes('officialContactModal'), 'contact modal shell');
 
 assert.ok(supportChat.includes('supportChatContact'), 'live chat contact footer');
 assert.ok(about.includes('data-official-contact="legal"'), 'about contact block');
