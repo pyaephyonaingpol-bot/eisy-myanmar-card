@@ -15,6 +15,8 @@ const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'ut
 const p2pRoute = fs.readFileSync(path.join(ROOT, 'backend/src/routes/p2p.js'), 'utf8');
 const withdrawalRoute = fs.readFileSync(path.join(ROOT, 'backend/src/routes/withdrawal.js'), 'utf8');
 const withdrawalSvc = fs.readFileSync(path.join(ROOT, 'backend/src/services/withdrawalService.js'), 'utf8');
+const adminHtml = fs.readFileSync(path.join(ROOT, 'backend/public/admin.html'), 'utf8');
+const adminJs = fs.readFileSync(path.join(ROOT, 'backend/public/admin.js'), 'utf8');
 
 assert.ok(!html.includes('id="pageP2p"'), 'P2P page removed');
 assert.ok(!html.includes('id="p2pBuyModal"'), 'P2P buy modal removed');
@@ -33,5 +35,10 @@ assert.ok(p2pRoute.includes('P2P_RETIRED'), 'user P2P API retired');
 assert.ok(withdrawalRoute.includes('MMK_PAYOUT_RETIRED'), 'MMK withdrawal API retired');
 assert.ok(!withdrawalRoute.includes("label: 'Bank Account (USDT → MMK)'"), 'fees list is TRC20-only');
 assert.ok(withdrawalSvc.includes('MMK_PAYOUT_RETIRED'), 'bank payout blocked in service');
+
+assert.ok(!adminHtml.includes('data-page="p2p"'), 'admin P2P nav removed');
+assert.ok(!adminHtml.includes('id="mmkWithdrawalsTable"'), 'admin MMK withdrawal queue removed');
+assert.ok(adminHtml.includes('id="ledgerUsdtBreakdown"'), 'admin USDT escrow summary kept');
+assert.ok(adminJs.includes('escrow_breakdown'), 'admin ledger still loads escrow breakdown');
 
 console.log('Global USDT portal checks passed.');

@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * Admin support task management: MMK Payouts + Card Issuing Issues,
+ * Admin support task management: Card Issuing Issues and general queues,
  * priority/status filters, PATCH meta, Supabase Realtime wiring.
  * Run: node scripts/test-admin-support-tasks.js
  */
@@ -47,7 +47,7 @@ async function main() {
   // --- UI: filters, badges, live toast ---
   assertIncludes(adminHtml, 'Support Task Management', 'admin support title');
   assertIncludes(adminHtml, 'id="supportCategoryFilter"', 'category filter');
-  assertIncludes(adminHtml, 'value="mmk_payouts">MMK Payouts', 'MMK Payouts category');
+  assert.ok(!adminHtml.includes('value="mmk_payouts">MMK Payouts'), 'MMK Payouts filter removed');
   assertIncludes(adminHtml, 'value="card_issuing">Card Issuing Issues', 'Card Issuing category');
   assertIncludes(adminHtml, 'id="supportPriorityFilter"', 'priority filter');
   assertIncludes(adminHtml, 'value="high">High', 'High priority option');
@@ -61,7 +61,7 @@ async function main() {
   assertIncludes(adminHtml, 'id="supportUrgentToast"', 'urgent realtime toast');
   assertIncludes(adminHtml, 'id="supportTaskMeta"', 'task meta editor');
   assertIncludes(adminHtml, 'id="supportSaveTaskMetaBtn"', 'save task meta button');
-  assertIncludes(adminHtml, 'admin.js?v=20261009depositNoMin', 'admin.js cache bust');
+  assertIncludes(adminHtml, 'admin.js?v=20261010globalUsdtAdmin', 'admin.js cache bust');
 
   assertIncludes(adminJs, 'supportFilters', 'filter state');
   assertIncludes(adminJs, 'onSupportRealtime', 'realtime handler');
