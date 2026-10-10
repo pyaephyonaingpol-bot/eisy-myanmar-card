@@ -725,10 +725,6 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
             <span>Withdrawals</span>
           </button>
-          <button type="button" class="nav-item" data-page="p2p" data-admin-perm="p2p">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg>
-            <span>P2P</span>
-          </button>
           <button type="button" class="nav-item" data-page="support" data-admin-perm="support">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             <span>Support</span>
@@ -771,7 +767,7 @@
               <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Open menu" aria-expanded="false" aria-controls="adminSidebar">☰</button>
               <div>
                 <h1 class="page-heading">Users</h1>
-                <p class="subtitle">Users · Deposits · Withdrawals · P2P · Support · Cards</p>
+                <p class="subtitle">Users · Deposits · USDT Withdrawals · Support · Virtual Cards</p>
               </div>
             </div>
             <div class="header-actions">
@@ -792,8 +788,7 @@
           <div id="adminPipelineHub" class="panel portal-hub-chooser hidden" aria-hidden="true"></div>
           <span class="hidden" data-page-title="users">Users</span>
           <span class="hidden" data-page-title="deposits">Deposits &amp; KYC Approvals</span>
-          <span class="hidden" data-page-title="mmk-withdrawals">Withdrawals</span>
-          <span class="hidden" data-page-title="p2p">P2P Transactions</span>
+          <span class="hidden" data-page-title="mmk-withdrawals">USDT Withdrawals</span>
           <span class="hidden" data-page-title="support">Support</span>
           <span class="hidden" data-page-title="cards">Virtual Cards</span>
           <span class="hidden" data-page-title="settings">Settings</span>
@@ -840,7 +835,7 @@
               <div>
                 <p class="sa-card-eyebrow">Payout pricing</p>
                 <h2 class="sa-card-title">Withdrawal rates &amp; fees</h2>
-                <p class="sa-card-sub">Configured under Rates &amp; Fees — Withdraw MMK Rate and USDT Withdrawal Fee</p>
+                <p class="sa-card-sub">Configured under Rates &amp; Fees — card fees and USDT withdrawal fee</p>
               </div>
             </div>
             <div class="sa-preview" style="margin-top:0;padding-top:0;border-top:0">
@@ -861,7 +856,7 @@
         <p class="hint" style="margin-bottom:0.85rem">Approve wallet deposits and review KYC identity documents in one place.</p>
 
         <h3 style="margin-top:0.35rem;font-size:1rem">KYC Verification Requests</h3>
-        <p class="hint" style="margin-bottom:0.75rem">Review NRC and Passport photos submitted for P2P trading. Approve to allow P2P orders, or reject with a reason. Virtual cards do not use this queue.</p>
+        <p class="hint" style="margin-bottom:0.75rem">Review NRC and Passport photos for identity verification. Approve or reject with a reason. Virtual card issuance does not require this queue.</p>
         <div class="p2p-market-toolbar" style="margin-bottom:1rem">
           <label for="kycStatusFilter">Status</label>
           <select id="kycStatusFilter" class="p2p-network-select">
@@ -885,53 +880,14 @@
         </div>
         <div id="depositsTable" class="data-table-wrap"><p class="hint" data-i18n="loading_deposits">Loading deposits…</p></div>
 
-        <p class="hint" style="margin-top:1.5rem">
-          Manual <strong>USDT → MMK</strong> withdrawals are reviewed in
-          <button type="button" class="btn btn-sm btn-secondary" data-nav-page="mmk-withdrawals">Withdrawals</button>
-          — track Pending, Approved, and Rejected, then Approve or Reject the bank payout.
-        </p>
-      </section>
-
-      <section id="tabP2p" class="panel app-page" data-page="p2p" data-admin-perm="p2p">
-        <h2>P2P Transactions</h2>
-        <p class="hint" style="margin-bottom:0.85rem">Track orders as Completed, Pending, or Dispute. Open a dispute, review the proof, then Release USDT to the buyer or Refund escrow to the seller.</p>
-        <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:0.85rem">
-          <label for="p2pTrackFilter" class="hint" style="margin:0">Status</label>
-          <select id="p2pTrackFilter" aria-label="Filter P2P transactions by status">
-            <option value="dispute" selected>Dispute</option>
-            <option value="pending">Pending</option>
-            <option value="completed">Completed</option>
-            <option value="all">All</option>
-          </select>
-          <button type="button" id="p2pTrackRefreshBtn" class="btn btn-secondary btn-sm">Refresh</button>
-        </div>
-        <div id="p2pTrackerWrap" class="hidden">
-          <div id="p2pTrackerTable" class="data-table-wrap"><p class="hint">Loading P2P transactions…</p></div>
-        </div>
-
-        <div id="p2pDisputesBlock">
-          <h3 style="margin-top:1.25rem;font-size:1rem" data-i18n="p2p_disputes">Disputes — Release or Refund</h3>
-          <p class="hint" style="margin-bottom:0.75rem" data-i18n="p2p_disputes_hint">Users flagged orders with payment proof. Force-release USDT or refund escrow after review.</p>
-          <div id="p2pDisputesTable" class="data-table-wrap"><p class="hint" data-i18n="loading_disputes">Loading disputes…</p></div>
-        </div>
-
-        <div id="p2pPendingBlock" class="hidden">
-          <h3 style="margin-top:1.75rem;font-size:1rem">Pending — Buy orders awaiting release</h3>
-          <p class="hint" style="margin-bottom:0.75rem">Buyers paid MMK to sellers externally. Admin can force-release USDT to the buyer or reject the order.</p>
-          <div id="p2pBuyOrdersTable" class="data-table-wrap"><p class="hint">Loading P2P buy orders…</p></div>
-
-          <h3 style="margin-top:1.75rem;font-size:1rem">Pending — Sell orders with USDT in escrow</h3>
-          <p class="hint" style="margin-bottom:0.75rem">Sellers escrowed USDT. Buyer sends MMK externally. Seller confirms MMK receipt and releases escrow — admin can reject and refund escrow.</p>
-          <div id="p2pSellOrdersTable" class="data-table-wrap"><p class="hint">Loading P2P sell orders…</p></div>
-        </div>
       </section>
 
       <section id="tabMmkWithdrawals" class="panel app-page" data-page="mmk-withdrawals" data-admin-perm="withdrawals" data-admin-pipeline="instant">
-        <h2>Withdrawals</h2>
-        <p class="hint" style="margin-bottom:1rem">Track crypto and bank payouts as <strong>Pending</strong>, <strong>Approved</strong>, or <strong>Rejected</strong>. <strong>USDT → MMK</strong> bank requests stay manual: review the account, send MMK, then Approve. Reject refunds USDT.</p>
+        <h2>USDT Withdrawals</h2>
+        <p class="hint" style="margin-bottom:1rem">Review TRC20 payout requests as <strong>Pending</strong>, <strong>Approved</strong>, or <strong>Rejected</strong>. On-chain sends run automatically when withdrawals are unpaused and master wallet security checks pass.</p>
 
-        <h3 style="margin-top:0.35rem;font-size:1rem">USDT Withdrawals — Crypto &amp; Bank (USDT→MMK)</h3>
-        <p class="hint" style="margin-bottom:0.75rem">Crypto payouts send USDT on TRON (TRC20) and auto-send when withdrawals are unpaused. <strong>Bank (USDT→MMK)</strong> rows show the MMK amount at the locked daily rate — send that MMK via the user's bank / KPay / WavePay account, then Approve.</p>
+        <h3 style="margin-top:0.35rem;font-size:1rem">TRC20 queue</h3>
+        <p class="hint" style="margin-bottom:0.75rem">Payouts send USDT on TRON (TRC20). Refresh master wallet balances before approving large batches.</p>
         <div class="master-wallet-panel" id="masterWalletPanel" data-admin-perm="master_wallet">
           <div class="master-wallet-panel-header">
             <div>
@@ -962,50 +918,6 @@
           </select>
         </div>
         <div id="usdtWithdrawalsTable" class="data-table-wrap"><p class="hint">Loading USDT withdrawals…</p></div>
-
-        <h2 style="margin-top:2rem">MMK Bank Withdrawals</h2>
-        <p class="hint" style="margin-bottom:1rem">
-          Manual payout queue for all MMK bank transfers:
-          <strong>MMK wallet → bank</strong> (WM-*) and
-          <strong>USDT → MMK bank</strong> (WB-* from Sell USDT / Convert to MMK).
-          Review user and bank details, send the net MMK transfer offline, then
-          <strong>Approve</strong> (optionally attach a payment proof slip) or <strong>Reject</strong> to refund the user’s wallet.
-          MMK→USDT conversion is disabled platform-wide.
-        </p>
-
-        <div id="mmkWithdrawalSummary" class="mmk-wd-summary" aria-live="polite">
-          <div class="mmk-wd-summary-item">
-            <span class="label">Pending</span>
-            <span class="value" id="mmkWdPendingCount">—</span>
-          </div>
-          <div class="mmk-wd-summary-item">
-            <span class="label">Processing</span>
-            <span class="value" id="mmkWdProcessingCount">—</span>
-          </div>
-          <div class="mmk-wd-summary-item">
-            <span class="label">Open net payout</span>
-            <span class="value" id="mmkWdOpenNet">—</span>
-          </div>
-          <div class="mmk-wd-summary-item">
-            <span class="label">Showing</span>
-            <span class="value" id="mmkWdShowingCount">—</span>
-          </div>
-        </div>
-
-        <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:0.85rem">
-          <label for="mmkWithdrawalFilter" class="hint" style="margin:0">Status</label>
-          <select id="mmkWithdrawalFilter" aria-label="Filter MMK withdrawals by status">
-            <option value="open" selected>Pending + Processing (open)</option>
-            <option value="pending">Pending only</option>
-            <option value="processing">Processing only</option>
-            <option value="completed">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="cancelled">Cancelled</option>
-            <option value="all">All statuses</option>
-          </select>
-          <button type="button" id="mmkWithdrawalRefreshBtn" class="btn btn-secondary btn-sm">Refresh</button>
-        </div>
-        <div id="mmkWithdrawalsTable" class="data-table-wrap"><p class="hint">Loading MMK bank withdrawals…</p></div>
       </section>
 
       <section id="tabCards" class="panel app-page" data-page="cards">
@@ -1081,15 +993,6 @@
         </div>
         <details style="margin-top:1rem">
           <summary class="hint">Legacy wallet adjustments (deprecated)</summary>
-          <form id="balanceAdjustForm" class="form" style="margin-top:0.75rem">
-            <h3 style="margin:0 0 0.75rem;font-size:0.95rem">Manual MMK Wallet Adjustment</h3>
-            <div class="field-row">
-              <div class="field"><label for="adjUserId">User ID</label><input id="adjUserId" type="number" /></div>
-              <div class="field"><label for="adjAmountMmk">Amount MMK (+/-)</label><input id="adjAmountMmk" type="number" step="1" placeholder="50000" /></div>
-            </div>
-            <div class="field"><label for="adjReason">Reason / Note</label><input id="adjReason" placeholder="Legacy MMK correction" /></div>
-            <button type="submit" class="btn btn-secondary">Adjust MMK Wallet</button>
-          </form>
           <form id="balanceAdjustUsdForm" class="form" style="margin-top:0.75rem">
             <div class="field-row">
               <div class="field"><label for="adjUsdUserId">User ID</label><input id="adjUsdUserId" type="number" /></div>
@@ -1103,13 +1006,12 @@
 
       <section id="tabTransactions" class="panel app-page" data-page="transactions" data-admin-pipeline="instant">
         <h2>Transaction History</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Transaction history for USDT deposits &amp; withdrawals (on-chain), automated USDT card issuance, card reloads, and MMK bank withdrawals. Use Daily CSV Export to download accounting reports.</p>
+        <p class="hint" style="margin-bottom:0.75rem">Transaction history for USDT deposits &amp; withdrawals (on-chain), automated USDT card issuance, and card reloads. Use Daily CSV Export to download accounting reports.</p>
         <div class="admin-tabs" id="txCategoryTabs" role="tablist">
           <button type="button" class="tab active" data-tx-category="usdt_deposit">USDT Deposits</button>
           <button type="button" class="tab" data-tx-category="usdt_withdrawal">USDT Withdrawals</button>
           <button type="button" class="tab" data-tx-category="card_issuance">Card Issuance</button>
           <button type="button" class="tab" data-tx-category="card_reload">Card Reloads</button>
-          <button type="button" class="tab" data-tx-category="mmk_withdrawal">MMK Withdrawals</button>
         </div>
         <div class="admin-toolbar" style="flex-wrap:wrap;gap:0.5rem;align-items:center">
           <input id="txUserFilter" type="number" placeholder="Filter by user ID" />
@@ -1122,7 +1024,6 @@
             <option value="usdt_withdrawal">USDT Withdrawals</option>
             <option value="card_issuance">Card Issuance</option>
             <option value="card_reload">Card Reloads</option>
-            <option value="mmk_withdrawal">MMK Withdrawals</option>
           </select>
           <button type="button" id="txExportCsvBtn" class="btn btn-primary btn-sm">Download CSV</button>
         </div>
@@ -1166,13 +1067,12 @@
         <h2>Support Task Management</h2>
         <p class="hint" style="margin-bottom:0.75rem">
           Click a ticket in the queue to open the chat. Reply in the popup and set the status to Open, In Progress, or Closed.
-          Focus queues for <strong>MMK Payouts</strong> and <strong>Card Issuing Issues</strong>.
+          Focus queues for <strong>Card Issuing Issues</strong>, deposits, and account help.
         </p>
         <div class="p2p-market-toolbar support-task-toolbar" style="margin-bottom:1rem">
           <label for="supportCategoryFilter">Category</label>
           <select id="supportCategoryFilter" class="p2p-network-select">
             <option value="all">All</option>
-            <option value="mmk_payouts">MMK Payouts</option>
             <option value="card_issuing">Card Issuing Issues</option>
             <option value="general">General</option>
             <option value="deposit">Deposit</option>
@@ -1219,7 +1119,6 @@
             <div class="field">
               <label for="supportTaskCategory">Category</label>
               <select id="supportTaskCategory">
-                <option value="mmk_payouts">MMK Payouts</option>
                 <option value="card_issuing">Card Issuing Issues</option>
                 <option value="general">General</option>
                 <option value="deposit">Deposit</option>
@@ -1265,17 +1164,12 @@
         <h2>Settings</h2>
         <p class="hint" style="margin-bottom:0.75rem">Rates, fees, and system ledger controls.</p>
         <h3 style="margin-top:0.5rem;font-size:1rem">System Ledger Summary</h3>
-        <p class="hint" style="margin-bottom:0.75rem">Aggregate balances across all user wallets and P2P escrow.</p>
+        <p class="hint" style="margin-bottom:0.75rem">Aggregate USDT across user wallets, platform revenue, and escrow holds (card top-ups and security locks).</p>
         <div id="adminLedgerSummary" class="ledger-summary-grid">
           <div class="ledger-summary-card usdt">
             <div class="ledger-summary-label">Total USDT Ledger</div>
             <div class="ledger-summary-value" id="ledgerTotalUsdt">—</div>
             <p class="ledger-summary-sub" id="ledgerUsdtBreakdown">Available + escrow</p>
-          </div>
-          <div class="ledger-summary-card mmk">
-            <div class="ledger-summary-label">Total System MMK</div>
-            <div class="ledger-summary-value" id="ledgerTotalMmk">—</div>
-            <p class="ledger-summary-sub">Sum of all user MMK wallets</p>
           </div>
           <div class="ledger-summary-card revenue">
             <div class="ledger-summary-label">Platform USDT Revenue</div>
@@ -1286,39 +1180,18 @@
 
         <h2 style="margin-top:2rem">Rate &amp; Pricing</h2>
         <p class="hint" style="margin-bottom:1rem">
-          Five dedicated fee blocks for withdrawals, card issuance, card reloads, USDT deposits, and USDT withdrawals.
+          Fee blocks for virtual card issuance, card reloads, USDT deposits, and TRC20 withdrawals.
           Saves are logged to Exchange Rate History.
         </p>
         <form id="adminSettingsForm" class="form" style="max-width:min(920px,100%)">
+          <input type="hidden" id="settingExchangeRate" />
+          <input type="hidden" id="settingMinMmkWithdrawal" />
+          <input type="hidden" id="settingEffectiveDate" />
           <div class="pricing-blocks">
-            <section class="pricing-block" aria-labelledby="pricingBlockWithdrawMmkTitle">
-              <div class="pricing-block-header">
-                <h3 id="pricingBlockWithdrawMmkTitle" class="pricing-block-title">
-                  <span class="pricing-block-num">1</span>Withdraw MMK Rate
-                </h3>
-                <p class="pricing-block-desc">Daily exchange rate for USDT-to-MMK local bank withdrawals (1 USD = X MMK).</p>
-              </div>
-              <div class="sa-rates-form">
-                <div class="field">
-                  <label for="settingExchangeRate">1 USD = MMK</label>
-                  <input id="settingExchangeRate" type="number" step="1" min="1" required placeholder="4500" />
-                  <small class="hint">MMK paid per 1 USDT after withdrawal fee</small>
-                </div>
-                <div class="field">
-                  <label for="settingEffectiveDate">Effective date</label>
-                  <input id="settingEffectiveDate" type="date" required />
-                </div>
-                <div class="field">
-                  <label for="settingMinMmkWithdrawal">Min MMK withdrawal</label>
-                  <input id="settingMinMmkWithdrawal" type="number" step="1" min="1" required />
-                </div>
-              </div>
-            </section>
-
             <section class="pricing-block" aria-labelledby="pricingBlockCardIssueTitle">
               <div class="pricing-block-header">
                 <h3 id="pricingBlockCardIssueTitle" class="pricing-block-title">
-                  <span class="pricing-block-num">2</span>Card Issue Fee / Rate
+                  <span class="pricing-block-num">1</span>Card Issue Fee / Rate
                 </h3>
                 <p class="pricing-block-desc">Platform markup fee charged when issuing a new virtual card (kept as platform earnings).</p>
               </div>
@@ -1343,7 +1216,7 @@
             <section class="pricing-block" aria-labelledby="pricingBlockCardReloadTitle">
               <div class="pricing-block-header">
                 <h3 id="pricingBlockCardReloadTitle" class="pricing-block-title">
-                  <span class="pricing-block-num">3</span>Card Reload Fee (%)
+                  <span class="pricing-block-num">2</span>Card Reload Fee (%)
                 </h3>
                 <p class="pricing-block-desc">Card reload fee = max(fixed + percent of top-up, minimum fee). Min USDT reload is the smallest top-up amount.</p>
               </div>
@@ -1372,7 +1245,7 @@
             <section class="pricing-block" aria-labelledby="pricingBlockUsdtDepositTitle">
               <div class="pricing-block-header">
                 <h3 id="pricingBlockUsdtDepositTitle" class="pricing-block-title">
-                  <span class="pricing-block-num">4</span>USDT Deposit Fee / Rate
+                  <span class="pricing-block-num">3</span>USDT Deposit Fee / Rate
                 </h3>
                 <p class="pricing-block-desc">Service fee taken from user USDT deposits before net balance is credited. Fee = fixed fee + (deposit × percent / 100).</p>
               </div>
@@ -1395,7 +1268,7 @@
             <section class="pricing-block" aria-labelledby="pricingBlockUsdtWithdrawTitle">
               <div class="pricing-block-header">
                 <h3 id="pricingBlockUsdtWithdrawTitle" class="pricing-block-title">
-                  <span class="pricing-block-num">5</span>USDT Withdrawal Fee
+                  <span class="pricing-block-num">4</span>USDT Withdrawal Fee
                 </h3>
                 <p class="pricing-block-desc">Withdrawal fee = max(fixed + percent of amount, minimum fee). Payouts are processed within 48 hours.</p>
               </div>
@@ -1467,16 +1340,6 @@
       </section>
         </main>
       </div>
-    </div>
-  </div>
-
-  <div id="p2pDisputeReviewModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="p2pDisputeReviewTitle" aria-modal="true">
-    <div class="proof-lightbox-backdrop p2p-dispute-review-backdrop"></div>
-    <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:min(720px,100%)">
-      <button type="button" id="p2pDisputeReviewClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
-      <h3 id="p2pDisputeReviewTitle" class="kyc-doc-viewer-title">P2P Dispute Review</h3>
-      <div id="p2pDisputeReviewMeta" class="hint" style="margin-bottom:0.75rem"></div>
-      <div id="p2pDisputeReviewProofSections"></div>
     </div>
   </div>
 
@@ -1634,6 +1497,6 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261009depositNoMin" defer></script>
+  <script src="/admin.js?v=20261010globalUsdtAdmin" defer></script>
 </body>
 </html>

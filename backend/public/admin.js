@@ -13,7 +13,6 @@
     'users',
     'deposits',
     'mmk-withdrawals',
-    'p2p',
     'support',
     'kyc-requests',
     'cards',
@@ -583,11 +582,7 @@
       }
       if (name === 'mmk-withdrawals') {
         this.loadUsdtWithdrawals();
-        this.loadMmkWithdrawals();
         if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
-      }
-      if (name === 'p2p') {
-        this.applyP2pTrackFilter();
       }
       if (name === 'support') this.loadSupportThreads();
       if (name === 'cards') {
@@ -1118,9 +1113,14 @@
           e.preventDefault();
           const out = $('adminSettingsOut');
           try {
+            const legacyRate = $('settingExchangeRate')?.value;
+            const legacyMinMmk = $('settingMinMmkWithdrawal')?.value;
+            const legacyEff = $('settingEffectiveDate')?.value;
             const data = await this.api('PUT', '/api/admin/settings', {
-              mmk_to_usd_rate: parseFloat($('settingExchangeRate').value),
-              effective_date: $('settingEffectiveDate').value,
+              mmk_to_usd_rate: parseFloat(
+                legacyRate || this.pricingSettings?.mmk_to_usd_rate || '4500'
+              ),
+              effective_date: legacyEff || this.pricingSettings?.rate_effective_date || this.todayDateInputValue(),
               card_issuance_fee_usd: parseFloat($('settingCardFee').value),
               card_funding_fee_percent: parseFloat($('settingFundingFeePercent')?.value || '0'),
               minimum_initial_deposit_usd: parseFloat($('settingMinDeposit').value),
@@ -1137,7 +1137,9 @@
               withdrawal_service_fee_percent: parseFloat($('settingWithdrawFeePercent')?.value || '4'),
               withdrawal_service_fee_minimum_usdt: parseFloat($('settingWithdrawFeeMinUsdt')?.value || '0'),
               minimum_usdt_withdrawal: parseFloat($('settingMinUsdtWithdrawal')?.value || '10'),
-              minimum_mmk_withdrawal: parseFloat($('settingMinMmkWithdrawal')?.value || '10000'),
+              minimum_mmk_withdrawal: parseFloat(
+                legacyMinMmk || this.pricingSettings?.minimum_mmk_withdrawal || '10000'
+              ),
               updated_by: this.user?.email || this.user?.name || 'admin',
             });
             if (out) {
@@ -1385,11 +1387,8 @@
       if (pageOk('deposits') && this.hasPermission('deposits')) {
         tasks.push(this.loadDeposits());
       }
-      if (pageOk('p2p') && this.hasPermission('p2p')) {
-        tasks.push(this.applyP2pTrackFilter());
-      }
       if (pageOk('mmk-withdrawals') && this.hasPermission('withdrawals')) {
-        tasks.push(this.loadUsdtWithdrawals(), this.loadMmkWithdrawals());
+        tasks.push(this.loadUsdtWithdrawals());
       }
       if (pageOk('cards') && this.hasPermission('cards')) {
         tasks.push(this.loadPendingCards(), this.loadIssuedCards(), this.loadPendingReloads());
@@ -1425,19 +1424,9 @@
       el.className = 'sa-preview-grid';
       el.innerHTML =
         '<div class="sa-preview-item">' +
-          '<strong>USDT crypto · ' + (p.sample_usdt_amount || 100) + '</strong>' +
+          '<strong>USDT TRC20 · ' + (p.sample_usdt_amount || 100) + ' USDT</strong>' +
           '<span>Fee ' + this.esc(String(crypto.fee_usdt ?? '—')) +
-          ' → ' + this.esc(String(crypto.net_usdt ?? '—')) + ' USDT net</span>' +
-        '</div>' +
-        '<div class="sa-preview-item">' +
-          '<strong>USDT → MMK · ' + (p.sample_usdt_amount || 100) + '</strong>' +
-          '<span>Fee ' + this.esc(String(bank.fee_usdt ?? '—')) +
-          ' → ' + this.esc(String(bank.amount_mmk ?? '—')) + ' MMK</span>' +
-        '</div>' +
-        '<div class="sa-preview-item">' +
-          '<strong>MMK bank · ' + Number(p.sample_mmk_amount || 100000).toLocaleString() + '</strong>' +
-          '<span>Fee ' + this.esc(String(mmk.fee_mmk ?? '—')) +
-          ' → ' + this.esc(String(mmk.net_mmk ?? '—')) + ' MMK net</span>' +
+          ' → ' + this.esc(String(crypto.net_usdt ?? '—')) + ' USDT net to wallet</span>' +
         '</div>';
     },
 
@@ -1600,20 +1589,19 @@
       const badge = $('adminCurrentRateBadge');
       if (!badge) return;
 
-      const rate = currentRate || {};
-      const mmk = Number(rate.mmk_to_usd_rate || this.pricingSettings?.mmk_to_usd_rate || 0);
-      const effDate = rate.effective_date
-        || rate.effective_at?.slice(0, 10)
-        || this.pricingSettings?.rate_effective_date
-        || 'today';
-
-      if (!mmk) {
-        badge.textContent = typeof t === 'function' ? `${t('current_rate')}: not set` : 'Current Rate: not set';
+      const p = { ...(currentRate || {}), ...(this.pricingSettings || {}) };
+      const pct = Number(
+        p.withdrawal_service_fee_percent
+        ?? p.payment_service_fee_percent
+        ?? 0
+      );
+      const minFee = Number(p.withdrawal_service_fee_minimum_usdt ?? 0);
+      const prefix = typeof t === 'function' ? t('current_rate') : 'Withdraw fee';
+      if (!pct && !minFee) {
+        badge.textContent = `${prefix}: TRC20 (see Rates & Fees)`;
         return;
       }
-
-      const prefix = typeof t === 'function' ? t('current_rate') : 'Current Rate';
-      badge.textContent = `${prefix}: 1 USD = ${mmk.toLocaleString()} MMK (Effective: ${effDate})`;
+      badge.textContent = `${prefix}: ${pct}% TRC20 (min $${minFee.toFixed(2)} USDT)`;
     },
 
     todayDateInputValue() {
@@ -2363,7 +2351,6 @@
         this.closeWithdrawalProofModal();
         await Promise.all([
           this.loadUsdtWithdrawals(),
-          this.loadMmkWithdrawals(),
           this.loadUsers(),
           this.loadTransactions(),
         ]);
@@ -2653,7 +2640,7 @@
     },
 
     async approveKycRequest(id) {
-      if (!confirm('Approve this KYC submission? User will be able to trade P2P.')) return;
+      if (!confirm('Approve this KYC submission? Identity will be marked verified.')) return;
       try {
         const data = await this.api('POST', '/api/admin/kyc-requests/' + id + '/approve', {});
         alert(data.message || 'KYC approved');
@@ -3279,53 +3266,38 @@
       try {
         const qs = filter === 'all' ? '?status=all' : ('?status=' + encodeURIComponent(filter));
         const data = await this.api('GET', '/api/admin/withdrawals/usdt' + qs);
-        const rows = Array.isArray(data.withdrawals) ? data.withdrawals : [];
+        const rows = (Array.isArray(data.withdrawals) ? data.withdrawals : [])
+          .filter((w) => w.payout_method !== 'bank' && String(w.payout_method || '').toLowerCase() !== 'mmk');
         if (!rows.length) {
-          table.innerHTML = '<p class="hint">No USDT withdrawals found.</p>';
+          table.innerHTML = '<p class="hint">No TRC20 USDT withdrawals found.</p>';
           return;
         }
         table.innerHTML =
           '<table class="data-table"><thead><tr>' +
-            '<th>ID</th><th>User</th><th>Ref</th><th>Method</th><th>Destination</th>' +
-            '<th>USDT</th><th>Fee</th><th>Rate</th><th>MMK to Send</th><th>Status</th><th>Actions</th>' +
+            '<th>ID</th><th>User</th><th>Ref</th><th>Network</th><th>Destination</th>' +
+            '<th>USDT</th><th>Fee</th><th>Net</th><th>Status</th><th>Actions</th>' +
           '</tr></thead><tbody>' +
           rows.map((w) => {
             const status = String(w.status || '').toLowerCase();
             const actionable = status === 'pending' || status === 'processing';
-            const isBank = w.payout_method === 'bank';
-            const method = isBank ? 'Bank (USDT→MMK)' : (w.network || 'Crypto');
-            const dest = isBank
-              ? this.esc((w.bank_name || '') + ' · ' + (w.account_name || '') + ' · ' + (w.account_number || ''))
-              : this.esc((w.network || '') + ' · ' + (w.wallet_address || ''));
-            const rate = Number(w.exchange_rate || 0);
-            const mmkAmount = Math.round(Number(w.amount_mmk || 0));
-            const rateLabel = isBank && rate > 0
-              ? ('1 USDT = ' + rate.toLocaleString() + ' MMK')
-              : '—';
-            const mmkLabel = isBank
-              ? ('<strong>' + mmkAmount.toLocaleString() + ' MMK</strong>' +
-                '<br><small>Send via bank / KPay / WavePay</small>')
-              : ('$' + Number(w.net_usdt || 0).toFixed(2) + ' USDT');
-            const completeLabel = isBank ? 'Approve' : 'Complete';
+            const network = w.network || 'TRC20';
+            const dest = this.esc((w.wallet_address || ''));
             return '<tr>' +
               '<td>' + w.id + '</td>' +
               '<td>' + this.userIdentityHtml(w) + '</td>' +
               '<td>' + this.esc(w.ref_code || '') + '</td>' +
-              '<td>' + this.esc(method) + '</td>' +
+              '<td>' + this.esc(network) + '</td>' +
               '<td style="max-width:220px;word-break:break-all">' + dest + '</td>' +
               '<td>$' + Number(w.amount_usdt || 0).toFixed(2) + '</td>' +
               '<td>$' + Number(w.fee_usdt || 0).toFixed(2) + '</td>' +
-              '<td>' + rateLabel + '</td>' +
-              '<td>' + mmkLabel + '</td>' +
+              '<td>$' + Number(w.net_usdt || 0).toFixed(2) + '</td>' +
               '<td>' + this.financeStatusBadge(w.status) + '</td>' +
               '<td class="actions-cell">' +
                 (actionable
                   ? '<button type="button" class="btn btn-sm btn-approve" data-action="complete-usdt-wd" data-id="' + w.id + '"' +
-                    ' data-method="' + (isBank ? 'bank' : 'crypto') + '"' +
-                    ' data-mmk="' + mmkAmount + '"' +
-                    ' data-rate="' + rate + '"' +
+                    ' data-method="crypto"' +
                     ' data-usdt="' + Number(w.net_usdt || 0).toFixed(2) + '"' +
-                    '>' + completeLabel + '</button>' +
+                    '>Complete</button>' +
                     '<button type="button" class="btn btn-sm btn-reject" data-action="reject-usdt-wd" data-id="' + w.id + '">Reject</button>'
                   : '') +
               '</td></tr>';
@@ -3519,7 +3491,6 @@
         alert(data.message || 'USDT withdrawal updated');
         await Promise.all([
           this.loadUsdtWithdrawals(),
-          this.loadMmkWithdrawals(),
           this.loadUsers(),
           this.loadTransactions(),
         ]);
@@ -3671,8 +3642,13 @@
       if ($('ledgerTotalUsdt')) $('ledgerTotalUsdt').textContent = fmtUsdt(summary.total_usdt_ledger);
       if ($('ledgerUsdtBreakdown')) {
         const esc = summary.escrow_breakdown || {};
+        const legacyP2p = Number(esc.p2p_ads || 0) + Number(esc.p2p_sell_orders || 0);
+        const otherEscrow = Math.max(0, Number(summary.escrow_usdt || 0) - legacyP2p);
+        const escrowParts = [`Escrow ${fmtUsdt(summary.escrow_usdt)}`];
+        if (otherEscrow > 0.0001) escrowParts.push(`holds ${fmtUsdt(otherEscrow)}`);
+        if (legacyP2p > 0.0001) escrowParts.push(`legacy ${fmtUsdt(legacyP2p)}`);
         $('ledgerUsdtBreakdown').textContent =
-          `Available ${fmtUsdt(summary.available_usdt)} + Escrow ${fmtUsdt(summary.escrow_usdt)} (Ads ${fmtUsdt(esc.p2p_ads)}, Orders ${fmtUsdt(esc.p2p_sell_orders)})`;
+          `Available ${fmtUsdt(summary.available_usdt)} · ${escrowParts.join(' · ')}`;
       }
       if ($('ledgerTotalMmk')) $('ledgerTotalMmk').textContent = fmtMmk(summary.total_mmk);
       if ($('ledgerPlatformRevenue')) $('ledgerPlatformRevenue').textContent = fmtUsdt(summary.platform_revenue_usdt);
@@ -5019,12 +4995,7 @@
           <div class="revenue-metric-card highlight">
             <div class="revenue-metric-label">Ledger sample (Today)</div>
             <div class="revenue-metric-value">$${Number(s.today_net_admin_profit_usd || s.today_profit_usd || 0).toFixed(2)}</div>
-            <div class="revenue-metric-sub">P2P + Card Reload + Withdrawal · ${Math.round(Number(s.today_net_admin_profit_mmk || s.today_profit_mmk || 0)).toLocaleString()} MMK</div>
-          </div>
-          <div class="revenue-metric-card">
-            <div class="revenue-metric-label">P2P Trading Profit</div>
-            <div class="revenue-metric-value">${Number(s.today_p2p_profit_usdt || s.today_p2p_fees_usdt || 0).toFixed(2)} USDT</div>
-            <div class="revenue-metric-sub">Today · All-time ${Number(s.all_time_p2p_profit_usdt || s.all_time_p2p_usdt || 0).toFixed(2)} USDT</div>
+            <div class="revenue-metric-sub">Card reload + deposit + withdrawal fees (USD equivalent)</div>
           </div>
           <div class="revenue-metric-card">
             <div class="revenue-metric-label">Card Reload Profit</div>
@@ -5044,7 +5015,7 @@
           <div class="revenue-metric-card">
             <div class="revenue-metric-label">Ledger sample (All time)</div>
             <div class="revenue-metric-value">$${Number(s.all_time_net_admin_profit_usd || s.all_time_profit_usd || 0).toFixed(2)}</div>
-            <div class="revenue-metric-sub">${Math.round(Number(s.all_time_net_admin_profit_mmk || s.all_time_profit_mmk || 0)).toLocaleString()} MMK · ${Number(data.counts?.total_fee_events || 0)} fee events</div>
+            <div class="revenue-metric-sub">${Number(data.counts?.total_fee_events || 0)} fee events recorded</div>
           </div>
         `;
 
@@ -5067,18 +5038,16 @@
             dailyEl.innerHTML =
               '<table class="data-table">' +
               '<thead><tr>' +
-              '<th>Date</th><th>P2P Fees (USDT)</th><th>Deposit Fees ($)</th><th>Card Reload ($)</th><th>Withdrawal (USDT)</th><th>Card Issue ($)</th><th>Total ($)</th><th>Total (MMK)</th><th>Txns</th>' +
+              '<th>Date</th><th>Deposit Fees ($)</th><th>Card Reload ($)</th><th>Withdrawal (USDT)</th><th>Card Issue ($)</th><th>Total ($)</th><th>Txns</th>' +
               '</tr></thead><tbody>' +
               daily.map((row) =>
                 '<tr>' +
                 '<td><strong>' + this.esc(row.label || row.date) + '</strong><br><small>' + this.esc(row.date) + '</small></td>' +
-                '<td>' + Number(row.p2p_fees_usdt || 0).toFixed(2) + '</td>' +
                 '<td>$' + Number(row.deposit_fees_usd || row.deposit_fees_usdt || 0).toFixed(2) + '</td>' +
                 '<td>$' + Number(row.card_reload_fees_usd || 0).toFixed(2) + '</td>' +
                 '<td>' + Number(row.withdrawal_fees_usdt || 0).toFixed(2) + '</td>' +
                 '<td>$' + Number(row.card_issue_fees_usd || 0).toFixed(2) + '</td>' +
                 '<td><strong>$' + Number(row.total_usd_equivalent || 0).toFixed(2) + '</strong></td>' +
-                '<td>' + Math.round(Number(row.total_mmk_equivalent || 0)).toLocaleString() + '</td>' +
                 '<td>' + (row.transaction_count || 0) + '</td>' +
                 '</tr>'
               ).join('') +
