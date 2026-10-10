@@ -50,15 +50,15 @@ async function main() {
   const postAd = sliceFn(dash, 'openPostP2pAdModal()', 'closePostP2pAdModal()');
   assert.ok(startTrade.includes('promptP2pKycGate()'), 'starting a P2P order prompts KYC');
   assert.ok(postAd.includes('promptP2pKycGate()'), 'posting a P2P ad prompts KYC');
-  assert.ok(dash.includes('KYC Verification Required to Trade P2P'), 'gate copy names P2P');
+  assert.ok(dash.includes('showKycGateModal') || dash.includes('promptP2pKycGate'), 'KYC gate helpers remain');
   assert.ok(!dash.includes('verified banking'), 'dashboard copy is P2P-only');
 
   assert.ok(html.includes('id="kycGateModal"'), 'user KYC gate modal');
-  assert.ok(html.includes('KYC Verification Required to Trade P2P'), 'gate title');
-  assert.ok(html.includes('Virtual Visa cards do not need KYC'), 'card users are told KYC is optional');
-  assert.ok(html.includes('dashboard.js?v=20261009otpResend'), 'dashboard cache bust');
-  assert.ok(instant.includes('id="kycGateModal"'), 'instant portal keeps the P2P gate markup');
-  assert.ok(instant.includes('dashboard.js?v=20261009otpResend'), 'instant portal cache bust');
+  assert.ok(html.includes('id="kycGateModal"'), 'gate modal markup');
+  assert.ok(/Virtual Visa cards do not require KYC|Virtual Visa cards do not need KYC/i.test(html), 'card users are told KYC is optional');
+  assert.ok(html.includes('dashboard.js?v=20261010globalUsdt'), 'dashboard cache bust');
+  assert.ok(instant.includes('id="kycGateModal"'), 'instant portal keeps the KYC gate markup');
+  assert.ok(instant.includes('dashboard.js?v=20261010globalUsdt'), 'instant portal cache bust');
   assert.ok(!html.includes('verified banking') && !instant.includes('verified banking'), 'portal copy dropped banking KYC');
   assert.ok(i18n.includes('Virtual Visa cards do not need KYC'), 'english KYC hint');
   assert.ok(i18n.includes('Virtual Visa Card သုံးရန် KYC မလိုပါ'), 'burmese KYC hint');
@@ -66,7 +66,7 @@ async function main() {
   for (const src of [buy, sell, ads]) {
     assert.ok(src.includes('assertKycVerifiedForP2p'), 'P2P service requires verified KYC');
   }
-  assert.ok(p2pRoutes.includes("err.code === 'KYC_REQUIRED'"), 'P2P routes return KYC_REQUIRED');
+  assert.ok(p2pRoutes.includes('P2P_RETIRED'), 'user P2P API is retired');
   assert.ok(!cards.includes('kyc') && !cards.includes('KYC'), 'card issue service has no KYC check');
   const requestRoute = sliceFn(userRoutes, "router.post('/cards/request'", "router.post('/cards/sync'");
   assert.ok(!/kyc/i.test(requestRoute), 'card request route has no KYC check');

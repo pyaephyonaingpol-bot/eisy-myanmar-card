@@ -125,11 +125,13 @@ async function createUsdtWithdrawalRequest(userId, body = {}) {
 
   const payoutMethod = normalizePayoutMethod(body.payout_method || (body.network === 'BANK' ? 'bank' : 'crypto'));
   if (!payoutMethod) {
-    throw new Error('Select withdrawal method: crypto wallet or bank account');
+    throw new Error('Select withdrawal method: USDT (TRC20) crypto wallet');
   }
 
-  if (payoutMethod === 'bank') {
-    return createUsdtBankWithdrawalRequest(userId, body);
+  if (payoutMethod === 'bank' || String(body.network || '').toUpperCase() === 'BANK') {
+    const err = new Error('Local MMK payouts are no longer available. Withdraw USDT on TRON (TRC20) only.');
+    err.code = 'MMK_PAYOUT_RETIRED';
+    throw err;
   }
   return createUsdtCryptoWithdrawalRequest(userId, body);
 }

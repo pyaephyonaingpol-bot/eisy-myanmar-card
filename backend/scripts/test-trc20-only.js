@@ -44,7 +44,7 @@ async function main() {
   const depositRoute = fs.readFileSync(path.join(__dirname, '../src/routes/deposit.js'), 'utf8');
   assert.ok(!withdrawalRoute.includes("buildNetworkMeta('BEP20'"));
   assert.ok(withdrawalRoute.includes("buildNetworkMeta('TRC20'"));
-  assert.ok(withdrawalRoute.includes("buildNetworkMeta('BANK'"));
+  assert.ok(!withdrawalRoute.includes("buildNetworkMeta('BANK'"), 'public withdrawal fees are TRC20-only');
   assert.ok(!depositRoute.includes("id: 'BEP20'"));
   assert.ok(depositRoute.includes("id: 'TRC20'"));
 

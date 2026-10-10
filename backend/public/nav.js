@@ -145,6 +145,7 @@ const AppNav = {
   },
 
   navigate(page, opts = {}) {
+    if (page === 'p2p') page = 'cards';
     const { pushHash = false, replace = false, forceReload = false } = opts;
     // Same-page navigations (e.g. hash echoes) should not re-fire onChange loaders.
     if (page === this.currentPage && !forceReload && !opts.depositTab && !opts.p2pTab) {

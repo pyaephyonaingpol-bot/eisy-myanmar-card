@@ -29,6 +29,13 @@ const { listOrderMessages, postOrderMessage } = require('../services/p2pOrderCha
 
 const router = express.Router();
 
+router.use((_req, res) => {
+  res.status(410).json({
+    error: 'Peer-to-peer trading is no longer available. Use USDT (TRC20) and virtual cards.',
+    code: 'P2P_RETIRED',
+  });
+});
+
 function handleP2pRouteError(err, res, fallback = 'Request failed') {
   if (err.code === 'KYC_REQUIRED') {
     return res.status(403).json({
