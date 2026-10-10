@@ -1029,6 +1029,116 @@ router.post('/reloads/:id/reject', requirePermission('cards'), async (req, res) 
   }
 });
 
+router.get('/users/:userId/detail', requirePermission('users'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+    const { getAdminUserProfile } = require('../services/adminUserDetailService');
+    const user = await getAdminUserProfile(userId);
+    res.json({ success: true, user });
+  } catch (err) {
+    const status = err.status || (err.message === 'User not found' ? 404 : 500);
+    console.error('[admin/users/detail]', err.message);
+    res.status(status).json({ error: err.message || 'Internal server error', code: err.code });
+  }
+});
+
+router.get('/users/:userId/detail/finance', requirePermission('users'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+    const kind = String(req.query.kind || 'deposits').toLowerCase();
+    const { limit, offset } = req.query;
+    const {
+      listUserFinanceDeposits,
+      listUserFinanceWithdrawals,
+    } = require('../services/adminUserDetailService');
+    const payload = kind === 'deposits'
+      ? await listUserFinanceDeposits(userId, { limit, offset })
+      : await listUserFinanceWithdrawals(userId, {
+        limit,
+        offset,
+        currency: kind === 'mmk_withdrawals' ? 'mmk' : 'usdt',
+      });
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('[admin/users/detail/finance]', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+router.get('/users/:userId/detail/cards', requirePermission('cards'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+    const { listUserDetailCards } = require('../services/adminUserDetailService');
+    const cards = await listUserDetailCards(userId);
+    res.json({ success: true, cards });
+  } catch (err) {
+    const status = err.status || 500;
+    console.error('[admin/users/detail/cards]', err.message);
+    res.status(status).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+router.get('/users/:userId/detail/card-transactions', requirePermission('cards'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+    const { listUserCardSpendTransactions } = require('../services/adminUserDetailService');
+    const payload = await listUserCardSpendTransactions(userId, {
+      limit: req.query.limit,
+      offset: req.query.offset,
+    });
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('[admin/users/detail/card-transactions]', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+router.get('/users/:userId/detail/support', requirePermission('support'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+    const threadId = req.query.thread_id ? parseInt(req.query.thread_id, 10) : null;
+    const {
+      listUserSupportThreads,
+      getUserSupportThreadMessages,
+    } = require('../services/adminUserDetailService');
+    const threads = await listUserSupportThreads(userId);
+    let active = null;
+    if (threadId) {
+      active = await getUserSupportThreadMessages(threadId, userId);
+    } else if (threads.length) {
+      active = await getUserSupportThreadMessages(threads[0].id, userId);
+    }
+    res.json({ success: true, threads, active });
+  } catch (err) {
+    const status = err.status || 500;
+    console.error('[admin/users/detail/support]', err.message);
+    res.status(status).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+router.post('/users/:userId/detail/support/reply', requirePermission('support'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+    const { replyToUserSupport } = require('../services/adminUserDetailService');
+    const result = await replyToUserSupport(userId, {
+      message: req.body?.message,
+      threadId: req.body?.thread_id ? parseInt(req.body.thread_id, 10) : null,
+      subject: req.body?.subject,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    const status = err.status || 500;
+    console.error('[admin/users/detail/support/reply]', err.message);
+    res.status(status).json({ error: err.message || 'Internal server error' });
+  }
+});
+
 router.get('/users/:userId/cards', requirePermission('cards'), async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);

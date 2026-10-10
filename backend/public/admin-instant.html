@@ -205,6 +205,139 @@
       font-weight: 650;
       color: #e2e8f0;
     }
+
+    /* User detail modal */
+    .user-detail-modal-inner {
+      max-width: min(920px, 96vw);
+      width: 96vw;
+      max-height: min(90vh, 900px);
+      display: flex;
+      flex-direction: column;
+      padding: 1.15rem 1.25rem 1.25rem;
+    }
+    .user-detail-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 0.85rem;
+    }
+    .user-detail-title {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 650;
+      color: #f8fafc;
+    }
+    .user-detail-sub {
+      margin: 0.25rem 0 0;
+      font-size: 0.88rem;
+      color: #94a3b8;
+    }
+    .user-detail-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin: 0 0 0.85rem;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+      padding-bottom: 0.55rem;
+    }
+    .user-detail-tab {
+      appearance: none;
+      border: 1px solid transparent;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .user-detail-tab.is-active {
+      color: #f8fafc;
+      background: rgba(59, 130, 246, 0.18);
+      border-color: rgba(96, 165, 250, 0.35);
+    }
+    .user-detail-panel {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .user-detail-panel.hidden { display: none; }
+    .user-detail-kv {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.65rem 1rem;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 640px) {
+      .user-detail-kv { grid-template-columns: 1fr; }
+    }
+    .user-detail-kv dt {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      margin: 0 0 0.15rem;
+    }
+    .user-detail-kv dd {
+      margin: 0;
+      font-size: 0.92rem;
+      color: #e2e8f0;
+      font-variant-numeric: tabular-nums;
+    }
+    .user-detail-finance-tabs {
+      display: flex;
+      gap: 0.35rem;
+      margin-bottom: 0.65rem;
+    }
+    .user-detail-finance-tab {
+      appearance: none;
+      border-radius: 0.5rem;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(15, 23, 42, 0.55);
+      color: #cbd5e1;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.3rem 0.65rem;
+      cursor: pointer;
+    }
+    .user-detail-finance-tab.is-active {
+      border-color: rgba(45, 212, 191, 0.45);
+      color: #99f6e4;
+    }
+    .user-detail-support-thread {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      max-height: 12rem;
+      overflow: auto;
+      margin-bottom: 0.75rem;
+      padding: 0.65rem;
+      border-radius: 0.65rem;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: rgba(8, 14, 26, 0.45);
+    }
+    .user-detail-msg {
+      font-size: 0.85rem;
+      line-height: 1.45;
+      padding: 0.45rem 0.6rem;
+      border-radius: 0.55rem;
+      max-width: 92%;
+    }
+    .user-detail-msg.is-admin {
+      align-self: flex-end;
+      background: rgba(59, 130, 246, 0.22);
+      color: #dbeafe;
+    }
+    .user-detail-msg.is-user {
+      align-self: flex-start;
+      background: rgba(51, 65, 85, 0.55);
+      color: #e2e8f0;
+    }
+    .user-directory-row { cursor: pointer; }
+    .user-directory-row:hover td { background: rgba(59, 130, 246, 0.06); }
+    tr.user-directory-row td.actions-cell { cursor: default; }
     .sa-balance {
       padding: 1rem 1.05rem;
       border-radius: 12px;
@@ -1451,6 +1584,67 @@
     </div>
   </div>
 
+  <div id="userDetailModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="userDetailModalTitle" aria-modal="true" aria-hidden="true">
+    <div class="proof-lightbox-backdrop user-detail-modal-backdrop"></div>
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner user-detail-modal-inner">
+      <button type="button" id="userDetailModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+      <div class="user-detail-head">
+        <div>
+          <h3 id="userDetailModalTitle" class="user-detail-title">User details</h3>
+          <p id="userDetailModalSubtitle" class="user-detail-sub">—</p>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" id="userDetailRefreshBtn">Refresh</button>
+      </div>
+      <div class="user-detail-tabs" role="tablist" aria-label="User detail sections">
+        <button type="button" class="user-detail-tab is-active" data-user-detail-tab="profile" role="tab" aria-selected="true">Profile</button>
+        <button type="button" class="user-detail-tab" data-user-detail-tab="finance" role="tab">Deposits &amp; withdrawals</button>
+        <button type="button" class="user-detail-tab" data-user-detail-tab="cards" role="tab">Cards</button>
+        <button type="button" class="user-detail-tab" data-user-detail-tab="transactions" role="tab">Card transactions</button>
+        <button type="button" class="user-detail-tab" data-user-detail-tab="support" role="tab">Support</button>
+      </div>
+      <div class="user-detail-panel" id="userDetailPanelProfile" data-user-detail-panel="profile" role="tabpanel">
+        <dl class="user-detail-kv" id="userDetailProfileKv"></dl>
+      </div>
+      <div class="user-detail-panel hidden" id="userDetailPanelFinance" data-user-detail-panel="finance" role="tabpanel">
+        <div class="user-detail-finance-tabs">
+          <button type="button" class="user-detail-finance-tab is-active" data-user-finance-kind="deposits">Deposits</button>
+          <button type="button" class="user-detail-finance-tab" data-user-finance-kind="usdt_withdrawals">USDT withdrawals</button>
+          <button type="button" class="user-detail-finance-tab" data-user-finance-kind="mmk_withdrawals">MMK withdrawals</button>
+        </div>
+        <div id="userDetailFinanceTable" class="data-table-wrap"><p class="hint">Loading…</p></div>
+        <div class="admin-toolbar" style="margin-top:0.65rem">
+          <button type="button" class="btn btn-secondary btn-sm" id="userDetailFinancePrev" disabled>Previous</button>
+          <span id="userDetailFinanceMeta" class="hint"></span>
+          <button type="button" class="btn btn-secondary btn-sm" id="userDetailFinanceNext" disabled>Next</button>
+        </div>
+      </div>
+      <div class="user-detail-panel hidden" id="userDetailPanelCards" data-user-detail-panel="cards" role="tabpanel">
+        <div id="userDetailCardsTable" class="data-table-wrap"><p class="hint">Loading…</p></div>
+      </div>
+      <div class="user-detail-panel hidden" id="userDetailPanelTransactions" data-user-detail-panel="transactions" role="tabpanel">
+        <div id="userDetailTxTable" class="data-table-wrap"><p class="hint">Loading…</p></div>
+        <div class="admin-toolbar" style="margin-top:0.65rem">
+          <button type="button" class="btn btn-secondary btn-sm" id="userDetailTxPrev" disabled>Previous</button>
+          <span id="userDetailTxMeta" class="hint"></span>
+          <button type="button" class="btn btn-secondary btn-sm" id="userDetailTxNext" disabled>Next</button>
+        </div>
+      </div>
+      <div class="user-detail-panel hidden" id="userDetailPanelSupport" data-user-detail-panel="support" role="tabpanel">
+        <label class="hint" for="userDetailSupportThreadSelect" style="display:block;margin-bottom:0.35rem">Conversation</label>
+        <select id="userDetailSupportThreadSelect" class="field" style="width:100%;margin-bottom:0.65rem"></select>
+        <div id="userDetailSupportMessages" class="user-detail-support-thread" aria-live="polite"></div>
+        <form id="userDetailSupportReplyForm" class="form">
+          <div class="field">
+            <label for="userDetailSupportReplyText">Reply to user</label>
+            <textarea id="userDetailSupportReplyText" rows="3" placeholder="Type your message…" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm" id="userDetailSupportSendBtn">Send reply</button>
+        </form>
+        <p id="userDetailSupportError" class="hint hidden" role="alert" style="color:#f87171"></p>
+      </div>
+    </div>
+  </div>
+
   <div id="deleteUserModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="deleteUserModalTitle" aria-modal="true" aria-hidden="true">
     <div class="proof-lightbox-backdrop delete-user-modal-backdrop"></div>
     <div class="proof-lightbox-inner kyc-doc-viewer-inner admin-form-modal-inner" style="max-width:min(440px,100%);width:96vw">
@@ -1566,6 +1760,7 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261010globalUsdtAdmin" defer></script>
+  <script src="/admin.js?v=20261010userDetail" defer></script>
+  <script src="/adminUserDetail.js?v=20261010userDetail" defer></script>
 </body>
 </html>
