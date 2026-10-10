@@ -78,7 +78,7 @@
       '  <header class="support-chat-header">',
       '    <div>',
       '      <strong id="supportChatTitle">Live Support</strong>',
-      '      <p class="support-chat-subtitle" id="supportChatSubtitle">MMK Payouts · Card Issuing</p>',
+      '      <p class="support-chat-subtitle" id="supportChatSubtitle">Virtual cards · USDT · TRC20</p>',
       '    </div>',
       '    <div class="support-chat-header-actions">',
       '      <button type="button" id="supportChatNewBtn" class="btn btn-secondary btn-sm">New ticket</button>',
@@ -86,9 +86,13 @@
       '    </div>',
       '  </header>',
       '  <div id="supportChatBody" class="support-chat-body"></div>',
+      '  <footer class="support-chat-contact" id="supportChatContact"></footer>',
       '</section>',
     ].join('');
     document.body.appendChild(root);
+    if (global.EisyContact && typeof global.EisyContact.mount === 'function') {
+      global.EisyContact.mount('#supportChatContact', 'compact');
+    }
 
     el('supportChatFab').addEventListener('click', () => setOpen(true));
     el('supportChatCloseBtn').addEventListener('click', () => setOpen(false));
@@ -468,7 +472,7 @@
       state.view = 'list';
       state.activeThreadId = null;
       if (el('supportChatTitle')) el('supportChatTitle').textContent = 'Live Support';
-      if (el('supportChatSubtitle')) el('supportChatSubtitle').textContent = 'MMK Payouts · Card Issuing';
+      if (el('supportChatSubtitle')) el('supportChatSubtitle').textContent = 'Virtual cards · USDT · TRC20';
       refreshThreads().then(render);
     });
     el('supportChatReplyForm')?.addEventListener('submit', async (e) => {

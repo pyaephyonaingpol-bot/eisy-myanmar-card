@@ -60,7 +60,7 @@
       #pageProfile .summary-grid { grid-template-columns: 1fr; }
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261009authTabs" />
+  <link rel="stylesheet" href="/styles.css?v=20261010contact" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20261009supportScroll" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -662,6 +662,7 @@
         <span aria-hidden="true">·</span>
         <a href="/refund" target="_blank" rel="noopener noreferrer">Refunds</a>
       </nav>
+      <div class="auth-official-contact" data-official-contact="compact"></div>
       <p class="legal-footer-copyright auth-legal-copyright">© 2026 Eisy Myanmar. All rights reserved.</p>
     </div>
   </div>
@@ -765,6 +766,7 @@
         </nav>
 
         <div class="sidebar-footer">
+          <div data-official-contact="compact"></div>
           <nav class="legal-footer-links" aria-label="Legal">
             <a href="/about">About</a>
             <a href="/terms">Terms</a>
@@ -1377,6 +1379,8 @@
 
             <section class="panel">
               <h2>Support</h2>
+              <div data-official-contact="default"></div>
+              <p class="hint" style="margin-bottom:0.85rem">Prefer live chat? Use the <strong>Support</strong> button on the bottom-right, or open a ticket below.</p>
               <form id="supportForm" class="form">
                 <div class="field">
                   <label for="supportCategory">Category</label>
@@ -1438,7 +1442,8 @@
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
   <script defer src="/dashboard.js?v=20261010globalUsdt"></script>
-  <script defer src="/supportChat.js?v=20261009supportClosed"></script>
+  <script defer src="/contactInfo.js?v=20261010contact"></script>
+  <script defer src="/supportChat.js?v=20261010contact"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
 </html>
