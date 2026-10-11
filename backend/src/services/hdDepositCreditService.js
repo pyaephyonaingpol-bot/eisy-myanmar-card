@@ -130,9 +130,21 @@ function parseTronDepositNotices(body) {
   return notices;
 }
 
-async function listCustodialTrc20Addresses({ userId = null, limit = 100 } = {}) {
+function getHdScanBatchSize() {
+  const n = parseInt(process.env.TRON_HD_SCAN_BATCH_SIZE || '200', 10);
+  return Math.min(Math.max(Number.isFinite(n) ? n : 200, 1), 500);
+}
+
+/** Max custodial addresses scanned per cron poll (batched). */
+function getHdScanMaxAddresses() {
+  const n = parseInt(process.env.TRON_HD_SCAN_MAX_ADDRESSES || '5000', 10);
+  return Math.min(Math.max(Number.isFinite(n) ? n : 5000, 1), 20_000);
+}
+
+async function listCustodialTrc20Addresses({ userId = null, limit = 100, offset = 0 } = {}) {
   const db = getDb();
-  const cap = Math.min(Math.max(Number(limit) || 100, 1), 200);
+  const cap = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const off = Math.max(0, Number(offset) || 0);
   if (userId) {
     const row = await db.get(`
       SELECT user_id, address, created_at
@@ -144,13 +156,13 @@ async function listCustodialTrc20Addresses({ userId = null, limit = 100 } = {}) 
     return row?.address ? [row] : [];
   }
   return db.all(`
-    SELECT user_id, address, created_at
+    SELECT user_id, address, created_at, derivation_index
     FROM user_usdt_wallet_addresses
     WHERE network = 'TRC20' AND address_type = 'custodial'
       AND address IS NOT NULL AND TRIM(address) != ''
-    ORDER BY updated_at DESC
-    LIMIT ?
-  `, cap);
+    ORDER BY COALESCE(derivation_index, user_id) ASC, user_id ASC
+    LIMIT ? OFFSET ?
+  `, cap, off);
 }
 
 function inboundFloorMs(row) {
@@ -167,22 +179,38 @@ function shouldScanHdDepositsOnRead() {
   return process.env.NODE_ENV !== 'test';
 }
 
-async function creditInboundHdDeposits({
-  userId = null,
-  addresses = null,
-  fetchTransfers = null,
-  limit = 100,
-} = {}) {
-  if (!isTronDepositEnabled()) {
-    return { ok: true, skipped: true, reason: 'deposits_disabled', credited: 0, addresses: 0 };
-  }
+function emptyHdScanResult() {
+  return {
+    ok: true,
+    credited: 0,
+    already_verified: 0,
+    skipped: 0,
+    scanned: 0,
+    addresses: 0,
+    matches: [],
+  };
+}
 
-  const rows = Array.isArray(addresses)
-    ? addresses
-    : await listCustodialTrc20Addresses({ userId, limit });
-  if (!rows.length) {
-    return { ok: true, credited: 0, already_verified: 0, addresses: 0, scanned: 0 };
+function mergeHdScanResults(into, partial) {
+  into.ok = into.ok !== false && partial.ok !== false;
+  into.credited += Number(partial.credited || 0);
+  into.already_verified += Number(partial.already_verified || 0);
+  into.skipped += Number(partial.skipped || 0);
+  into.scanned += Number(partial.scanned || 0);
+  into.addresses += Number(partial.addresses || 0);
+  if (partial.matches?.length) into.matches.push(...partial.matches);
+  if (partial.errors?.length) {
+    into.errors = into.errors || [];
+    into.errors.push(...partial.errors);
   }
+  if (partial.batches != null) into.batches = partial.batches;
+  return into;
+}
+
+async function creditInboundHdDepositsForRows(rows, {
+  fetchTransfers = null,
+} = {}) {
+  if (!rows.length) return emptyHdScanResult();
 
   const { fetchIncomingUsdtTransfers, parseTrc20TransferAmount } = require('./tronOrderService');
   const { applyIncomingDepositCredit } = require('./depositCreditService');
@@ -303,6 +331,51 @@ async function creditInboundHdDeposits({
   };
 }
 
+async function creditInboundHdDeposits({
+  userId = null,
+  addresses = null,
+  fetchTransfers = null,
+  limit = null,
+} = {}) {
+  if (!isTronDepositEnabled()) {
+    return { ok: true, skipped: true, reason: 'deposits_disabled', credited: 0, addresses: 0 };
+  }
+
+  if (Array.isArray(addresses)) {
+    return creditInboundHdDepositsForRows(addresses, { fetchTransfers });
+  }
+
+  if (userId) {
+    const rows = await listCustodialTrc20Addresses({
+      userId,
+      limit: limit || getHdScanBatchSize(),
+    });
+    return creditInboundHdDepositsForRows(rows, { fetchTransfers });
+  }
+
+  const batchSize = limit != null
+    ? Math.min(getHdScanBatchSize(), Math.max(Number(limit) || 1, 1))
+    : getHdScanBatchSize();
+  const maxTotal = getHdScanMaxAddresses();
+  let offset = 0;
+  let batches = 0;
+  const merged = emptyHdScanResult();
+
+  while (offset < maxTotal) {
+    const rows = await listCustodialTrc20Addresses({ limit: batchSize, offset });
+    if (!rows.length) break;
+    batches += 1;
+    const partial = await creditInboundHdDepositsForRows(rows, { fetchTransfers });
+    mergeHdScanResults(merged, partial);
+    offset += rows.length;
+    if (rows.length < batchSize) break;
+  }
+
+  merged.batches = batches;
+  if (merged.errors?.length) merged.errors = merged.errors.slice(0, 50);
+  return merged;
+}
+
 async function creditUserHdDeposits(userId, opts = {}) {
   return creditInboundHdDeposits({ ...opts, userId });
 }
@@ -383,8 +456,11 @@ module.exports = {
   parseTronDepositNotices,
   parseOneTronDepositNotice,
   humanUsdtFromRaw,
+  getHdScanBatchSize,
+  getHdScanMaxAddresses,
   listCustodialTrc20Addresses,
   creditInboundHdDeposits,
+  creditInboundHdDepositsForRows,
   creditUserHdDeposits,
   scanUserHdDepositsBestEffort,
   creditDepositNotice,

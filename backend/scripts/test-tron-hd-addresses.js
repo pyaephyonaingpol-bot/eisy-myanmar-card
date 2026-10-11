@@ -100,7 +100,12 @@ async function main() {
     assert.strictEqual(second.address, first.address);
 
     assert.ok(upserts.some((u) => u.table === 'user_wallets' && u.row.tron_deposit_address === first.address));
-    assert.ok(upserts.some((u) => u.table === 'user_tron_deposit_addresses' && u.row.address === first.address));
+    assert.ok(
+      upserts.some(
+        (u) => (u.table === 'user_tron_hd_addresses' || u.table === 'user_tron_deposit_addresses')
+          && u.row.address === first.address
+      )
+    );
     console.log('ok');
   });
 
@@ -177,22 +182,29 @@ async function main() {
 
     const originalFetch = global.fetch;
     let fetchedUrl = '';
-    global.fetch = async (url) => {
-      fetchedUrl = String(url);
-      return {
-        ok: true,
-        json: async () => ({
-          data: [{
-            transaction_id: 'hd-tx-1',
-            type: 'Transfer',
-            to: expectedAddr,
-            from: 'TSenderExample111111111111111111111',
-            value: '10000000',
-            block_timestamp: Date.now(),
-            token_info: { decimals: 6, symbol: 'USDT' },
-          }],
-        }),
-      };
+    global.fetch = async (url, opts) => {
+      const href = String(url);
+      if (/transactions\/trc20/.test(href)) {
+        fetchedUrl = href;
+        return {
+          ok: true,
+          json: async () => ({
+            data: [{
+              transaction_id: 'hd-tx-1',
+              type: 'Transfer',
+              to: expectedAddr,
+              from: 'TSenderExample111111111111111111111111',
+              value: '10000000',
+              block_timestamp: Date.now(),
+              token_info: { decimals: 6, symbol: 'USDT' },
+            }],
+          }),
+        };
+      }
+      if (typeof originalFetch === 'function') {
+        return originalFetch(url, opts);
+      }
+      return { ok: true, json: async () => ({}), text: async () => '' };
     };
 
     const verifyResult = await tronOrders.verifyPendingTronOrders();

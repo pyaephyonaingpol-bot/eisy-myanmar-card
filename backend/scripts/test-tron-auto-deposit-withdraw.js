@@ -174,6 +174,30 @@ async function main() {
   assert.ok(emptyPoll.hd_deposits, 'poller must scan HD addresses without Supabase');
   assert.strictEqual(emptyPoll.hd_deposits.addresses, 0);
 
+  const batchStamp = String(Date.now()).slice(-6);
+  process.env.TRON_HD_SCAN_BATCH_SIZE = '2';
+  process.env.TRON_HD_SCAN_MAX_ADDRESSES = '10';
+  for (let i = 0; i < 3; i += 1) {
+    const ins = await db.run(
+      `INSERT INTO users (name, phone) VALUES (?, ?)`,
+      `Batch scan ${i}`,
+      `09b${batchStamp}${i}`
+    );
+    await UserUsdtWalletAddress.create({
+      userId: Number(ins.lastID),
+      network: 'TRC20',
+      address: `TBatch${batchStamp}${i}1111111111111111111`,
+      addressType: 'custodial',
+      derivationIndex: 900 + i,
+      derivationPath: `m/44'/195'/0'/0/${900 + i}`,
+    });
+  }
+  const batchScan = await creditInboundHdDeposits({ fetchTransfers: async () => [] });
+  assert.strictEqual(batchScan.addresses, 3, 'cron HD scan covers every custodial address');
+  assert.ok(batchScan.batches >= 2, 'HD scan paginates in batches');
+  delete process.env.TRON_HD_SCAN_BATCH_SIZE;
+  delete process.env.TRON_HD_SCAN_MAX_ADDRESSES;
+
   const stamp = String(Date.now()).slice(-8);
   const user = await db.run(
     `INSERT INTO users (name, phone, balance_mmk, balance_usdt) VALUES (?, ?, 0, 500)`,

@@ -461,6 +461,15 @@ async function verifyPendingTronOrders() {
     ordersByAddress.get(addr).push(order);
   }
 
+  for (const [, orders] of ordersByAddress) {
+    orders.sort((a, b) => {
+      const ta = new Date(a.created_at).getTime();
+      const tb = new Date(b.created_at).getTime();
+      if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
+      return String(a.order_id || '').localeCompare(String(b.order_id || ''));
+    });
+  }
+
   const usedTransactionIds = new Set();
   let completed = 0;
   let credited = 0;

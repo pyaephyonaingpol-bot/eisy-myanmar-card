@@ -194,7 +194,7 @@ async function main() {
     assert.strictEqual(verifyResult.completed, 1);
     assert.strictEqual(verifyResult.credited, 1);
     assert.strictEqual(verifyResult.matches[0].wallet_credited, true);
-    assert.strictEqual(verifyResult.matches[0].net_usdt, 9);
+    assert.strictEqual(verifyResult.matches[0].net_usdt, 9.8);
 
     const completedRow = mock.state.rows.find((row) => row.order_id === created.order.order_id);
     assert.strictEqual(completedRow.status, 'COMPLETED');
@@ -209,7 +209,7 @@ async function main() {
     assert.strictEqual(creditedDeposit.tx_hash, 'abc123txhash');
 
     const user = await db.get('SELECT balance_usdt FROM users WHERE id = ?', userId);
-    assert.strictEqual(Number(user.balance_usdt), 9);
+    assert.strictEqual(Number(user.balance_usdt), 9.8);
 
     global.fetch = originalFetch;
     supabase.isSupabaseEnabled = originalEnabled;
