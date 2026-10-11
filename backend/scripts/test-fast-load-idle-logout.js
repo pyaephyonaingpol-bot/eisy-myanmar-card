@@ -56,7 +56,7 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="authSessionNotice"'), 'login page can show the idle notice');
   assert.ok(doc.includes('id="pagoCardSkeleton"'), 'card skeleton markup is present');
   assert.ok(doc.includes('auth.js?v=20261009authTabs'), 'auth cache bust');
-  assert.ok(doc.includes('dashboard.js?v=20261010globalUsdt'), 'dashboard cache bust');
+  assert.ok(/dashboard\.js\?v=20261011p2pRoute-[a-f0-9]{10}/.test(doc), 'dashboard cache bust');
 }
 
 assert.ok(css.includes('html.balance-loading #sumBalanceUsdt'), 'balance skeleton style');

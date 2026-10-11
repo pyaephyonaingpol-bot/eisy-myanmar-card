@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "predev": "node scripts/free-port.js && node scripts/write-portal-html.js && node scripts/write-admin-portal-html.js",
+    "predev": "node scripts/free-port.js && node scripts/stamp-portal-cache.js && node scripts/write-portal-html.js && node scripts/write-admin-portal-html.js",
+    "prestart": "node scripts/stamp-portal-cache.js && node scripts/write-portal-html.js",
+    "stamp:portal": "node scripts/stamp-portal-cache.js && node scripts/write-portal-html.js",
     "dev": "node --watch src/index.js",
     "seed": "node src/seed.js",
     "migrate": "node src/migrate.js",

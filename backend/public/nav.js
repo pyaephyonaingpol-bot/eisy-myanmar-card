@@ -145,12 +145,11 @@ const AppNav = {
   },
 
   navigate(page, opts = {}) {
-    if (page === 'p2p') page = 'cards';
     const { pushHash = false, replace = false, forceReload = false } = opts;
     // Same-page navigations (e.g. hash echoes) should not re-fire onChange loaders.
     if (page === this.currentPage && !forceReload && !opts.depositTab && !opts.p2pTab) {
       if (pushHash) {
-        const hash = `#${this.hashPrefix}${page}`;
+        const hash = `#${this.hashPrefix || ''}${page}`;
         if (replace) history.replaceState(null, '', hash);
         else if (window.location.hash !== hash) window.location.hash = hash;
       }
@@ -183,7 +182,7 @@ const AppNav = {
     this.closeMobileSidebar();
 
     if (pushHash) {
-      const hash = `#${this.hashPrefix}${page}`;
+      const hash = `#${this.hashPrefix || ''}${page}`;
       if (replace) {
         history.replaceState(null, '', hash);
       } else if (window.location.hash !== hash) {

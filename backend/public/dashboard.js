@@ -19,6 +19,10 @@ const Dashboard = {
   usdtAddresses: null,
   withdrawalFees: null,
   walletUsdtLocked: null,
+  /** Mirrors AppNav.currentPage — updated on every routed view change. */
+  _activePage: null,
+  /** Hash route to restore after login (e.g. #p2p). */
+  _savedRouteHash: null,
 
   /* ── Client fetch freshness / in-flight dedupe ── */
   _fetchMeta: {},
@@ -924,6 +928,53 @@ const Dashboard = {
     this.setHydrating(false);
   },
 
+  getActivePage() {
+    if (typeof AppNav !== 'undefined' && AppNav.currentPage) return AppNav.currentPage;
+    return this._activePage || this.portalDefaultPage();
+  },
+
+  /**
+   * Keep sidebar, hash target, header title, and .app-page.is-active in sync.
+   * Guards against stale "cards" (or other) panels staying visible after #p2p.
+   */
+  reconcileAppPageView(page) {
+    if (!page) return;
+    this._activePage = page;
+    const shell = $('userAppShell');
+    if (!shell) return;
+
+    shell.querySelectorAll('.app-page[data-page]').forEach((panel) => {
+      panel.classList.toggle('is-active', panel.dataset.page === page);
+    });
+    shell.querySelectorAll('.sidebar-nav [data-page]').forEach((btn) => {
+      const active = btn.dataset.page === page;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-current', active ? 'page' : 'false');
+    });
+
+    if (typeof AppNav !== 'undefined') AppNav.currentPage = page;
+
+    const titleEl = shell.querySelector(`[data-page-title="${page}"]`);
+    const heading = shell.querySelector('.header .page-heading');
+    if (titleEl && heading) {
+      const key = titleEl.getAttribute('data-i18n');
+      heading.textContent = (key && typeof I18n !== 'undefined') ? I18n.t(key) : titleEl.textContent.trim();
+      if (key) heading.setAttribute('data-i18n', key);
+      else heading.removeAttribute('data-i18n');
+    }
+  },
+
+  /** Apply #hash route when logged in (e.g. deep link or post-login restore). */
+  syncRouteFromHash(opts = {}) {
+    if (typeof AppNav === 'undefined') return;
+    const page = AppNav.pageFromHash?.();
+    if (!page) return;
+    const exists = document.querySelector(`#userAppShell .app-page[data-page="${page}"]`);
+    if (!exists) return;
+    if (AppNav.currentPage === page && !opts.force) return;
+    AppNav.navigate(page, { pushHash: false, forceReload: Boolean(opts.force) });
+  },
+
   initNavigationIfNeeded() {
     if (this._navInitialized || typeof AppNav === 'undefined') return;
     const shell = $('userAppShell');
@@ -1157,6 +1208,8 @@ const Dashboard = {
 
   onPageChange(page, opts = {}) {
     const force = Boolean(opts.forceReload);
+    const prevPage = this._activePage;
+    this.reconcileAppPageView(page);
     this.setPageLoading(page, true);
     try {
       if (page === 'deposits') {
@@ -1174,7 +1227,7 @@ const Dashboard = {
       if (page !== 'p2p') this.closeKycGateModal();
       if (page === 'p2p') {
         if (opts.p2pTab) this.switchP2pTab(opts.p2pTab);
-        this.loadP2pPage({ force });
+        this.loadP2pPage({ force: force || prevPage !== 'p2p' });
         this.promptP2pKycGate();
       }
       if (page === 'settings') {
@@ -6889,6 +6942,7 @@ const Dashboard = {
       this.endHydration();
       this.showIdleLogoutNotice();
       if (window.location.hash && !window.location.hash.startsWith('#admin')) {
+        this._savedRouteHash = window.location.hash;
         history.replaceState(null, '', window.location.pathname + window.location.search);
       }
       return;
@@ -6898,6 +6952,17 @@ const Dashboard = {
     // does not race bootstrap and double-fetch wallet/deposits.
     const hydrateToken = this.beginHydration();
     this.initNavigationIfNeeded();
+    if (this._savedRouteHash) {
+      const savedPage = String(this._savedRouteHash).replace(/^#/, '').trim();
+      this._savedRouteHash = null;
+      const savedTarget = savedPage
+        && document.querySelector(`#userAppShell .app-page[data-page="${savedPage}"]`);
+      if (savedTarget && typeof AppNav !== 'undefined') {
+        AppNav.navigate(savedPage, { pushHash: true, forceReload: true });
+      }
+    } else {
+      this.syncRouteFromHash();
+    }
     this.applySessionUserToUI();
     window.EisyPush?.sync?.().catch(() => {});
 

@@ -31,7 +31,7 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pago3dsRefreshBtn"'), 'Refresh Code button present');
   assert.ok(doc.includes('pago_3ds_refresh'), 'Refresh Code label key present');
   assert.ok(doc.includes('styles.css?v=20261009authTabs'), 'CSS cache-bust bumped');
-  assert.ok(doc.includes('dashboard.js?v=20261010globalUsdt'), 'JS cache-bust bumped');
+  assert.ok(/dashboard\.js\?v=20261011p2pRoute-[a-f0-9]{10}/.test(doc), 'JS cache-bust bumped');
   assert.ok(doc.includes('i18n.js?v=20261009depositFee'), 'i18n cache-bust bumped');
 }
 
