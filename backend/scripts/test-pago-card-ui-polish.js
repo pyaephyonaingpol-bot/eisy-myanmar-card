@@ -23,9 +23,9 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pagoCardCopyNumberBtn"'), 'copy number button present');
   assert.ok(doc.includes('id="pagoCardDetailBalance"'), 'balance chip present');
   assert.ok(doc.includes('pago-balance-chip') || doc.includes('pagoCardDetailBalance'), 'balance display wired');
-  assert.ok(doc.includes('styles.css?v=20261011pagoEmptyState'), 'CSS cache-bust present');
+  assert.ok(doc.includes('styles.css?v=20261011pagoPurpleMetallic'), 'CSS cache-bust present');
   assert.ok(doc.includes('class="pago-plastic-mark"'), 'logo watermark sits on the card');
-  assert.ok(doc.includes('/brand/logo-card-mark.png?v=20261009cardMark'), 'watermark uses the metallic logo');
+  assert.ok(doc.includes('/brand/logo-card-mark.png?v=20261011purpleCard'), 'watermark uses the metallic logo');
   assert.ok(doc.includes('dashboard.js?v='), 'JS cache-bust present');
   assert.ok(doc.includes('pago-plastic-eye'), 'eye toggle sits on the card face');
   assert.ok(doc.includes('pago-eye-open') && doc.includes('pago-eye-off'), 'eye open and closed icons');
@@ -57,7 +57,9 @@ assert.ok(/\.pago-card-actions[\s\S]{0,180}repeat\(2,\s*minmax\(0,\s*1fr\)/.test
 assert.ok(css.includes('.pago-3ds-panel.pago-3ds-strip'), 'compact 3DS strip overrides exist');
 assert.ok(/\.pago-3ds-panel\.pago-3ds-strip[\s\S]{0,600}min-height:\s*0/.test(css), '3DS strip avoids forced min-height');
 assert.ok(/\.pago-3ds-panel\.pago-3ds-strip[\s\S]{0,800}display:\s*grid/.test(css), '3DS strip uses tight grid layout');
-assert.ok(!/purple-to-indigo|from-purple|to-indigo|#a855f7|#8b5cf6/i.test(css.match(/\.pago-plastic-card[\s\S]{0,500}/)?.[0] || ''), 'pago card avoids purple AI gradient cluster');
+assert.ok(/\.pago-plastic-card[\s\S]{0,900}#2e1065/.test(css), 'pago card uses luxury purple metallic base');
+assert.ok(css.includes('.pago-plastic-card::before'), 'brushed metallic texture overlay');
+assert.ok(/\.pago-plastic-chip[\s\S]{0,260}#e2e8f0/.test(css), 'EMV chip uses silver metallic gradient');
 
 assert.ok(dash.includes('togglePagoCardReveal'), 'reveal toggle wired');
 assert.ok(dash.includes('pagoDetailRevealed'), 'reveal state tracked');
