@@ -40,6 +40,10 @@ function testIndexHtml() {
 
   assert.ok(!/data-page="profile"/.test(nav), 'sidebar must not include Profile nav item');
   assert.ok(!/data-page="settings"/.test(nav), 'sidebar must not include Settings nav item');
+  assert.ok(!/data-page="instant-card"/.test(nav), 'sidebar must not include TRON Wallet nav item');
+  assert.ok(!/nav_instant_card/.test(nav), 'sidebar must not i18n TRON Wallet');
+  assert.ok(/data-page="usdt-wallet"/.test(nav), 'sidebar must keep USDT Wallet nav item');
+  assert.ok(/nav_usdt_wallet/.test(nav), 'sidebar must i18n USDT Wallet');
   assert.ok(!/nav_profile/.test(nav), 'sidebar must not i18n Profile');
   assert.ok(!/nav_settings/.test(nav), 'sidebar must not i18n Settings');
 
@@ -62,6 +66,8 @@ function testPortalShells() {
   const menu = accountMenu(html);
   assert.ok(!/data-page="profile"/.test(nav), `${portal}: no sidebar Profile`);
   assert.ok(!/data-page="settings"/.test(nav), `${portal}: no sidebar Settings`);
+  assert.ok(!/data-page="instant-card"/.test(nav), `${portal}: no sidebar TRON Wallet`);
+  assert.ok(/data-page="usdt-wallet"/.test(nav), `${portal}: USDT Wallet nav kept`);
   assert.ok(/data-goto="profile"/.test(menu), `${portal}: account menu Profile`);
   assert.ok(/data-goto="settings"/.test(menu), `${portal}: account menu Settings`);
   assert.ok(!fs.existsSync(path.join(ROOT, 'public', 'standard.html')), 'standard portal removed');
