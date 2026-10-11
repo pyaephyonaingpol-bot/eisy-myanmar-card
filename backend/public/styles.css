@@ -6049,7 +6049,6 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   align-items: center;
   flex: 1 1 auto;
   min-height: 0;
-  padding-right: 1.85rem;
 }
 
 .pago-plastic-chip-col {
@@ -6086,48 +6085,6 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
-.pago-plastic-rail {
-  position: absolute;
-  right: -0.05rem;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.pago-plastic-rail-inner {
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 1.35rem;
-  transform: rotate(-90deg);
-  transform-origin: center;
-  white-space: nowrap;
-}
-
-.pago-plastic-rail-expiry,
-.pago-plastic-rail-name {
-  font-size: clamp(0.52rem, 1.7vw, 0.6rem);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #f1f5f9;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
-}
-
-.pago-plastic-rail-name {
-  max-width: 11rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pago-plastic-rail-visa {
-  font-size: 0.72rem;
-  font-weight: 800;
-  font-style: italic;
-  letter-spacing: 0.1em;
-  color: #f8fafc;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.65);
-}
-
 .visa-wordmark {
   font-weight: 800;
   font-style: italic;
@@ -6139,12 +6096,63 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
 }
 
 .pago-plastic-foot {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 0.45rem;
-  margin-top: 0.12rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.55rem 0.85rem;
+  margin-top: 0.35rem;
   z-index: 2;
+}
+
+.pago-plastic-foot-main {
+  min-width: 0;
+}
+
+.pago-plastic-foot-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding-left: 0.15rem;
+}
+
+.pago-plastic-details-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 1.15rem;
+  margin-top: 0.38rem;
+}
+
+.pago-plastic-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pago-plastic-reference .pago-plastic-detail-field small {
+  font-size: clamp(0.44rem, 1.55vw, 0.52rem);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.78);
+  line-height: 1.2;
+}
+
+.pago-plastic-reference .pago-plastic-detail-field strong {
+  font-size: clamp(0.58rem, 2.05vw, 0.74rem);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f1f5f9;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(11rem, 42vw);
 }
 
 .pago-plastic-visa-corner {
@@ -6177,37 +6185,23 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   margin-left: -0.4rem;
 }
 
-.pago-plastic-reference .pago-plastic-number-row {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
 .pago-plastic-number-tools {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  justify-content: flex-end;
+  gap: 0.35rem;
   flex-shrink: 0;
 }
 
 .pago-plastic-reference .pago-plastic-number {
   margin: 0;
-  font-size: clamp(0.86rem, 2.75vw, 1.05rem);
-  letter-spacing: 0.14em;
-}
-
-.pago-plastic-cvv-sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  font-size: clamp(0.82rem, 2.65vw, 1.02rem);
+  letter-spacing: 0.12em;
+  line-height: 1.35;
   white-space: nowrap;
-  border: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .pago-plastic-card.is-mastercard,
@@ -6238,7 +6232,7 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   75%, 100% { transform: translateX(120%); }
 }
 
-.pago-plastic-card > *:not(.pago-plastic-sheen):not(.pago-plastic-mark):not(.pago-sample-watermark):not(.pago-plastic-cvv-sr) {
+.pago-plastic-card > *:not(.pago-plastic-sheen):not(.pago-plastic-mark):not(.pago-sample-watermark) {
   position: relative;
   z-index: 2;
 }
