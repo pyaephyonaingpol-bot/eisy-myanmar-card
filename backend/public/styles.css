@@ -5589,6 +5589,78 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   display: none !important;
 }
 
+.pago-card-empty-state {
+  display: grid;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: min(26.5rem, 100%);
+}
+
+.pago-card-empty-visual {
+  width: 100%;
+}
+
+.pago-plastic-card.pago-plastic-sample {
+  opacity: 1;
+  border: 1px dashed rgba(148, 163, 184, 0.42);
+  background:
+    linear-gradient(145deg, rgba(15, 23, 42, 0.92) 0%, rgba(30, 41, 59, 0.78) 55%, rgba(51, 65, 85, 0.65) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  filter: saturate(0.72);
+  pointer-events: none;
+  user-select: none;
+}
+
+.pago-plastic-card.pago-plastic-sample .pago-plastic-mark {
+  opacity: 0.14;
+}
+
+.pago-plastic-card.pago-plastic-sample .pago-plastic-brand,
+.pago-plastic-card.pago-plastic-sample .pago-plastic-number,
+.pago-plastic-card.pago-plastic-sample .pago-plastic-footer strong,
+.pago-plastic-card.pago-plastic-sample .pago-plastic-footer small {
+  opacity: 0.72;
+}
+
+.pago-sample-watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(1rem, 4.8vw, 1.55rem);
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;
+  text-transform: uppercase;
+  color: rgba(186, 230, 253, 0.22);
+  transform: rotate(-16deg);
+  pointer-events: none;
+}
+
+.pago-sample-number {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: clamp(0.95rem, 3.8vw, 1.15rem);
+  letter-spacing: 0.14em;
+}
+
+.pago-card-empty-copy {
+  margin: 0;
+  max-width: 26.5rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.pago-card-request-panel {
+  margin-top: 0.15rem;
+}
+
+.pago-card-stage:has(.pago-card-empty-state:not(.hidden)) {
+  padding-bottom: 0.35rem;
+}
+
 .pago-card-carousel-nav {
   appearance: none;
   width: 2.1rem;
