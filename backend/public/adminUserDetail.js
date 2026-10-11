@@ -10,6 +10,40 @@
     if (!Admin || Admin._userDetailInstalled) return;
     Admin._userDetailInstalled = true;
 
+    Admin._userDetailScrollY = 0;
+    Admin._userDetailTouchBlock = null;
+
+    Admin.lockUserDetailBackgroundScroll = function lockUserDetailBackgroundScroll() {
+      this._userDetailScrollY = window.scrollY
+        || document.documentElement.scrollTop
+        || document.body.scrollTop
+        || 0;
+      document.documentElement.classList.add('user-detail-modal-open');
+      document.body.classList.add('sidebar-scroll-lock', 'user-detail-modal-open');
+      document.body.style.top = `-${this._userDetailScrollY}px`;
+      if (!this._userDetailTouchBlock) {
+        this._userDetailTouchBlock = (event) => {
+          const modal = $('userDetailModal');
+          if (!modal || modal.classList.contains('hidden')) return;
+          if (event.target.closest('#userDetailModal')) return;
+          event.preventDefault();
+        };
+        document.addEventListener('touchmove', this._userDetailTouchBlock, { passive: false });
+      }
+    };
+
+    Admin.unlockUserDetailBackgroundScroll = function unlockUserDetailBackgroundScroll() {
+      const restoreY = this._userDetailScrollY || 0;
+      document.documentElement.classList.remove('user-detail-modal-open');
+      document.body.classList.remove('sidebar-scroll-lock', 'user-detail-modal-open');
+      document.body.style.top = '';
+      window.scrollTo(0, restoreY);
+      if (this._userDetailTouchBlock) {
+        document.removeEventListener('touchmove', this._userDetailTouchBlock);
+        this._userDetailTouchBlock = null;
+      }
+    };
+
     Admin.userDetailState = {
       userId: null,
       tab: 'profile',
@@ -32,7 +66,9 @@
       if (!modal) return;
       modal.classList.remove('hidden');
       modal.setAttribute('aria-hidden', 'false');
-      document.body.classList.add('sidebar-scroll-lock');
+      this.lockUserDetailBackgroundScroll();
+      const scrollBody = modal.querySelector('.user-detail-scroll-body');
+      if (scrollBody) scrollBody.scrollTop = 0;
       const title = $('userDetailModalTitle');
       if (title) title.textContent = userRow.name || userRow.email || ('User #' + id);
       const sub = $('userDetailModalSubtitle');
@@ -52,7 +88,7 @@
         modal.classList.add('hidden');
         modal.setAttribute('aria-hidden', 'true');
       }
-      document.body.classList.remove('sidebar-scroll-lock');
+      this.unlockUserDetailBackgroundScroll();
       this.userDetailState.userId = null;
     };
 

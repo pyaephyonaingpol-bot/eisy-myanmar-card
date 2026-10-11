@@ -17,6 +17,10 @@ const routes = fs.readFileSync(path.join(root, 'backend/src/routes/admin.js'), '
 const service = fs.readFileSync(path.join(root, 'backend/src/services/adminUserDetailService.js'), 'utf8');
 
 assert.ok(adminHtml.includes('id="userDetailModal"'), 'user detail modal markup');
+assert.ok(adminHtml.includes('user-detail-scroll-body'), 'modal internal scroll region');
+assert.ok(adminHtml.includes('user-detail-tabs-scroll'), 'scrollable tab pills');
+assert.ok(adminHtml.includes('user-detail-table-scroll'), 'responsive table wrappers');
+assert.ok(adminHtml.includes('users-directory-shell'), 'users table scroll shell');
 assert.ok(adminHtml.includes('data-user-detail-tab="finance"'), 'finance tab');
 assert.ok(adminHtml.includes('id="userDetailSupportReplyForm"'), 'support reply form');
 assert.ok(adminHtml.includes('adminUserDetail.js'), 'modular detail script included');
@@ -24,6 +28,8 @@ assert.ok(adminHtml.includes('adminUserDetail.js'), 'modular detail script inclu
 assert.ok(adminJs.includes('user-directory-row'), 'clickable user rows');
 assert.ok(adminJs.includes('openUserDetailModal'), 'row opens modal hook');
 
+assert.ok(detailJs.includes('lockUserDetailBackgroundScroll'), 'background scroll lock');
+assert.ok(detailJs.includes('unlockUserDetailBackgroundScroll'), 'background scroll unlock');
 assert.ok(detailJs.includes('loadUserDetailProfile'), 'profile loader');
 assert.ok(detailJs.includes('/detail/finance'), 'finance API');
 assert.ok(detailJs.includes('/detail/cards'), 'cards API');
