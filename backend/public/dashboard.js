@@ -9706,6 +9706,16 @@ const Dashboard = {
     this.copyToast(this.i18nText('pago_copy_card_done', 'Card number copied'));
   },
 
+  pagoCardHolderName(card) {
+    const fromCard = card?.card_holder_name || card?.cardholderName;
+    if (fromCard && String(fromCard).trim()) return String(fromCard).trim().toUpperCase();
+    const user = typeof Auth !== 'undefined' && Auth.user ? Auth.user : {};
+    const fromProfile = user.name
+      || [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+    if (fromProfile) return String(fromProfile).toUpperCase();
+    return '—';
+  },
+
   showPagoCardDetail(card) {
     const panel = $('pagoCardDetailPanel');
     if (!panel || !card) return;
@@ -9738,17 +9748,21 @@ const Dashboard = {
     const plastic = $('pagoPlasticCard');
     if (plastic) {
       plastic.classList.remove('is-visa', 'is-mastercard', 'is-atm');
-      plastic.classList.add(this.pagoNetworkClass(network));
+      plastic.classList.add('pago-plastic-reference', this.pagoNetworkClass(network));
     }
     const netEl = $('pagoPlasticNetwork');
     if (netEl) {
-      netEl.className = `pago-plastic-network ${this.pagoNetworkClass(network)}`;
+      const netClass = this.pagoNetworkClass(network);
+      netEl.className = `pago-plastic-visa-corner visa-wordmark ${netClass}`;
+      if (netClass === 'is-visa') netEl.textContent = 'VISA';
+      else if (netClass === 'is-mastercard') netEl.textContent = '';
+      else netEl.textContent = network ? String(network).toUpperCase() : 'VISA';
     }
     if ($('pagoCardDetailSummary')) {
       $('pagoCardDetailSummary').textContent = `${brand} · •••• ${card.last4 || '????'}`;
     }
     if ($('pagoPlasticHolder')) {
-      $('pagoPlasticHolder').textContent = card.card_holder_name || '—';
+      $('pagoPlasticHolder').textContent = this.pagoCardHolderName(card);
     }
 
     const statusEl = $('pagoCardDetailStatus');
