@@ -3290,12 +3290,21 @@ pre.output.hidden { display: none !important; }
   margin-top: 0.15rem;
   color: #2dd4bf;
 }
+.support-chat-scroll-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
 .support-chat-contact {
   flex-shrink: 0;
   border-top: 1px solid rgba(148, 163, 184, 0.15);
   padding: 0.55rem 0.65rem 0.65rem;
   max-height: 42%;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 .support-chat-contact .official-contact {
   margin: 0;
@@ -4966,13 +4975,6 @@ html.doc-scroll .auth-screen {
   background: #0f172a; color: #e2e8f0; padding: 0.55rem 0.7rem;
 }
 .support-chat-closed { padding: 0.75rem 1rem; }
-@media (max-width: 640px) {
-  .support-chat-panel {
-    right: 0.5rem; left: 0.5rem; width: auto;
-    bottom: max(4.25rem, calc(env(safe-area-inset-bottom) + 3.75rem));
-    height: min(70vh, calc(100vh - 5.5rem));
-  }
-}
 
 /* Live support chat widget (unified tickets + chat) */
 .support-chat-fab {
@@ -5070,10 +5072,36 @@ html.doc-scroll .auth-screen {
 .error-text.hidden { display: none; }
 @media (max-width: 640px) {
   .support-chat-panel {
-    right: 0.5rem; left: 0.5rem; width: auto;
+    right: 0.5rem;
+    left: 0.5rem;
+    width: auto;
     bottom: max(4.25rem, calc(env(safe-area-inset-bottom) + 3.75rem));
-    height: min(70dvh, calc(100dvh - 5.5rem));
-    max-height: calc(100dvh - 5.5rem);
+    height: min(85dvh, calc(100dvh - env(safe-area-inset-bottom) - 5rem));
+    max-height: min(85dvh, calc(100dvh - env(safe-area-inset-bottom) - 5rem));
+    z-index: 1250;
+  }
+  .support-chat-scroll-region {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    padding-bottom: max(5rem, calc(env(safe-area-inset-bottom) + 3.5rem));
+  }
+  .support-chat-body {
+    flex: 0 1 auto;
+    overflow: visible;
+  }
+  .support-chat-list,
+  .support-chat-messages,
+  .support-chat-compose {
+    flex: 0 1 auto;
+    overflow: visible;
+    max-height: none;
+  }
+  .support-chat-contact {
+    max-height: none;
+    overflow: visible;
+    padding-bottom: 0.25rem;
   }
 }
 
@@ -5122,6 +5150,7 @@ html.support-chat-scroll-lock .app-content {
   overflow: hidden !important;
   overscroll-behavior: none !important;
 }
+html.support-chat-scroll-lock .support-chat-scroll-region,
 html.support-chat-scroll-lock .support-chat-list,
 html.support-chat-scroll-lock .support-chat-messages,
 html.support-chat-scroll-lock .support-chat-compose {
