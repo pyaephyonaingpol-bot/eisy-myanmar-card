@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * Global USDT + virtual cards portal (no local MMK/P2P user flows).
+ * Global USDT + virtual cards portal (P2P restored; local MMK flows removed).
  * Run: node backend/scripts/test-global-usdt-portal.js
  */
 const assert = require('assert');
@@ -18,20 +18,28 @@ const withdrawalSvc = fs.readFileSync(path.join(ROOT, 'backend/src/services/with
 const adminHtml = fs.readFileSync(path.join(ROOT, 'backend/public/admin.html'), 'utf8');
 const adminJs = fs.readFileSync(path.join(ROOT, 'backend/public/admin.js'), 'utf8');
 
-assert.ok(!html.includes('id="pageP2p"'), 'P2P page removed');
-assert.ok(!html.includes('id="p2pBuyModal"'), 'P2P buy modal removed');
+assert.ok(html.includes('id="pageP2p"'), 'P2P page present');
+assert.ok(html.includes('id="p2pBuyModal"'), 'P2P buy modal present');
 assert.ok(!html.includes('id="sellUsdtMmkModal"'), 'MMK convert modal removed');
 assert.ok(!html.includes('id="withdrawMmkModal"'), 'MMK withdraw modal removed');
-assert.ok(!html.includes('data-page="p2p"'), 'P2P nav removed');
+assert.ok(html.includes('data-page="p2p"'), 'P2P nav present');
+{
+  const sidebarStart = html.indexOf('id="userSidebar"');
+  const navStart = html.indexOf('<nav class="sidebar-nav"', sidebarStart);
+  const navEnd = html.indexOf('</nav>', navStart);
+  const sidebarNav = html.slice(navStart, navEnd);
+  assert.ok(!/data-page="instant-card"/.test(sidebarNav), 'TRON Wallet nav removed');
+}
 assert.ok(!html.includes('btnSellConvertUsdt'), 'MMK convert CTA removed');
 assert.ok(!html.includes('Bank Account (USDT → MMK)'), 'bank payout option removed');
-assert.ok(!html.includes('p2pApi.js'), 'p2p client script removed');
+assert.ok(html.includes('p2pApi.js'), 'p2p client script present');
 assert.ok(html.includes('TRC20 (TRON)'), 'TRC20 withdrawal kept');
 assert.ok(html.includes('Virtual Cards') || html.includes('data-goto="cards"'), 'cards CTA on wallet');
 assert.ok(html.includes('pagoCardRevealBtn'), 'secure card reveal UI');
 
 assert.ok(dash.includes("getElementById('pageP2p')"), 'P2P bind guarded');
-assert.ok(p2pRoute.includes('P2P_RETIRED'), 'user P2P API retired');
+assert.ok(!p2pRoute.includes('P2P_RETIRED'), 'user P2P API active');
+assert.ok(p2pRoute.includes("router.get('/market'"), 'P2P market route wired');
 assert.ok(withdrawalRoute.includes('MMK_PAYOUT_RETIRED'), 'MMK withdrawal API retired');
 assert.ok(!withdrawalRoute.includes("label: 'Bank Account (USDT → MMK)'"), 'fees list is TRC20-only');
 assert.ok(withdrawalSvc.includes('MMK_PAYOUT_RETIRED'), 'bank payout blocked in service');

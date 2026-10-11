@@ -44,6 +44,8 @@ function testIndexHtml() {
   assert.ok(!/nav_instant_card/.test(nav), 'sidebar must not i18n TRON Wallet');
   assert.ok(/data-page="usdt-wallet"/.test(nav), 'sidebar must keep USDT Wallet nav item');
   assert.ok(/nav_usdt_wallet/.test(nav), 'sidebar must i18n USDT Wallet');
+  assert.ok(/data-page="p2p"/.test(nav), 'sidebar must include P2P Express nav item');
+  assert.ok(/nav_p2p/.test(nav), 'sidebar must i18n P2P Express');
   assert.ok(!/nav_profile/.test(nav), 'sidebar must not i18n Profile');
   assert.ok(!/nav_settings/.test(nav), 'sidebar must not i18n Settings');
 
@@ -68,6 +70,7 @@ function testPortalShells() {
   assert.ok(!/data-page="settings"/.test(nav), `${portal}: no sidebar Settings`);
   assert.ok(!/data-page="instant-card"/.test(nav), `${portal}: no sidebar TRON Wallet`);
   assert.ok(/data-page="usdt-wallet"/.test(nav), `${portal}: USDT Wallet nav kept`);
+  assert.ok(/data-page="p2p"/.test(nav), `${portal}: P2P nav kept`);
   assert.ok(/data-goto="profile"/.test(menu), `${portal}: account menu Profile`);
   assert.ok(/data-goto="settings"/.test(menu), `${portal}: account menu Settings`);
   assert.ok(!fs.existsSync(path.join(ROOT, 'public', 'standard.html')), 'standard portal removed');
