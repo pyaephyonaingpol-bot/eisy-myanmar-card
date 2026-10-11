@@ -60,7 +60,7 @@
       #pageProfile .summary-grid { grid-template-columns: 1fr; }
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261011pago3dsCompact" />
+  <link rel="stylesheet" href="/styles.css?v=20261011pagoEmptyState" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20261011supportMobile" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -979,7 +979,40 @@
                 <div class="pago-card-skeleton-line"></div>
                 <div class="pago-card-skeleton-line short"></div>
               </div>
-              <p id="pagoCardEmpty" class="hint" data-i18n="pago_cards_empty">No virtual cards yet. Request one below.</p>
+              <div id="pagoCardEmpty" class="pago-card-empty-state">
+                <div class="pago-card-empty-visual">
+                  <article class="pago-plastic-card pago-plastic-sample" aria-hidden="true">
+                    <span class="pago-sample-watermark" data-i18n="pago_card_sample_watermark">Sample</span>
+                    <img class="pago-plastic-mark" src="/brand/logo-card-mark.png?v=20261009cardMark" alt="" width="381" height="479" aria-hidden="true" />
+                    <div class="pago-plastic-top">
+                      <span class="pago-plastic-brand">EISY</span>
+                      <span class="pago-plastic-network is-visa" aria-hidden="true"></span>
+                    </div>
+                    <div class="pago-plastic-chip-row">
+                      <span class="pago-plastic-chip" aria-hidden="true"></span>
+                      <span class="pago-plastic-chip-tools">
+                        <span class="pago-plastic-contactless" aria-hidden="true"></span>
+                      </span>
+                    </div>
+                    <p class="pago-plastic-number pago-sample-number">•••• •••• •••• 0000</p>
+                    <div class="pago-plastic-footer">
+                      <div>
+                        <small data-i18n="card_holder">Card holder</small>
+                        <strong data-i18n="pago_card_sample_holder">Your name</strong>
+                      </div>
+                      <div>
+                        <small data-i18n="card_expiry">Expiry</small>
+                        <strong>••/••</strong>
+                      </div>
+                      <div>
+                        <small data-i18n="pago_reveal_cvv">CVV</small>
+                        <strong>•••</strong>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+                <p class="pago-card-empty-copy hint" data-i18n="pago_cards_empty">No virtual cards yet. Request one in the form below.</p>
+              </div>
 
               <div class="pago-card-component hidden" id="pagoCardDetailPanel">
               <article class="pago-plastic-card" id="pagoPlasticCard" aria-label="Virtual card">
@@ -1095,7 +1128,7 @@
               </div>
             </section>
 
-            <section class="panel">
+            <section class="panel pago-card-request-panel">
               <h2 data-i18n="pago_request_heading">Request a virtual card</h2>
               <p class="hint" data-i18n="pago_request_hint">A Visa card is issued on BIN 404. An optional starting balance (USD 10–2500) is taken from your USDT wallet.</p>
               <form id="pagoCardRequestForm" class="form">
