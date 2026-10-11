@@ -33,6 +33,9 @@ for (const file of ['index.html', 'instant.html']) {
 console.log('\n== dashboard.js: onPageChange loads P2P ==');
 const dash = read('dashboard.js');
 assert.ok(/page === 'p2p'/.test(dash) && /loadP2pPage/.test(dash), 'dashboard must load P2P on navigate');
+assert.ok(/reconcileAppPageView/.test(dash), 'dashboard must reconcile active app page view');
+assert.ok(/syncRouteFromHash/.test(dash), 'dashboard must sync hash routes after auth');
+assert.ok(/_activePage/.test(dash), 'dashboard must track active page state');
 console.log('ok');
 
 console.log('\n[test-p2p-nav-router] All checks passed.');
