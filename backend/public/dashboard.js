@@ -3596,6 +3596,7 @@ const Dashboard = {
     $('p2pSellStepAmount')?.classList.remove('hidden');
     $('p2pSellStepWaiting')?.classList.add('hidden');
     $('p2pSellStepDone')?.classList.add('hidden');
+    $('p2pSellEscrowPanel')?.classList.add('hidden');
     $('p2pSellConfirmMmkBtn')?.classList.remove('hidden');
     $('p2pSellCancelBtn')?.classList.remove('hidden');
 
@@ -3672,6 +3673,7 @@ const Dashboard = {
     $('p2pSellStepDone')?.classList.add('hidden');
     $('p2pSellConfirmMmkBtn')?.classList.remove('hidden');
     $('p2pSellCancelBtn')?.classList.remove('hidden');
+    this.syncP2pEscrowStepperUi(order.status || 'pending_merchant_mmk', { sell: true });
     if (data.user) {
       this.renderWalletBalances(data.user);
     } else {
@@ -3744,8 +3746,10 @@ const Dashboard = {
       $('p2pSellConfirmMmkBtn')?.classList.add('hidden');
       $('p2pSellCancelBtn')?.classList.add('hidden');
       $('p2pSellRefCode').textContent = data.order?.ref_code || this._p2pSellOrder.ref_code;
-      $('p2pSellDoneMessage').textContent = data.message || 'USDT escrow released to buyer.';
-      this.toast('Order complete — USDT released', 'ok');
+      $('p2pSellDoneMessage').textContent = data.message || 'USDT Released — escrow sent to buyer wallet.';
+      $('p2pSellEscrowPanel')?.classList.remove('hidden');
+      this.updateP2pEscrowStepper('p2pSellEscrowStepper', 'released');
+      this.toast('USDT Released from escrow', 'ok');
       this.log(`P2P sell order ${data.order?.ref_code} completed`, 'ok');
       this.loadP2pActiveOrders();
       this.refreshP2pWalletState();
@@ -3850,6 +3854,7 @@ const Dashboard = {
     $('p2pBuyStepAmount')?.classList.remove('hidden');
     $('p2pBuyStepPayment')?.classList.add('hidden');
     $('p2pBuyStepDone')?.classList.add('hidden');
+    $('p2pBuyEscrowPanel')?.classList.add('hidden');
     $('p2pBuyConfirmTransferBtn')?.classList.remove('hidden');
     this.resetP2pBuyPaymentProofState();
     $('p2pBuyPaymentProofInline')?.classList.remove('hidden');
@@ -4003,6 +4008,7 @@ const Dashboard = {
     if ($('p2pBuyPaymentHeading')) {
       $('p2pBuyPaymentHeading').textContent = `Send ${Math.round(order.amount_mmk).toLocaleString()} MMK via ${order.payment_method}`;
     }
+    this.syncP2pEscrowStepperUi(order.status || 'pending_payment', { buy: true });
     this.setupP2pTradePanel('buy', order);
   },
 
@@ -4189,16 +4195,11 @@ const Dashboard = {
           }, { sensitive: true }));
       }
 
-      this._p2pBuyOrder = { ...this._p2pBuyOrder, ...(data.order || {}) };
-      this.stopP2pTradePolling();
+      this._p2pBuyOrder = { ...this._p2pBuyOrder, ...(data.order || {}), status: data.order?.status || 'pending_seller_release' };
       this.resetP2pBuyPaymentProofState();
-      $('p2pBuyStepPayment')?.classList.add('hidden');
-      $('p2pBuyStepDone')?.classList.remove('hidden');
-      $('p2pBuyRefCode').textContent = data.order?.ref_code || this._p2pBuyOrder.ref_code;
-      $('p2pBuyDoneMessage').textContent = data.message
-        || 'Pending seller release — USDT will be credited to your wallet after the seller approves. Use Withdraw USDT when you want an on-chain payout.';
-      this.toast(data.message || 'Payment proof submitted — pending seller release', 'ok');
-      this.log(`P2P buy order ${data.order?.ref_code} pending seller release`, 'ok');
+      this.renderP2pBuyPendingReleaseStep(this._p2pBuyOrder);
+      this.toast(data.message || 'Payment Sent — waiting for seller to release USDT from escrow', 'ok');
+      this.log(`P2P buy order ${data.order?.ref_code} — Payment Sent`, 'ok');
       this.loadP2pActiveOrders();
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
@@ -4306,6 +4307,28 @@ const Dashboard = {
     const m = Math.floor(s / 60);
     const r = s % 60;
     return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+  },
+
+  updateP2pEscrowStepper(hostId, status) {
+    const el = typeof hostId === 'string' ? $(hostId) : hostId;
+    if (!el || !window.P2pEscrowFlow?.renderP2pEscrowStepperHtml) return;
+    el.innerHTML = `<ol class="p2p-escrow-stepper" aria-label="One-way USDT escrow">${window.P2pEscrowFlow.renderP2pEscrowStepperHtml(status)}</ol>`;
+  },
+
+  syncP2pEscrowStepperUi(status, { buy = false, sell = false } = {}) {
+    if (buy) {
+      $('p2pBuyEscrowPanel')?.classList.remove('hidden');
+      this.updateP2pEscrowStepper('p2pBuyEscrowStepper', status);
+      this.updateP2pEscrowStepper('p2pBuyEscrowStepperDone', status);
+    }
+    if (sell) {
+      $('p2pSellEscrowPanel')?.classList.remove('hidden');
+      this.updateP2pEscrowStepper('p2pSellEscrowStepper', status);
+    }
+  },
+
+  p2pEscrowStepLabel(status) {
+    return window.P2pEscrowFlow?.p2pEscrowStepLabel(status) || String(status || 'Unknown');
   },
 
   parseP2pExpiresMs(expiresAt) {
@@ -4545,7 +4568,11 @@ const Dashboard = {
       list.innerHTML = this._p2pActiveOrders.map((o) => {
         const amount = Number(o.escrow_amount_usdt ?? o.amount_usdt).toFixed(2);
         const statusClass = o.requires_action ? 'needs-action' : '';
-        const badgeClass = o.display_status_code === 'ESCROWED' ? 'is-escrowed' : (o.is_disputed ? 'is-disputed' : '');
+        const badgeClass = o.is_disputed ? 'is-disputed'
+          : o.display_status_code === 'PENDING_PAYMENT' ? 'is-pending-payment'
+            : o.display_status_code === 'PAYMENT_SENT' ? 'is-payment-sent'
+              : o.display_status_code === 'USDT_RELEASED' ? 'is-released'
+                : o.display_status_code === 'ESCROWED' ? 'is-escrowed' : '';
         const timerHtml = o.show_timer && o.seconds_remaining != null
           ? `<span class="p2p-active-order-timer">⏱ ${this.formatP2pTimer(o.seconds_remaining)} left</span>`
           : '';
@@ -4669,11 +4696,11 @@ const Dashboard = {
       <div class="p2p-buy-summary-row"><span>${isMaker ? 'Release to buyer' : 'You receive'}</span><strong>${buyerReceives.toFixed(2)} USDT</strong></div>
       <div class="p2p-buy-summary-row"><span>External payment</span><strong>${Math.round(order.amount_mmk).toLocaleString()} MMK</strong></div>
       <div class="p2p-buy-summary-row"><span>Order ref</span><strong>${esc(order.ref_code)}</strong></div>
-      <div class="p2p-buy-summary-row"><span>Status</span><strong>${isMaker ? 'Confirm & Release' : 'Pending Release'}</strong></div>
+      <div class="p2p-buy-summary-row"><span>Escrow status</span><strong>${esc(this.p2pEscrowStepLabel(order.status || 'pending_seller_release'))}</strong></div>
     `;
     $('p2pBuyPaymentDetails').innerHTML = isMaker
-      ? '<p class="hint">Buyer confirmed MMK payment with receipt. Review the payment proof below, then release USDT. Platform fee is deducted from your escrow automatically.</p>'
-      : '<p class="hint">MMK payment confirmed. Waiting for seller to release USDT to your wallet.</p>';
+      ? '<p class="hint">Payment Sent — buyer paid fiat externally. USDT remains in one-way escrow until you release it to the buyer (platform fee deducted from escrow).</p>'
+      : '<p class="hint">Payment Sent — your fiat transfer is recorded. Seller USDT stays locked in escrow until they release it to your USDT wallet.</p>';
     const proofView = $('p2pBuyPaymentProofView');
     const proofBody = $('p2pBuyPaymentProofViewBody');
     const hasProof = order.payment_proof_url || order.paymentProofUrl || order.payment_proof_path || order.payment_tx_ref;
@@ -4696,9 +4723,10 @@ const Dashboard = {
     $('p2pBuyReleaseBtn')?.classList.toggle('hidden', !isMaker || order.is_disputed);
     $('p2pBuySellerActions')?.classList.toggle('hidden', !isMaker || order.is_disputed || order.dispute_status === 'open');
     if ($('p2pBuyPaymentHeading')) {
-      $('p2pBuyPaymentHeading').textContent = isMaker ? 'Release USDT to buyer' : 'Order pending seller release';
+      $('p2pBuyPaymentHeading').textContent = isMaker ? 'Release USDT from escrow' : 'Payment Sent — awaiting release';
     }
     $('p2pBuyTimerBanner')?.classList.add('hidden');
+    this.syncP2pEscrowStepperUi(order.status || 'pending_seller_release', { buy: true });
     this.setupP2pTradePanel('buy', order);
   },
 
@@ -4823,9 +4851,10 @@ const Dashboard = {
         $('p2pBuySellerActions')?.classList.add('hidden');
         $('p2pBuyRefCode').textContent = data.order?.ref_code || this._p2pBuyOrder.ref_code;
         $('p2pBuyDoneMessage').textContent = data.message
-          || 'USDT released to buyer wallet. No on-chain transfer — buyer can withdraw explicitly when ready.';
+          || 'USDT Released — escrow sent to the buyer USDT wallet.';
+        this.syncP2pEscrowStepperUi('released', { buy: true });
       }
-      this.toast('USDT released to buyer', 'ok');
+      this.toast('USDT Released from escrow', 'ok');
       this.loadP2pActiveOrders();
       this.loadMyP2pAds();
       this.refreshP2pWalletState();

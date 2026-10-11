@@ -60,7 +60,7 @@
       #pageProfile .summary-grid { grid-template-columns: 1fr; }
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261011refCardHorizontal" />
+  <link rel="stylesheet" href="/styles.css?v=20261011p2pEscrowOneWay" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20261011supportMobile" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -507,6 +507,11 @@
         <button type="button" id="p2pBuyModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
 
+      <div id="p2pBuyEscrowPanel" class="p2p-escrow-panel hidden" aria-live="polite">
+        <p class="hint p2p-escrow-oneway-note">One-way USDT escrow: seller funds are locked on-platform. Pay MMK externally, then the seller releases USDT to your wallet.</p>
+        <div id="p2pBuyEscrowStepper" class="p2p-escrow-stepper-host"></div>
+      </div>
+
       <div id="p2pBuyStepAmount">
         <p class="hint" id="p2pBuyMerchantSummary" style="margin-bottom:0.5rem">Select amount and payment method.</p>
         <p class="hint wallet-restriction-note" style="margin-bottom:1rem">You will pay the seller directly via KPay, WavePay, or Bank — not from your internal MMK wallet balance.</p>
@@ -604,6 +609,7 @@
       </div>
 
       <div id="p2pBuyStepDone" class="hidden" style="text-align:center">
+        <div id="p2pBuyEscrowStepperDone" class="p2p-escrow-stepper-host" style="margin-bottom:1rem"></div>
         <div class="p2p-buy-done-icon" aria-hidden="true">✓</div>
         <h4 style="margin:0.5rem 0">Order Submitted</h4>
         <p id="p2pBuyDoneMessage" class="hint" style="margin-bottom:1rem">Pending seller release.</p>
@@ -656,6 +662,11 @@
       <div class="modal-header-row">
         <h3 id="p2pSellModalTitle">Sell USDT</h3>
         <button type="button" id="p2pSellModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
+      </div>
+
+      <div id="p2pSellEscrowPanel" class="p2p-escrow-panel hidden" aria-live="polite">
+        <p class="hint p2p-escrow-oneway-note">One-way USDT escrow: your USDT locks immediately. Release to the buyer only after MMK arrives in your external account.</p>
+        <div id="p2pSellEscrowStepper" class="p2p-escrow-stepper-host"></div>
       </div>
 
       <div id="p2pSellStepAmount">
@@ -1650,6 +1661,15 @@
               <div>
                 <h2 class="page-heading">P2P Marketplace</h2>
                 <p class="page-desc">Buy or sell USDT peer-to-peer with verified users. Post your own ad or trade from the market. Payments via KPay, WavePay, or Bank — not from your internal MMK wallet.</p>
+                <div class="p2p-escrow-flow-banner" role="note">
+                  <strong>One-way USDT escrow</strong>
+                  <span>Seller locks USDT on-platform → Buyer pays fiat externally → Seller releases USDT.</span>
+                  <ol class="p2p-escrow-flow-steps-inline">
+                    <li>Pending Payment</li>
+                    <li>Payment Sent</li>
+                    <li>USDT Released</li>
+                  </ol>
+                </div>
                 <span id="p2pBuyerFeeBadge" class="p2p-fee-badge p2p-fee-badge-buyer">0% Fee for Buyers. Seller pays platform fee upon release.</span>
               </div>
               <div class="action-row">
@@ -1910,7 +1930,8 @@
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
   <script defer src="/src/services/p2pApi.js?v=20260819p2p"></script>
-  <script defer src="/dashboard.js?v=20261010pagoLifecycle"></script>
+  <script defer src="/src/lib/p2pEscrowFlow.js?v=20261011p2pEscrowOneWay"></script>
+  <script defer src="/dashboard.js?v=20261011p2pEscrowOneWay"></script>
   <script defer src="/contactInfo.js?v=20261010contactModal"></script>
   <script defer src="/supportChat.js?v=20261011supportMobile"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>

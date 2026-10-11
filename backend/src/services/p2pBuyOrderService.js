@@ -261,7 +261,7 @@ async function confirmMmkTransfer(orderId, userId, {
       seller: maker ? { name: maker.name } : null,
       user,
     }),
-    message: 'Payment confirmed — waiting for the seller to release USDT to your wallet.',
+    message: 'Payment Sent — seller USDT is held in escrow until they release it to your wallet.',
   };
 }
 
