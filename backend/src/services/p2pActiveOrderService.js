@@ -4,6 +4,7 @@ const { listP2pBuyOrdersForUser, mapPaymentAccountForClient } = require('./p2pBu
 const { listP2pSellOrdersForUser } = require('./p2pSellOrderService');
 const { getPaymentAccountFromAd } = require('./p2pAdService');
 const { PAYMENT_WINDOW_MINUTES } = require('./p2pOrderExpiryService');
+const { p2pEscrowStatusBadge, p2pEscrowStepLabel } = require('./p2pEscrowFlow');
 
 const ACTIVE_BUY_STATUSES = ['pending_payment', 'pending_seller_release'];
 const ACTIVE_SELL_STATUSES = ['pending_merchant_mmk'];
@@ -53,31 +54,28 @@ function enrichOrderExtras(order, orderType) {
 
 function mapDisplayStatus(orderType, status, { isMaker, makerCanRelease } = {}) {
   if (orderType === 'sell' && status === 'pending_merchant_mmk') {
+    const flow = p2pEscrowStatusBadge('pending_merchant_mmk', { isMaker: false, makerCanRelease: false });
     return {
-      label: 'Escrowed',
-      code: 'ESCROWED',
-      status_badge: 'Escrowed — Action Required',
-      action_label: 'Resume / View Details',
+      label: flow.step_label,
+      code: flow.code,
+      status_badge: 'One-way escrow — awaiting buyer MMK',
+      action_label: 'View order — release when MMK received',
       requires_action: true,
+      escrow_step_index: flow.step_index,
+      escrow_step_label: flow.step_label,
     };
   }
-  if (orderType === 'buy' && status === 'pending_payment') {
+  if (orderType === 'buy') {
+    const flow = p2pEscrowStatusBadge(status, { isMaker, makerCanRelease });
     return {
-      label: 'Pending Payment',
-      code: 'PENDING_PAYMENT',
-      status_badge: 'Pending Payment — Action Required',
-      action_label: 'Resume / View Details',
-      requires_action: true,
-    };
-  }
-  if (orderType === 'buy' && status === 'pending_seller_release') {
-    return {
-      label: isMaker && makerCanRelease ? 'Confirm & Release USDT' : 'Pending Release',
-      code: 'PENDING_RELEASE',
-      status_badge: isMaker && makerCanRelease ? 'Buyer paid — Release USDT' : 'Pending Release',
-      action_label: isMaker && makerCanRelease ? 'Release USDT to Buyer' : 'Resume / View Details',
-      requires_action: Boolean(isMaker && makerCanRelease),
-      maker_can_release: Boolean(isMaker && makerCanRelease),
+      label: flow.step_label,
+      code: flow.code,
+      status_badge: flow.label,
+      action_label: flow.action_label,
+      requires_action: flow.requires_action,
+      maker_can_release: Boolean(isMaker && makerCanRelease && status === 'pending_seller_release'),
+      escrow_step_index: flow.step_index,
+      escrow_step_label: flow.step_label,
     };
   }
   return {
