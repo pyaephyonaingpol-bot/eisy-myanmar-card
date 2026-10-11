@@ -23,16 +23,20 @@ assert.ok(chat.includes("setProperty('overflow-y', 'hidden', 'important')"), 'lo
 assert.ok(chat.includes("setProperty('position', 'fixed', 'important')"), 'body is fixed while chat is open');
 assert.ok(chat.includes('overscroll-behavior') || css.includes('overscroll-behavior: contain'), 'chat uses overscroll containment');
 assert.ok(css.includes('html.support-chat-scroll-lock'), 'scroll-lock class freezes the document');
+assert.ok(css.includes('.support-chat-scroll-region'), 'panel uses a dedicated scroll region');
 assert.ok(css.includes('.support-chat-messages'), 'message list is the chat scroller');
 assert.ok(/\.support-chat-messages[\s\S]{0,220}overflow-y:\s*auto/.test(css), 'message list scrolls vertically');
+assert.ok(/@media \(max-width: 640px\)[\s\S]{0,1200}85dvh/.test(css), 'mobile drawer caps height at ~85vh');
+assert.ok(/support-chat-scroll-region[\s\S]{0,400}padding-bottom:\s*max\(5rem/.test(css), 'mobile scroll region clears bottom chrome');
 assert.ok(css.includes('overscroll-behavior: contain'), 'chat scroll does not chain');
 assert.ok(mobile.includes('html.doc-scroll.support-chat-scroll-lock'), 'mobile sheet keeps the lock');
 assert.ok(mobile.includes('touch-action: pan-y !important'), 'chat list still pans on touch');
 assert.ok(html.includes('support-chat-scroll-lock'), 'boot script does not unlock an open chat');
-assert.ok(html.includes('supportChat.js?v=20261009supportClosed'), 'chat script cache bust');
-assert.ok(html.includes('styles.css?v=20261009authTabs'), 'styles cache bust');
-assert.ok(html.includes('android-scroll-fix.css?v=20261009supportScroll'), 'mobile sheet cache bust');
-assert.ok(instant.includes('supportChat.js?v=20261009supportClosed'), 'instant portal chat cache bust');
+assert.ok(html.includes('supportChat.js?v=20261011supportMobile'), 'chat script cache bust');
+assert.ok(html.includes('styles.css?v=20261011supportMobile'), 'styles cache bust');
+assert.ok(html.includes('android-scroll-fix.css?v=20261011supportMobile'), 'mobile sheet cache bust');
+assert.ok(instant.includes('supportChat.js?v=20261011supportMobile'), 'instant portal chat cache bust');
+assert.ok(chat.includes('support-chat-scroll-region'), 'chat markup wraps body + contact for scrolling');
 
 const start = chat.indexOf('function shouldBlockNestedScroll');
 const end = chat.indexOf('function chatScroller');

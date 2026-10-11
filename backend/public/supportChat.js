@@ -85,8 +85,10 @@
       '      <button type="button" id="supportChatCloseBtn" class="support-chat-close" aria-label="Close">×</button>',
       '    </div>',
       '  </header>',
-      '  <div id="supportChatBody" class="support-chat-body"></div>',
-      '  <footer class="support-chat-contact" id="supportChatContact"></footer>',
+      '  <div class="support-chat-scroll-region" id="supportChatScrollRegion">',
+      '    <div id="supportChatBody" class="support-chat-body"></div>',
+      '    <footer class="support-chat-contact" id="supportChatContact"></footer>',
+      '  </div>',
       '</section>',
     ].join('');
     document.body.appendChild(root);
@@ -125,7 +127,9 @@
 
   function chatScroller(target) {
     if (!target || !target.closest) return null;
-    return target.closest('.support-chat-messages, .support-chat-list, .support-chat-compose');
+    return target.closest(
+      '.support-chat-scroll-region, .support-chat-messages, .support-chat-list, .support-chat-compose, .support-chat-contact'
+    );
   }
 
   function isTypingTarget(target) {

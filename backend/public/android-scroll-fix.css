@@ -142,6 +142,7 @@ html.doc-scroll.support-chat-scroll-lock .support-chat-body {
   overscroll-behavior: contain !important;
   touch-action: manipulation !important;
 }
+html.doc-scroll.support-chat-scroll-lock .support-chat-scroll-region,
 html.doc-scroll.support-chat-scroll-lock .support-chat-list,
 html.doc-scroll.support-chat-scroll-lock .support-chat-messages,
 html.doc-scroll.support-chat-scroll-lock .support-chat-compose {
