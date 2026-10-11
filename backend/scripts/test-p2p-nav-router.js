@@ -14,6 +14,14 @@ function read(name) {
   return fs.readFileSync(path.join(ROOT, name), 'utf8');
 }
 
+function assertPortalAssetBust(html, file) {
+  assert.match(
+    html,
+    new RegExp(`${file.replace(/\//g, '\\/')}\\?v=20261011p2pRoute-[a-f0-9]{10}`),
+    `${file} must use stamped portal cache bust`,
+  );
+}
+
 console.log('\n== nav.js: P2P route not aliased to cards ==');
 const nav = read('nav.js');
 assert.ok(
@@ -27,6 +35,9 @@ for (const file of ['index.html', 'instant.html']) {
   const portalHtml = read(file);
   assert.ok(/class="nav-item"[^>]*data-page="p2p"/.test(portalHtml), 'P2P nav item required');
   assert.ok(/id="pageP2p"[^>]*data-page="p2p"/.test(portalHtml), 'pageP2p section with data-page=p2p');
+  assert.ok(/name="eisy-portal-assets"/.test(portalHtml), 'portal asset meta tag');
+  assertPortalAssetBust(portalHtml, 'dashboard.js');
+  assertPortalAssetBust(portalHtml, 'nav.js');
   console.log('ok');
 }
 
