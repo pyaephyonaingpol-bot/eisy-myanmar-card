@@ -19,11 +19,14 @@ for (const file of ['backend/public/index.html', 'backend/public/instant.html'])
   assert.ok(html.includes('pago-plastic-sample'), `${file}: sample card shell`);
   assert.ok(html.includes('pago-sample-watermark'), `${file}: sample watermark`);
   assert.ok(html.includes('pago-card-request-panel'), `${file}: request panel follows card stage`);
-  assert.ok(html.includes('styles.css?v=20261011pagoEmptyState'), `${file}: styles cache bust`);
+  assert.ok(html.includes('styles.css?v=20261011pagoPurpleMetallic'), `${file}: styles cache bust`);
+  assert.ok(html.includes('10/28'), `${file}: sample expiry placeholder`);
+  assert.ok(html.includes('pago-plastic-sheen'), `${file}: sample card includes sheen layer`);
 }
 
 assert.ok(css.includes('.pago-card-empty-state'), 'empty state layout styles');
 assert.ok(css.includes('.pago-plastic-card.pago-plastic-sample'), 'sample card styles');
+assert.ok(!/\.pago-plastic-card\.pago-plastic-sample[\s\S]{0,350}rgba\(15,\s*23,\s*42/.test(css), 'sample card shares purple theme');
 assert.ok(i18n.includes('pago_card_sample_watermark'), 'i18n watermark string');
 
 console.log('Pago card empty state — ok');
