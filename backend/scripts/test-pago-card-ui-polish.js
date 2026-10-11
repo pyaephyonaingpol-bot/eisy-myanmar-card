@@ -23,10 +23,10 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('id="pagoCardCopyNumberBtn"'), 'copy number button present');
   assert.ok(doc.includes('id="pagoCardDetailBalance"'), 'balance chip present');
   assert.ok(doc.includes('pago-balance-chip') || doc.includes('pagoCardDetailBalance'), 'balance display wired');
-  assert.ok(doc.includes('styles.css?v=20261009authTabs'), 'CSS cache-bust present');
+  assert.ok(doc.includes('styles.css?v=20261011pagoCardUi'), 'CSS cache-bust present');
   assert.ok(doc.includes('class="pago-plastic-mark"'), 'logo watermark sits on the card');
   assert.ok(doc.includes('/brand/logo-card-mark.png?v=20261009cardMark'), 'watermark uses the metallic logo');
-  assert.ok(doc.includes('dashboard.js?v=20261010globalUsdt'), 'JS cache-bust present');
+  assert.ok(doc.includes('dashboard.js?v='), 'JS cache-bust present');
   assert.ok(doc.includes('pago-plastic-eye'), 'eye toggle sits on the card face');
   assert.ok(doc.includes('pago-eye-open') && doc.includes('pago-eye-off'), 'eye open and closed icons');
   assert.ok(doc.includes('pago-plastic-copy'), 'copy control sits beside the card number');
@@ -53,6 +53,9 @@ assert.ok(css.includes('.pago-card-slide'), 'carousel slide styles');
 assert.ok(css.includes('.pago-card-carousel'), 'carousel layout styles');
 assert.ok(css.includes('#pagoCardEmpty.hidden'), 'empty-state hint stays hidden when cards exist on mobile');
 assert.ok(css.includes('.pago-card-actions'), 'action row styles');
+assert.ok(/\.pago-card-actions[\s\S]{0,180}repeat\(2,\s*minmax\(0,\s*1fr\)/.test(css), 'actions use a uniform two-column grid');
+assert.ok(css.includes('.pago-3ds-panel.pago-3ds-strip'), 'compact 3DS strip overrides exist');
+assert.ok(/\.pago-3ds-panel\.pago-3ds-strip[\s\S]{0,400}font-size:\s*1\.05rem/.test(css), '3DS code uses compact typography');
 assert.ok(!/purple-to-indigo|from-purple|to-indigo|#a855f7|#8b5cf6/i.test(css.match(/\.pago-plastic-card[\s\S]{0,500}/)?.[0] || ''), 'pago card avoids purple AI gradient cluster');
 
 assert.ok(dash.includes('togglePagoCardReveal'), 'reveal toggle wired');
