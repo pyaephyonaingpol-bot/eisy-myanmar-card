@@ -205,20 +205,48 @@
     }
 
     /* User detail modal */
-    .user-detail-modal-inner {
-      max-width: min(920px, 96vw);
-      width: 96vw;
-      max-height: min(90vh, 900px);
+    #userDetailModal.proof-lightbox {
+      padding: clamp(0.5rem, 2vw, 1.25rem);
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+    #userDetailModal .user-detail-modal-inner {
+      align-items: stretch;
+      width: min(920px, 100%);
+      max-width: 100%;
+      height: min(90vh, 900px);
+      max-height: min(90dvh, 900px);
       display: flex;
       flex-direction: column;
-      padding: 1.15rem 1.25rem 1.25rem;
+      padding: 1rem 1rem 1.1rem;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    #userDetailModal .proof-lightbox-close {
+      top: 0.35rem;
+      right: 0.35rem;
+    }
+    .user-detail-chrome {
+      flex-shrink: 0;
+      min-width: 0;
+    }
+    .user-detail-scroll-body {
+      flex: 1;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      touch-action: pan-y;
+      padding-right: 0.15rem;
     }
     .user-detail-head {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
       gap: 1rem;
-      margin-bottom: 0.85rem;
+      margin-bottom: 0.65rem;
+      padding-right: 2.25rem;
     }
     .user-detail-title {
       margin: 0;
@@ -231,13 +259,33 @@
       font-size: 0.88rem;
       color: #94a3b8;
     }
-    .user-detail-tabs {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.35rem;
-      margin: 0 0 0.85rem;
+    .user-detail-tabs-scroll,
+    .user-detail-finance-tabs-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+      margin: 0 -0.15rem 0.75rem;
+      padding: 0 0.15rem 0.55rem;
       border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-      padding-bottom: 0.55rem;
+      scrollbar-width: none;
+    }
+    .user-detail-tabs-scroll::-webkit-scrollbar,
+    .user-detail-finance-tabs-scroll::-webkit-scrollbar {
+      display: none;
+    }
+    .user-detail-tabs,
+    .user-detail-finance-tabs {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 0.35rem;
+      width: max-content;
+      min-width: 100%;
+    }
+    .user-detail-tab,
+    .user-detail-finance-tab {
+      flex: 0 0 auto;
+      white-space: nowrap;
     }
     .user-detail-tab {
       appearance: none;
@@ -250,18 +298,55 @@
       border-radius: 999px;
       cursor: pointer;
     }
+    .user-detail-tab-label--short { display: none; }
+    @media (max-width: 520px) {
+      .user-detail-tab-label--long { display: none; }
+      .user-detail-tab-label--short { display: inline; }
+    }
     .user-detail-tab.is-active {
       color: #f8fafc;
       background: rgba(59, 130, 246, 0.18);
       border-color: rgba(96, 165, 250, 0.35);
     }
     .user-detail-panel {
-      flex: 1;
-      min-height: 0;
-      overflow: auto;
-      -webkit-overflow-scrolling: touch;
+      min-width: 0;
+      max-width: 100%;
     }
     .user-detail-panel.hidden { display: none; }
+    .user-detail-table-scroll {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+      margin: 0 0 0.5rem;
+      padding-bottom: 0.15rem;
+    }
+    .user-detail-table-scroll .data-table {
+      width: max-content;
+      min-width: 100%;
+      font-size: 0.82rem;
+    }
+    .user-detail-table-scroll .data-table th,
+    .user-detail-table-scroll .data-table td {
+      padding: 0.45rem 0.55rem;
+    }
+    @media (max-width: 640px) {
+      #userDetailModal.proof-lightbox {
+        padding: 0;
+        align-items: stretch;
+      }
+      #userDetailModal .user-detail-modal-inner {
+        width: 100%;
+        max-width: 100%;
+        height: 100%;
+        max-height: none;
+        min-height: 100dvh;
+        border-radius: 0;
+        padding: max(0.85rem, env(safe-area-inset-top)) max(0.85rem, env(safe-area-inset-right)) max(0.85rem, env(safe-area-inset-bottom)) max(0.85rem, env(safe-area-inset-left));
+      }
+    }
     .user-detail-kv {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -283,11 +368,6 @@
       font-size: 0.92rem;
       color: #e2e8f0;
       font-variant-numeric: tabular-nums;
-    }
-    .user-detail-finance-tabs {
-      display: flex;
-      gap: 0.35rem;
-      margin-bottom: 0.65rem;
     }
     .user-detail-finance-tab {
       appearance: none;
@@ -761,15 +841,45 @@
       width: 100%;
     }
     .actions-cell { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+    .users-directory-shell {
+      width: 100%;
+      max-width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: rgba(8, 14, 26, 0.35);
+    }
     #usersTable.users-directory-scroll {
       max-height: min(70vh, 720px);
       overflow: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-x pan-y;
     }
-    .user-identity { display: inline-block; white-space: nowrap; line-height: 1.4; }
-    #usersTable .data-table { width: max-content; min-width: 100%; }
+    .user-identity { display: inline-block; white-space: nowrap; line-height: 1.4; max-width: 100%; }
+    #usersTable .data-table {
+      width: max-content;
+      min-width: 100%;
+      table-layout: auto;
+    }
     #usersTable .user-id-cell,
     #usersTable .user-name-cell,
-    #usersTable .user-email-cell { white-space: nowrap; vertical-align: top; }
+    #usersTable .user-email-cell { vertical-align: top; }
+    #usersTable .user-id-cell,
+    #usersTable .user-name-cell { white-space: nowrap; }
+    #usersTable .user-email-cell {
+      white-space: normal;
+      word-break: break-word;
+      max-width: 14rem;
+    }
+    #usersTable .actions-cell {
+      min-width: 11.5rem;
+      align-content: flex-start;
+    }
+    @media (max-width: 900px) {
+      #usersTable .user-email-cell { max-width: 10rem; font-size: 0.82rem; }
+      #usersTable .actions-cell .btn { font-size: 0.72rem; padding: 0.28rem 0.45rem; }
+    }
     #usersTable .user-auth-id {
       display: block;
       margin-top: 0.2rem;
@@ -1184,7 +1294,9 @@
         <p style="margin-bottom:0.75rem">
           <button type="button" id="usersBackfillWalletsBtn" class="btn btn-sm btn-secondary">Sync Supabase wallet mirrors</button>
         </p>
-        <div id="usersTable" class="data-table-wrap users-directory-scroll"><p class="hint">Loading users…</p></div>
+        <div class="users-directory-shell">
+          <div id="usersTable" class="data-table-wrap users-directory-scroll"><p class="hint">Loading users…</p></div>
+        </div>
         <div class="admin-toolbar" id="usersPager" style="margin-top:0.75rem;display:none">
           <button type="button" id="usersPrevBtn" class="btn btn-secondary btn-sm">Previous</button>
           <span id="usersPageLabel" class="hint"></span>
@@ -1586,30 +1698,43 @@
     <div class="proof-lightbox-backdrop user-detail-modal-backdrop"></div>
     <div class="proof-lightbox-inner kyc-doc-viewer-inner user-detail-modal-inner">
       <button type="button" id="userDetailModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
-      <div class="user-detail-head">
-        <div>
-          <h3 id="userDetailModalTitle" class="user-detail-title">User details</h3>
-          <p id="userDetailModalSubtitle" class="user-detail-sub">—</p>
+      <div class="user-detail-chrome">
+        <div class="user-detail-head">
+          <div>
+            <h3 id="userDetailModalTitle" class="user-detail-title">User details</h3>
+            <p id="userDetailModalSubtitle" class="user-detail-sub">—</p>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="userDetailRefreshBtn">Refresh</button>
         </div>
-        <button type="button" class="btn btn-secondary btn-sm" id="userDetailRefreshBtn">Refresh</button>
+        <div class="user-detail-tabs-scroll">
+          <div class="user-detail-tabs" role="tablist" aria-label="User detail sections">
+            <button type="button" class="user-detail-tab is-active" data-user-detail-tab="profile" role="tab" aria-selected="true">Profile</button>
+            <button type="button" class="user-detail-tab" data-user-detail-tab="finance" role="tab">
+              <span class="user-detail-tab-label user-detail-tab-label--long">Deposits &amp; withdrawals</span>
+              <span class="user-detail-tab-label user-detail-tab-label--short">Finance</span>
+            </button>
+            <button type="button" class="user-detail-tab" data-user-detail-tab="cards" role="tab">Cards</button>
+            <button type="button" class="user-detail-tab" data-user-detail-tab="transactions" role="tab">
+              <span class="user-detail-tab-label user-detail-tab-label--long">Card transactions</span>
+              <span class="user-detail-tab-label user-detail-tab-label--short">Transactions</span>
+            </button>
+            <button type="button" class="user-detail-tab" data-user-detail-tab="support" role="tab">Support</button>
+          </div>
+        </div>
       </div>
-      <div class="user-detail-tabs" role="tablist" aria-label="User detail sections">
-        <button type="button" class="user-detail-tab is-active" data-user-detail-tab="profile" role="tab" aria-selected="true">Profile</button>
-        <button type="button" class="user-detail-tab" data-user-detail-tab="finance" role="tab">Deposits &amp; withdrawals</button>
-        <button type="button" class="user-detail-tab" data-user-detail-tab="cards" role="tab">Cards</button>
-        <button type="button" class="user-detail-tab" data-user-detail-tab="transactions" role="tab">Card transactions</button>
-        <button type="button" class="user-detail-tab" data-user-detail-tab="support" role="tab">Support</button>
-      </div>
+      <div class="user-detail-scroll-body">
       <div class="user-detail-panel" id="userDetailPanelProfile" data-user-detail-panel="profile" role="tabpanel">
         <dl class="user-detail-kv" id="userDetailProfileKv"></dl>
       </div>
       <div class="user-detail-panel hidden" id="userDetailPanelFinance" data-user-detail-panel="finance" role="tabpanel">
-        <div class="user-detail-finance-tabs">
-          <button type="button" class="user-detail-finance-tab is-active" data-user-finance-kind="deposits">Deposits</button>
-          <button type="button" class="user-detail-finance-tab" data-user-finance-kind="usdt_withdrawals">USDT withdrawals</button>
-          <button type="button" class="user-detail-finance-tab" data-user-finance-kind="mmk_withdrawals">MMK withdrawals</button>
+        <div class="user-detail-finance-tabs-scroll">
+          <div class="user-detail-finance-tabs">
+            <button type="button" class="user-detail-finance-tab is-active" data-user-finance-kind="deposits">Deposits</button>
+            <button type="button" class="user-detail-finance-tab" data-user-finance-kind="usdt_withdrawals">USDT withdrawals</button>
+            <button type="button" class="user-detail-finance-tab" data-user-finance-kind="mmk_withdrawals">MMK withdrawals</button>
+          </div>
         </div>
-        <div id="userDetailFinanceTable" class="data-table-wrap"><p class="hint">Loading…</p></div>
+        <div id="userDetailFinanceTable" class="data-table-wrap user-detail-table-scroll"><p class="hint">Loading…</p></div>
         <div class="admin-toolbar" style="margin-top:0.65rem">
           <button type="button" class="btn btn-secondary btn-sm" id="userDetailFinancePrev" disabled>Previous</button>
           <span id="userDetailFinanceMeta" class="hint"></span>
@@ -1617,10 +1742,10 @@
         </div>
       </div>
       <div class="user-detail-panel hidden" id="userDetailPanelCards" data-user-detail-panel="cards" role="tabpanel">
-        <div id="userDetailCardsTable" class="data-table-wrap"><p class="hint">Loading…</p></div>
+        <div id="userDetailCardsTable" class="data-table-wrap user-detail-table-scroll"><p class="hint">Loading…</p></div>
       </div>
       <div class="user-detail-panel hidden" id="userDetailPanelTransactions" data-user-detail-panel="transactions" role="tabpanel">
-        <div id="userDetailTxTable" class="data-table-wrap"><p class="hint">Loading…</p></div>
+        <div id="userDetailTxTable" class="data-table-wrap user-detail-table-scroll"><p class="hint">Loading…</p></div>
         <div class="admin-toolbar" style="margin-top:0.65rem">
           <button type="button" class="btn btn-secondary btn-sm" id="userDetailTxPrev" disabled>Previous</button>
           <span id="userDetailTxMeta" class="hint"></span>
@@ -1639,6 +1764,7 @@
           <button type="submit" class="btn btn-primary btn-sm" id="userDetailSupportSendBtn">Send reply</button>
         </form>
         <p id="userDetailSupportError" class="hint hidden" role="alert" style="color:#f87171"></p>
+      </div>
       </div>
     </div>
   </div>
@@ -1758,7 +1884,7 @@
   <script src="/viewport.js?v=20260909pinKb"></script>
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261010userDetail" defer></script>
-  <script src="/adminUserDetail.js?v=20261010userDetail" defer></script>
+  <script src="/admin.js?v=20261011userDetailUx" defer></script>
+  <script src="/adminUserDetail.js?v=20261011userDetailUx" defer></script>
 </body>
 </html>

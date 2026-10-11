@@ -290,10 +290,32 @@ html.doc-scroll .sidebar-toggle-fab.is-visible {
 }
 
 /* Sidebar open: keep document scroll on Android. */
-html.doc-scroll body.sidebar-scroll-lock {
+html.doc-scroll body.sidebar-scroll-lock:not(.user-detail-modal-open) {
   overflow-x: hidden !important;
   overflow-y: auto !important;
   position: relative !important;
+}
+
+/* User detail modal: lock page scroll even on doc-scroll / mobile admin layouts */
+html.user-detail-modal-open {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+  height: 100%;
+}
+html.user-detail-modal-open body {
+  position: fixed !important;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+  width: 100% !important;
+  max-width: 100% !important;
+  left: 0;
+  right: 0;
+  touch-action: none;
+}
+html.user-detail-modal-open #userDetailModal,
+html.user-detail-modal-open #userDetailModal .user-detail-scroll-body,
+html.user-detail-modal-open #userDetailModal .user-detail-table-scroll {
+  touch-action: pan-y;
 }
 
 /* While the soft keyboard is open, avoid viewport-tied height thrashing (mobile). */
