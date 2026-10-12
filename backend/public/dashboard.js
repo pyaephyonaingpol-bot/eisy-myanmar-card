@@ -4466,7 +4466,7 @@ const Dashboard = {
 
     this.loadP2pChatMessages(orderType, order.id);
     this._p2pChatInterval = setInterval(() => {
-      if (window.EisyScroll?.isScrolling?.()) return;
+      if (document.hidden || window.EisyScroll?.isScrolling?.()) return;
       this.loadP2pChatMessages(orderType, order.id, { silent: true });
     }, 8000);
 
@@ -4476,7 +4476,7 @@ const Dashboard = {
       && !order.maker_can_release;
     if (shouldPollRelease) {
       this._p2pStatusPollInterval = setInterval(async () => {
-        if (window.EisyScroll?.isScrolling?.()) return;
+        if (document.hidden || window.EisyScroll?.isScrolling?.()) return;
         try {
           const data = await (this.p2pApi()?.getActiveOrder
             ? this.p2pApi().getActiveOrder(orderType, order.id)
@@ -7011,7 +7011,11 @@ const Dashboard = {
         this.loadDepositHistory(),
       ]);
       if (!Auth.needsPinUnlock()) {
-        this.loadWallet({ force: true, silent: true }).catch(() => {});
+        clearTimeout(this._walletDeepScanTimer);
+        this._walletDeepScanTimer = setTimeout(() => {
+          if (document.hidden || Auth.needsPinUnlock()) return;
+          this.loadWallet({ force: true, silent: true }).catch(() => {});
+        }, 2500);
         if (!(this.allCards || []).length) {
           this.loadAllCards({ preserveSelection: true, silent: true, reconcilePago: true })
             .finally(() => this.setCardsLoading(false));

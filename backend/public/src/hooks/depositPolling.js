@@ -21,6 +21,7 @@
 
     let timer = null;
     const tick = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       if (root.EisyScroll?.isScrolling?.()) return;
       try {
         const result = await getStatus(refCode);
@@ -60,6 +61,7 @@
 
     let timer = null;
     const tick = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       if (root.EisyScroll?.isScrolling?.()) return;
       try {
         const result = await getOrder(orderId);

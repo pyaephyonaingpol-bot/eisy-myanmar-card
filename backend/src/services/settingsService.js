@@ -138,9 +138,15 @@ let _settingsCache = null;
 let _settingsCacheAt = 0;
 const SETTINGS_CACHE_TTL_MS = parseInt(process.env.SETTINGS_CACHE_TTL_MS || '15000', 10);
 
+let _publicRatesCache = null;
+let _publicRatesCacheAt = 0;
+const PUBLIC_RATES_CACHE_TTL_MS = parseInt(process.env.PUBLIC_RATES_CACHE_TTL_MS || '30000', 10);
+
 function invalidateSettingsCache() {
   _settingsCache = null;
   _settingsCacheAt = 0;
+  _publicRatesCache = null;
+  _publicRatesCacheAt = 0;
 }
 
 async function getAllSettings() {
@@ -727,6 +733,11 @@ async function getCurrentRateSummary() {
 
 /** User-facing rates and fees. Omits wallet addresses, provider cost, and platform profit. */
 async function getPublicRatesAndFees() {
+  const now = Date.now();
+  if (_publicRatesCache && (now - _publicRatesCacheAt) < PUBLIC_RATES_CACHE_TTL_MS) {
+    return _publicRatesCache;
+  }
+
   const pricing = await getCardPricingSettings();
   const current = await getCurrentRateSummary();
   const withdrawal = await getWithdrawalFeeSettings();
@@ -756,7 +767,7 @@ async function getPublicRatesAndFees() {
       usdt_withdraw_fee_trc20_type: withdrawal.usdt_withdraw_fee_trc20_type,
     },
   };
-  return {
+  const payload = {
     pricing: publicPricing,
     current_rate: {
       mmk_to_usd_rate: current.mmk_to_usd_rate,
@@ -765,6 +776,9 @@ async function getPublicRatesAndFees() {
       effective_date: current.effective_date,
     },
   };
+  _publicRatesCache = payload;
+  _publicRatesCacheAt = Date.now();
+  return payload;
 }
 
 async function buildRateSnapshot() {

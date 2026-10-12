@@ -60,7 +60,7 @@
     {
       "source": "/(.*)\\.(js|css|png|jpg|jpeg|svg|webp|ico|woff2?)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=300, must-revalidate" },
+        { "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" },
         { "key": "Access-Control-Allow-Origin", "value": "*" }
       ]
     }
