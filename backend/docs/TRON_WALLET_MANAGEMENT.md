@@ -191,15 +191,38 @@ node backend/scripts/test-tron-wallet-monitor.js
 
 ## Cron (production)
 
-Root `vercel.json` schedules:
+Root `vercel.json` schedules **every 15 minutes**:
 
 ```json
-{ "path": "/api/cron/tron-deposits", "schedule": "15 3 * * *" }
+{ "path": "/api/cron/tron-deposits", "schedule": "*/15 * * * *" }
 ```
 
-That hit runs order verification, full HD deposit scan (batched), and wallet monitor. For faster crediting on high volume, increase frequency (e.g. every 15 minutes) in Vercel Cron and ensure `CRON_SECRET` is set.
+Each run executes (in one request):
 
-Auth: `Authorization: Bearer $CRON_SECRET` or Vercel `x-vercel-cron: 1`.
+1. **Pending TRON order verification** (Supabase orders → TronGrid match → wallet credit)  
+2. **HD inbound deposit scan** (paginated custodial addresses → auto-credit)  
+3. **Master wallet monitor** (TRX low / sweep-failure Telegram alerts)
+
+**Sweeps are not scheduled.** USDT collection from HD addresses remains **manual** (`POST /api/admin/sweep-deposits`) so ops controls gas spend and timing.
+
+### `CRON_SECRET` (required for manual / external triggers)
+
+Set in **Vercel → Project → Settings → Environment Variables** for **Production** (and Preview if you test cron manually):
+
+```bash
+openssl rand -hex 32
+# Example: CRON_SECRET=a1b2c3…  (64 hex chars)
+```
+
+| Caller | Auth |
+|--------|------|
+| **Vercel Cron** (scheduled) | Sends `Authorization: Bearer <CRON_SECRET>` when `CRON_SECRET` is set, **or** `x-vercel-cron: 1` on Vercel |
+| **Manual / monitoring** | `GET` or `POST /api/cron/tron-deposits` with `Authorization: Bearer $CRON_SECRET` |
+| **Deposit listener** | Header `X-Deposit-Listener-Secret: $DEPOSIT_LISTENER_SECRET` (same handler) |
+
+If `CRON_SECRET` is missing on Vercel, scheduled jobs still run via `x-vercel-cron: 1`, but external replay protection is weaker — **always set `CRON_SECRET` in production.**
+
+After changing `CRON_SECRET`, redeploy production so serverless functions pick up the new value.
 
 ---
 
