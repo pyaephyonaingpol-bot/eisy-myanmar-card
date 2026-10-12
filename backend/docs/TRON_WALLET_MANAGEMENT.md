@@ -62,8 +62,7 @@ flowchart LR
 
 | Variable | Description |
 |----------|-------------|
-| `DEPOSIT_LISTENER_SECRET` | Optional auth for `POST /api/tron/orders/check/pending` and `/api/cron/tron-deposits` |
-| `CRON_SECRET` | Optional Bearer auth for legacy `/api/cron/tron-deposits` (no Vercel schedule) |
+| `DEPOSIT_LISTENER_SECRET` | Optional auth for `POST /api/tron/orders/check/pending` |
 | `TRON_ORDER_POLL_ENABLED` | Default **false** — set `true` only on long-running servers (not Vercel Hobby) |
 | `TRON_HD_SCAN_ON_READ` | Scan user HD address when wallet UI loads |
 | `TRON_HD_SCAN_BATCH_SIZE` | Addresses per batch in admin HD scan (default **200**) |
@@ -220,14 +219,13 @@ Runs in one request:
 
 See [Sweep procedure](#sweep-procedure-collect-usdt-to-master) and **Trigger Manual Sweep** in the admin UI (`POST /api/admin/sweep-deposits`).
 
-### Optional legacy hooks (not scheduled)
+### Optional listener hook (not scheduled)
 
 | Endpoint | Auth |
 |----------|------|
-| `POST /api/cron/tron-deposits` | `CRON_SECRET` Bearer or `DEPOSIT_LISTENER_SECRET` header (not scheduled) |
 | `POST /api/tron/orders/check/pending` | `X-Deposit-Listener-Secret` |
 
-Prefer the admin routes above for day-to-day operations.
+Prefer **Trigger Deposit Credit Scan** for day-to-day crediting.
 
 ---
 
@@ -270,7 +268,6 @@ HD sync uses adaptive upsert if columns are missing.
 |-------|--------|
 | `/api/tron/orders` | Create/list TRON deposit orders |
 | `/api/admin/scan-deposits` | Manual deposit credit scan + monitor |
-| `/api/cron/tron-deposits` | Legacy listener/cron hook (not scheduled in vercel.json) |
 | `/api/admin/sweep-deposits` | Manual sweep |
 | `/api/admin/master-wallet-balance` | Ops dashboard balances |
 | `/api/webhook/tron` | Tron-style deposit webhooks |

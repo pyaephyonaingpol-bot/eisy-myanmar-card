@@ -19,4 +19,11 @@ assert.strictEqual(
   'vercel.json must not define crons (use admin Trigger Deposit Credit Scan instead)'
 );
 
+const indexJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.js'), 'utf8');
+assert.ok(!indexJs.includes("'/api/cron'"), 'index.js must not mount /api/cron');
+assert.ok(!indexJs.includes('tronCron'), 'index.js must not reference tronCron');
+
+const tronCronPath = path.join(__dirname, '..', 'src', 'routes', 'tronCron.js');
+assert.ok(!fs.existsSync(tronCronPath), 'tronCron route file must be removed');
+
 console.log('test-vercel-cron-config: OK');

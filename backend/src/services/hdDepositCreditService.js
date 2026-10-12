@@ -135,7 +135,7 @@ function getHdScanBatchSize() {
   return Math.min(Math.max(Number.isFinite(n) ? n : 200, 1), 500);
 }
 
-/** Max custodial addresses scanned per cron poll (batched). */
+/** Max custodial addresses scanned per admin poll pass (batched). */
 function getHdScanMaxAddresses() {
   const n = parseInt(process.env.TRON_HD_SCAN_MAX_ADDRESSES || '5000', 10);
   return Math.min(Math.max(Number.isFinite(n) ? n : 5000, 1), 20_000);

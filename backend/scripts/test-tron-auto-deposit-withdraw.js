@@ -22,7 +22,6 @@ process.env.DATABASE_URL = `file:${dbFile}`;
 process.env.NODE_ENV = 'test';
 process.env.TRON_HD_SCAN_ON_READ = 'false';
 process.env.DEPOSIT_LISTENER_SECRET = 'listener-test-secret';
-delete process.env.CRON_SECRET;
 delete process.env.TRON_WEBHOOK_SECRET;
 delete process.env.DEPOSIT_WEBHOOK_SECRET;
 
@@ -193,7 +192,7 @@ async function main() {
     });
   }
   const batchScan = await creditInboundHdDeposits({ fetchTransfers: async () => [] });
-  assert.strictEqual(batchScan.addresses, 3, 'cron HD scan covers every custodial address');
+  assert.strictEqual(batchScan.addresses, 3, 'HD scan covers every custodial address');
   assert.ok(batchScan.batches >= 2, 'HD scan paginates in batches');
   delete process.env.TRON_HD_SCAN_BATCH_SIZE;
   delete process.env.TRON_HD_SCAN_MAX_ADDRESSES;
@@ -219,14 +218,9 @@ async function main() {
   const app = express();
   app.use(express.json());
   app.use('/api/webhook', require('../src/routes/webhook'));
-  app.use('/api/cron', require('../src/routes/tronCron'));
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
-
-  const cronDenied = await getJson(port, '/api/cron/tron-deposits');
-  assert.strictEqual(cronDenied.status, 401);
-  assert.strictEqual(cronDenied.json.code, 'CRON_UNAUTHORIZED');
 
   const ignoredHook = await postJson(port, '/api/webhook/tron', {
     transaction_id: `tx-trx-${stamp}`,
