@@ -199,6 +199,68 @@ async function notifyAdminP2pDisputeOpened({ order, orderType, reason, txRef }) 
   console.log('[Telegram] P2P dispute notification sent for', order.ref_code);
 }
 
+async function notifyAdminTronWalletMonitor(payload = {}) {
+  const kind = String(payload.kind || 'tron_monitor');
+  let message = '';
+
+  if (kind === 'master_trx_low') {
+    message = [
+      '⚠️ *TRON master wallet — low TRX (gas)*',
+      '',
+      `📍 Address: \`${payload.address || 'unknown'}\``,
+      `⛽ TRX: ${Number(payload.trxBalance || 0).toFixed(4)} (threshold ${Number(payload.threshold || 30).toFixed(2)})`,
+      `💵 USDT: $${Number(payload.usdtBalance || 0).toFixed(2)}`,
+      `🔧 ~${payload.estimatedSweepsLeft ?? '?'} sweeps left at ${Number(payload.gasPerSweep || 1.1).toFixed(2)} TRX gas each`,
+      '',
+      '_Fund master TRX before sweeps / withdrawals stall. See backend/docs/TRON_WALLET_MANAGEMENT.md_',
+    ].join('\n');
+  } else if (kind === 'master_address_mismatch') {
+    message = [
+      '🚨 *TRON master address mismatch*',
+      '',
+      `Configured: \`${payload.configured || 'n/a'}\``,
+      `From key: \`${payload.derived || 'n/a'}\``,
+      '',
+      '_Withdrawals and balance checks may disagree until env is fixed._',
+    ].join('\n');
+  } else if (kind === 'master_balance_unreachable') {
+    message = [
+      '⚠️ *TRON master balance check failed*',
+      '',
+      `Code: \`${payload.code || 'unknown'}\``,
+      payload.message || 'Could not read master wallet balances.',
+    ].join('\n');
+  } else if (kind === 'sweep_insufficient_trx' || kind === 'sweep_failures' || kind === 'sweep_single_error') {
+    const s = payload.summary || {};
+    const lines = [
+      kind === 'sweep_insufficient_trx'
+        ? '🚨 *TRON deposit sweep — insufficient master TRX*'
+        : '⚠️ *TRON deposit sweep failures*',
+      '',
+    ];
+    if (s.mode) {
+      lines.push(
+        `Mode: ${s.mode} | checked ${s.checked ?? '?'} | swept ${s.swept ?? '?'} | failed ${s.failed ?? '?'}`
+      );
+    }
+    if (payload.message) lines.push(payload.message);
+    if (payload.code) lines.push(`Code: \`${payload.code}\``);
+    const failures = Array.isArray(payload.failures) ? payload.failures : [];
+    for (const f of failures.slice(0, 5)) {
+      lines.push(`• user ${f.userId ?? '?'} ${f.depositAddress || ''}: ${f.error || f.code || 'failed'}`);
+    }
+    if (payload.context?.userId) {
+      lines.push(`Context user_id: ${payload.context.userId}`);
+    }
+    message = lines.join('\n');
+  } else {
+    message = `⚠️ TRON monitor: ${kind}\n${JSON.stringify(payload)}`;
+  }
+
+  await sendAdminMessage(message);
+  console.log('[Telegram] TRON wallet monitor alert:', kind);
+}
+
 async function notifyAdminP2pSellOrderReleased({ user, order, seller }) {
   const message = [
     '✅ *P2P Sell USDT — Escrow Released*',
@@ -233,4 +295,5 @@ module.exports = {
   notifyAdminP2pSellOrderPending,
   notifyAdminP2pSellOrderReleased,
   notifyAdminP2pDisputeOpened,
+  notifyAdminTronWalletMonitor,
 };

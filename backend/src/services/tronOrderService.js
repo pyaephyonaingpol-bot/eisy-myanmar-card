@@ -625,10 +625,20 @@ async function runTronOrderPollSafely() {
       };
     }
 
+    let monitor;
+    try {
+      const { runTronWalletMonitorSafely } = require('./tronWalletMonitorService');
+      monitor = await runTronWalletMonitorSafely();
+    } catch (err) {
+      console.error('[tron/monitor] poll hook failed:', err.message);
+      monitor = { ok: false, error: err.message };
+    }
+
     return {
       ...orders,
-      ok: orders.ok !== false && hdDeposits.ok !== false,
+      ok: orders.ok !== false && hdDeposits.ok !== false && monitor?.ok !== false,
       hd_deposits: hdDeposits,
+      wallet_monitor: monitor,
       credited: Number(orders.credited || 0) + Number(hdDeposits.credited || 0),
     };
   } finally {
