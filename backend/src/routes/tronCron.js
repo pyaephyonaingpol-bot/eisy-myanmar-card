@@ -19,7 +19,9 @@ function cronAuthorized(req) {
   const cronSecret = String(process.env.CRON_SECRET || '').trim();
   const header = String(req.get('authorization') || '');
   const bearer = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
-  if (cronSecret && timingSafeEqualString(bearer, cronSecret)) return true;
+  if (cronSecret && timingSafeEqualString(bearer, cronSecret)) {
+    return { ok: true, via: 'cron_secret' };
+  }
 
   const listener = String(process.env.DEPOSIT_LISTENER_SECRET || '').trim();
   const provided = String(
@@ -27,10 +29,20 @@ function cronAuthorized(req) {
     || req.get('X-Deposit-Listener-Secret')
     || ''
   ).trim();
-  if (listener && timingSafeEqualString(provided, listener)) return true;
+  if (listener && timingSafeEqualString(provided, listener)) {
+    return { ok: true, via: 'deposit_listener' };
+  }
 
-  if (process.env.VERCEL && String(req.get('x-vercel-cron') || '') === '1') return true;
-  return false;
+  if (process.env.VERCEL && String(req.get('x-vercel-cron') || '') === '1') {
+    if (!cronSecret && process.env.NODE_ENV === 'production') {
+      console.warn(
+        '[cron/tron-deposits] CRON_SECRET is not set on Vercel — '
+        + 'scheduled jobs still run via x-vercel-cron; set CRON_SECRET in project env for Bearer auth.'
+      );
+    }
+    return { ok: true, via: 'vercel_cron' };
+  }
+  return { ok: false, via: null };
 }
 
 async function handleTronDepositCron(_req, res) {
@@ -49,12 +61,16 @@ async function handleTronDepositCron(_req, res) {
 }
 
 router.all('/tron-deposits', (req, res) => {
-  if (!cronAuthorized(req)) {
+  const auth = cronAuthorized(req);
+  if (!auth.ok) {
     return res.status(401).json({
       success: false,
       error: 'Unauthorized',
       code: 'CRON_UNAUTHORIZED',
     });
+  }
+  if (auth.via && auth.via !== 'vercel_cron') {
+    console.log(`[cron/tron-deposits] authorized via ${auth.via}`);
   }
   return handleTronDepositCron(req, res);
 });
