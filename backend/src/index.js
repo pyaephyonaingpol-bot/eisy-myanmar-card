@@ -33,6 +33,20 @@ app.set('trust proxy', 1);
 // Security headers (XSS / clickjacking / MIME sniffing / HSTS)
 app.use(createHelmetMiddleware());
 
+try {
+  // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+  const compression = require('compression');
+  app.use(compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.path && String(req.path).startsWith('/api/webhook/')) return false;
+      return compression.filter(req, res);
+    },
+  }));
+} catch (err) {
+  console.warn('[server] compression middleware unavailable:', err.message);
+}
+
 app.use(cors(createCorsOptions()));
 app.options('*', cors(createCorsOptions()));
 app.use(express.json({

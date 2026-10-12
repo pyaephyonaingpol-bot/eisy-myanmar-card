@@ -39,6 +39,15 @@
     kycDocsBySubmissionId: {},
     _pipeline: null,
     _pipelineIsolated: false,
+    /** In-flight GET dedupe — avoids duplicate parallel admin API calls. */
+    _apiInflight: {},
+    _fetchMeta: {},
+    ADMIN_FETCH_TTL_MS: {
+      users: 15000,
+      deposits: 12000,
+      settings: 60000,
+      support: 8000,
+    },
 
     userIdentityText(row) {
       const id = row && row.user_id != null && row.user_id !== '' ? row.user_id : row && row.id;
@@ -257,27 +266,68 @@
       return h;
     },
 
-    async api(method, path, body) {
-      const res = await fetch(path, {
-        method,
-        headers: this.headers(),
-        body: body != null ? JSON.stringify(body) : undefined,
-      });
-      let data = {};
-      try {
-        data = await res.json();
-      } catch (_) {
-        data = {};
+    _adminFetchKey(method, path) {
+      return `${String(method || 'GET').toUpperCase()} ${path}`;
+    },
+
+    _markAdminFetched(path) {
+      this._fetchMeta[path] = Date.now();
+    },
+
+    _isAdminFresh(path, ttlMs) {
+      const at = this._fetchMeta[path];
+      if (!at) return false;
+      return (Date.now() - at) < (ttlMs ?? 12000);
+    },
+
+    async api(method, path, body, opts = {}) {
+      const m = String(method || 'GET').toUpperCase();
+      const inflightKey = m === 'GET' && !opts.force ? this._adminFetchKey(m, path) : null;
+      if (inflightKey && this._apiInflight[inflightKey]) {
+        return this._apiInflight[inflightKey];
       }
-      if (res.status === 401) {
-        this.clearSession();
-        this.showLogin();
-        throw new Error(data.error || 'Admin session expired — please sign in again');
+
+      const run = (async () => {
+        const res = await fetch(path, {
+          method: m,
+          headers: this.headers(),
+          body: body != null ? JSON.stringify(body) : undefined,
+          signal: opts.signal,
+        });
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (_) {
+          data = {};
+        }
+        if (res.status === 401) {
+          this.clearSession();
+          this.showLogin();
+          throw new Error(data.error || 'Admin session expired — please sign in again');
+        }
+        if (!res.ok) {
+          throw new Error(data.error || res.statusText || ('HTTP ' + res.status));
+        }
+        if (m === 'GET') this._markAdminFetched(path);
+        return data;
+      })();
+
+      if (inflightKey) {
+        this._apiInflight[inflightKey] = run;
+        run.finally(() => {
+          if (this._apiInflight[inflightKey] === run) delete this._apiInflight[inflightKey];
+        });
       }
-      if (!res.ok) {
-        throw new Error(data.error || res.statusText || ('HTTP ' + res.status));
-      }
-      return data;
+      return run;
+    },
+
+    /** Warm non-visible tabs after idle — keeps login snappy. */
+    scheduleBackgroundAdminWarm() {
+      clearTimeout(this._adminWarmTimer);
+      this._adminWarmTimer = setTimeout(() => {
+        if (document.visibilityState !== 'visible') return;
+        this.loadAll().catch(() => {});
+      }, 15000);
     },
 
     async apiFormData(method, path, formData) {
@@ -397,7 +447,7 @@
         // Do not block splash/ready on every admin table — load the active tab only,
         // then warm the rest in the background.
         this.loadActiveTabData();
-        this.loadAll();
+        this.scheduleBackgroundAdminWarm();
       } catch (err) {
         console.warn('[Admin] session restore failed:', err.message);
         this.clearSession();
@@ -449,7 +499,18 @@
           errEl.classList.add('hidden');
           errEl.textContent = '';
         }
-        if (btn) btn.disabled = true;
+        const setBusy = (busy) => {
+          if (!btn) return;
+          if (window.EisyHooks?.submitBusy?.setSubmitBusy) {
+            window.EisyHooks.submitBusy.setSubmitBusy(btn, busy, {
+              loadingLabel: 'Signing in…',
+              idleLabel: 'Sign in',
+            });
+            return;
+          }
+          btn.disabled = busy;
+        };
+        setBusy(true);
         try {
           const email = ($('adminLoginEmail')?.value || '').trim();
           const password = $('adminLoginPassword')?.value || '';
@@ -463,7 +524,7 @@
           this.applySession(data);
           this.showApp();
           this.loadActiveTabData();
-          this.loadAll();
+          this.scheduleBackgroundAdminWarm();
           this.showAdminToast('Signed in as ' + (data.user?.role_label || data.user?.admin_role), 'ok');
         } catch (err) {
           if (errEl) {
@@ -471,7 +532,7 @@
             errEl.classList.remove('hidden');
           }
         } finally {
-          if (btn) btn.disabled = false;
+          setBusy(false);
         }
       });
 
@@ -503,7 +564,8 @@
           if (!res.ok) throw new Error(data.error || 'Bootstrap failed');
           this.applySession(data);
           this.showApp();
-          this.loadAll();
+          this.loadActiveTabData();
+          this.scheduleBackgroundAdminWarm();
           this.showAdminToast('Super Admin created', 'ok');
         } catch (err) {
           if (errEl) {
@@ -5044,6 +5106,8 @@
           return;
         }
 
+        this._fetchMeta['admin:supportThreads'] = Date.now();
+
         list.innerHTML = threads.map((t) => {
           const pri = String(t.priority || 'medium').toLowerCase();
           const st = String(t.status || 'pending').toLowerCase();
@@ -5174,21 +5238,23 @@
       this.stopSupportMessagePolling();
       this._supportPollTimer = setInterval(async () => {
         if (this.activeThreadId !== threadId) return;
+        if (document.visibilityState !== 'visible') return;
         try {
           const qs = this._supportLastMessageId
-            ? ('?after_id=' + this._supportLastMessageId)
+            ? ('?after_id=' + encodeURIComponent(this._supportLastMessageId))
             : '';
-          // Prefer after_id when backend supports it; fall back to full fetch.
-          const data = await this.api('GET', '/api/admin/support/threads/' + threadId + '/messages');
+          const data = await this.api('GET', '/api/admin/support/threads/' + threadId + '/messages' + qs);
           const messages = Array.isArray(data.messages) ? data.messages : [];
           const maxId = messages.reduce((max, m) => Math.max(max, Number(m.id) || 0), 0);
           if (maxId > (this._supportLastMessageId || 0)) {
             this._supportLastMessageId = maxId;
             this.renderSupportMessages(messages);
-            this.loadSupportThreads();
+            if (!this._isAdminFresh('admin:supportThreads', this.ADMIN_FETCH_TTL_MS.support)) {
+              this.loadSupportThreads();
+            }
           }
         } catch (_) { /* ignore poll errors */ }
-      }, 4000);
+      }, 5000);
     },
 
     stopSupportMessagePolling() {

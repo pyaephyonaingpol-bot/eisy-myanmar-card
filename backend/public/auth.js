@@ -207,8 +207,18 @@ const Auth = {
     return h;
   },
 
+  _apiInflight: {},
+
   async api(method, path, body, opts = {}) {
     if (window.__EISY_DEBUG_API) console.log(`[Auth.api] ${method} ${path}`, body || '');
+    const m = String(method || 'GET').toUpperCase();
+    const dedupeKey = m === 'GET' && !opts.force && !opts.skipDedupe
+      ? `${path}|${opts.sensitive ? 's' : 'n'}`
+      : null;
+    if (dedupeKey && this._apiInflight[dedupeKey]) {
+      return this._apiInflight[dedupeKey];
+    }
+
     const timeoutMs = Number.isFinite(opts.timeoutMs)
       ? Math.max(1000, opts.timeoutMs)
       : 25000;
@@ -221,49 +231,60 @@ const Auth = {
         } catch (_) { /* ignore */ }
       }, timeoutMs);
     }
-    try {
-      const res = await fetch(path, {
-        method,
-        headers: this.headers(opts),
-        body: body ? JSON.stringify(body) : undefined,
-        cache: opts.sensitive ? 'no-store' : 'default',
-        signal: controller?.signal,
-      });
-      const text = await res.text();
-      let data = {};
+
+    const run = (async () => {
       try {
-        data = text ? JSON.parse(text) : {};
-      } catch (parseErr) {
-        console.error('[Auth.api] JSON parse error', parseErr, text);
-        throw new Error(`Invalid server response (${res.status})`);
-      }
+        const res = await fetch(path, {
+          method: m,
+          headers: this.headers(opts),
+          body: body ? JSON.stringify(body) : undefined,
+          cache: opts.sensitive ? 'no-store' : 'default',
+          signal: controller?.signal,
+        });
+        const text = await res.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (parseErr) {
+          console.error('[Auth.api] JSON parse error', parseErr, text);
+          throw new Error(`Invalid server response (${res.status})`);
+        }
 
-      if (window.__EISY_DEBUG_API) console.log(`[Auth.api] ${method} ${path} → ${res.status}`, data);
+        if (window.__EISY_DEBUG_API) console.log(`[Auth.api] ${m} ${path} → ${res.status}`, data);
 
-      if (!res.ok) {
-        const err = new Error(data.error || `HTTP ${res.status}`);
-        err.code = data.code;
-        err.status = res.status;
-        err.response = data;
-        console.error('[Auth.api] Request failed:', err.message, data);
+        if (!res.ok) {
+          const err = new Error(data.error || `HTTP ${res.status}`);
+          err.code = data.code;
+          err.status = res.status;
+          err.response = data;
+          console.error('[Auth.api] Request failed:', err.message, data);
+          throw err;
+        }
+        return data;
+      } catch (err) {
+        if (err?.name === 'AbortError' || controller?.signal?.aborted) {
+          const timeoutErr = new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+          timeoutErr.code = 'REQUEST_TIMEOUT';
+          timeoutErr.status = 408;
+          console.error('[Auth.api] Timeout:', m, path);
+          throw timeoutErr;
+        }
+        if (!err.message?.includes('HTTP')) {
+          console.error('[Auth.api] Network or unexpected error:', err);
+        }
         throw err;
+      } finally {
+        if (timer) clearTimeout(timer);
       }
-      return data;
-    } catch (err) {
-      if (err?.name === 'AbortError' || controller?.signal?.aborted) {
-        const timeoutErr = new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
-        timeoutErr.code = 'REQUEST_TIMEOUT';
-        timeoutErr.status = 408;
-        console.error('[Auth.api] Timeout:', method, path);
-        throw timeoutErr;
-      }
-      if (!err.message?.includes('HTTP')) {
-        console.error('[Auth.api] Network or unexpected error:', err);
-      }
-      throw err;
-    } finally {
-      if (timer) clearTimeout(timer);
+    })();
+
+    if (dedupeKey) {
+      this._apiInflight[dedupeKey] = run;
+      run.finally(() => {
+        if (this._apiInflight[dedupeKey] === run) delete this._apiInflight[dedupeKey];
+      });
     }
+    return run;
   },
 
   async apiForm(path, formData, opts = {}) {
