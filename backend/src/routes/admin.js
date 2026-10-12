@@ -2102,6 +2102,99 @@ router.get('/master-wallet-balance', requirePermission('master_wallet'), async (
 });
 
 /**
+ * GET /api/admin/scan-deposits — manual TRON deposit credit scan status (no chain sweep).
+ */
+router.get('/scan-deposits', requirePermission('master_wallet'), async (_req, res) => {
+  try {
+    const { isTronOrderPollInFlight } = require('../services/tronOrderService');
+    const { getHdScanBatchSize, getHdScanMaxAddresses } = require('../services/hdDepositCreditService');
+    res.json({
+      success: true,
+      manual: true,
+      scheduled: false,
+      in_flight: isTronOrderPollInFlight(),
+      hd_scan_batch_size: getHdScanBatchSize(),
+      hd_scan_max_addresses: getHdScanMaxAddresses(),
+    });
+  } catch (err) {
+    console.error('[admin/scan-deposits GET]', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to read deposit scan status',
+    });
+  }
+});
+
+/**
+ * POST /api/admin/scan-deposits
+ * Manual-only: verify pending TRON orders + scan HD addresses → credit user wallets.
+ * Does not sweep USDT on-chain (use POST /api/admin/sweep-deposits).
+ */
+router.post('/scan-deposits', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    const { isTronOrderPollInFlight, runTronOrderPollSafely } = require('../services/tronOrderService');
+    if (isTronOrderPollInFlight()) {
+      return res.status(409).json({
+        success: false,
+        error: 'A TRON deposit scan is already in progress',
+        code: 'DEPOSIT_SCAN_IN_PROGRESS',
+      });
+    }
+
+    const result = await runTronOrderPollSafely();
+    if (result?.skipped && result.reason === 'poll_in_flight') {
+      return res.status(409).json({
+        success: false,
+        error: 'A TRON deposit scan is already in progress',
+        code: 'DEPOSIT_SCAN_IN_PROGRESS',
+      });
+    }
+
+    const hd = result.hd_deposits || {};
+    const creditedTotal = Number(result.credited || 0);
+    const orderCredited = Number(result.credited || 0) - Number(hd.credited || 0);
+
+    TransactionLog.create({
+      userId: req.user?.id || null,
+      type: 'other',
+      direction: 'neutral',
+      description: `Admin manual TRON deposit credit scan — ${creditedTotal} credited`,
+      createdBy: 'admin',
+      metadata: {
+        action: 'scan_deposits',
+        manual: true,
+        credited_total: creditedTotal,
+        order_credited: orderCredited,
+        hd_credited: Number(hd.credited || 0),
+        completed_orders: Number(result.completed || 0),
+        hd_addresses: Number(hd.addresses || 0),
+      },
+    }).catch((err) => {
+      console.warn('[admin/scan-deposits] audit log skipped:', err.message);
+    });
+
+    const ok = result.ok !== false && !result.skipped;
+    res.status(ok ? 200 : 207).json({
+      success: ok,
+      message: creditedTotal > 0
+        ? `Credited ${creditedTotal} deposit(s) to user wallets`
+        : 'Deposit scan finished — no new credits',
+      manual: true,
+      scheduled: false,
+      credited_total: creditedTotal,
+      scan: result,
+    });
+  } catch (err) {
+    console.error('[admin/scan-deposits]', err.code || '', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Deposit scan failed',
+      code: err.code || 'DEPOSIT_SCAN_FAILED',
+    });
+  }
+});
+
+/**
  * POST /api/admin/sweep-deposits
  * Manual-only TRON HD deposit sweep (no cron).
  * Body: { dry_run?: boolean, user_id?: number, force_gas?: boolean, limit?: number }

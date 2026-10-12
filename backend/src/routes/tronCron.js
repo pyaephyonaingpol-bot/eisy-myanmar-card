@@ -1,7 +1,7 @@
 /**
- * Scheduled TRON HD deposit scan.
- * Vercel does not run the in-process poller, so a cron hit (or the deposit
- * listener secret) walks custodial addresses and credits confirmed USDT.
+ * Legacy TRON deposit scan hook (not scheduled in vercel.json).
+ * Prefer POST /api/admin/scan-deposits (master_wallet). This route remains for
+ * DEPOSIT_LISTENER_SECRET / CRON_SECRET automation outside the admin UI.
  */
 const express = require('express');
 const crypto = require('crypto');
@@ -33,15 +33,6 @@ function cronAuthorized(req) {
     return { ok: true, via: 'deposit_listener' };
   }
 
-  if (process.env.VERCEL && String(req.get('x-vercel-cron') || '') === '1') {
-    if (!cronSecret && process.env.NODE_ENV === 'production') {
-      console.warn(
-        '[cron/tron-deposits] CRON_SECRET is not set on Vercel — '
-        + 'scheduled jobs still run via x-vercel-cron; set CRON_SECRET in project env for Bearer auth.'
-      );
-    }
-    return { ok: true, via: 'vercel_cron' };
-  }
   return { ok: false, via: null };
 }
 
@@ -69,7 +60,7 @@ router.all('/tron-deposits', (req, res) => {
       code: 'CRON_UNAUTHORIZED',
     });
   }
-  if (auth.via && auth.via !== 'vercel_cron') {
+  if (auth.via) {
     console.log(`[cron/tron-deposits] authorized via ${auth.via}`);
   }
   return handleTronDepositCron(req, res);

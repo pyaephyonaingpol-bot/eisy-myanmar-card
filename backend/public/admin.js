@@ -698,6 +698,9 @@
       document.querySelectorAll('[data-tron-deposit-sweep]').forEach((btn) => {
         btn.addEventListener('click', () => this.runTronDepositSweep({ triggerBtn: btn }));
       });
+      document.querySelectorAll('[data-tron-deposit-scan]').forEach((btn) => {
+        btn.addEventListener('click', () => this.runTronDepositScan({ triggerBtn: btn }));
+      });
       if (this.hasPermission('master_wallet')) {
         this.loadTronSweepConfig().catch(() => {});
       }
@@ -3179,6 +3182,104 @@
         el.style.whiteSpace = 'pre-line';
         el.style.color = error ? '#f87171' : '';
       });
+    },
+
+    setTronDepositScanStatus(message, { error = false } = {}) {
+      const targets = [
+        $('masterWalletDepositScanStatus'),
+        $('masterWalletDepositScanStatusPanel'),
+      ].filter(Boolean);
+      targets.forEach((el) => {
+        el.textContent = message || '';
+        el.style.whiteSpace = 'pre-line';
+        el.style.color = error ? '#f87171' : '';
+      });
+    },
+
+    formatTronDepositScanSummary(data) {
+      const scan = data.scan || data;
+      const hd = scan.hd_deposits || {};
+      const creditedTotal = Number(data.credited_total ?? scan.credited ?? 0);
+      const orderCompleted = Number(scan.completed || 0);
+      const hdCredited = Number(hd.credited || 0);
+      const hdAddresses = Number(hd.addresses || 0);
+      const orderChecked = Number(scan.checked || 0);
+      const already = Number(hd.already_verified || 0);
+      let line = 'Deposit credit scan finished';
+      if (creditedTotal > 0) {
+        line += ' — credited ' + creditedTotal + ' deposit(s)';
+      } else {
+        line += ' — no new credits';
+      }
+      const parts = [];
+      if (orderChecked > 0) parts.push('orders checked ' + orderChecked + ', completed ' + orderCompleted);
+      if (hdAddresses > 0) {
+        parts.push('HD addresses ' + hdAddresses + ', HD credits ' + hdCredited);
+      }
+      if (already > 0) parts.push('already verified ' + already);
+      if (parts.length) line += ' (' + parts.join('; ') + ')';
+      return line;
+    },
+
+    async runTronDepositScan(opts = {}) {
+      if (!this.hasPermission('master_wallet')) {
+        this.showAdminToast('Master wallet permission required', 'error');
+        return;
+      }
+      if (this._tronDepositScanInFlight) {
+        this.showAdminToast('A deposit credit scan is already running', 'error');
+        return;
+      }
+
+      let status = null;
+      try {
+        status = await this.api('GET', '/api/admin/scan-deposits');
+      } catch (_) {
+        status = null;
+      }
+      if (status?.in_flight) {
+        this.showAdminToast('A deposit credit scan is already in progress on the server', 'error');
+        return;
+      }
+
+      const confirmMsg = [
+        'Trigger deposit credit scan?',
+        '',
+        'This checks TronGrid for confirmed USDT on pending orders and custodial HD addresses,',
+        'then credits user wallet balances in the database.',
+        '',
+        'It does not move on-chain USDT (use Trigger Manual Sweep for that).',
+      ].join('\n');
+      if (!window.confirm(confirmMsg)) return;
+
+      const buttons = Array.from(document.querySelectorAll('[data-tron-deposit-scan]'));
+      const prevLabels = buttons.map((b) => b.textContent);
+      buttons.forEach((b) => {
+        b.disabled = true;
+        b.textContent = 'Scanning…';
+      });
+      this.setTronDepositScanStatus('Deposit credit scan in progress…');
+      this._tronDepositScanInFlight = true;
+
+      try {
+        const data = await this.api('POST', '/api/admin/scan-deposits', {});
+        const summaryText = this.formatTronDepositScanSummary(data);
+        const isError = data.success === false;
+        this.setTronDepositScanStatus(summaryText, { error: isError });
+        this.showAdminToast(summaryText, isError ? 'error' : 'ok');
+        return data;
+      } catch (err) {
+        const msg = err.message || 'Deposit scan failed';
+        this.setTronDepositScanStatus(msg, { error: true });
+        this.showAdminToast(msg, 'error');
+        throw err;
+      } finally {
+        this._tronDepositScanInFlight = false;
+        buttons.forEach((b, i) => {
+          b.disabled = false;
+          b.textContent = prevLabels[i] || 'Trigger Deposit Credit Scan';
+        });
+      }
     },
 
     async loadTronSweepConfig() {
