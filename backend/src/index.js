@@ -554,7 +554,9 @@ async function start() {
   }
 
   const { isTronDepositEnabled } = require('./services/securityFlags');
-  const pollTron = String(process.env.TRON_ORDER_POLL_ENABLED || 'true').toLowerCase() !== 'false';
+  const pollTron = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.TRON_ORDER_POLL_ENABLED || 'false').trim().toLowerCase()
+  );
   if (isTronDepositEnabled() && pollTron) {
     const { startTronOrderPoller } = require('./services/tronOrderService');
     startTronOrderPoller();

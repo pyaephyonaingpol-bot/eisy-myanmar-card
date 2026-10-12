@@ -595,6 +595,10 @@ async function verifyPendingTronOrders() {
 
 let pollInFlight = false;
 
+function isTronOrderPollInFlight() {
+  return pollInFlight;
+}
+
 async function runTronOrderPollSafely() {
   if (pollInFlight) return { skipped: true, reason: 'poll_in_flight' };
   pollInFlight = true;
@@ -651,8 +655,11 @@ function startTronOrderPoller({ intervalMs } = {}) {
     10_000,
     parseInt(process.env.TRON_ORDER_POLL_MS || String(intervalMs || 30_000), 10) || 30_000
   );
-  if (String(process.env.TRON_ORDER_POLL_ENABLED || 'true').toLowerCase() === 'false') {
-    console.log('[tron/orders] background poll disabled (TRON_ORDER_POLL_ENABLED=false)');
+  const enabled = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.TRON_ORDER_POLL_ENABLED || 'false').trim().toLowerCase()
+  );
+  if (!enabled) {
+    console.log('[tron/orders] background poll disabled (set TRON_ORDER_POLL_ENABLED=true to enable)');
     return null;
   }
 
@@ -684,6 +691,7 @@ module.exports = {
   listPendingTronOrders,
   verifyPendingTronOrders,
   runTronOrderPollSafely,
+  isTronOrderPollInFlight,
   startTronOrderPoller,
   parseTrc20TransferAmount,
   amountWithinTolerance,

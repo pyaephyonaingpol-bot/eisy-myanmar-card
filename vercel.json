@@ -65,12 +65,6 @@
       ]
     }
   ],
-  "crons": [
-    {
-      "path": "/api/cron/tron-deposits",
-      "schedule": "*/15 * * * *"
-    }
-  ],
   "functions": {
     "api/index.js": {
       "memory": 1024,

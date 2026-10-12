@@ -62,12 +62,12 @@ flowchart LR
 
 | Variable | Description |
 |----------|-------------|
-| `DEPOSIT_LISTENER_SECRET` | Auth for deposit listener / some cron paths |
-| `CRON_SECRET` | Bearer token for `/api/cron/*` |
-| `TRON_ORDER_POLL_ENABLED` | In-process poller on long-running servers |
+| `DEPOSIT_LISTENER_SECRET` | Optional auth for `POST /api/tron/orders/check/pending` and `/api/cron/tron-deposits` |
+| `CRON_SECRET` | Optional Bearer auth for legacy `/api/cron/tron-deposits` (no Vercel schedule) |
+| `TRON_ORDER_POLL_ENABLED` | Default **false** — set `true` only on long-running servers (not Vercel Hobby) |
 | `TRON_HD_SCAN_ON_READ` | Scan user HD address when wallet UI loads |
-| `TRON_HD_SCAN_BATCH_SIZE` | Addresses per batch in cron HD scan (default **200**) |
-| `TRON_HD_SCAN_MAX_ADDRESSES` | Max addresses per cron pass (default **5000**) |
+| `TRON_HD_SCAN_BATCH_SIZE` | Addresses per batch in admin HD scan (default **200**) |
+| `TRON_HD_SCAN_MAX_ADDRESSES` | Max addresses per admin scan pass (default **5000**) |
 
 ### Sweep (manual)
 
@@ -105,7 +105,7 @@ All USDT top-ups converge on:
 **Detection paths**
 
 1. **TRON order poll** — pending Supabase order amount matches inbound transfer to that order’s HD address (FIFO by order `created_at` when multiple pending).  
-2. **HD inbound cron scan** — paginated scan of all custodial addresses (not only the last 100 updated).  
+2. **Admin HD inbound scan** (`POST /api/admin/scan-deposits`) — paginated scan of all custodial addresses.  
 3. **Webhooks** — `/api/webhook/tron` with on-chain verification.  
 4. **Read scan** — best-effort when user opens wallet/deposit UI (`TRON_HD_SCAN_ON_READ`).
 
@@ -182,7 +182,7 @@ Service: `backend/src/services/tronWalletMonitorService.js`
 
 **When alerts run**
 
-- After each **`runTronOrderPollSafely()`** (Vercel cron `GET/POST /api/cron/tron-deposits`).  
+- After each admin **`POST /api/admin/scan-deposits`** (includes `runTronOrderPollSafely()`).  
 - After **`runManualSweep()`** completes (or throws on catastrophic error).
 
 Admin UI: **Overview → Master wallet** shows TRX/USDT and low-TRX styling (`GET /api/admin/master-wallet-balance`).
@@ -195,40 +195,39 @@ node backend/scripts/test-tron-wallet-monitor.js
 
 ---
 
-## Cron (production)
+## Manual admin operations (production — no Vercel cron)
 
-Root `vercel.json` schedules **every 15 minutes**:
+**`vercel.json` does not define scheduled crons** (Hobby plan schedules are unreliable). Deposit crediting and on-chain sweeps are **admin-triggered only** (`master_wallet` permission).
 
-```json
-{ "path": "/api/cron/tron-deposits", "schedule": "*/15 * * * *" }
+### Trigger Deposit Credit Scan
+
+Admin dashboard: **Trigger Deposit Credit Scan** (Overview → Master Wallet and USDT Withdrawals panel).
+
+```http
+POST /api/admin/scan-deposits
+Authorization: admin session (permission: master_wallet)
 ```
 
-Each run executes (in one request):
+Runs in one request:
 
-1. **Pending TRON order verification** (Supabase orders → TronGrid match → wallet credit)  
-2. **HD inbound deposit scan** (paginated custodial addresses → auto-credit)  
-3. **Master wallet monitor** (TRX low / sweep-failure Telegram alerts)
+1. Pending TRON order verification (Supabase → TronGrid → wallet credit)  
+2. HD inbound deposit scan (all custodial addresses, batched)  
+3. Master wallet monitor (TRX low Telegram alerts)
 
-**Sweeps are not scheduled.** USDT collection from HD addresses remains **manual** (`POST /api/admin/sweep-deposits`) so ops controls gas spend and timing.
+`GET /api/admin/scan-deposits` — `in_flight` status only.
 
-### `CRON_SECRET` (required for manual / external triggers)
+### Trigger Manual Sweep
 
-Set in **Vercel → Project → Settings → Environment Variables** for **Production** (and Preview if you test cron manually):
+See [Sweep procedure](#sweep-procedure-collect-usdt-to-master) and **Trigger Manual Sweep** in the admin UI (`POST /api/admin/sweep-deposits`).
 
-```bash
-openssl rand -hex 32
-# Example: CRON_SECRET=a1b2c3…  (64 hex chars)
-```
+### Optional legacy hooks (not scheduled)
 
-| Caller | Auth |
-|--------|------|
-| **Vercel Cron** (scheduled) | Sends `Authorization: Bearer <CRON_SECRET>` when `CRON_SECRET` is set, **or** `x-vercel-cron: 1` on Vercel |
-| **Manual / monitoring** | `GET` or `POST /api/cron/tron-deposits` with `Authorization: Bearer $CRON_SECRET` |
-| **Deposit listener** | Header `X-Deposit-Listener-Secret: $DEPOSIT_LISTENER_SECRET` (same handler) |
+| Endpoint | Auth |
+|----------|------|
+| `POST /api/cron/tron-deposits` | `CRON_SECRET` Bearer or `DEPOSIT_LISTENER_SECRET` header (not scheduled) |
+| `POST /api/tron/orders/check/pending` | `X-Deposit-Listener-Secret` |
 
-If `CRON_SECRET` is missing on Vercel, scheduled jobs still run via `x-vercel-cron: 1`, but external replay protection is weaker — **always set `CRON_SECRET` in production.**
-
-After changing `CRON_SECRET`, redeploy production so serverless functions pick up the new value.
+Prefer the admin routes above for day-to-day operations.
 
 ---
 
@@ -249,7 +248,7 @@ HD sync uses adaptive upsert if columns are missing.
 
 | Symptom | Action |
 |---------|--------|
-| Users paid but balance unchanged | Check pending order in Supabase; run cron or `sync-deposits`; verify TronGrid key; check tx not below min deposit |
+| Users paid but balance unchanged | Admin **Trigger Deposit Credit Scan**; check Supabase pending order; verify TronGrid key; check min deposit |
 | Sweep stuck / failed | Fund master TRX; check Telegram alert; retry with `force_gas`; inspect `SWEEP_*` codes in logs |
 | Withdrawals fail | Master USDT + TRX; `MASTER_WALLET_TRANSFERS_PAUSED`; address mismatch |
 | Duplicate credit concern | Query `deposit_requests_v2` for tx_hash; verify single VERIFIED row; ledger `usdt_wallet_transactions` |
@@ -270,7 +269,8 @@ HD sync uses adaptive upsert if columns are missing.
 | Route | Notes |
 |-------|--------|
 | `/api/tron/orders` | Create/list TRON deposit orders |
-| `/api/cron/tron-deposits` | Scheduled deposit + monitor pass |
+| `/api/admin/scan-deposits` | Manual deposit credit scan + monitor |
+| `/api/cron/tron-deposits` | Legacy listener/cron hook (not scheduled in vercel.json) |
 | `/api/admin/sweep-deposits` | Manual sweep |
 | `/api/admin/master-wallet-balance` | Ops dashboard balances |
 | `/api/webhook/tron` | Tron-style deposit webhooks |
