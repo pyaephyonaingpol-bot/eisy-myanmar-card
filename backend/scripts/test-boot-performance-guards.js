@@ -34,9 +34,10 @@ assert.ok(dash.includes('Paint immediately from cached session')
   'cached session paints before /me revalidate');
 assert.ok(dash.includes('ensureImageCompression'), 'lazy KYC compressor loader');
 assert.ok(
-  /Promise\.allSettled\(\[\s*this\.loadWallet\(\{\s*force:\s*true\s*\}\),\s*this\.loadDepositHistory\(\)/.test(dash),
-  'home bootstrap limited to wallet + deposits'
+  dash.includes('loadWallet({ force: true, fast: true })') && dash.includes('loadDepositHistory()'),
+  'home bootstrap parallelizes wallet + deposits (not full app waterfall)'
 );
+assert.ok(dash.includes('_walletDeepScanTimer'), 'wallet HD scan deferred after fast paint');
 assert.ok(!/Promise\.allSettled\(\[[\s\S]*loadTransactions\(\)[\s\S]*loadKycStatus\(\)/.test(dash),
   'boot no longer awaits full pricing/KYC/methods waterfall');
 console.log('ok');
