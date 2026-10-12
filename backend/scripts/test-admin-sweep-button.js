@@ -24,12 +24,16 @@ section('admin.html exposes Sweep controls');
 assert.ok(html.includes('data-tron-deposit-sweep'), 'Sweep buttons use data-tron-deposit-sweep');
 assert.ok(html.includes('id="btnSweepDepositsOverview"'), 'Overview Sweep button present');
 assert.ok(html.includes('id="btnSweepDepositsPanel"'), 'Panel Sweep button present');
-assert.ok((html.match(/Sweep Wallet/g) || []).length >= 2, 'Overview and deposits panel both say Sweep Wallet');
+assert.ok((html.match(/Trigger Manual Sweep/g) || []).length >= 2, 'Overview and deposits panel expose manual sweep');
 assert.ok(html.includes('data-page="overview"'), 'Master Wallet page is in the admin shell');
 assert.ok(html.includes('>Master Wallet<'), 'sidebar links to Master Wallet');
 assert.ok(js.includes("'overview'"), 'overview is a core admin page');
 assert.ok(!js.includes("name === 'overview' || name === 'transactions'"), 'overview is not redirected away');
-assert.ok(js.includes("|| 'Sweep Wallet'"), 'button label restores to Sweep Wallet');
+assert.ok(js.includes("|| 'Trigger Manual Sweep'"), 'button label restores after sweep');
+assert.ok(js.includes('formatTronSweepDetailLog'), 'Sweep detail log formatter exists');
+assert.ok(js.includes('total_usdt'), 'UI reads total_usdt from API');
+assert.ok(route.includes('total_usdt'), 'API returns total_usdt swept');
+assert.ok(service.includes('summarizeSweepTransferTotals'), 'Service aggregates sweep USDT totals');
 assert.ok(html.includes('id="masterWalletSweepMinLabel"'), 'Min USDT label present');
 assert.ok(
   /id="masterWalletSweepMinLabel">\s*25\s*</.test(html),

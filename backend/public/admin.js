@@ -3176,6 +3176,7 @@
       const targets = [$('masterWalletSweepStatus'), $('masterWalletSweepStatusPanel')].filter(Boolean);
       targets.forEach((el) => {
         el.textContent = message || '';
+        el.style.whiteSpace = 'pre-line';
         el.style.color = error ? '#f87171' : '';
       });
     },
@@ -3205,14 +3206,35 @@
       const skipped = Number(sweep.skipped || 0);
       const failed = Number(sweep.failed || 0);
       const dryRun = Boolean(data.dry_run ?? sweep.dryRun);
-      const prefix = dryRun ? 'Dry-run' : 'Sweep';
-      return (
+      const totalUsdt = Number(data.total_usdt ?? 0);
+      const transferCount = Number(data.transfer_count ?? 0);
+      const prefix = dryRun ? 'Dry-run' : 'Manual sweep';
+      let line = (
         prefix + ' finished — checked ' + checked
         + ', swept ' + swept
         + ', skipped ' + skipped
         + ', failed ' + failed
         + ' (min ' + minUsdt + ' USDT)'
       );
+      if (totalUsdt > 0) {
+        line += dryRun
+          ? (' — would move ~' + totalUsdt.toFixed(2) + ' USDT')
+          : (' — ' + totalUsdt.toFixed(2) + ' USDT to master (' + transferCount + ' tx)');
+      }
+      return line;
+    },
+
+    formatTronSweepDetailLog(data) {
+      const transfers = Array.isArray(data?.transfers) ? data.transfers : [];
+      if (!transfers.length) return '';
+      const lines = transfers.slice(0, 8).map((t) => {
+        const amt = Number(t.amount_usdt || 0).toFixed(2);
+        const uid = t.user_id != null ? ('user #' + t.user_id) : 'address';
+        const tail = t.tx_id ? (' tx ' + String(t.tx_id).slice(0, 12) + '…') : (t.dry_run ? ' (dry-run)' : '');
+        return '• ' + uid + ': $' + amt + ' USDT' + tail;
+      });
+      if (transfers.length > 8) lines.push('• … +' + (transfers.length - 8) + ' more');
+      return lines.join('\n');
     },
 
     async runTronDepositSweep(opts = {}) {
@@ -3243,12 +3265,13 @@
       }
 
       const confirmMsg = [
-        'Run a LIVE USDT sweep from HD deposit addresses → master wallet?',
+        'Trigger manual sweep?',
         '',
-        'Only addresses with at least ' + minUsdt + ' USDT will be swept.',
-        addressCount ? ('Known custodial addresses: ' + addressCount) : '',
+        'Scans custodial HD deposit addresses and moves USDT to the master wallet.',
+        'Only balances at or above ' + minUsdt + ' USDT are swept.',
+        addressCount ? ('Registered custodial addresses: ' + addressCount) : '',
         '',
-        'This broadcasts on-chain TRX gas top-ups and USDT transfers.',
+        'This broadcasts on-chain TRX gas top-ups and USDT transfers. Requires master_wallet permission.',
       ].filter(Boolean).join('\n');
 
       if (!window.confirm(confirmMsg)) return;
@@ -3259,7 +3282,7 @@
         b.disabled = true;
         b.textContent = 'Sweeping…';
       });
-      this.setTronSweepStatus('Sweep in progress (min ' + minUsdt + ' USDT)…');
+      this.setTronSweepStatus('Manual sweep in progress (min ' + minUsdt + ' USDT)…');
       this._tronSweepInFlight = true;
 
       try {
@@ -3267,8 +3290,12 @@
           dry_run: false,
         });
         const summaryText = this.formatTronSweepSummary(data);
-        this.setTronSweepStatus(summaryText, { error: !data.success && Number(data.sweep?.failed || 0) > 0 });
-        this.showAdminToast(summaryText, data.success === false ? 'error' : 'ok');
+        const detailLog = this.formatTronSweepDetailLog(data);
+        const statusBlock = detailLog ? (summaryText + '\n' + detailLog) : summaryText;
+        const hasFailures = Number(data.sweep?.failed || 0) > 0;
+        this.setTronSweepStatus(statusBlock, { error: !data.success && hasFailures });
+        this.showAdminToast(summaryText, data.success === false || hasFailures ? 'error' : 'ok');
+        if (detailLog) console.info('[admin/sweep]\n' + detailLog);
         await this.checkMasterWalletBalance({ force: true });
         return data;
       } catch (err) {
@@ -3280,7 +3307,7 @@
         this._tronSweepInFlight = false;
         buttons.forEach((b, i) => {
           b.disabled = false;
-          b.textContent = prevLabels[i] || 'Sweep Wallet';
+          b.textContent = prevLabels[i] || 'Trigger Manual Sweep';
         });
       }
     },
