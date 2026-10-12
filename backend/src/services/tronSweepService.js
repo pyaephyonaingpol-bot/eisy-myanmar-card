@@ -513,13 +513,31 @@ async function runManualSweep({
       summary = await sweepAllCustodialDeposits({ dryRun, forceGas, limit, ...inject });
       summary.mode = 'all';
     }
-    return {
+
+    const finished = {
       ...summary,
       manual: true,
       scheduled: false,
       started_at: startedAt,
       finished_at: new Date().toISOString(),
     };
+
+    try {
+      const { alertSweepFailuresIfNeeded } = require('./tronWalletMonitorService');
+      await alertSweepFailuresIfNeeded(finished, { dryRun });
+    } catch (alertErr) {
+      console.warn('[tron/sweep] monitor alert skipped:', alertErr.message);
+    }
+
+    return finished;
+  } catch (err) {
+    try {
+      const { alertSweepErrorIfNeeded } = require('./tronWalletMonitorService');
+      await alertSweepErrorIfNeeded(err, { userId });
+    } catch (alertErr) {
+      console.warn('[tron/sweep] monitor alert skipped:', alertErr.message);
+    }
+    throw err;
   } finally {
     sweepInFlight = false;
   }
