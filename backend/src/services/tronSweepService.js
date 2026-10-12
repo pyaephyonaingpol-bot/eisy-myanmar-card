@@ -547,6 +547,51 @@ function isSweepInFlight() {
   return sweepInFlight;
 }
 
+/**
+ * Sum USDT moved (or that would move on dry-run) from sweep result rows.
+ */
+function summarizeSweepTransferTotals(summary) {
+  const results = Array.isArray(summary?.results) ? summary.results : [];
+  let totalUsdt = 0;
+  let transferCount = 0;
+  const transfers = [];
+  const dryRun = Boolean(summary?.dryRun);
+
+  for (const row of results) {
+    if (row?.ok === false) continue;
+    if (row?.skipped) continue;
+
+    const usdtResult = row.usdt || {};
+    const amount = Number(
+      usdtResult.amountUsdt
+      ?? usdtResult.usdtBalance
+      ?? row.usdtBalance
+      ?? 0
+    );
+    if (!(amount > 0)) continue;
+
+    const txId = usdtResult.txId || usdtResult.txid || null;
+    if (!dryRun && !txId) continue;
+
+    totalUsdt += amount;
+    if (!dryRun && txId) transferCount += 1;
+
+    transfers.push({
+      user_id: row.userId ?? null,
+      deposit_address: row.depositAddress || usdtResult.fromAddress || null,
+      amount_usdt: Math.round(amount * 1e6) / 1e6,
+      tx_id: txId,
+      dry_run: dryRun,
+    });
+  }
+
+  return {
+    total_usdt: Math.round(totalUsdt * 1e6) / 1e6,
+    transfer_count: transferCount,
+    transfers: transfers.slice(0, 100),
+  };
+}
+
 module.exports = {
   getSweepGasTrx,
   getMinSweepUsdt,
@@ -559,6 +604,7 @@ module.exports = {
   listSweepableDepositAddresses,
   runManualSweep,
   isSweepInFlight,
+  summarizeSweepTransferTotals,
   trxToSun,
   sunToTrx,
 };

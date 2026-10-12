@@ -2144,6 +2144,9 @@ router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, r
       limit,
     });
 
+    const { summarizeSweepTransferTotals } = require('../services/tronSweepService');
+    const totals = summarizeSweepTransferTotals(summary);
+
     TransactionLog.create({
       userId: req.user?.id || null,
       type: 'other',
@@ -2160,6 +2163,8 @@ router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, r
         swept: summary.swept,
         skipped: summary.skipped,
         failed: summary.failed,
+        total_usdt: totals.total_usdt,
+        transfer_count: totals.transfer_count,
         user_id: userId,
       },
     }).catch((err) => {
@@ -2176,6 +2181,9 @@ router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, r
       scheduled: false,
       gas_trx: summary.gasTrx ?? getSweepGasTrx(),
       min_usdt: summary.minUsdt ?? getMinSweepUsdt(),
+      total_usdt: totals.total_usdt,
+      transfer_count: totals.transfer_count,
+      transfers: totals.transfers,
       sweep: summary,
     });
   } catch (err) {

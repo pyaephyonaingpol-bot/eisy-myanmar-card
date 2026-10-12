@@ -143,6 +143,12 @@ Authorization: admin session (permission: master_wallet)
 
 `GET /api/admin/sweep-deposits` — list sweepable custodial addresses (no chain txs).
 
+Successful `POST` responses include `total_usdt`, `transfer_count`, and up to 100 `transfers` rows (user, address, amount, tx id).
+
+### Admin dashboard
+
+**Overview → Master Wallet** and the deposits master-wallet panel expose **Trigger Manual Sweep** (`master_wallet` permission). The UI confirms before broadcasting, then shows a toast and status log with checked/swept/skipped/failed counts and total USDT moved to master.
+
 ### CLI
 
 ```bash

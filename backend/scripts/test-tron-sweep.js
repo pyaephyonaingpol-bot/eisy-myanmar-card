@@ -270,6 +270,27 @@ async function main() {
     console.log('ok');
   }
 
+  section('summarizeSweepTransferTotals aggregates USDT');
+  {
+    const totals = sweep.summarizeSweepTransferTotals({
+      dryRun: false,
+      results: [
+        {
+          ok: true,
+          userId: 1,
+          depositAddress: 'TDep1',
+          usdt: { amountUsdt: 30, txId: 'abc123' },
+        },
+        { ok: true, skipped: true, userId: 2 },
+        { ok: false, userId: 3, error: 'fail' },
+      ],
+    });
+    assert.strictEqual(totals.total_usdt, 30);
+    assert.strictEqual(totals.transfer_count, 1);
+    assert.strictEqual(totals.transfers.length, 1);
+    console.log('ok');
+  }
+
   master.getMasterWalletAddress = originalGetMaster;
   delete process.env.TRON_HD_MNEMONIC;
   delete process.env.TRON_HD_ENABLED;
