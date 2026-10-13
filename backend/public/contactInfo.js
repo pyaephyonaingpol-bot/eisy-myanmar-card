@@ -5,9 +5,6 @@
   'use strict';
 
   const CONTACT = Object.freeze({
-    phoneE164: '+971505176334',
-    phoneLabel: '+971 50 517 6334',
-    whatsappUrl: 'https://wa.me/971505176334',
     telegramHandle: '@eisymyanmar',
     telegramUrl: 'https://t.me/eisymyanmar',
     email: 'pyaephyo.naing@eisymyanmar.com',
@@ -18,8 +15,6 @@
   });
 
   const ICONS = {
-    phone:
-      '<svg class="official-contact-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
     telegram:
       '<svg class="official-contact-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.94 4.57a1.5 1.5 0 0 0-1.56-.24L3.6 11.23a1.25 1.25 0 0 0 .09 2.36l3.92 1.38 1.38 3.92a1.25 1.25 0 0 0 2.12.08l.12-.12 2.2-6.38 6.38-2.2.12-.12a1.25 1.25 0 0 0 .13-1.69zM10.5 13.5l6.9-4.5-5.25 5.85-.45 1.35-1.2-3.45z"/></svg>',
     location:
@@ -39,27 +34,31 @@
       .replace(/"/g, '&quot;');
   }
 
+  /** Login / signup footer — messaging only (no phone, no address). */
+  function renderAuthSupportLinks() {
+    return (
+      '<nav class="auth-support-links" aria-label="Support">' +
+      '<a class="auth-support-link" href="' + esc(CONTACT.telegramUrl) + '" target="_blank" rel="noopener noreferrer">Telegram ' + esc(CONTACT.telegramHandle) + '</a>' +
+      '<span class="auth-support-sep" aria-hidden="true">·</span>' +
+      '<a class="auth-support-link" href="mailto:' + esc(CONTACT.email) + '">Email</a>' +
+      '</nav>'
+    );
+  }
+
   /**
-   * @param {'compact'|'default'|'legal'|'modal'} variant
+   * @param {'compact'|'default'|'legal'|'modal'|'auth'} variant
    */
   function renderOfficialContact(variant) {
     const v = variant || 'default';
     const showTitle = v !== 'compact';
     let title = '';
-    if (v === 'modal') {
+    if (v === 'auth' || v === 'modal') {
       title = '';
     } else if (showTitle) {
       title = '<h3 class="official-contact-title">Contact Us</h3>';
     } else {
       title = '<p class="official-contact-eyebrow">Contact Us</p>';
     }
-
-    const phoneRow =
-      '<li class="official-contact-item">' +
-      '<a class="official-contact-link" href="' + esc(CONTACT.whatsappUrl) + '" target="_blank" rel="noopener noreferrer">' +
-      ICONS.phone +
-      '<span><strong>Phone / WhatsApp</strong><br>' + esc(CONTACT.phoneLabel) + '</span>' +
-      '</a></li>';
 
     const telegramRow =
       '<li class="official-contact-item">' +
@@ -71,12 +70,14 @@
     const addressInner =
       '<span><strong>Address</strong><br>' + esc(CONTACT.address) + '</span>';
     const addressRow =
-      '<li class="official-contact-item">' +
-      (v === 'legal'
-        ? '<div class="official-contact-static">' + ICONS.location + addressInner + '</div>'
-        : '<a class="official-contact-link" href="' + esc(CONTACT.mapsUrl) + '" target="_blank" rel="noopener noreferrer">' +
-          ICONS.location + addressInner + '</a>') +
-      '</li>';
+      v === 'modal' || v === 'auth' || v === 'compact'
+        ? ''
+        : '<li class="official-contact-item">' +
+          (v === 'legal'
+            ? '<div class="official-contact-static">' + ICONS.location + addressInner + '</div>'
+            : '<a class="official-contact-link" href="' + esc(CONTACT.mapsUrl) + '" target="_blank" rel="noopener noreferrer">' +
+              ICONS.location + addressInner + '</a>') +
+          '</li>';
 
     const emailRow =
       '<li class="official-contact-item">' +
@@ -89,7 +90,7 @@
       '<section class="official-contact official-contact--' + esc(v) + '" aria-label="Contact us">' +
       title +
       '<ul class="official-contact-list">' +
-      phoneRow + telegramRow + addressRow + emailRow +
+      telegramRow + addressRow + emailRow +
       '</ul></section>'
     );
   }
@@ -108,6 +109,8 @@
     document.querySelectorAll('[data-official-contact]').forEach((node) => {
       mount(node, node.getAttribute('data-official-contact') || 'default');
     });
+    const authSupport = document.getElementById('authOfficialSupport');
+    if (authSupport) authSupport.innerHTML = renderAuthSupportLinks();
   }
 
   function ensureModal() {
@@ -126,7 +129,7 @@
       '<div class="proof-lightbox-inner contact-us-modal-inner">' +
         '<button type="button" class="proof-lightbox-close contact-us-modal-close" id="officialContactModalClose" aria-label="Close">&times;</button>' +
         '<h3 id="officialContactModalTitle" class="contact-us-modal-title">Contact Us</h3>' +
-        '<p class="contact-us-modal-lead">Official Eisymyanmar support channels</p>' +
+        '<p class="contact-us-modal-lead">Reach us on Telegram or email — no public phone line.</p>' +
         '<div id="officialContactModalBody"></div>' +
       '</div>';
     document.body.appendChild(modal);
@@ -158,7 +161,7 @@
     const modal = ensureModal();
     lastFocus = trigger || document.activeElement;
     const body = document.getElementById('officialContactModalBody');
-    if (body) body.innerHTML = renderOfficialContact('modal');
+    if (body) body.innerHTML = renderOfficialContact('modal'); // telegram + email only
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
     requestAnimationFrame(() => {
@@ -191,6 +194,7 @@
   global.EisyContact = Object.freeze({
     CONTACT,
     renderOfficialContact,
+    renderAuthSupportLinks,
     mount,
     mountAll,
     openContactModal,
