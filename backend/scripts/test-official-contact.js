@@ -29,12 +29,23 @@ assert.ok(contactJs.includes('Al Batal building 302'), 'contact module address')
 assert.ok(contactJs.includes('official-contact-icon'), 'contact icons');
 assert.ok(!contactJs.includes('971505176334'), 'contact module must not expose phone');
 
-assert.ok(index.includes('contactInfo.js?v=20261010contactModal'), 'index loads contactInfo');
-assert.ok(index.includes('data-contact-modal-open'), 'contact modal trigger');
+assert.ok(index.includes('contactInfo.js?v=20261013noPhone'), 'index loads contactInfo (cache bust)');
+assert.ok(index.includes('id="authOfficialSupport"'), 'auth mounts support links container');
+assert.ok(index.includes('data-contact-modal-open'), 'logged-in sidebar contact modal remains');
 assert.ok(!index.includes('sidebar-footer') || !index.match(/sidebar-footer[\s\S]*data-official-contact="compact"/), 'sidebar inline contact removed');
 assert.ok(index.includes('data-official-contact="default"'), 'settings contact section');
+assert.ok(contactJs.includes('renderAuthSupportLinks'), 'auth support link renderer');
+assert.ok(contactJs.includes('authOfficialSupport'), 'auth support mount hook');
 assert.ok(contactJs.includes('openContactModal'), 'contact modal API');
 assert.ok(contactJs.includes('officialContactModal'), 'contact modal shell');
+
+const authStart = index.indexOf('id="authScreen"');
+const authEnd = index.indexOf('id="dashboardScreen"');
+assert.ok(authStart >= 0 && authEnd > authStart, 'auth screen block');
+const authBlock = index.slice(authStart, authEnd);
+for (const pattern of bannedPublicPatterns) {
+  assert.ok(!pattern.test(authBlock), `auth UI must not match public phone pattern ${pattern}`);
+}
 
 assert.ok(supportChat.includes('supportChatContact'), 'live chat contact footer');
 assert.ok(about.includes('data-official-contact="legal"'), 'about contact block');

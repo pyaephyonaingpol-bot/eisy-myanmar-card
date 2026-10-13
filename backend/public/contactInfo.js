@@ -34,14 +34,25 @@
       .replace(/"/g, '&quot;');
   }
 
+  /** Login / signup footer — messaging only (no phone, no address). */
+  function renderAuthSupportLinks() {
+    return (
+      '<nav class="auth-support-links" aria-label="Support">' +
+      '<a class="auth-support-link" href="' + esc(CONTACT.telegramUrl) + '" target="_blank" rel="noopener noreferrer">Telegram ' + esc(CONTACT.telegramHandle) + '</a>' +
+      '<span class="auth-support-sep" aria-hidden="true">·</span>' +
+      '<a class="auth-support-link" href="mailto:' + esc(CONTACT.email) + '">Email</a>' +
+      '</nav>'
+    );
+  }
+
   /**
-   * @param {'compact'|'default'|'legal'|'modal'} variant
+   * @param {'compact'|'default'|'legal'|'modal'|'auth'} variant
    */
   function renderOfficialContact(variant) {
     const v = variant || 'default';
     const showTitle = v !== 'compact';
     let title = '';
-    if (v === 'modal') {
+    if (v === 'auth' || v === 'modal') {
       title = '';
     } else if (showTitle) {
       title = '<h3 class="official-contact-title">Contact Us</h3>';
@@ -59,12 +70,14 @@
     const addressInner =
       '<span><strong>Address</strong><br>' + esc(CONTACT.address) + '</span>';
     const addressRow =
-      '<li class="official-contact-item">' +
-      (v === 'legal'
-        ? '<div class="official-contact-static">' + ICONS.location + addressInner + '</div>'
-        : '<a class="official-contact-link" href="' + esc(CONTACT.mapsUrl) + '" target="_blank" rel="noopener noreferrer">' +
-          ICONS.location + addressInner + '</a>') +
-      '</li>';
+      v === 'modal' || v === 'auth' || v === 'compact'
+        ? ''
+        : '<li class="official-contact-item">' +
+          (v === 'legal'
+            ? '<div class="official-contact-static">' + ICONS.location + addressInner + '</div>'
+            : '<a class="official-contact-link" href="' + esc(CONTACT.mapsUrl) + '" target="_blank" rel="noopener noreferrer">' +
+              ICONS.location + addressInner + '</a>') +
+          '</li>';
 
     const emailRow =
       '<li class="official-contact-item">' +
@@ -96,6 +109,8 @@
     document.querySelectorAll('[data-official-contact]').forEach((node) => {
       mount(node, node.getAttribute('data-official-contact') || 'default');
     });
+    const authSupport = document.getElementById('authOfficialSupport');
+    if (authSupport) authSupport.innerHTML = renderAuthSupportLinks();
   }
 
   function ensureModal() {
@@ -146,7 +161,7 @@
     const modal = ensureModal();
     lastFocus = trigger || document.activeElement;
     const body = document.getElementById('officialContactModalBody');
-    if (body) body.innerHTML = renderOfficialContact('modal');
+    if (body) body.innerHTML = renderOfficialContact('modal'); // telegram + email only
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
     requestAnimationFrame(() => {
@@ -179,6 +194,7 @@
   global.EisyContact = Object.freeze({
     CONTACT,
     renderOfficialContact,
+    renderAuthSupportLinks,
     mount,
     mountAll,
     openContactModal,
