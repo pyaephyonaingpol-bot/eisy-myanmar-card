@@ -43,6 +43,7 @@ const authStart = index.indexOf('id="authScreen"');
 const authEnd = index.indexOf('id="dashboardScreen"');
 assert.ok(authStart >= 0 && authEnd > authStart, 'auth screen block');
 const authBlock = index.slice(authStart, authEnd);
+assert.ok(!authBlock.includes('data-contact-modal-open'), 'auth card must not use contact modal');
 for (const pattern of bannedPublicPatterns) {
   assert.ok(!pattern.test(authBlock), `auth UI must not match public phone pattern ${pattern}`);
 }
