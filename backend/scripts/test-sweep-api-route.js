@@ -62,6 +62,7 @@ async function runMockedSweep(lib) {
       amountToSweep: '10',
       fetchImpl: mockFetch,
       tronWebFactory: () => mockTronWeb,
+      sleepFn: async () => {},
     });
     assert.strictEqual(result.ok, true);
     assert.strictEqual(result.txid, 'mock-tx-hash-abc');
@@ -110,10 +111,135 @@ async function main() {
   assert.strictEqual(lib.isNettsEnergyOrderSuccessful(200, { success: true }), true);
   assert.strictEqual(lib.isNettsEnergyOrderSuccessful(200, { success: false }), false);
 
+  section('Netts error classification');
+  const insufficient = lib.classifyNettsFailure(402, { message: 'Insufficient balance' }, '');
+  assert.strictEqual(insufficient.code, 'SWEEP_NETTS_INSUFFICIENT_BALANCE');
+  const rateLimit = lib.classifyNettsFailure(429, {}, 'Too many requests');
+  assert.strictEqual(rateLimit.code, 'SWEEP_NETTS_RATE_LIMIT');
+
+  section('Netts timeout and balance errors (mocked)');
+  await testNettsTimeout(lib);
+  await testNettsInsufficientBalance(lib);
+  await testChainFailureAfterEnergy(lib);
+
   section('Netts + transfer flow (mocked fetch / TronWeb)');
   await runMockedSweep(lib);
 
   console.log('\nSweep API route checks — ok');
+}
+
+async function testNettsTimeout(lib) {
+  const prev = {
+    TRON_ENERGY_API_URL: process.env.TRON_ENERGY_API_URL,
+    TRON_ENERGY_API_KEY: process.env.TRON_ENERGY_API_KEY,
+  };
+  process.env.TRON_ENERGY_API_URL = 'https://netts.example/order1h';
+  process.env.TRON_ENERGY_API_KEY = 'test-key';
+
+  const slowFetch = (_url, init) =>
+    new Promise((_resolve, reject) => {
+      const signal = init?.signal;
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          const err = new Error('The operation was aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      }
+    });
+
+  try {
+    await assert.rejects(
+      () =>
+        lib.rentEnergyFromNetts('TChild1111111111111111111111111111', {
+          fetchImpl: slowFetch,
+          timeoutMs: 15,
+        }),
+      (err) => err.code === 'SWEEP_NETTS_TIMEOUT',
+    );
+  } finally {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+async function testNettsInsufficientBalance(lib) {
+  const prev = {
+    TRON_ENERGY_API_URL: process.env.TRON_ENERGY_API_URL,
+    TRON_ENERGY_API_KEY: process.env.TRON_ENERGY_API_KEY,
+  };
+  process.env.TRON_ENERGY_API_URL = 'https://netts.example/order1h';
+  process.env.TRON_ENERGY_API_KEY = 'test-key';
+
+  const fetch402 = async () => ({
+    status: 402,
+    text: async () => JSON.stringify({ success: false, message: 'Insufficient balance on Netts account' }),
+  });
+
+  try {
+    await assert.rejects(
+      () => lib.rentEnergyFromNetts('TChild1111111111111111111111111111', { fetchImpl: fetch402 }),
+      (err) => err.code === 'SWEEP_NETTS_INSUFFICIENT_BALANCE',
+    );
+  } finally {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+async function testChainFailureAfterEnergy(lib) {
+  const mockFetch = async () => ({
+    status: 200,
+    text: async () => JSON.stringify({ success: true }),
+  });
+  const mockTronWeb = {
+    isAddress: () => true,
+    address: { fromPrivateKey: () => 'TChild1111111111111111111111111111' },
+    contract: () => ({
+      at: async () => ({
+        transfer: () => ({
+          send: async () => {
+            throw new Error('bandwidth exceeded');
+          },
+        }),
+      }),
+    }),
+  };
+
+  const prev = {
+    TRON_ENERGY_API_URL: process.env.TRON_ENERGY_API_URL,
+    TRON_ENERGY_API_KEY: process.env.TRON_ENERGY_API_KEY,
+    TRON_FULL_HOST: process.env.TRON_FULL_HOST,
+    CENTRAL_WALLET_ADDRESS: process.env.CENTRAL_WALLET_ADDRESS,
+  };
+  process.env.TRON_ENERGY_API_URL = 'https://netts.example/order1h';
+  process.env.TRON_ENERGY_API_KEY = 'test-key';
+  process.env.TRON_FULL_HOST = 'https://api.trongrid.io';
+  process.env.CENTRAL_WALLET_ADDRESS = 'TCentral111111111111111111111111111';
+
+  try {
+    await assert.rejects(
+      () =>
+        lib.sweepUsdtWithNettsEnergy({
+          childAddress: 'TChild1111111111111111111111111111',
+          childPrivateKey: '0'.repeat(64),
+          amountToSweep: '1',
+          fetchImpl: mockFetch,
+          tronWebFactory: () => mockTronWeb,
+          sleepFn: async () => {},
+        }),
+      (err) => err.code === 'SWEEP_CHAIN_FAILED' && err.energyOrder != null,
+    );
+  } finally {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
 }
 
 main().catch((err) => {

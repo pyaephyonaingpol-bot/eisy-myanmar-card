@@ -16,10 +16,24 @@ function mapSweepError(err) {
   const message = err?.message || String(err);
   let status = 400;
   if (code === 'SWEEP_CONFIG') status = 500;
-  else if (code === 'SWEEP_NETTS_FAILED' || code === 'SWEEP_NO_TXID') status = 502;
-  else if (code === 'SWEEP_BAD_REQUEST' || code === 'SWEEP_INVALID_AMOUNT') status = 400;
+  else if (code === 'SWEEP_NETTS_INSUFFICIENT_BALANCE') status = 402;
+  else if (code === 'SWEEP_NETTS_AUTH') status = 502;
+  else if (code === 'SWEEP_NETTS_TIMEOUT') status = 504;
+  else if (
+    code === 'SWEEP_NETTS_FAILED'
+    || code === 'SWEEP_NETTS_NETWORK'
+    || code === 'SWEEP_NETTS_UNAVAILABLE'
+    || code === 'SWEEP_NETTS_RATE_LIMIT'
+    || code === 'SWEEP_NO_TXID'
+    || code === 'SWEEP_CHAIN_FAILED'
+  ) {
+    status = 502;
+  } else if (code === 'SWEEP_BAD_REQUEST' || code === 'SWEEP_INVALID_AMOUNT') status = 400;
   else if (code === 'SWEEP_KEY_MISMATCH' || code === 'SWEEP_INVALID_ADDRESS') status = 400;
-  return { status, body: { ok: false, error: message, code } };
+
+  const body = { ok: false, error: message, code };
+  if (err?.nettsStatus != null) body.nettsStatus = err.nettsStatus;
+  return { status, body };
 }
 
 router.post('/', requireAdminAuth, requirePermission('master_wallet'), async (req, res) => {
@@ -33,7 +47,7 @@ router.post('/', requireAdminAuth, requirePermission('master_wallet'), async (re
     return res.json(result);
   } catch (err) {
     const mapped = mapSweepError(err);
-    if (err?.code === 'SWEEP_NO_TXID') {
+    if (err?.code === 'SWEEP_NO_TXID' || err?.code === 'SWEEP_CHAIN_FAILED') {
       return res.status(mapped.status).json({
         ...mapped.body,
         energyOrder: err.energyOrder,
