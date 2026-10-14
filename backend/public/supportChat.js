@@ -87,8 +87,8 @@
       '  </header>',
       '  <div class="support-chat-scroll-region" id="supportChatScrollRegion">',
       '    <div id="supportChatBody" class="support-chat-body"></div>',
-      '    <footer class="support-chat-contact" id="supportChatContact"></footer>',
       '  </div>',
+      '  <footer class="support-chat-contact" id="supportChatContact"></footer>',
       '</section>',
     ].join('');
     document.body.appendChild(root);
@@ -245,6 +245,7 @@
     }
     state.open = !!open;
     el('supportChatPanel')?.classList.toggle('hidden', !state.open);
+    el('supportChatFab')?.classList.toggle('is-panel-open', state.open);
     if (state.open) {
       lockBackgroundScroll();
       state.view = 'list';
