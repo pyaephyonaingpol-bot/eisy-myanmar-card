@@ -64,6 +64,12 @@
      insets via fitsSystemWindows — a 3rem floor caused banner overlap). */
   --sidebar-safe-top: max(0.85rem, calc(var(--safe-top) + 0.5rem));
   --sidebar-safe-bottom: calc(var(--safe-bottom) + 0.5rem);
+  /* Toasts sit below the status bar + app header (never over email / nav chrome). */
+  --toast-inset-x: max(0.75rem, var(--safe-left));
+  --toast-top-fallback: max(4.75rem, calc(var(--safe-top) + var(--header-min-height) + 0.4rem));
+  --toast-top-auth: max(1rem, calc(var(--safe-top) + 0.75rem));
+  --toast-top: var(--toast-top-measured, var(--toast-top-fallback));
+  --toast-bottom: max(1.35rem, calc(var(--safe-bottom) + 1rem));
 }
 
 @supports (height: 100svh) {
@@ -1219,9 +1225,30 @@ a.btn { text-decoration: none; }
 .btn-copy-icon { width: 1.75rem; height: 1.75rem; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.28); background: rgba(255,255,255,0.1); color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .btn-copy-all { margin-top: 1rem; width: 100%; font-size: 0.85rem; }
 
-.copy-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 10000; padding: 0.75rem 1.35rem; border-radius: var(--radius-pill); background: rgba(20,83,45,0.95); border: 1px solid var(--success); color: #bbf7d0; font-weight: 600; box-shadow: var(--shadow-lg); animation: fadeInSoft 0.18s ease-out; pointer-events: none; }
+.copy-toast {
+  position: fixed;
+  left: 50%;
+  right: auto;
+  bottom: var(--toast-bottom);
+  transform: translateX(-50%);
+  z-index: 10020;
+  max-width: min(420px, calc(100vw - 2 * var(--toast-inset-x) - var(--safe-right)));
+  padding: 0.75rem 1.35rem;
+  border-radius: var(--radius-pill);
+  background: rgba(20,83,45,0.95);
+  border: 1px solid var(--success);
+  color: #bbf7d0;
+  font-weight: 600;
+  box-shadow: var(--shadow-lg);
+  animation: toastSlideIn 0.22s ease-out;
+  pointer-events: none;
+}
 .copy-toast.hidden { display: none; }
 @keyframes fadeInSoft { from { opacity: 0; } to { opacity: 1; } }
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translate(-50%, -0.35rem); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
 
 .card-selector-section { margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); }
 .card-selector-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.65rem; }
@@ -1597,7 +1624,29 @@ a.btn { text-decoration: none; }
 
 .auth-inline-error { color: #fca5a5; background: var(--danger-bg); border: 1px solid var(--danger-border); border-radius: var(--radius-sm); padding: 0.65rem 0.85rem; font-size: 0.85rem; margin-top: 0.35rem; }
 .auth-inline-error.hidden { display: none; }
-.auth-toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 9999; min-width: min(420px, 92vw); padding: 1rem 1.5rem; border-radius: var(--radius-md); font-weight: 600; text-align: center; box-shadow: var(--shadow-lg); animation: fadeInSoft 0.18s ease-out; }
+.auth-toast {
+  position: fixed;
+  top: var(--toast-top);
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  z-index: 10020;
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 2 * var(--toast-inset-x) - var(--safe-right)));
+  max-width: min(420px, calc(100vw - 2 * var(--toast-inset-x) - var(--safe-right)));
+  padding: 0.85rem 1.15rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+  animation: toastSlideIn 0.22s ease-out;
+  pointer-events: none;
+}
+html.auth-screen-active {
+  --toast-top: var(--toast-top-measured, var(--toast-top-auth));
+}
 .auth-toast.hidden { display: none; }
 .auth-toast.ok { background: rgba(20,83,45,0.95); border: 1px solid var(--success); color: #bbf7d0; }
 .auth-toast.err { background: rgba(69,10,10,0.95); border: 1px solid var(--danger); color: #fecaca; }

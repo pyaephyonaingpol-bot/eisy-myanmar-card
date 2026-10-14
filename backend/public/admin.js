@@ -2175,6 +2175,7 @@
     showAdminToast(message, type = 'ok') {
       const el = $('adminToast');
       if (!el) return;
+      window.EisyComponents?.toast?.syncToastViewportInsets?.();
       el.className = `auth-toast ${type === 'error' ? 'err' : 'ok'}`;
       el.textContent = message;
       el.classList.remove('hidden');
