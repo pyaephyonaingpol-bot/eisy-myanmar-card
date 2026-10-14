@@ -19,6 +19,8 @@ function mapSweepError(err) {
   else if (code === 'SWEEP_NETTS_INSUFFICIENT_BALANCE') status = 402;
   else if (code === 'SWEEP_NETTS_AUTH') status = 502;
   else if (code === 'SWEEP_NETTS_TIMEOUT') status = 504;
+  else if (code === 'SWEEP_NETTS_CONFLICT') status = 409;
+  else if (code === 'SWEEP_ZERO_BALANCE') status = 400;
   else if (
     code === 'SWEEP_NETTS_FAILED'
     || code === 'SWEEP_NETTS_NETWORK'
@@ -33,16 +35,18 @@ function mapSweepError(err) {
 
   const body = { ok: false, error: message, code };
   if (err?.nettsStatus != null) body.nettsStatus = err.nettsStatus;
+  if (err?.retryAfterSeconds != null) body.retryAfterSeconds = err.retryAfterSeconds;
   return { status, body };
 }
 
 router.post('/', requireAdminAuth, requirePermission('master_wallet'), async (req, res) => {
   try {
-    const { childAddress, childPrivateKey, amountToSweep } = req.body || {};
+    const { childAddress, childPrivateKey, amountToSweep, idempotencyNonce } = req.body || {};
     const result = await sweepUsdtWithNettsEnergy({
       childAddress,
       childPrivateKey,
       amountToSweep,
+      idempotencyNonce,
     });
     return res.json(result);
   } catch (err) {

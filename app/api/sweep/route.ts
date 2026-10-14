@@ -56,12 +56,14 @@ export async function POST(request: NextRequest) {
       childAddress?: string;
       childPrivateKey?: string;
       amountToSweep?: number | string;
+      idempotencyNonce?: string;
     };
     const { sweepUsdtWithNettsEnergy } = loadSweepLib();
     const result = await sweepUsdtWithNettsEnergy({
       childAddress: String(body.childAddress || ''),
       childPrivateKey: String(body.childPrivateKey || ''),
       amountToSweep: body.amountToSweep as number | string,
+      idempotencyNonce: body.idempotencyNonce,
     });
     return NextResponse.json(result);
   } catch (err) {
@@ -72,6 +74,7 @@ export async function POST(request: NextRequest) {
     if (code === 'SWEEP_CONFIG') status = 500;
     else if (code === 'SWEEP_NETTS_INSUFFICIENT_BALANCE') status = 402;
     else if (code === 'SWEEP_NETTS_TIMEOUT') status = 504;
+    else if (code === 'SWEEP_NETTS_CONFLICT') status = 409;
     else if (
       code.startsWith('SWEEP_NETTS_')
       || code === 'SWEEP_NO_TXID'
