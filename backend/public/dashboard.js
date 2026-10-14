@@ -1560,6 +1560,7 @@ const Dashboard = {
     }
     const el = $('authToast');
     if (!el) return;
+    window.EisyComponents?.toast?.syncToastViewportInsets?.();
     if (otpCode) {
       el.className = 'auth-toast otp';
       el.innerHTML = `${message}<span class="toast-otp-code">${otpCode}</span><small>Auto-filled in OTP field</small>`;

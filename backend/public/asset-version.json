@@ -1,10 +1,10 @@
 {
   "release": "20261011p2pRoute",
-  "generatedAt": "2026-10-14T01:11:13.691Z",
+  "generatedAt": "2026-10-14T01:52:23.334Z",
   "assets": {
-    "/dashboard.js": "20261011p2pRoute-d86a578f97",
+    "/dashboard.js": "20261011p2pRoute-f0271b7173",
     "/nav.js": "20261011p2pRoute-db8412df6a",
-    "/styles.css": "20261011p2pRoute-9641444d48",
+    "/styles.css": "20261011p2pRoute-66f459b480",
     "/src/lib/p2pEscrowFlow.js": "20261011p2pRoute-9d2f027157",
     "/src/services/p2pApi.js": "20261011p2pRoute-ac84cfff67",
     "/viewport.js": "20261011p2pRoute-ecd7a6ebb9",
