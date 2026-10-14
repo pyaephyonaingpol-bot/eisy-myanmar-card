@@ -1,17 +1,20 @@
 /**
- * Sweep USDT from per-user HD deposit addresses → master wallet.
+ * Sweep USDT from per-user HD deposit addresses → master / central wallet.
  *
  * MANUAL ONLY — not started by cron or server boot. Trigger via:
  *   - POST /api/admin/sweep-deposits (admin API)
  *   - npm run sweep:tron-deposits (CLI)
  *
- * Because deposit addresses hold no TRX by default, each sweep:
- *   1. Sends a small TRX gas top-up from the master wallet → deposit address
- *   2. Waits briefly for confirmation
- *   3. Transfers the full USDT TRC-20 balance from the deposit address → master
+ * Each live sweep:
+ *   1. Rents Netts energy (POST /apiv2/order1h) for the deposit address
+ *   2. Waits briefly for delegation to settle
+ *   3. Transfers the full USDT TRC-20 balance → master wallet (CENTRAL_WALLET_ADDRESS
+ *      or MASTER_WALLET_ADDRESS when central is unset)
  *
  * HD private keys are derived ephemerally and never persisted/logged.
  */
+const crypto = require('crypto');
+const path = require('path');
 const {
   TronWeb,
 } = require('tronweb');
@@ -29,14 +32,25 @@ const {
   sunToUsdt,
 } = tronMaster;
 
+const nettsSweepLibPath = path.join(__dirname, '../../../lib/nettsUsdtSweep.js');
+const {
+  sweepUsdtWithNettsEnergy,
+  ENERGY_ORDER_AMOUNT,
+} = require(nettsSweepLibPath);
+
 const TRON_FULL_HOST =
   process.env.TRON_FULL_HOST || process.env.TRONGRID_FULL_HOST || 'https://api.trongrid.io';
 const DEFAULT_FEE_LIMIT = Number(process.env.TRON_USDT_FEE_LIMIT_SUN) || 100_000_000;
 
-/** TRX sent from master → deposit address to cover USDT transfer bandwidth/energy burn. */
+/** Legacy label for admin UI — sweeps use Netts energy, not master TRX gas. */
 function getSweepGasTrx() {
   const n = Number(process.env.TRON_SWEEP_GAS_TRX || 1.1);
   return Number.isFinite(n) && n > 0 ? n : 1.1;
+}
+
+/** Netts energy units ordered per deposit sweep (see lib/nettsUsdtSweep.js). */
+function getNettsEnergyPerSweep() {
+  return ENERGY_ORDER_AMOUNT;
 }
 
 /** Skip USDT sweep when deposit balance is below this (USDT). Default 25. */
@@ -264,6 +278,46 @@ async function sweepUsdtToMaster({
 /**
  * Full single-address sweep: TRX gas from master, then USDT back to master.
  */
+function buildNettsIdempotencyNonce({ forceGas, userId, derivationIndex, depositAddress }) {
+  if (forceGas) {
+    return crypto.randomBytes(16).toString('hex');
+  }
+  const parts = [
+    'sweep',
+    userId != null ? String(userId) : '',
+    derivationIndex != null ? String(derivationIndex) : '',
+    depositAddress,
+  ].filter(Boolean);
+  return parts.join(':');
+}
+
+function mapNettsSweepToUsdtResult(nettsResult, { usdtBalance, fromAddress }) {
+  const amountUsdt = sunToUsdt(nettsResult.amountInSun);
+  return {
+    dryRun: false,
+    skipped: false,
+    fromAddress,
+    toAddress: nettsResult.to,
+    usdtBalance,
+    amountUsdt,
+    amountSun: nettsResult.amountInSun,
+    txId: nettsResult.txid,
+  };
+}
+
+function mapNettsSweepToEnergyResult(nettsResult) {
+  return {
+    dryRun: false,
+    netts: true,
+    energy: nettsResult.energy ?? ENERGY_ORDER_AMOUNT,
+    orderId: nettsResult.nettsOrderId ?? null,
+    delegationHash: nettsResult.nettsDelegationHash ?? null,
+    paidTrx: nettsResult.nettsPaidTrx ?? null,
+    cached: Boolean(nettsResult.nettsCached),
+    idempotencyNonce: nettsResult.idempotencyNonce ?? null,
+  };
+}
+
 async function sweepDepositAddress({
   address,
   privateKeyHex,
@@ -273,6 +327,8 @@ async function sweepDepositAddress({
   forceGas = false,
   createTw = createTronWeb,
   waitFn = sleep,
+  sweepUsdtWithNettsEnergyFn = sweepUsdtWithNettsEnergy,
+  fetchImpl,
 } = {}) {
   if (!isHdEnabled() && !privateKeyHex) {
     const err = new Error('TRON HD is not configured — cannot derive deposit keys for sweep');
@@ -334,48 +390,69 @@ async function sweepDepositAddress({
 
   const trxSun = await probeTw.trx.getBalance(fromAddress);
   const trxBalance = sunToTrx(trxSun);
-  const gasTrx = getSweepGasTrx();
-  const skipThreshold = getSkipGasIfTrxAtLeast();
-  const needsGas = forceGas || trxBalance < skipThreshold;
 
-  let gasResult = null;
-  if (needsGas) {
-    gasResult = await sendTrxFromMaster(fromAddress, gasTrx, { dryRun, createTw });
-    if (!dryRun) {
-      const waitMs = getGasWaitMs();
-      if (waitMs > 0) {
-        console.log(`[tron/sweep] waiting ${waitMs}ms for TRX gas confirmation…`);
-        await waitFn(waitMs);
-      }
-    }
-  } else {
-    gasResult = {
-      skipped: true,
-      reason: 'deposit_has_trx',
-      trxBalance,
-      skipThreshold,
+  if (dryRun) {
+    return {
+      ok: true,
+      skipped: false,
+      reason: null,
+      userId: userId != null ? Number(userId) : null,
+      derivationIndex: index,
+      depositAddress: fromAddress,
+      masterAddress,
+      usdtBalance,
+      trxBalanceBefore: trxBalance,
+      gas: null,
+      energy: {
+        dryRun: true,
+        netts: true,
+        energy: ENERGY_ORDER_AMOUNT,
+      },
+      usdt: {
+        dryRun: true,
+        skipped: false,
+        fromAddress,
+        toAddress: masterAddress,
+        usdtBalance,
+        amountSun: rawBal?.toString?.() ?? String(rawBal || '0'),
+        txId: null,
+      },
     };
   }
 
-  const usdtResult = await sweepUsdtToMaster({
-    privateKeyHex: key,
-    fromAddress,
-    masterAddress,
-    dryRun,
-    createTw,
+  const idempotencyNonce = buildNettsIdempotencyNonce({
+    forceGas,
+    userId,
+    derivationIndex: index,
+    depositAddress: fromAddress,
   });
+
+  const nettsResult = await sweepUsdtWithNettsEnergyFn({
+    childAddress: fromAddress,
+    childPrivateKey: key,
+    amountToSweep: usdtBalance,
+    destinationAddress: masterAddress,
+    idempotencyNonce,
+    fetchImpl,
+    tronWebFactory: (_host, pk) => createTw(pk),
+    sleepFn: waitFn,
+  });
+
+  const usdtResult = mapNettsSweepToUsdtResult(nettsResult, { usdtBalance, fromAddress });
+  const energyResult = mapNettsSweepToEnergyResult(nettsResult);
 
   return {
     ok: true,
-    skipped: Boolean(usdtResult.skipped),
-    reason: usdtResult.reason || null,
+    skipped: false,
+    reason: null,
     userId: userId != null ? Number(userId) : null,
     derivationIndex: index,
     depositAddress: fromAddress,
     masterAddress,
     usdtBalance,
     trxBalanceBefore: trxBalance,
-    gas: gasResult,
+    gas: null,
+    energy: energyResult,
     usdt: usdtResult,
   };
 }
@@ -414,6 +491,8 @@ async function sweepAllCustodialDeposits({
   onProgress = null,
   createTw = createTronWeb,
   waitFn = sleep,
+  sweepUsdtWithNettsEnergyFn,
+  fetchImpl,
 } = {}) {
   const rows = await listSweepableDepositAddresses({ limit });
   const results = [];
@@ -431,6 +510,8 @@ async function sweepAllCustodialDeposits({
         forceGas,
         createTw,
         waitFn,
+        sweepUsdtWithNettsEnergyFn,
+        fetchImpl,
       });
       results.push(result);
       if (result.skipped) skipped += 1;
@@ -460,6 +541,7 @@ async function sweepAllCustodialDeposits({
     skipped,
     failed,
     gasTrx: getSweepGasTrx(),
+    nettsEnergy: getNettsEnergyPerSweep(),
     minUsdt: getMinSweepUsdt(),
     results,
   };
@@ -475,6 +557,8 @@ async function runManualSweep({
   limit = 500,
   createTw,
   waitFn,
+  sweepUsdtWithNettsEnergyFn,
+  fetchImpl,
 } = {}) {
   if (sweepInFlight) {
     const err = new Error('A TRON deposit sweep is already in progress');
@@ -487,6 +571,10 @@ async function runManualSweep({
     const inject = {};
     if (createTw) inject.createTw = createTw;
     if (waitFn) inject.waitFn = waitFn;
+    if (sweepUsdtWithNettsEnergyFn) {
+      inject.sweepUsdtWithNettsEnergyFn = sweepUsdtWithNettsEnergyFn;
+    }
+    if (fetchImpl) inject.fetchImpl = fetchImpl;
 
     let summary;
     if (userId != null && userId !== '') {
@@ -506,6 +594,7 @@ async function runManualSweep({
         skipped: result.skipped ? 1 : 0,
         failed: result.ok === false ? 1 : 0,
         gasTrx: getSweepGasTrx(),
+        nettsEnergy: getNettsEnergyPerSweep(),
         minUsdt: getMinSweepUsdt(),
         results: [result],
       };
@@ -594,9 +683,11 @@ function summarizeSweepTransferTotals(summary) {
 
 module.exports = {
   getSweepGasTrx,
+  getNettsEnergyPerSweep,
   getMinSweepUsdt,
   getGasWaitMs,
   sendTrxFromMaster,
+  buildNettsIdempotencyNonce,
   sweepUsdtToMaster,
   sweepDepositAddress,
   sweepUserDeposit,

@@ -3435,7 +3435,7 @@
         'Only balances at or above ' + minUsdt + ' USDT are swept.',
         addressCount ? ('Registered custodial addresses: ' + addressCount) : '',
         '',
-        'This broadcasts on-chain TRX gas top-ups and USDT transfers. Requires master_wallet permission.',
+        'This rents Netts energy for each deposit address and broadcasts USDT transfers to the master wallet. Requires master_wallet permission and TRON_ENERGY_API_* configured.',
       ].filter(Boolean).join('\n');
 
       if (!window.confirm(confirmMsg)) return;
