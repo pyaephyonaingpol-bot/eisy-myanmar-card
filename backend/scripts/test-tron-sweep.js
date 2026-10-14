@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * TRON sweep: master TRX gas → deposit, then USDT → master.
+ * TRON sweep: Netts energy → USDT → master (HD deposit addresses).
  * Run: node backend/scripts/test-tron-sweep.js
  */
 'use strict';
@@ -22,24 +22,15 @@ function makeFakeTw({
   address,
   trxSun = 0,
   usdtSun = '0',
-  masterTrxSun = 50_000_000,
-  sendTrxTx = 'trx-gas-1',
-  usdtTx = 'usdt-sweep-1',
 }) {
-  const calls = { sendTransaction: [], usdtTransfer: [] };
   const tw = {
     address: {
       fromPrivateKey: () => address,
-      isAddress: (a) => typeof a === 'string' && a.startsWith('T') && a.length >= 30,
     },
     isAddress: (a) => typeof a === 'string' && a.startsWith('T') && a.length >= 30,
     setAddress() {},
     trx: {
-      getBalance: async () => (address.startsWith('TMaster') ? masterTrxSun : trxSun),
-      sendTransaction: async (to, sun) => {
-        calls.sendTransaction.push({ to, sun });
-        return { result: true, txid: sendTrxTx };
-      },
+      getBalance: async () => trxSun,
     },
     async contract() {
       return {
@@ -47,19 +38,42 @@ function makeFakeTw({
           balanceOf() {
             return { call: async () => usdtSun };
           },
-          transfer(to, sun) {
-            return {
-              send: async () => {
-                calls.usdtTransfer.push({ to, sun });
-                return usdtTx;
-              },
-            };
-          },
         },
       };
     },
   };
-  return { tw, calls };
+  return tw;
+}
+
+function makeNettsSweepMock({ masterAddress, usdtSun, txId = 'usdt-sweep-1' }) {
+  return async ({
+    childAddress,
+    childPrivateKey,
+    amountToSweep,
+    destinationAddress,
+    idempotencyNonce,
+  }) => {
+    assert.ok(childAddress);
+    assert.ok(childPrivateKey);
+    assert.ok(amountToSweep > 0);
+    assert.strictEqual(destinationAddress, masterAddress);
+    assert.ok(idempotencyNonce);
+    return {
+      ok: true,
+      txid: txId,
+      from: childAddress,
+      to: masterAddress,
+      amountToSweep,
+      amountInSun: usdtSun,
+      amountCapped: false,
+      energy: 65_000,
+      idempotencyNonce,
+      nettsOrderId: '1H-test',
+      nettsDelegationHash: 'hash-test',
+      nettsPaidTrx: 1.2,
+      nettsCached: false,
+    };
+  };
 }
 
 async function withTempDb(fn) {
@@ -81,8 +95,6 @@ async function main() {
   process.env.TRON_HD_ENABLED = 'true';
   process.env.TRON_HD_MNEMONIC = mnemonic;
   process.env.MASTER_PRIVATE_KEY = 'b'.repeat(64);
-  process.env.TRON_SWEEP_GAS_TRX = '1.5';
-  process.env.TRON_SWEEP_GAS_WAIT_MS = '0';
   process.env.TRON_SWEEP_MIN_USDT = '0.01';
 
   delete require.cache[require.resolve('../src/services/tronHdWalletService')];
@@ -93,71 +105,48 @@ async function main() {
   const master = require('../src/services/tronMasterWalletService');
   const sweep = require('../src/services/tronSweepService');
 
-  // Pin master address for assertions.
   const masterAddress = 'TMasterSweepWallet1111111111111111';
   const originalGetMaster = master.getMasterWalletAddress;
   master.getMasterWalletAddress = () => masterAddress;
 
-  section('gas then USDT sweep when deposit has USDT but no TRX');
+  section('Netts energy then USDT sweep when deposit has USDT');
   {
     const userId = 7;
     const derived = hd.deriveTronAddressForUser(userId);
     const depositAddr = derived.address;
+    const usdtSun = '12500000';
 
-    const byKey = new Map();
-    // Master key instance
-    byKey.set('b'.repeat(64), makeFakeTw({
-      address: masterAddress,
-      masterTrxSun: 100_000_000,
-      usdtSun: '0',
-    }));
-    // Deposit key instance — no TRX, has 12.5 USDT
-    byKey.set(derived.privateKeyHex, makeFakeTw({
-      address: depositAddr,
+    const createTw = (pk) => makeFakeTw({
+      address: pk === derived.privateKeyHex ? depositAddr : masterAddress,
       trxSun: 0,
-      usdtSun: '12500000',
-    }));
+      usdtSun: pk === derived.privateKeyHex ? usdtSun : '0',
+    });
 
-    const createTw = (pk) => {
-      const entry = byKey.get(pk);
-      if (!entry) {
-        // Fallback for unexpected keys
-        return makeFakeTw({ address: depositAddr, trxSun: 0, usdtSun: '12500000' }).tw;
-      }
-      return entry.tw;
+    const nettsCalls = [];
+    const nettsFn = makeNettsSweepMock({ masterAddress, usdtSun });
+    const wrappedNetts = async (params) => {
+      nettsCalls.push(params);
+      return nettsFn(params);
     };
 
-    // getBalance on master vs deposit: sendTrxFromMaster uses master tw;
-    // probe uses deposit tw. Our fake uses address field — fix master getBalance.
-    byKey.get('b'.repeat(64)).tw.trx.getBalance = async () => 100_000_000;
-    byKey.get(derived.privateKeyHex).tw.trx.getBalance = async () => 0;
-
-    let waited = 0;
     const result = await sweep.sweepDepositAddress({
       userId,
       forceGas: true,
       createTw,
-      waitFn: async (ms) => { waited = ms; },
+      sweepUsdtWithNettsEnergyFn: wrappedNetts,
+      waitFn: async () => {},
     });
 
-    // With GAS_WAIT_MS=0, waitFn may not be called.
     assert.strictEqual(result.skipped, false);
     assert.strictEqual(result.depositAddress, depositAddr);
     assert.strictEqual(result.masterAddress, masterAddress);
-    assert.ok(result.gas?.txId === 'trx-gas-1' || result.gas?.amountTrx === 1.5);
+    assert.strictEqual(result.gas, null);
+    assert.strictEqual(result.energy?.netts, true);
+    assert.strictEqual(result.energy?.orderId, '1H-test');
     assert.strictEqual(result.usdt?.txId, 'usdt-sweep-1');
     assert.strictEqual(result.usdt?.amountUsdt, 12.5);
-
-    const masterCalls = byKey.get('b'.repeat(64)).calls;
-    assert.strictEqual(masterCalls.sendTransaction.length, 1);
-    assert.strictEqual(masterCalls.sendTransaction[0].to, depositAddr);
-    assert.strictEqual(masterCalls.sendTransaction[0].sun, Math.round(1.5 * 1e6));
-
-    const childCalls = byKey.get(derived.privateKeyHex).calls;
-    assert.strictEqual(childCalls.usdtTransfer.length, 1);
-    assert.strictEqual(childCalls.usdtTransfer[0].to, masterAddress);
-    assert.strictEqual(childCalls.usdtTransfer[0].sun, '12500000');
-    void waited;
+    assert.strictEqual(nettsCalls.length, 1);
+    assert.strictEqual(nettsCalls[0].childAddress, depositAddr);
     console.log('ok');
   }
 
@@ -168,17 +157,22 @@ async function main() {
     const createTw = () => makeFakeTw({
       address: derived.address,
       trxSun: 0,
-      usdtSun: '1000', // 0.001 USDT
-    }).tw;
+      usdtSun: '1000',
+    });
 
+    let nettsCalled = false;
     const result = await sweep.sweepDepositAddress({
       userId,
       createTw,
-      waitFn: async () => {},
+      sweepUsdtWithNettsEnergyFn: async () => {
+        nettsCalled = true;
+        throw new Error('should not call Netts');
+      },
     });
     assert.strictEqual(result.skipped, true);
     assert.strictEqual(result.reason, 'below_min_usdt');
     assert.strictEqual(result.gas, null);
+    assert.strictEqual(nettsCalled, false);
     console.log('ok');
   }
 
@@ -204,38 +198,33 @@ async function main() {
     console.log('ok');
   });
 
-  section('dry-run reports gas + usdt without requiring live chain');
+  section('dry-run reports Netts energy + usdt without live chain');
   {
     const userId = 9;
     const derived = hd.deriveTronAddressForUser(userId);
-    const createTw = (pk) => {
-      const isMaster = pk === 'b'.repeat(64);
-      const fake = makeFakeTw({
-        address: isMaster ? masterAddress : derived.address,
-        trxSun: 0,
-        masterTrxSun: 100_000_000,
-        usdtSun: '9000000',
-      });
-      if (isMaster) {
-        fake.tw.trx.getBalance = async () => 100_000_000;
-      } else {
-        fake.tw.trx.getBalance = async () => 0;
-      }
-      return fake.tw;
-    };
+    const createTw = () => makeFakeTw({
+      address: derived.address,
+      trxSun: 0,
+      usdtSun: '9000000',
+    });
 
+    let nettsCalled = false;
     const result = await sweep.sweepDepositAddress({
       userId,
       dryRun: true,
       forceGas: true,
       createTw,
-      waitFn: async () => {},
+      sweepUsdtWithNettsEnergyFn: async () => {
+        nettsCalled = true;
+        throw new Error('dry-run must not call Netts');
+      },
     });
-    assert.strictEqual(result.gas.dryRun, true);
-    assert.strictEqual(result.gas.amountTrx, 1.5);
+    assert.strictEqual(result.energy.dryRun, true);
+    assert.strictEqual(result.energy.energy, sweep.getNettsEnergyPerSweep());
     assert.strictEqual(result.usdt.dryRun, true);
     assert.strictEqual(result.usdt.usdtBalance, 9);
     assert.strictEqual(result.usdt.txId, null);
+    assert.strictEqual(nettsCalled, false);
     console.log('ok');
   }
 
@@ -243,28 +232,23 @@ async function main() {
   {
     const userId = 11;
     const derived = hd.deriveTronAddressForUser(userId);
-    const createTw = (pk) => {
-      const isMaster = pk === 'b'.repeat(64);
-      const fake = makeFakeTw({
-        address: isMaster ? masterAddress : derived.address,
-        trxSun: 0,
-        masterTrxSun: 100_000_000,
-        usdtSun: '5000000',
-      });
-      fake.tw.trx.getBalance = async () => (isMaster ? 100_000_000 : 0);
-      return fake.tw;
-    };
+    const createTw = (pk) => makeFakeTw({
+      address: pk === derived.privateKeyHex ? derived.address : masterAddress,
+      usdtSun: '5000000',
+    });
 
     const summary = await sweep.runManualSweep({
       userId,
       dryRun: true,
-      forceGas: true,
       createTw,
-      waitFn: async () => {},
+      sweepUsdtWithNettsEnergyFn: async () => {
+        throw new Error('dry-run');
+      },
     });
     assert.strictEqual(summary.manual, true);
     assert.strictEqual(summary.scheduled, false);
     assert.strictEqual(summary.mode, 'user');
+    assert.strictEqual(summary.nettsEnergy, 65_000);
     assert.ok(summary.started_at);
     assert.ok(summary.finished_at);
     console.log('ok');
@@ -288,6 +272,26 @@ async function main() {
     assert.strictEqual(totals.total_usdt, 30);
     assert.strictEqual(totals.transfer_count, 1);
     assert.strictEqual(totals.transfers.length, 1);
+    console.log('ok');
+  }
+
+  section('buildNettsIdempotencyNonce stable vs forceGas');
+  {
+    const stable = sweep.buildNettsIdempotencyNonce({
+      forceGas: false,
+      userId: 3,
+      derivationIndex: 4,
+      depositAddress: 'TDep',
+    });
+    assert.strictEqual(stable, 'sweep:3:4:TDep');
+    const forced = sweep.buildNettsIdempotencyNonce({
+      forceGas: true,
+      userId: 3,
+      derivationIndex: 4,
+      depositAddress: 'TDep',
+    });
+    assert.notStrictEqual(forced, stable);
+    assert.strictEqual(forced.length, 32);
     console.log('ok');
   }
 

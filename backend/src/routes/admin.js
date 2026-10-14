@@ -2050,6 +2050,7 @@ const {
   runManualSweep,
   listSweepableDepositAddresses,
   getSweepGasTrx,
+  getNettsEnergyPerSweep,
   getMinSweepUsdt,
   isSweepInFlight,
 } = require('../services/tronSweepService');
@@ -2199,8 +2200,8 @@ router.post('/scan-deposits', requirePermission('master_wallet'), async (req, re
  * Manual-only TRON HD deposit sweep (no cron).
  * Body: { dry_run?: boolean, user_id?: number, force_gas?: boolean, limit?: number }
  *
- * 1) Master sends small TRX gas → user deposit address
- * 2) Deposit address sends all USDT → master wallet
+ * 1) Netts rents energy for each deposit address (order1h)
+ * 2) Deposit address sends all USDT → master / central wallet
  */
 router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, res) => {
   try {
@@ -2273,6 +2274,7 @@ router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, r
       manual: true,
       scheduled: false,
       gas_trx: summary.gasTrx ?? getSweepGasTrx(),
+      netts_energy: summary.nettsEnergy ?? getNettsEnergyPerSweep(),
       min_usdt: summary.minUsdt ?? getMinSweepUsdt(),
       total_usdt: totals.total_usdt,
       transfer_count: totals.transfer_count,
@@ -2309,6 +2311,7 @@ router.get('/sweep-deposits', requirePermission('master_wallet'), async (req, re
       manual: true,
       scheduled: false,
       gas_trx: getSweepGasTrx(),
+      netts_energy: getNettsEnergyPerSweep(),
       min_usdt: getMinSweepUsdt(),
       in_flight: isSweepInFlight(),
       count: addresses.length,

@@ -157,15 +157,20 @@ async function alertSweepFailuresIfNeeded(summary, { dryRun = false } = {}) {
 
   const failures = summarizeSweepFailures(summary);
   const insufficientTrx = failures.some((f) => f.code === 'SWEEP_INSUFFICIENT_MASTER_TRX');
+  const insufficientNetts = failures.some((f) => f.code === 'SWEEP_NETTS_INSUFFICIENT_BALANCE');
 
-  const alertKey = insufficientTrx ? 'sweep_insufficient_trx' : 'sweep_failures';
+  const alertKey = insufficientTrx
+    ? 'sweep_insufficient_trx'
+    : (insufficientNetts ? 'sweep_insufficient_netts' : 'sweep_failures');
   if (!(await shouldSendAlert(alertKey))) {
     return { alerted: false, failed, throttled: true };
   }
 
   const { notifyAdminTronWalletMonitor } = require('./telegram');
   await notifyAdminTronWalletMonitor({
-    kind: insufficientTrx ? 'sweep_insufficient_trx' : 'sweep_failures',
+    kind: insufficientTrx
+      ? 'sweep_insufficient_trx'
+      : (insufficientNetts ? 'sweep_insufficient_netts' : 'sweep_failures'),
     summary: {
       mode: summary.mode,
       checked: summary.checked,
