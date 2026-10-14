@@ -56,12 +56,14 @@ export async function POST(request: NextRequest) {
       childAddress?: string;
       childPrivateKey?: string;
       amountToSweep?: number | string;
+      idempotencyNonce?: string;
     };
     const { sweepUsdtWithNettsEnergy } = loadSweepLib();
     const result = await sweepUsdtWithNettsEnergy({
       childAddress: String(body.childAddress || ''),
       childPrivateKey: String(body.childPrivateKey || ''),
       amountToSweep: body.amountToSweep as number | string,
+      idempotencyNonce: body.idempotencyNonce,
     });
     return NextResponse.json(result);
   } catch (err) {
@@ -70,7 +72,16 @@ export async function POST(request: NextRequest) {
       err && typeof err === 'object' && 'code' in err ? String((err as { code?: string }).code) : 'SWEEP_FAILED';
     let status = 400;
     if (code === 'SWEEP_CONFIG') status = 500;
-    else if (code === 'SWEEP_NETTS_FAILED' || code === 'SWEEP_NO_TXID') status = 502;
+    else if (code === 'SWEEP_NETTS_INSUFFICIENT_BALANCE') status = 402;
+    else if (code === 'SWEEP_NETTS_TIMEOUT') status = 504;
+    else if (code === 'SWEEP_NETTS_CONFLICT') status = 409;
+    else if (
+      code.startsWith('SWEEP_NETTS_')
+      || code === 'SWEEP_NO_TXID'
+      || code === 'SWEEP_CHAIN_FAILED'
+    ) {
+      status = 502;
+    }
     return NextResponse.json({ ok: false, error: message, code }, { status });
   }
 }
