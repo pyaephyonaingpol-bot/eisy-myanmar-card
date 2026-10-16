@@ -24,6 +24,7 @@ const {
   isHdEnabled,
   deriveTronAddressForUser,
   deriveTronAccountAtIndex,
+  derivationIndexForUser,
 } = require('./tronHdWalletService');
 
 const {
@@ -80,6 +81,14 @@ function getSkipGasIfTrxAtLeast() {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Exact USDT decimal string from TRC-20 base units (avoids float dust on sweep). */
+function formatUsdtAmountFromSun(rawSun) {
+  const sun = BigInt(rawSun?.toString?.() ?? String(rawSun || '0'));
+  const whole = sun / 1_000_000n;
+  const frac = (sun % 1_000_000n).toString().padStart(6, '0');
+  return `${whole}.${frac}`;
 }
 
 function createTronWeb(privateKey) {
@@ -341,25 +350,35 @@ async function sweepDepositAddress({
   let index = derivationIndex;
 
   if (!key) {
-    if (userId != null) {
-      const derived = deriveTronAddressForUser(userId);
-      key = derived.privateKeyHex;
-      fromAddress = derived.address;
-      index = derived.index;
-    } else if (index != null) {
-      const derived = deriveTronAccountAtIndex(Number(index));
-      key = derived.privateKeyHex;
-      fromAddress = derived.address;
+    const storedIndex = index != null ? Number(index) : null;
+    let derived;
+    if (storedIndex != null && Number.isInteger(storedIndex) && storedIndex >= 0) {
+      derived = deriveTronAccountAtIndex(storedIndex);
+    } else if (userId != null) {
+      derived = deriveTronAddressForUser(userId);
     } else {
       const err = new Error('userId, derivationIndex, or privateKeyHex is required to sweep');
       err.code = 'SWEEP_KEY_REQUIRED';
       throw err;
     }
+    key = derived.privateKeyHex;
+    fromAddress = derived.address;
+    index = derived.index;
+
+    if (userId != null && storedIndex != null && Number.isInteger(storedIndex)) {
+      const expectedIndex = derivationIndexForUser(userId);
+      if (storedIndex !== expectedIndex) {
+        console.warn(
+          `[tron/sweep] user ${userId}: stored derivation_index ${storedIndex} `
+          + `≠ current formula index ${expectedIndex} — sweeping stored index/address`
+        );
+      }
+    }
   }
 
   if (address && fromAddress && String(address).trim() !== fromAddress) {
     const err = new Error(
-      `Address mismatch: provided ${address} but derived ${fromAddress}`
+      `Address mismatch: provided ${address} but derived ${fromAddress} at index ${index}`
     );
     err.code = 'SWEEP_ADDRESS_MISMATCH';
     throw err;
@@ -372,7 +391,9 @@ async function sweepDepositAddress({
   // Peek USDT first — skip entirely when nothing to sweep.
   const contract = await probeTw.contract(USDT_TRC20_ABI, USDT_TRC20_CONTRACT);
   const rawBal = await contract.methods.balanceOf(fromAddress).call();
+  const balanceSunStr = rawBal?.toString?.() ?? String(rawBal || '0');
   const usdtBalance = sunToUsdt(rawBal);
+  const sweepAmountUsdt = formatUsdtAmountFromSun(balanceSunStr);
   if (usdtBalance < getMinSweepUsdt()) {
     return {
       ok: true,
@@ -430,7 +451,7 @@ async function sweepDepositAddress({
   const nettsResult = await sweepUsdtWithNettsEnergyFn({
     childAddress: fromAddress,
     childPrivateKey: key,
-    amountToSweep: usdtBalance,
+    amountToSweep: sweepAmountUsdt,
     destinationAddress: masterAddress,
     idempotencyNonce,
     fetchImpl,
@@ -682,6 +703,7 @@ function summarizeSweepTransferTotals(summary) {
 }
 
 module.exports = {
+  formatUsdtAmountFromSun,
   getSweepGasTrx,
   getNettsEnergyPerSweep,
   getMinSweepUsdt,

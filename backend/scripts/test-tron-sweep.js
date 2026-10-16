@@ -275,6 +275,69 @@ async function main() {
     console.log('ok');
   }
 
+  section('sweep uses stored derivation_index when it differs from userId formula');
+  {
+    process.env.TRON_HD_INDEX_OFFSET = '100';
+    delete require.cache[require.resolve('../src/services/tronHdWalletService')];
+    delete require.cache[require.resolve('../src/services/tronSweepService')];
+    const hdOffset = require('../src/services/tronHdWalletService');
+    const sweepOffset = require('../src/services/tronSweepService');
+
+    const userId = 12;
+    const legacyIndex = userId;
+    const legacyDerived = hdOffset.deriveTronAccountAtIndex(legacyIndex);
+    const nettsFn = makeNettsSweepMock({
+      masterAddress,
+      usdtSun: '5000000',
+    });
+
+    const result = await sweepOffset.sweepDepositAddress({
+      userId,
+      address: legacyDerived.address,
+      derivationIndex: legacyIndex,
+      createTw: (pk) => makeFakeTw({
+        address: legacyDerived.address,
+        usdtSun: '5000000',
+      }),
+      sweepUsdtWithNettsEnergyFn: nettsFn,
+      waitFn: async () => {},
+    });
+
+    assert.strictEqual(result.depositAddress, legacyDerived.address);
+    assert.strictEqual(result.usdt?.txId, 'usdt-sweep-1');
+    delete process.env.TRON_HD_INDEX_OFFSET;
+    delete require.cache[require.resolve('../src/services/tronHdWalletService')];
+    delete require.cache[require.resolve('../src/services/tronSweepService')];
+    console.log('ok');
+  }
+
+  section('address mismatch aborts sweep (no wrong-key transfer)');
+  {
+    const sweepFresh = require('../src/services/tronSweepService');
+    const userId = 13;
+    await assert.rejects(
+      () => sweepFresh.sweepDepositAddress({
+        userId,
+        address: 'TWrongDepositAddress111111111111111',
+        derivationIndex: userId,
+        createTw: () => makeFakeTw({ address: 'TWrongDepositAddress111111111111111', usdtSun: '9000000' }),
+        sweepUsdtWithNettsEnergyFn: async () => {
+          throw new Error('Netts must not run on address mismatch');
+        },
+      }),
+      (err) => err.code === 'SWEEP_ADDRESS_MISMATCH',
+    );
+    console.log('ok');
+  }
+
+  section('formatUsdtAmountFromSun preserves full on-chain units');
+  {
+    const sweepFresh = require('../src/services/tronSweepService');
+    assert.strictEqual(sweepFresh.formatUsdtAmountFromSun('25123456'), '25.123456');
+    assert.strictEqual(sweepFresh.formatUsdtAmountFromSun('1'), '0.000001');
+    console.log('ok');
+  }
+
   section('buildNettsIdempotencyNonce stable vs forceGas');
   {
     const stable = sweep.buildNettsIdempotencyNonce({
