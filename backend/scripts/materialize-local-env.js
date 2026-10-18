@@ -21,10 +21,25 @@ const {
 } = require('../src/lib/envAliases');
 
 const REPO_ROOT = path.join(__dirname, '..', '..');
+const BACKEND_DIR = path.join(__dirname, '..');
 const ENV_PATH = path.join(REPO_ROOT, '.env');
 const ENV_LOCAL_PATH = path.join(REPO_ROOT, '.env.local');
+/** Primary local override path for backend dev + smoke scripts (see loadEnv.js). */
+const BACKEND_ENV_LOCAL_PATH = path.join(BACKEND_DIR, '.env.local');
 const TURSO_LIBSQL =
   'libsql://eisymyanmar-pyaephyonaingpol-bot.aws-ap-northeast-1.turso.io';
+
+async function verifyTursoConnection(url, authToken) {
+  if (!url || !authToken) return { ok: false, reason: 'missing_url_or_token' };
+  try {
+    const { createClient } = require('@libsql/client');
+    const client = createClient({ url, authToken });
+    await client.execute('SELECT 1 AS ok');
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message || String(err) };
+  }
+}
 
 function dotenvLine(key, value) {
   const v = String(value ?? '');
@@ -59,6 +74,7 @@ const entries = [
   ['ADMIN_API_KEY', firstEnv('ADMIN_API_KEY')],
 ];
 
+async function main() {
 const missing = [];
 if (!databaseAuthToken()) missing.push('DATABASE_AUTH_TOKEN (or TURSO_AUTH_TOKEN / LIBSQL_AUTH_TOKEN)');
 if (!firstEnv('TRON_HD_MNEMONIC')) missing.push('TRON_HD_MNEMONIC');
@@ -73,16 +89,39 @@ const lines = [
 ];
 
 const body = lines.join('\n');
-fs.writeFileSync(ENV_PATH, body, { mode: 0o600 });
-fs.writeFileSync(ENV_LOCAL_PATH, body, { mode: 0o600 });
+const targets = [ENV_PATH, ENV_LOCAL_PATH, BACKEND_ENV_LOCAL_PATH];
+for (const filePath of targets) {
+  fs.writeFileSync(filePath, body, { mode: 0o600 });
+}
 const n = entries.filter(([, v]) => String(v).trim()).length;
-console.log(`[materialize-local-env] Wrote ${ENV_PATH} and ${ENV_LOCAL_PATH} (${n} keys each)`);
+console.log(
+  `[materialize-local-env] Wrote ${targets.length} files (${n} keys):`,
+  targets.map((p) => path.relative(REPO_ROOT, p)).join(', '),
+);
+
+const tursoUrl = resolvedDatabaseUrl();
+const tursoToken = databaseAuthToken();
+const tursoCheck = await verifyTursoConnection(tursoUrl, tursoToken);
+if (tursoCheck.ok) {
+  console.log('[materialize-local-env] Turso connectivity: OK');
+} else {
+  console.error('[materialize-local-env] Turso connectivity FAILED — DATABASE_AUTH_TOKEN in this VM is not accepted.');
+  console.error('[materialize-local-env] Use the Cursor environment prompt to add secrets copied from Vercel (Production), then start a new agent run and re-run this script.');
+  if (!missing.includes('DATABASE_AUTH_TOKEN (or TURSO_AUTH_TOKEN / LIBSQL_AUTH_TOKEN)')) {
+    missing.push('valid DATABASE_AUTH_TOKEN for Turso (current token rejected)');
+  }
+}
 
 if (missing.length) {
-  console.error('[materialize-local-env] Still MISSING in Cloud Agent / shell:');
+  console.error('[materialize-local-env] Still MISSING or invalid:');
   for (const m of missing) console.error(`  - ${m}`);
-  console.error('Add the same names/values as Vercel → Project → Environment Variables, then re-run this agent or script.');
   process.exit(1);
 }
 
 process.exit(0);
+}
+
+main().catch((err) => {
+  console.error('[materialize-local-env] Fatal:', err.message || err);
+  process.exit(1);
+});
