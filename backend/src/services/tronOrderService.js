@@ -15,20 +15,21 @@ const { getDepositFeeSettings } = require('./settingsService');
 const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require('./depositService');
 const { formatUsdt } = require('./walletService');
 
+const { tronApiKey, tronFullHost } = require('../lib/envAliases');
+
 const DEFAULT_MASTER_DEPOSIT_ADDRESS = 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH';
 const USDT_TRC20_CONTRACT = process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const TRON_FULL_HOST = (
-  process.env.TRON_FULL_HOST
-  || process.env.TRONGRID_FULL_HOST
-  || 'https://api.trongrid.io'
-).replace(/\/$/, '');
 const TRC20_DECIMALS = 6;
 const ORDER_STATUS_PENDING = 'PENDING';
 const ORDER_STATUS_COMPLETED = 'COMPLETED';
 
+function getTronFullHost() {
+  return tronFullHost().replace(/\/$/, '');
+}
+
 function tronApiHeaders() {
   const headers = { Accept: 'application/json' };
-  const apiKey = process.env.TRONGRID_API_KEY || process.env.TRON_PRO_API_KEY;
+  const apiKey = tronApiKey();
   if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
   return headers;
 }
@@ -373,7 +374,7 @@ async function fetchIncomingUsdtTransfers({
     params.set('min_timestamp', String(Math.floor(minTimestampMs)));
   }
 
-  const url = `${TRON_FULL_HOST}/v1/accounts/${encodeURIComponent(address)}/transactions/trc20?${params.toString()}`;
+  const url = `${getTronFullHost()}/v1/accounts/${encodeURIComponent(address)}/transactions/trc20?${params.toString()}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {
