@@ -2053,6 +2053,9 @@ const {
   getNettsEnergyPerSweep,
   getMinSweepUsdt,
   isSweepInFlight,
+  buildSweepPreflightReport,
+  assertSweepPreflightOrThrow,
+  assertSweepBodyHasNoPrivateKey,
 } = require('../services/tronSweepService');
 const {
   resyncHdDepositAddresses,
@@ -2227,9 +2230,16 @@ router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, r
       });
     }
 
+    assertSweepBodyHasNoPrivateKey(body);
+
     const forceGas = Boolean(body.force_gas ?? body.forceGas);
     const userId = body.user_id ?? body.userId ?? null;
     const limit = body.limit != null ? Number(body.limit) : 500;
+    const skipPreflight = Boolean(body.skip_preflight ?? body.skipPreflight);
+
+    if (!dryRun && !skipPreflight) {
+      await assertSweepPreflightOrThrow({ verifyAddresses: true, limit });
+    }
 
     const summary = await runManualSweep({
       userId,
@@ -2290,6 +2300,7 @@ router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, r
         return 503;
       }
       if (err.code === 'SWEEP_INSUFFICIENT_MASTER_TRX') return 422;
+      if (err.code === 'SWEEP_PREFLIGHT_FAILED') return 503;
       return 500;
     })();
     res.status(status).json({
@@ -2297,6 +2308,29 @@ router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, r
       error: err.message || 'Sweep failed',
       code: err.code || 'SWEEP_FAILED',
       details: err.details || undefined,
+      preflight: err.preflight || undefined,
+    });
+  }
+});
+
+/** GET /api/admin/sweep-preflight — env + HD alignment checks before manual sweep. */
+router.get('/sweep-preflight', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    const limit = req.query.limit != null ? Number(req.query.limit) : 500;
+    const verify = ['1', 'true', 'yes'].includes(String(req.query.verify || 'true').toLowerCase());
+    const preflight = await buildSweepPreflightReport({
+      verifyAddresses: verify,
+      limit,
+    });
+    res.json({
+      success: true,
+      preflight,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Preflight failed',
+      code: err.code || 'SWEEP_PREFLIGHT_FAILED',
     });
   }
 });
@@ -2305,8 +2339,12 @@ router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, r
 router.get('/sweep-deposits', requirePermission('master_wallet'), async (req, res) => {
   try {
     const limit = req.query.limit != null ? Number(req.query.limit) : 500;
+    const includePreflight = ['1', 'true', 'yes'].includes(
+      String(req.query.preflight || '1').toLowerCase()
+    );
+    const verify = ['1', 'true', 'yes'].includes(String(req.query.verify || '').toLowerCase());
     const addresses = await listSweepableDepositAddresses({ limit });
-    res.json({
+    const payload = {
       success: true,
       manual: true,
       scheduled: false,
@@ -2322,7 +2360,14 @@ router.get('/sweep-deposits', requirePermission('master_wallet'), async (req, re
         derivation_path: row.derivation_path,
         updated_at: row.updated_at,
       })),
-    });
+    };
+    if (includePreflight) {
+      payload.preflight = await buildSweepPreflightReport({
+        verifyAddresses: verify,
+        limit,
+      });
+    }
+    res.json(payload);
   } catch (err) {
     console.error('[admin/sweep-deposits GET]', err.message);
     res.status(500).json({

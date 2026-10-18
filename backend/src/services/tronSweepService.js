@@ -24,6 +24,7 @@ const {
   isHdEnabled,
   deriveTronAddressForUser,
   deriveTronAccountAtIndex,
+  derivationIndexForUser,
 } = require('./tronHdWalletService');
 
 const {
@@ -80,6 +81,201 @@ function getSkipGasIfTrxAtLeast() {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function maskTronAddress(addr) {
+  const s = String(addr || '').trim();
+  if (s.length <= 10) return s;
+  return `${s.slice(0, 4)}…${s.slice(-4)}`;
+}
+
+/** Exact USDT decimal string from TRC-20 base units (avoids float dust on sweep). */
+function formatUsdtAmountFromSun(rawSun) {
+  const sun = BigInt(rawSun?.toString?.() ?? String(rawSun || '0'));
+  const whole = sun / 1_000_000n;
+  const frac = (sun % 1_000_000n).toString().padStart(6, '0');
+  return `${whole}.${frac}`;
+}
+
+const REJECTED_CLIENT_KEY_FIELDS = [
+  'childPrivateKey',
+  'child_private_key',
+  'privateKey',
+  'private_key',
+  'privateKeyHex',
+  'private_key_hex',
+];
+
+function assertSweepBodyHasNoPrivateKey(body) {
+  if (!body || typeof body !== 'object') return;
+  for (const field of REJECTED_CLIENT_KEY_FIELDS) {
+    const val = body[field];
+    if (val != null && String(val).trim() !== '') {
+      const err = new Error(
+        `${field} is not accepted in API requests — keys are derived server-side from HD seed`
+      );
+      err.code = 'SWEEP_PRIVATE_KEY_NOT_ALLOWED';
+      throw err;
+    }
+  }
+}
+
+/**
+ * Derive ephemeral deposit signing material (never log or persist).
+ * @returns {{ privateKeyHex: string, address: string, index: number }}
+ */
+function deriveDepositSigningMaterial({
+  userId = null,
+  derivationIndex = null,
+} = {}) {
+  const storedIndex = derivationIndex != null ? Number(derivationIndex) : null;
+  let derived;
+  if (storedIndex != null && Number.isInteger(storedIndex) && storedIndex >= 0) {
+    derived = deriveTronAccountAtIndex(storedIndex);
+  } else if (userId != null) {
+    derived = deriveTronAddressForUser(userId);
+  } else {
+    const err = new Error('userId or derivationIndex is required to derive deposit keys');
+    err.code = 'SWEEP_KEY_REQUIRED';
+    throw err;
+  }
+
+  if (userId != null && storedIndex != null && Number.isInteger(storedIndex)) {
+    const expectedIndex = derivationIndexForUser(userId);
+    if (storedIndex !== expectedIndex) {
+      console.warn(
+        `[tron/sweep] user ${userId}: stored derivation_index ${storedIndex} `
+        + `≠ current formula index ${expectedIndex} — using stored index`
+      );
+    }
+  }
+
+  return {
+    privateKeyHex: derived.privateKeyHex,
+    address: derived.address,
+    index: derived.index,
+  };
+}
+
+function getNettsEnvReadiness() {
+  const apiUrl = process.env.TRON_ENERGY_API_URL?.trim();
+  const apiKey = process.env.TRON_ENERGY_API_KEY?.trim();
+  return {
+    configured: Boolean(apiUrl && apiKey),
+    api_url_set: Boolean(apiUrl),
+    api_key_set: Boolean(apiKey),
+    real_ip_set: Boolean(process.env.TRON_NETTS_REAL_IP?.trim()),
+    energy_per_sweep: ENERGY_ORDER_AMOUNT,
+  };
+}
+
+async function verifyStoredDepositAddressAlignment({ limit = 500, maxReport = 25 } = {}) {
+  const rows = await listSweepableDepositAddresses({ limit });
+  const mismatches = [];
+  for (const row of rows) {
+    if (row.derivation_index == null) continue;
+    try {
+      const derived = deriveTronAccountAtIndex(Number(row.derivation_index));
+      if (derived.address !== row.address) {
+        mismatches.push({
+          user_id: row.user_id,
+          derivation_index: row.derivation_index,
+          stored_address: row.address,
+          derived_address: derived.address,
+        });
+      }
+    } catch (err) {
+      mismatches.push({
+        user_id: row.user_id,
+        derivation_index: row.derivation_index,
+        stored_address: row.address,
+        error: err.message,
+        code: err.code || 'SWEEP_VERIFY_FAILED',
+      });
+    }
+    if (mismatches.length >= maxReport) break;
+  }
+  return {
+    checked: rows.length,
+    mismatch_count: mismatches.length,
+    mismatches,
+  };
+}
+
+/**
+ * Pre-sweep readiness: HD, Netts env, master destination, optional DB/seed alignment.
+ */
+async function buildSweepPreflightReport({
+  verifyAddresses = true,
+  limit = 500,
+} = {}) {
+  let hdEnabled = false;
+  let hdError = null;
+  try {
+    hdEnabled = isHdEnabled();
+  } catch (err) {
+    hdError = err.message;
+  }
+
+  const netts = getNettsEnvReadiness();
+  let masterAddress = null;
+  let masterError = null;
+  try {
+    masterAddress = tronMaster.getMasterWalletAddress();
+  } catch (err) {
+    masterError = err.message;
+  }
+
+  const alignment = verifyAddresses && hdEnabled
+    ? await verifyStoredDepositAddressAlignment({ limit })
+    : {
+      checked: 0,
+      mismatch_count: 0,
+      mismatches: [],
+      skipped: !hdEnabled,
+    };
+
+  const blockers = [];
+  if (!hdEnabled) blockers.push('TRON_HD_NOT_CONFIGURED');
+  if (hdError) blockers.push('TRON_HD_ERROR');
+  if (!netts.configured) blockers.push('NETTS_ENV_INCOMPLETE');
+  if (masterError) blockers.push('MASTER_WALLET_NOT_CONFIGURED');
+  if (alignment.mismatch_count > 0) blockers.push('DEPOSIT_ADDRESS_MISMATCH');
+
+  const ready = blockers.length === 0;
+
+  return {
+    ready,
+    blockers,
+    hd_enabled: hdEnabled,
+    hd_error: hdError,
+    netts,
+    master: {
+      address_masked: masterAddress ? maskTronAddress(masterAddress) : null,
+      error: masterError,
+    },
+    sweep_destination_masked: masterAddress ? maskTronAddress(masterAddress) : null,
+    min_usdt: getMinSweepUsdt(),
+    netts_energy: getNettsEnergyPerSweep(),
+    child_trx_required: false,
+    address_alignment: alignment,
+  };
+}
+
+/**
+ * @returns {{ ok: true, report: object } | { ok: false, report: object, error: string, code: string }}
+ */
+async function assertSweepPreflightOrThrow(opts = {}) {
+  const report = await buildSweepPreflightReport(opts);
+  if (report.ready) {
+    return { ok: true, report };
+  }
+  const err = new Error(
+    `Sweep preflight failed: ${report.blockers.join(', ')}`
+  );
+  err.code = 'SWEEP_PREFLIGHT_FAILED';
+  err.preflight = report;
+  throw err;
 }
 
 function createTronWeb(privateKey) {
@@ -341,25 +537,15 @@ async function sweepDepositAddress({
   let index = derivationIndex;
 
   if (!key) {
-    if (userId != null) {
-      const derived = deriveTronAddressForUser(userId);
-      key = derived.privateKeyHex;
-      fromAddress = derived.address;
-      index = derived.index;
-    } else if (index != null) {
-      const derived = deriveTronAccountAtIndex(Number(index));
-      key = derived.privateKeyHex;
-      fromAddress = derived.address;
-    } else {
-      const err = new Error('userId, derivationIndex, or privateKeyHex is required to sweep');
-      err.code = 'SWEEP_KEY_REQUIRED';
-      throw err;
-    }
+    const material = deriveDepositSigningMaterial({ userId, derivationIndex: index });
+    key = material.privateKeyHex;
+    fromAddress = material.address;
+    index = material.index;
   }
 
   if (address && fromAddress && String(address).trim() !== fromAddress) {
     const err = new Error(
-      `Address mismatch: provided ${address} but derived ${fromAddress}`
+      `Address mismatch: provided ${address} but derived ${fromAddress} at index ${index}`
     );
     err.code = 'SWEEP_ADDRESS_MISMATCH';
     throw err;
@@ -372,7 +558,9 @@ async function sweepDepositAddress({
   // Peek USDT first — skip entirely when nothing to sweep.
   const contract = await probeTw.contract(USDT_TRC20_ABI, USDT_TRC20_CONTRACT);
   const rawBal = await contract.methods.balanceOf(fromAddress).call();
+  const balanceSunStr = rawBal?.toString?.() ?? String(rawBal || '0');
   const usdtBalance = sunToUsdt(rawBal);
+  const sweepAmountUsdt = formatUsdtAmountFromSun(balanceSunStr);
   if (usdtBalance < getMinSweepUsdt()) {
     return {
       ok: true,
@@ -430,7 +618,7 @@ async function sweepDepositAddress({
   const nettsResult = await sweepUsdtWithNettsEnergyFn({
     childAddress: fromAddress,
     childPrivateKey: key,
-    amountToSweep: usdtBalance,
+    amountToSweep: sweepAmountUsdt,
     destinationAddress: masterAddress,
     idempotencyNonce,
     fetchImpl,
@@ -682,6 +870,14 @@ function summarizeSweepTransferTotals(summary) {
 }
 
 module.exports = {
+  maskTronAddress,
+  formatUsdtAmountFromSun,
+  assertSweepBodyHasNoPrivateKey,
+  deriveDepositSigningMaterial,
+  getNettsEnvReadiness,
+  verifyStoredDepositAddressAlignment,
+  buildSweepPreflightReport,
+  assertSweepPreflightOrThrow,
   getSweepGasTrx,
   getNettsEnergyPerSweep,
   getMinSweepUsdt,
