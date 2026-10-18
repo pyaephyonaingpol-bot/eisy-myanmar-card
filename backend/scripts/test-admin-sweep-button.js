@@ -35,6 +35,9 @@ assert.ok(js.includes('total_usdt'), 'UI reads total_usdt from API');
 assert.ok(route.includes('total_usdt'), 'API returns total_usdt swept');
 assert.ok(service.includes('summarizeSweepTransferTotals'), 'Service aggregates sweep USDT totals');
 assert.ok(service.includes('sweepUsdtWithNettsEnergy'), 'Service uses Netts energy sweep helper');
+assert.ok(service.includes('buildSweepPreflightReport'), 'Service exposes sweep preflight');
+assert.ok(route.includes("'/sweep-preflight'"), 'Admin preflight route exists');
+assert.ok(js.includes('preflight'), 'Admin UI reads sweep preflight');
 assert.ok(html.includes('id="masterWalletSweepMinLabel"'), 'Min USDT label present');
 assert.ok(
   /id="masterWalletSweepMinLabel">\s*25\s*</.test(html),

@@ -4,8 +4,7 @@
  * PRODUCTION (this repo on Vercel): `vercel.json` rewrites `/api/*` → Express
  * (`api/index.js`). The live handler is `backend/src/routes/sweep.js`.
  *
- * This file is for Next.js hosting or future migration. Requires the same
- * admin auth as Express: `X-Admin-Key: ADMIN_API_KEY` or admin Bearer session.
+ * Server-side HD derivation only — never accept private keys in the request body.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createRequire } from 'node:module';
@@ -15,18 +14,6 @@ export const runtime = 'nodejs';
 
 const require = createRequire(path.join(process.cwd(), 'package.json'));
 
-type SweepLib = {
-  sweepUsdtWithNettsEnergy: (params: {
-    childAddress: string;
-    childPrivateKey: string;
-    amountToSweep: number | string;
-  }) => Promise<Record<string, unknown>>;
-};
-
-function loadSweepLib(): SweepLib {
-  return require(path.join(process.cwd(), 'lib/nettsUsdtSweep.js')) as SweepLib;
-}
-
 function configuredAdminApiKey(): string {
   return String(process.env.ADMIN_API_KEY || '').trim();
 }
@@ -35,11 +22,6 @@ function isSweepAuthorized(request: NextRequest): boolean {
   const adminKey = configuredAdminApiKey();
   const providedKey = request.headers.get('x-admin-key')?.trim();
   if (adminKey && providedKey && providedKey === adminKey) return true;
-
-  const auth = request.headers.get('authorization') || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
-  if (!token) return false;
-  // Full session RBAC belongs in Express; Next path accepts API key only unless extended.
   return false;
 }
 
@@ -52,26 +34,38 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = (await request.json()) as {
-      childAddress?: string;
-      childPrivateKey?: string;
-      amountToSweep?: number | string;
-      idempotencyNonce?: string;
+    const body = (await request.json()) as Record<string, unknown>;
+    const { executeSingleDepositSweepFromRequest } = require(
+      path.join(process.cwd(), 'backend/src/services/sweepSingleApiService.js'),
+    ) as {
+      executeSingleDepositSweepFromRequest: (
+        b: Record<string, unknown>,
+      ) => Promise<Record<string, unknown>>;
     };
-    const { sweepUsdtWithNettsEnergy } = loadSweepLib();
-    const result = await sweepUsdtWithNettsEnergy({
-      childAddress: String(body.childAddress || ''),
-      childPrivateKey: String(body.childPrivateKey || ''),
-      amountToSweep: body.amountToSweep as number | string,
-      idempotencyNonce: body.idempotencyNonce,
-    });
-    return NextResponse.json(result);
+
+    const dryRun = Boolean(body.dry_run ?? body.dryRun);
+    const skipPreflight = Boolean(body.skip_preflight ?? body.skipPreflight);
+    if (!dryRun && !skipPreflight) {
+      const { assertSweepPreflightOrThrow } = require(
+        path.join(process.cwd(), 'backend/src/services/tronSweepService.js'),
+      ) as {
+        assertSweepPreflightOrThrow: (opts: object) => Promise<unknown>;
+      };
+      await assertSweepPreflightOrThrow({ verifyAddresses: true, limit: 500 });
+    }
+
+    const result = await executeSingleDepositSweepFromRequest(body);
+    return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const code =
-      err && typeof err === 'object' && 'code' in err ? String((err as { code?: string }).code) : 'SWEEP_FAILED';
+      err && typeof err === 'object' && 'code' in err
+        ? String((err as { code?: string }).code)
+        : 'SWEEP_FAILED';
     let status = 400;
     if (code === 'SWEEP_CONFIG') status = 500;
+    else if (code === 'SWEEP_PREFLIGHT_FAILED') status = 503;
+    else if (code === 'SWEEP_PRIVATE_KEY_NOT_ALLOWED') status = 400;
     else if (code === 'SWEEP_NETTS_INSUFFICIENT_BALANCE') status = 402;
     else if (code === 'SWEEP_NETTS_TIMEOUT') status = 504;
     else if (code === 'SWEEP_NETTS_CONFLICT') status = 409;
@@ -81,7 +75,13 @@ export async function POST(request: NextRequest) {
       || code === 'SWEEP_CHAIN_FAILED'
     ) {
       status = 502;
+    } else if (code === 'SWEEP_ADDRESS_MISMATCH' || code === 'TRON_HD_NOT_CONFIGURED') {
+      status = 503;
     }
-    return NextResponse.json({ ok: false, error: message, code }, { status });
+    const preflight =
+      err && typeof err === 'object' && 'preflight' in err
+        ? (err as { preflight?: unknown }).preflight
+        : undefined;
+    return NextResponse.json({ ok: false, error: message, code, preflight }, { status });
   }
 }

@@ -323,6 +323,31 @@ async function main() {
   assert.ok(sweepRouteSrc.includes('requireAdminAuth'), 'sweep route uses requireAdminAuth');
   assert.ok(sweepRouteSrc.includes("requirePermission('master_wallet')"), 'sweep requires master_wallet');
   assert.ok(routeSrc.includes('isSweepAuthorized'), 'Next route checks admin key when used');
+  assert.ok(
+    sweepRouteSrc.includes('executeSingleDepositSweepFromRequest'),
+    'Express sweep derives HD keys server-side',
+  );
+  assert.ok(
+    !/childPrivateKey\s*,/.test(sweepRouteSrc),
+    'Express route does not read childPrivateKey from body',
+  );
+  assert.ok(
+    routeSrc.includes('executeSingleDepositSweepFromRequest'),
+    'Next route uses server-side derivation helper',
+  );
+  assert.ok(
+    routeSrc.includes('SWEEP_PRIVATE_KEY_NOT_ALLOWED') || routeSrc.includes('assertSweepPreflightOrThrow'),
+    'Next route documents preflight / key rejection',
+  );
+
+  const sweepService = fs.readFileSync(
+    path.join(root, 'backend/src/services/tronSweepService.js'),
+    'utf8',
+  );
+  assert.ok(sweepService.includes('SWEEP_PRIVATE_KEY_NOT_ALLOWED'), 'service rejects client private keys');
+  assert.ok(sweepService.includes('buildSweepPreflightReport'), 'preflight report helper exists');
+  assert.ok(sweepService.includes('formatUsdtAmountFromSun'), 'exact USDT amount formatting');
+  assert.ok(sweepService.includes('deriveDepositSigningMaterial'), 'centralized HD derive for sweep');
 
   section('Shared sweep library');
   const lib = require(libPath);

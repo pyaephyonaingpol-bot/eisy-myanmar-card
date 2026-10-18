@@ -3348,7 +3348,7 @@
     async loadTronSweepConfig() {
       if (!this.hasPermission('master_wallet')) return null;
       try {
-        const data = await this.api('GET', '/api/admin/sweep-deposits');
+        const data = await this.api('GET', '/api/admin/sweep-deposits?preflight=1&verify=1');
         const minUsdt = Number(data.min_usdt);
         if (Number.isFinite(minUsdt)) {
           this._tronSweepMinUsdt = minUsdt;
@@ -3422,6 +3422,17 @@
       );
       const addressCount = Number(config?.count ?? config?.addresses?.length ?? 0);
       const inFlight = Boolean(config?.in_flight);
+      const preflight = config?.preflight || null;
+      const preflightReady = preflight?.ready !== false;
+      const preflightBlockers = Array.isArray(preflight?.blockers) ? preflight.blockers : [];
+
+      if (!preflightReady && preflightBlockers.length) {
+        this.showAdminToast(
+          'Sweep preflight failed: ' + preflightBlockers.join(', '),
+          'error'
+        );
+        return;
+      }
 
       if (inFlight) {
         this.showAdminToast('A deposit sweep is already in progress on the server', 'error');
@@ -3434,6 +3445,12 @@
         'Scans custodial HD deposit addresses and moves USDT to the master wallet.',
         'Only balances at or above ' + minUsdt + ' USDT are swept.',
         addressCount ? ('Registered custodial addresses: ' + addressCount) : '',
+        preflight?.netts?.configured === false
+          ? 'Warning: TRON_ENERGY_API_URL / TRON_ENERGY_API_KEY not fully configured.'
+          : '',
+        preflight?.address_alignment?.mismatch_count > 0
+          ? ('Warning: ' + preflight.address_alignment.mismatch_count + ' deposit address(es) do not match HD seed — run HD resync before sweep.')
+          : '',
         '',
         'This rents Netts energy for each deposit address and broadcasts USDT transfers to the master wallet. Requires master_wallet permission and TRON_ENERGY_API_* configured.',
       ].filter(Boolean).join('\n');

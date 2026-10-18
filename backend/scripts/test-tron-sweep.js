@@ -275,6 +275,52 @@ async function main() {
     console.log('ok');
   }
 
+  section('stored derivation_index used when offset drifted');
+  {
+    process.env.TRON_HD_INDEX_OFFSET = '100';
+    delete require.cache[require.resolve('../src/services/tronHdWalletService')];
+    delete require.cache[require.resolve('../src/services/tronSweepService')];
+    const hdOffset = require('../src/services/tronHdWalletService');
+    const sweepOffset = require('../src/services/tronSweepService');
+    const userId = 12;
+    const legacyIndex = userId;
+    const legacyDerived = hdOffset.deriveTronAccountAtIndex(legacyIndex);
+    const result = await sweepOffset.sweepDepositAddress({
+      userId,
+      address: legacyDerived.address,
+      derivationIndex: legacyIndex,
+      createTw: (pk) => makeFakeTw({ address: legacyDerived.address, usdtSun: '5000000' }),
+      sweepUsdtWithNettsEnergyFn: makeNettsSweepMock({
+        masterAddress,
+        usdtSun: '5000000',
+      }),
+      waitFn: async () => {},
+    });
+    assert.strictEqual(result.depositAddress, legacyDerived.address);
+    delete process.env.TRON_HD_INDEX_OFFSET;
+    delete require.cache[require.resolve('../src/services/tronHdWalletService')];
+    delete require.cache[require.resolve('../src/services/tronSweepService')];
+    console.log('ok');
+  }
+
+  section('address mismatch aborts before Netts');
+  {
+    const sweepFresh = require('../src/services/tronSweepService');
+    await assert.rejects(
+      () => sweepFresh.sweepDepositAddress({
+        userId: 13,
+        address: 'TWrongDepositAddress111111111111111',
+        derivationIndex: 13,
+        createTw: () => makeFakeTw({ address: 'TWrongDepositAddress111111111111111', usdtSun: '9000000' }),
+        sweepUsdtWithNettsEnergyFn: async () => {
+          throw new Error('Netts must not run');
+        },
+      }),
+      (err) => err.code === 'SWEEP_ADDRESS_MISMATCH',
+    );
+    console.log('ok');
+  }
+
   section('buildNettsIdempotencyNonce stable vs forceGas');
   {
     const stable = sweep.buildNettsIdempotencyNonce({
