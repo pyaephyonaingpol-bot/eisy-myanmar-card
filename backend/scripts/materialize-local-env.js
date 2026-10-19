@@ -79,7 +79,12 @@ const entries = [
 async function main() {
 const missing = [];
 if (!databaseAuthToken()) missing.push('DATABASE_AUTH_TOKEN (or TURSO_AUTH_TOKEN / LIBSQL_AUTH_TOKEN)');
-if (!firstEnv('TRON_HD_MNEMONIC')) missing.push('TRON_HD_MNEMONIC');
+const hdMnemonic = firstEnv('TRON_HD_MNEMONIC');
+const hdSeedHex = firstEnv('TRON_HD_SEED_HEX');
+const masterKey = firstEnv('MASTER_PRIVATE_KEY', 'MASTER_WALLET_PRIVATE_KEY', 'TRON_MASTER_PRIVATE_KEY');
+if (!hdMnemonic && !hdSeedHex && !masterKey) {
+  missing.push('TRON_HD_MNEMONIC (or TRON_HD_SEED_HEX / MASTER_PRIVATE_KEY HD fallback)');
+}
 if (!tronApiKey()) missing.push('TRON_API_KEY (or TRONGRID_API_KEY / TRON_PRO_API_KEY)');
 
 const lines = [
@@ -120,6 +125,14 @@ if (mnemonic) {
   const fp = crypto.createHash('sha256').update(mnemonic.trim()).digest('hex').slice(0, 12);
   console.log(
     `[materialize-local-env] TRON_HD_MNEMONIC fingerprint: ${fp} (${words.length} words, len ${mnemonic.trim().length})`,
+  );
+} else if (hdSeedHex) {
+  const fp = crypto.createHash('sha256').update(hdSeedHex.trim()).digest('hex').slice(0, 12);
+  console.log(`[materialize-local-env] HD seed source: TRON_HD_SEED_HEX fingerprint=${fp}`);
+} else if (masterKey) {
+  const fp = crypto.createHash('sha256').update(masterKey.trim()).digest('hex').slice(0, 12);
+  console.log(
+    `[materialize-local-env] HD seed source: MASTER_PRIVATE_KEY fallback fingerprint=${fp} (no TRON_HD_MNEMONIC)`,
   );
 }
 
