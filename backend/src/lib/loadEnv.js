@@ -15,6 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
+const { normalizePlatformEnvAliases } = require('./envAliases');
 
 let loaded = false;
 
@@ -73,6 +74,8 @@ function loadEnv({ force = false } = {}) {
     seen.add(resolved);
     applyEnvFile(resolved, { override: true });
   }
+
+  normalizePlatformEnvAliases();
 }
 
 function resetLoadEnvForTests() {

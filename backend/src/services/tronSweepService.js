@@ -39,8 +39,7 @@ const {
   ENERGY_ORDER_AMOUNT,
 } = require(nettsSweepLibPath);
 
-const TRON_FULL_HOST =
-  process.env.TRON_FULL_HOST || process.env.TRONGRID_FULL_HOST || 'https://api.trongrid.io';
+const { tronApiKey, tronFullHost } = require('../lib/envAliases');
 const DEFAULT_FEE_LIMIT = Number(process.env.TRON_USDT_FEE_LIMIT_SUN) || 100_000_000;
 
 /** Legacy label for admin UI — sweeps use Netts energy, not master TRX gas. */
@@ -280,10 +279,10 @@ async function assertSweepPreflightOrThrow(opts = {}) {
 
 function createTronWeb(privateKey) {
   const headers = {};
-  const apiKey = process.env.TRONGRID_API_KEY || process.env.TRON_PRO_API_KEY;
+  const apiKey = tronApiKey();
   if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
   return new TronWeb({
-    fullHost: TRON_FULL_HOST,
+    fullHost: tronFullHost(),
     headers,
     privateKey,
   });
