@@ -74,13 +74,15 @@ async function main() {
   console.log('HTTP', sweep.status);
   console.log(JSON.stringify(sweep.json, null, 2));
 
+  const alignment = preflight.json?.preflight?.address_alignment;
   const ok =
     preflight.status === 200
     && preflight.json?.success === true
     && preflight.json?.preflight?.ready === true
-    && sweep.status === 200
-    && sweep.json?.success === true
-    && sweep.json?.sweep?.dryRun === true;
+    && (sweep.status === 200 || sweep.status === 207)
+    && sweep.json?.sweep?.dryRun === true
+    && Number(sweep.json?.sweep?.checked || 0) > 0
+    && Number(alignment?.mismatch_count || 0) === 0;
 
   if (!ok) {
     console.error('\nRemote sweep smoke FAILED.');

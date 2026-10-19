@@ -6,6 +6,7 @@
  * Uses Vercel-first variable names (TRON_API_KEY, DATABASE_URL, …).
  * Usage: node backend/scripts/materialize-local-env.js
  */
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -111,6 +112,15 @@ if (tursoCheck.ok) {
   if (!missing.includes('DATABASE_AUTH_TOKEN (or TURSO_AUTH_TOKEN / LIBSQL_AUTH_TOKEN)')) {
     missing.push('valid DATABASE_AUTH_TOKEN for Turso (current token rejected)');
   }
+}
+
+const mnemonic = firstEnv('TRON_HD_MNEMONIC');
+if (mnemonic) {
+  const words = mnemonic.trim().split(/\s+/).filter(Boolean);
+  const fp = crypto.createHash('sha256').update(mnemonic.trim()).digest('hex').slice(0, 12);
+  console.log(
+    `[materialize-local-env] TRON_HD_MNEMONIC fingerprint: ${fp} (${words.length} words, len ${mnemonic.trim().length})`,
+  );
 }
 
 if (missing.length) {
