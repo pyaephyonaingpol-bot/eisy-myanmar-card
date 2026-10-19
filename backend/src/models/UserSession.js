@@ -35,9 +35,11 @@ const UserSession = {
     const db = getDb();
     const hash = this.hashToken(sessionToken);
     return db.get(`
-      SELECT s.*, s.user_id, u.id as uid, u.email, u.name, u.phone,
-             u.email_verified, u.pin_hash, u.biometrics_enabled, u.auth_status,
-             u.admin_role
+      SELECT s.*, s.user_id, u.id as uid, u.email, u.name, u.phone, u.username,
+             u.email_verified, u.pin_hash, u.password_hash, u.biometrics_enabled,
+             u.auth_status, u.admin_role, u.kyc_status,
+             u.balance, u.balance_mmk, u.balance_usdt, u.balance_usdt_locked,
+             u.last_login_at, u.created_at, u.updated_at
       FROM user_sessions s
       JOIN users u ON u.id = s.user_id
       WHERE s.session_token_hash = ?

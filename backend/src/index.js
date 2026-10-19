@@ -493,59 +493,8 @@ async function start() {
 
   await initDb();
 
-  try {
-    const { ensureEnvSuperAdmin } = require('./services/adminAuthService');
-    const ensured = await ensureEnvSuperAdmin({ source: 'boot' });
-    if (ensured.skipped) {
-      console.log('[admin] env super-admin ensure skipped:', ensured.reason);
-    } else {
-      console.log(
-        '[admin] env super-admin ensured:',
-        ensured.user?.email,
-        `created=${ensured.created}`,
-        `promoted=${ensured.promoted}`,
-        `password_synced=${ensured.password_synced}`
-      );
-    }
-  } catch (err) {
-    console.warn('[admin] env super-admin ensure failed:', err.message);
-  }
-
-  try {
-    const { applyOwnerAdminAccount } = require('./services/ownerAdminAccount');
-    const owner = await applyOwnerAdminAccount();
-    console.log(
-      '[admin] owner account set:',
-      owner.email,
-      owner.admin_role,
-      `created=${owner.created}`,
-      `users=${owner.users_before}->${owner.users_after}`
-    );
-  } catch (err) {
-    console.warn('[admin] owner account ensure failed:', err.message);
-  }
-
-  try {
-    const { isSupabaseEnabled } = require('./lib/supabase');
-    if (isSupabaseEnabled()) {
-      const {
-        getUserWalletsMirrorStatus,
-        backfillAllUserWalletsInBackground,
-      } = require('./services/supabaseSyncService');
-      const mirror = await getUserWalletsMirrorStatus();
-      if (mirror.enabled && !mirror.in_sync) {
-        console.warn(
-          `[supabase] user_wallets mirror incomplete `
-          + `(turso=${mirror.turso_total} supabase=${mirror.supabase_total} `
-          + `missing=${Array.isArray(mirror.missing_user_ids) ? mirror.missing_user_ids.length : '?'})`
-          + ' — starting background backfill'
-        );
-        backfillAllUserWalletsInBackground();
-      }
-    }
-  } catch (err) {
-    console.warn('[supabase] user mirror boot check skipped:', err.message);
-  }
+  const { scheduleDeferredServerTasks } = require('./serverBootstrap');
+  scheduleDeferredServerTasks('boot');
 
   const { processExpiredP2pOrders } = require('./services/p2pOrderExpiryService');
   const expiryInterval = setInterval(() => {
@@ -554,18 +503,6 @@ async function start() {
     });
   }, 60 * 1000);
   expiryInterval.unref?.();
-
-  if (process.env.VERCEL && process.env.NODE_ENV !== 'test' && process.env.TELEGRAM_WEBHOOK_AUTOREGISTER !== 'false') {
-    try {
-      const { registerTelegramWebhook } = require('./services/supportTelegramService');
-      const registered = await registerTelegramWebhook();
-      if (registered.ok === false && !registered.skipped) {
-        console.error('[telegram/webhook] setWebhook ok:false', registered.description || '');
-      }
-    } catch (err) {
-      console.warn('[telegram/webhook] setWebhook failed:', err.message);
-    }
-  }
 
   const { isTronDepositEnabled } = require('./services/securityFlags');
   const pollTron = ['1', 'true', 'yes', 'on'].includes(
