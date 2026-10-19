@@ -9,16 +9,17 @@
 const fs = require('fs');
 const path = require('path');
 
-require('../src/lib/loadEnv').loadEnv({ force: true });
-
 const {
   firstEnv,
-  envIsSet,
   databaseUrl,
   databaseAuthToken,
   tronApiKey,
   tronFullHost,
+  normalizePlatformEnvAliases,
 } = require('../src/lib/envAliases');
+
+// Prefer Cloud Agent / shell secrets — do not load stale .env.local from disk first.
+normalizePlatformEnvAliases();
 
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const BACKEND_DIR = path.join(__dirname, '..');
