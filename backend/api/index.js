@@ -11,6 +11,7 @@ require('../src/lib/loadEnv');
 const { initDb, getDb } = require('../src/db');
 const { app } = require('../src/index');
 const { hashPin } = require('../src/services/cryptoService');
+const { scheduleDeferredServerTasks } = require('../src/serverBootstrap');
 
 let ready;
 
@@ -45,80 +46,9 @@ async function bootstrap() {
   ready = (async () => {
     await initDb();
     await ensureDemoUser();
+    scheduleDeferredServerTasks('vercel-bootstrap');
 
-    // Align ADMIN_EMAIL / ADMIN_PASSWORD with Turso on every cold start.
-    // Local `start()` already does this; Vercel previously skipped it, so
-    // production admin password hashes could drift after deploys.
-    try {
-      const { ensureEnvSuperAdmin } = require('../src/services/adminAuthService');
-      const ensured = await ensureEnvSuperAdmin({ source: 'vercel-bootstrap' });
-      if (ensured.skipped) {
-        console.log('[vercel] env super-admin ensure skipped:', ensured.reason);
-      } else {
-        console.log(
-          '[vercel] env super-admin ensured:',
-          ensured.user?.email,
-          `created=${ensured.created}`,
-          `promoted=${ensured.promoted}`,
-          `password_synced=${ensured.password_synced}`
-        );
-      }
-    } catch (err) {
-      console.warn('[vercel] env super-admin ensure failed:', err.message);
-    }
-
-    try {
-      const { applyOwnerAdminAccount } = require('../src/services/ownerAdminAccount');
-      const owner = await applyOwnerAdminAccount();
-      console.log(
-        '[vercel] owner account set:',
-        owner.email,
-        owner.admin_role,
-        `created=${owner.created}`,
-        `users=${owner.users_before}->${owner.users_after}`
-      );
-    } catch (err) {
-      console.warn('[vercel] owner account ensure failed:', err.message);
-    }
-
-    // Best-effort: heal incomplete user_wallets mirrors on cold start so the
-    // admin list source-of-truth is fully dual-written without an admin click.
-    try {
-      const { isSupabaseEnabled } = require('../src/lib/supabase');
-      if (isSupabaseEnabled()) {
-        const {
-          getUserWalletsMirrorStatus,
-          backfillAllUserWalletsInBackground,
-        } = require('../src/services/supabaseSyncService');
-        const mirror = await getUserWalletsMirrorStatus();
-        if (mirror.enabled && !mirror.in_sync) {
-          console.warn(
-            `[vercel] user_wallets mirror incomplete `
-            + `(turso=${mirror.turso_total} supabase=${mirror.supabase_total} `
-            + `missing=${Array.isArray(mirror.missing_user_ids) ? mirror.missing_user_ids.length : '?'})`
-            + ' — starting background backfill'
-          );
-          backfillAllUserWalletsInBackground();
-        }
-      }
-    } catch (err) {
-      console.warn('[vercel] user mirror bootstrap check skipped:', err.message);
-    }
-    if (process.env.NODE_ENV !== 'test' && process.env.TELEGRAM_WEBHOOK_AUTOREGISTER !== 'false') {
-      try {
-        const { registerTelegramWebhook } = require('../src/services/supportTelegramService');
-        const registered = await registerTelegramWebhook();
-        if (registered.skipped) {
-          console.log('[vercel] telegram setWebhook skipped:', registered.reason || 'skipped');
-        } else if (registered.ok === false) {
-          console.error('[vercel] telegram setWebhook ok:false', registered.description || '');
-        }
-      } catch (err) {
-        console.warn('[vercel] telegram setWebhook failed:', err.message);
-      }
-    }
-
-    console.log('[vercel] Express serverless handler ready', {
+    console.log('[vercel] Express serverless handler ready (core)', {
       env: process.env.VERCEL_ENV || process.env.NODE_ENV,
       hasBinanceKey: Boolean(process.env.BINANCE_API_KEY || process.env.BINANCE_PAY_API_KEY),
       hasBinanceSecret: Boolean(process.env.BINANCE_SECRET_KEY || process.env.BINANCE_PAY_API_SECRET),

@@ -645,8 +645,34 @@ async function changePassword(userId, { currentPassword, newPassword, confirmPas
   return { message: 'Password updated successfully', has_password: true };
 }
 
-async function getMe(userId) {
-  const user = await User.findById(userId);
+function userRowFromSessionJoin(session) {
+  if (!session?.uid && !session?.user_id) return null;
+  return {
+    id: session.uid || session.user_id,
+    email: session.email,
+    name: session.name,
+    phone: session.phone,
+    username: session.username,
+    email_verified: session.email_verified,
+    pin_hash: session.pin_hash,
+    password_hash: session.password_hash,
+    biometrics_enabled: session.biometrics_enabled,
+    auth_status: session.auth_status,
+    admin_role: session.admin_role,
+    kyc_status: session.kyc_status,
+    balance: session.balance,
+    balance_mmk: session.balance_mmk,
+    balance_usdt: session.balance_usdt,
+    balance_usdt_locked: session.balance_usdt_locked,
+    last_login_at: session.last_login_at,
+    created_at: session.created_at,
+    updated_at: session.updated_at,
+  };
+}
+
+async function getMe(userId, { sessionJoin } = {}) {
+  const joined = userRowFromSessionJoin(sessionJoin);
+  const user = joined?.email ? joined : await User.findById(userId);
   if (!user) throw new Error('User not found');
 
   ensureSupabaseUserWalletInBackground(userId);

@@ -266,7 +266,7 @@ router.post('/oauth/google', async (req, res) => {
 
 router.get('/me', requireAuth, async (req, res) => {
   try {
-    const user = await authService.getMe(req.user.id);
+    const user = await authService.getMe(req.user.id, { sessionJoin: req.session });
     res.json({ success: true, user });
   } catch (err) {
     res.status(404).json({ error: err.message });

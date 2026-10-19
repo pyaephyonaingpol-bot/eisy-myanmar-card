@@ -12,6 +12,16 @@ const Auth = {
 
   /** In-memory session mirror — avoids repeated JSON.parse on every getter. */
   _mem: undefined,
+  /** Skip redundant GET /api/auth/me immediately after login/register. */
+  _sessionFreshUntil: 0,
+
+  markSessionFresh(ttlMs = 120000) {
+    this._sessionFreshUntil = Date.now() + Math.max(5000, ttlMs);
+  },
+
+  isSessionFresh() {
+    return Boolean(this._sessionFreshUntil && Date.now() < this._sessionFreshUntil);
+  },
 
   /** Live session dies with the tab. A leftover localStorage copy is moved once. */
   readStoredSession() {
@@ -342,6 +352,7 @@ const Auth = {
       pinToken: data.pin_token || null,
       ...this.authPayload(data),
     });
+    this.markSessionFresh();
     this.rememberAuthSuccess(data, email);
     return { ...data, user, has_pin: hasPin, needs_pin_setup: data.needs_pin_setup ?? !hasPin };
   },
@@ -388,6 +399,7 @@ const Auth = {
       pinToken: data.pin_token || null,
       ...this.authPayload(data),
     });
+    this.markSessionFresh();
     this.rememberAuthSuccess(data, email);
     return { ...data, user };
   },
@@ -404,6 +416,7 @@ const Auth = {
       pinToken: data.pin_token || null,
       ...this.authPayload(data),
     });
+    this.markSessionFresh();
     this.rememberAuthSuccess(data, email);
     return { ...data, user };
   },
@@ -645,6 +658,7 @@ const Auth = {
       pinToken: data.pin_token || null,
       ...this.authPayload(data),
     });
+    this.markSessionFresh();
     this.rememberAuthSuccess(data, user.email);
     return { ...data, user };
   },

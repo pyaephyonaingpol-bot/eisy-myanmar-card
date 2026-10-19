@@ -1707,7 +1707,26 @@ const Dashboard = {
     if (cached) this.applySessionUserToUI(cached);
 
     const incomplete = !cached?.email && !cached?.name;
-    if (!force && cached && !incomplete) return cached;
+    if (!force && cached && !incomplete) {
+      if (!Auth.isSessionFresh?.()) {
+        Auth.api('GET', '/api/auth/me', null, { timeoutMs: 8000 })
+          .then((data) => {
+            if (!data?.user) return;
+            Auth.setSession({
+              sessionToken: Auth.sessionToken,
+              user: data.user,
+              pinToken: Auth.pinToken,
+              pinTokenExpiresInSeconds: Math.max(
+                0,
+                Math.floor(((Auth.pinTokenExpiresAt?.() || 0) - Date.now()) / 1000)
+              ),
+            });
+            this.applySessionUserToUI(data.user);
+          })
+          .catch(() => {});
+      }
+      return cached;
+    }
 
     try {
       const data = await Auth.api('GET', '/api/auth/me', null, { timeoutMs: 12000 });
@@ -7009,8 +7028,8 @@ const Dashboard = {
       await Promise.allSettled([
         Auth.needsPinUnlock() ? Promise.resolve() : this.loadWallet({ force: true, fast: true }),
         cardsReady,
-        this.loadDepositHistory(),
       ]);
+      this.loadDepositHistory().catch(() => {});
       if (!Auth.needsPinUnlock()) {
         clearTimeout(this._walletDeepScanTimer);
         this._walletDeepScanTimer = setTimeout(() => {

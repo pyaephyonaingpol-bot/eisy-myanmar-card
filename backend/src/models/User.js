@@ -37,10 +37,16 @@ const User = {
   async findByEmail(email) {
     const db = getDb();
     const normalized = String(email || '').trim().toLowerCase();
-    return db.get(
-      'SELECT * FROM users WHERE LOWER(TRIM(email)) = ?',
-      normalized
-    );
+    if (!normalized) return null;
+    // Emails are stored normalized — prefer the unique index on email.
+    let row = await db.get('SELECT * FROM users WHERE email = ?', normalized);
+    if (!row) {
+      row = await db.get(
+        'SELECT * FROM users WHERE LOWER(TRIM(email)) = ?',
+        normalized
+      );
+    }
+    return row;
   },
 
   async findByUsername(username) {
