@@ -82,6 +82,60 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Pause between custodial addresses during batch sweep (TronGrid rate limits). */
+function getBetweenAccountDelayMs() {
+  const n = parseInt(process.env.TRON_SWEEP_ACCOUNT_DELAY_MS || '1000', 10);
+  return Number.isFinite(n) && n >= 0 ? n : 1000;
+}
+
+function getRateLimitMaxRetries() {
+  const n = parseInt(process.env.TRON_SWEEP_RATE_LIMIT_MAX_RETRIES || '5', 10);
+  return Math.min(Math.max(Number.isFinite(n) ? n : 5, 0), 20);
+}
+
+function getRateLimitRetryBaseMs() {
+  const n = parseInt(process.env.TRON_SWEEP_RATE_LIMIT_RETRY_MS || '2000', 10);
+  return Number.isFinite(n) && n >= 500 ? n : 2000;
+}
+
+function isTronRateLimitError(err) {
+  if (!err) return false;
+  const status = err.status ?? err.response?.status ?? err?.cause?.status;
+  if (status === 429) return true;
+  const code = String(err.code || err?.cause?.code || '');
+  if (code === 'TRON_RATE_LIMITED' || code === 'SWEEP_NETTS_RATE_LIMIT') return true;
+  const msg = String(err.message || err || '').toLowerCase();
+  return msg.includes('429')
+    || msg.includes('too many requests')
+    || msg.includes('rate limit');
+}
+
+/**
+ * Retry TronGrid / TronWeb calls when upstream returns HTTP 429.
+ * @template T
+ * @param {string} label
+ * @param {() => Promise<T>} fn
+ * @param {{ waitFn?: (ms: number) => Promise<void> }} [opts]
+ * @returns {Promise<T>}
+ */
+async function withTronRateLimitRetry(label, fn, { waitFn = sleep } = {}) {
+  const maxRetries = getRateLimitMaxRetries();
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isTronRateLimitError(err) || attempt >= maxRetries) throw err;
+      attempt += 1;
+      const waitMs = getRateLimitRetryBaseMs() * attempt;
+      console.warn(
+        `[tron/sweep] ${label}: rate limited (429), retry ${attempt}/${maxRetries} in ${waitMs}ms`
+      );
+      await waitFn(waitMs);
+    }
+  }
+}
+
 function maskTronAddress(addr) {
   const s = String(addr || '').trim();
   if (s.length <= 10) return s;
@@ -405,8 +459,14 @@ async function sweepUsdtToMaster({
 
   // Read-only balance query can use any TronWeb; prefer child instance.
   childTw.setAddress(from);
-  const contract = await childTw.contract(USDT_TRC20_ABI, USDT_TRC20_CONTRACT);
-  const raw = await contract.methods.balanceOf(from).call();
+  const contract = await withTronRateLimitRetry(
+    'USDT contract',
+    () => childTw.contract(USDT_TRC20_ABI, USDT_TRC20_CONTRACT)
+  );
+  const raw = await withTronRateLimitRetry(
+    'balanceOf',
+    () => contract.methods.balanceOf(from).call()
+  );
   const sun = (raw?.toString?.() ?? String(raw || '0'));
   const usdt = sunToUsdt(raw);
   const minUsdt = getMinSweepUsdt();
@@ -555,8 +615,16 @@ async function sweepDepositAddress({
   probeTw.setAddress(fromAddress);
 
   // Peek USDT first — skip entirely when nothing to sweep.
-  const contract = await probeTw.contract(USDT_TRC20_ABI, USDT_TRC20_CONTRACT);
-  const rawBal = await contract.methods.balanceOf(fromAddress).call();
+  const contract = await withTronRateLimitRetry(
+    'USDT contract',
+    () => probeTw.contract(USDT_TRC20_ABI, USDT_TRC20_CONTRACT),
+    { waitFn }
+  );
+  const rawBal = await withTronRateLimitRetry(
+    'balanceOf',
+    () => contract.methods.balanceOf(fromAddress).call(),
+    { waitFn }
+  );
   const balanceSunStr = rawBal?.toString?.() ?? String(rawBal || '0');
   const usdtBalance = sunToUsdt(rawBal);
   const sweepAmountUsdt = formatUsdtAmountFromSun(balanceSunStr);
@@ -575,7 +643,11 @@ async function sweepDepositAddress({
     };
   }
 
-  const trxSun = await probeTw.trx.getBalance(fromAddress);
+  const trxSun = await withTronRateLimitRetry(
+    'trx.getBalance',
+    () => probeTw.trx.getBalance(fromAddress),
+    { waitFn }
+  );
   const trxBalance = sunToTrx(trxSun);
 
   if (dryRun) {
@@ -614,16 +686,20 @@ async function sweepDepositAddress({
     depositAddress: fromAddress,
   });
 
-  const nettsResult = await sweepUsdtWithNettsEnergyFn({
-    childAddress: fromAddress,
-    childPrivateKey: key,
-    amountToSweep: sweepAmountUsdt,
-    destinationAddress: masterAddress,
-    idempotencyNonce,
-    fetchImpl,
-    tronWebFactory: (_host, pk) => createTw(pk),
-    sleepFn: waitFn,
-  });
+  const nettsResult = await withTronRateLimitRetry(
+    'Netts energy sweep',
+    () => sweepUsdtWithNettsEnergyFn({
+      childAddress: fromAddress,
+      childPrivateKey: key,
+      amountToSweep: sweepAmountUsdt,
+      destinationAddress: masterAddress,
+      idempotencyNonce,
+      fetchImpl,
+      tronWebFactory: (_host, pk) => createTw(pk),
+      sleepFn: waitFn,
+    }),
+    { waitFn }
+  );
 
   const usdtResult = mapNettsSweepToUsdtResult(nettsResult, { usdtBalance, fromAddress });
   const energyResult = mapNettsSweepToEnergyResult(nettsResult);
@@ -687,7 +763,10 @@ async function sweepAllCustodialDeposits({
   let skipped = 0;
   let failed = 0;
 
-  for (const row of rows) {
+  const betweenAccountDelayMs = getBetweenAccountDelayMs();
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
     try {
       const result = await sweepDepositAddress({
         userId: row.user_id,
@@ -717,6 +796,10 @@ async function sweepAllCustodialDeposits({
       results.push(failure);
       console.error('[tron/sweep] failed for user', row.user_id, err.message);
       if (typeof onProgress === 'function') onProgress(failure);
+    }
+
+    if (i < rows.length - 1 && betweenAccountDelayMs > 0) {
+      await waitFn(betweenAccountDelayMs);
     }
   }
 
@@ -870,6 +953,9 @@ function summarizeSweepTransferTotals(summary) {
 
 module.exports = {
   maskTronAddress,
+  getBetweenAccountDelayMs,
+  isTronRateLimitError,
+  withTronRateLimitRetry,
   formatUsdtAmountFromSun,
   assertSweepBodyHasNoPrivateKey,
   deriveDepositSigningMaterial,

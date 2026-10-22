@@ -254,6 +254,75 @@ async function main() {
     console.log('ok');
   }
 
+  section('withTronRateLimitRetry retries HTTP 429');
+  {
+    let attempts = 0;
+    const waits = [];
+    const result = await sweep.withTronRateLimitRetry('test', async () => {
+      attempts += 1;
+      if (attempts < 3) {
+        const err = new Error('Too Many Requests');
+        err.status = 429;
+        throw err;
+      }
+      return 'ok';
+    }, {
+      waitFn: async (ms) => { waits.push(ms); },
+    });
+    assert.strictEqual(result, 'ok');
+    assert.strictEqual(attempts, 3);
+    assert.deepStrictEqual(waits, [2000, 4000]);
+    console.log('ok');
+  }
+
+  section('sweepAllCustodialDeposits waits between accounts');
+  {
+    const prevDelay = process.env.TRON_SWEEP_ACCOUNT_DELAY_MS;
+    process.env.TRON_SWEEP_ACCOUNT_DELAY_MS = '1000';
+    const waits = [];
+    const waitFn = async (ms) => { waits.push(ms); };
+
+    await withTempDb(async () => {
+      const { getDb } = require('../src/db');
+      const db = getDb();
+      for (let i = 0; i < 2; i += 1) {
+        const userId = Number((await db.run(
+          `INSERT INTO users (name, phone, balance_usdt) VALUES (?, ?, 0)`,
+          `Sweep Batch ${i}`,
+          `08${String(Date.now() + i).slice(-8)}`
+        )).lastID);
+        const derived = hd.deriveTronAddressForUser(userId);
+        await db.run(`
+          INSERT INTO user_usdt_wallet_addresses
+            (user_id, network, address, address_type, derivation_index, derivation_path, is_primary)
+          VALUES (?, 'TRC20', ?, 'custodial', ?, ?, 1)
+        `, userId, derived.address, derived.index, derived.path);
+      }
+
+      const summary = await sweep.sweepAllCustodialDeposits({
+        dryRun: true,
+        limit: 10,
+        waitFn,
+        createTw: (pk) => {
+          const derived = hd.deriveTronAddressForUser(1);
+          return makeFakeTw({
+            address: derived.address,
+            usdtSun: '1000000',
+          });
+        },
+        sweepUsdtWithNettsEnergyFn: async () => {
+          throw new Error('dry-run must not call Netts');
+        },
+      });
+      assert.strictEqual(summary.checked, 2);
+      assert.ok(waits.includes(1000), '1s throttle between accounts');
+    });
+
+    if (prevDelay == null) delete process.env.TRON_SWEEP_ACCOUNT_DELAY_MS;
+    else process.env.TRON_SWEEP_ACCOUNT_DELAY_MS = prevDelay;
+    console.log('ok');
+  }
+
   section('summarizeSweepTransferTotals aggregates USDT');
   {
     const totals = sweep.summarizeSweepTransferTotals({
