@@ -159,10 +159,14 @@ Successful `POST` responses include `total_usdt`, `transfer_count`, and up to 10
 
 ```bash
 cd backend
+npm run verify:sweep-env
+npm run sweep:dry-run-one
 npm run sweep:tron-deposits -- --dry-run --all
 npm run sweep:tron-deposits -- --user-id=42
 npm run sweep:tron-deposits -- --all
 ```
+
+**DigitalOcean daily cron:** see [`DROPLET_SWEEP_CRON.md`](./DROPLET_SWEEP_CRON.md).
 
 ### Flow per address
 
