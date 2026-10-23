@@ -1,6 +1,29 @@
-# DigitalOcean Droplet — scheduled TRON USDT sweep
+# DigitalOcean Droplet — automated TRON USDT sweep
 
-Use this when the **Droplet** runs daily Netts-powered sweeps (`backend/scripts/sweep-tron-deposits.js`). Production web/API may still live on Vercel; sweeps should originate from the Droplet so Netts sees your whitelisted IP (`TRON_NETTS_REAL_IP` + TCP egress).
+Production web/API may stay on Vercel; **Netts sweeps should run on the Droplet** (whitelisted `TRON_NETTS_REAL_IP`).
+
+## Recommended: one-command setup (no crontab)
+
+After `backend/.env` contains Netts/TRON/Turso secrets:
+
+```bash
+cd ~/eisy-myanmar-card/backend
+node scripts/setup-droplet-sweep-automation.js --apply
+```
+
+This script:
+
+1. Validates env programmatically (`tronSweepEnvCheck`)
+2. Sets `TRON_SWEEP_SCHEDULER_ENABLED=true` in `backend/.env`
+3. Writes `ecosystem.config.cjs` and **pm2 start/reload** the backend
+
+The sweep scheduler runs **inside** `server.js` (interval default 24h). While `MASTER_WALLET_TRANSFERS_PAUSED` / `WITHDRAWALS_PAUSED` are active, live sweeps are **skipped** (optional `TRON_SWEEP_WHEN_PAUSED=dry_run` for dry-run only).
+
+Test scheduler without broadcasting:
+
+```bash
+node scripts/setup-droplet-sweep-automation.js --apply --dry-run-scheduler
+```
 
 ## 1. Prerequisites
 
@@ -46,6 +69,8 @@ node scripts/sweep-tron-deposits.js --dry-run --all --limit=1
 ```
 
 Expect JSON summary with `"dryRun": true`, `"checked": 1`, and no on-chain txs.
+
+If you see `SWEEP_ADDRESS_MISMATCH`, run HD address resync (`POST /api/admin/tron/resync-hd-addresses`) or fix Turso rows before enabling live cron.
 
 ## 5. Manual live sweep (optional)
 

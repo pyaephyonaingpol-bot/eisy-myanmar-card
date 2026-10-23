@@ -74,6 +74,8 @@
     "sweep:tron-deposits": "node scripts/sweep-tron-deposits.js",
     "verify:sweep-env": "node scripts/verify-droplet-sweep-env.js",
     "sweep:dry-run-one": "node scripts/sweep-tron-deposits.js --dry-run --all --limit=1",
+    "setup:sweep-automation": "node scripts/setup-droplet-sweep-automation.js",
+    "test:tron-sweep-scheduler": "node scripts/test-tron-sweep-scheduler.js",
     "test:withdraw-energy": "node scripts/test-withdraw-energy.js",
     "test:tron-transfer-abi": "node scripts/test-tron-transfer-abi.js",
     "check:env": "node scripts/check-env-config.js",

@@ -9,8 +9,7 @@
  *   node scripts/sweep-tron-deposits.js --all
  *   node scripts/sweep-tron-deposits.js --user-id=42
  *
- * Droplet cron (see scripts/run-scheduled-sweep.sh):
- *   node scripts/sweep-tron-deposits.js --scheduled --all
+ * Droplet automation: TRON_SWEEP_SCHEDULER_ENABLED=true in backend/.env (see setup-droplet-sweep-automation.js)
  */
 'use strict';
 
@@ -62,12 +61,23 @@ async function main() {
   }
 
   if (!opts.dryRun) {
-    const { areMasterWalletTransfersPaused } = require('../src/services/securityFlags');
-    if (areMasterWalletTransfersPaused()) {
-      console.error('[sweep] Master wallet transfers are paused (MASTER_WALLET_TRANSFERS_PAUSED).');
-      console.error('[sweep] Use --dry-run to test without broadcasting.');
+    const { assertMasterWalletTransfersAllowed } = require('../src/services/securityFlags');
+    try {
+      assertMasterWalletTransfersAllowed('USDT deposit sweep');
+    } catch (err) {
+      console.error(`[sweep] ${err.message}`);
+      console.error('[sweep] Use --dry-run to test env and balances without broadcasting.');
       process.exit(1);
     }
+  }
+
+  const { evaluateSweepEnv } = require('../src/services/tronSweepEnvCheck');
+  const envReport = await evaluateSweepEnv({ verifyAddresses: false, preflightLimit: 1 });
+  if (!envReport.ok) {
+    const missing = envReport.checks.failed.map((f) => f.id).join(', ')
+      || envReport.preflight?.blockers?.join(', ');
+    console.error('[sweep] Environment not ready:', missing);
+    process.exit(1);
   }
 
   const { initDb, closeDb } = require('../src/db');
