@@ -764,7 +764,10 @@
       };
       bindAutoSweep('[data-tron-auto-sweep]', false);
       bindAutoSweep('[data-tron-auto-sweep-dry-run]', true);
-      bindAutoSweep('[data-tron-deposit-sweep]', false);
+      document.querySelectorAll('.js-tron-auto-sweep-limit').forEach((input) => {
+        input.addEventListener('change', () => this.syncTronAutoSweepLimitInputs(input));
+        input.addEventListener('input', () => this.syncTronAutoSweepLimitInputs(input));
+      });
       document.querySelectorAll('[data-tron-deposit-scan]').forEach((btn) => {
         btn.addEventListener('click', () => this.runTronDepositScan({ triggerBtn: btn }));
       });
@@ -3366,10 +3369,30 @@
       el.classList.toggle('text-danger', !ready);
     },
 
+    getTronAutoSweepLimit() {
+      const inputs = document.querySelectorAll('.js-tron-auto-sweep-limit');
+      for (const el of inputs) {
+        const n = Number(el.value);
+        if (Number.isFinite(n) && n >= 1) {
+          return Math.min(2000, Math.floor(n));
+        }
+      }
+      return 500;
+    },
+
+    syncTronAutoSweepLimitInputs(source) {
+      const limit = this.getTronAutoSweepLimit();
+      document.querySelectorAll('.js-tron-auto-sweep-limit').forEach((el) => {
+        if (el === source) return;
+        el.value = String(limit);
+      });
+    },
+
     async loadTronAutoSweepStatus() {
       if (!this.hasPermission('master_wallet')) return null;
       try {
-        const data = await this.api('GET', '/api/admin/tron/auto-sweep?verify=1');
+        const limit = this.getTronAutoSweepLimit();
+        const data = await this.api('GET', '/api/admin/tron/auto-sweep?verify=1&limit=' + encodeURIComponent(limit));
         const minUsdt = Number(data.min_usdt);
         if (Number.isFinite(minUsdt)) {
           this._tronSweepMinUsdt = minUsdt;
@@ -3475,10 +3498,12 @@
         return;
       }
 
+      const sweepLimit = this.getTronAutoSweepLimit();
       const confirmMsg = [
         dryRun ? 'Run dry-run auto-sweep?' : 'Run auto-sweep to master (Netts energy)?',
         '',
         'Scans custodial HD deposit addresses and moves USDT to the master wallet.',
+        'Up to ' + sweepLimit + ' custodial address(es) per run.',
         'Only balances at or above ' + minUsdt + ' USDT are swept.',
         addressCount ? ('Registered custodial addresses: ' + addressCount) : '',
         preflight?.netts?.configured === false
@@ -3495,7 +3520,7 @@
 
       if (!window.confirm(confirmMsg)) return;
 
-      const buttonSelectors = '[data-tron-auto-sweep], [data-tron-auto-sweep-dry-run], [data-tron-deposit-sweep]';
+      const buttonSelectors = '[data-tron-auto-sweep], [data-tron-auto-sweep-dry-run]';
       const buttons = Array.from(document.querySelectorAll(buttonSelectors));
       const prevLabels = buttons.map((b) => b.textContent);
       buttons.forEach((b) => {
@@ -3510,6 +3535,7 @@
       try {
         const data = await this.api('POST', '/api/admin/tron/auto-sweep', {
           dry_run: dryRun,
+          limit: sweepLimit,
         });
         const summaryText = this.formatTronSweepSummary(data);
         const detailLog = this.formatTronSweepDetailLog(data);
@@ -3531,8 +3557,7 @@
         buttons.forEach((b, i) => {
           b.disabled = false;
           const isDry = b.matches('[data-tron-auto-sweep-dry-run]');
-          const defaultLive = b.matches('[data-tron-auto-sweep]') ? 'Auto-sweep (Netts)' : 'Trigger Manual Sweep';
-          b.textContent = prevLabels[i] || (isDry ? 'Dry-run sweep' : defaultLive);
+          b.textContent = prevLabels[i] || (isDry ? 'Dry-run sweep' : 'Auto-sweep (Netts)');
         });
       }
     },

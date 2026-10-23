@@ -3,6 +3,7 @@
 <head>
   <script>window.__EISY_ADMIN_PIPELINE__="instant";</script>
 
+  <meta name="eisy-admin-assets" content="20261023nettsSweep" />
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>Eisymyanmar</title>
@@ -148,6 +149,24 @@
       align-items: center;
       gap: 0.5rem;
       flex-wrap: wrap;
+      max-width: 100%;
+    }
+    .tron-auto-sweep-limit-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-left: 0.65rem;
+      font-size: inherit;
+      white-space: nowrap;
+    }
+    .js-tron-auto-sweep-limit {
+      width: 4.75rem;
+      padding: 0.2rem 0.35rem;
+      font-size: 0.85rem;
+      border-radius: 6px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(15, 23, 42, 0.65);
+      color: #e2e8f0;
     }
     .sa-card-eyebrow {
       margin: 0 0 0.25rem;
@@ -1106,6 +1125,10 @@
             <div id="masterWalletDepositScanStatus" class="hint" style="margin:0.35rem 0 0" aria-live="polite"></div>
             <p class="hint" id="masterWalletSweepHint" style="margin:0.85rem 0 0">
               <strong>Auto-sweep (Netts)</strong> rents energy via Netts, then moves on-chain USDT from HD deposit addresses into this master wallet when each address holds at least <strong id="masterWalletSweepMinLabel">25</strong> USDT. Use <strong>Dry-run sweep</strong> to test without broadcasting.
+              <label class="tron-auto-sweep-limit-label" for="tronAutoSweepLimitOverview">
+                Max addresses per run
+                <input type="number" id="tronAutoSweepLimitOverview" class="js-tron-auto-sweep-limit" min="1" max="2000" step="1" value="500" title="Maximum custodial HD deposit addresses to scan in one sweep run (server default 500)" />
+              </label>
             </p>
             <div id="masterWalletAutoSweepReadiness" class="hint" style="margin:0.45rem 0 0" aria-live="polite"></div>
             <div id="masterWalletSweepStatus" class="hint" style="margin:0.5rem 0 0" aria-live="polite"></div>
@@ -1186,6 +1209,12 @@
             <p class="hint" style="margin:0">Loading…</p>
           </div>
           <div id="masterWalletDepositScanStatusPanel" class="hint" style="margin:0.45rem 0 0" aria-live="polite"></div>
+          <p class="hint" style="margin:0.55rem 0 0">
+            <label class="tron-auto-sweep-limit-label" for="tronAutoSweepLimitPanel">
+              Max addresses per auto-sweep
+              <input type="number" id="tronAutoSweepLimitPanel" class="js-tron-auto-sweep-limit" min="1" max="2000" step="1" value="500" title="Maximum custodial HD addresses scanned per sweep (matches Overview control)" />
+            </label>
+          </p>
           <div id="masterWalletSweepStatusPanel" class="hint" style="margin:0.65rem 0 0" aria-live="polite"></div>
         </div>
 
@@ -1901,7 +1930,7 @@
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
   <script defer src="/src/hooks/submitBusy.js?v=20260817m2"></script>
-  <script src="/admin.js?v=20261011userDetailUx" defer></script>
-  <script src="/adminUserDetail.js?v=20261011userDetailUx" defer></script>
+  <script src="/admin.js?v=20261023nettsSweep-d2d71d82b8" defer></script>
+  <script src="/adminUserDetail.js?v=20261023nettsSweep-cdd07fec69" defer></script>
 </body>
 </html>
