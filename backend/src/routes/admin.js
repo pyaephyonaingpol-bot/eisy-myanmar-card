@@ -2199,103 +2199,71 @@ router.post('/scan-deposits', requirePermission('master_wallet'), async (req, re
 });
 
 /**
- * POST /api/admin/sweep-deposits
- * Manual-only TRON HD deposit sweep (no cron).
- * Body: { dry_run?: boolean, user_id?: number, force_gas?: boolean, limit?: number }
- *
- * 1) Netts rents energy for each deposit address (order1h)
- * 2) Deposit address sends all USDT → master / central wallet
+ * GET /api/admin/tron/auto-sweep — Admin UI: Netts env readiness + preflight.
+ * POST /api/admin/tron/auto-sweep — Trigger HD deposit sweep (Netts order1h + USDT → master).
+ * Body: { dry_run?: boolean, user_id?: number, limit?: number, force_gas?: boolean }
+ */
+router.get('/tron/auto-sweep', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    const limit = req.query.limit != null ? Number(req.query.limit) : 500;
+    const verify = ['1', 'true', 'yes'].includes(String(req.query.verify || 'true').toLowerCase());
+    const { buildAutoSweepStatus } = require('../services/adminTronAutoSweepService');
+    const status = await buildAutoSweepStatus({ limit, verifyAddresses: verify });
+    res.json({ success: true, ...status });
+  } catch (err) {
+    console.error('[admin/tron/auto-sweep GET]', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Auto-sweep status failed',
+      code: err.code || 'SWEEP_STATUS_FAILED',
+    });
+  }
+});
+
+router.post('/tron/auto-sweep', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    const { executeAdminAutoSweep } = require('../services/adminTronAutoSweepService');
+    const { payload, httpStatus } = await executeAdminAutoSweep(req.body || {}, {
+      adminUserId: req.user?.id || null,
+      source: 'admin_ui',
+    });
+    res.status(httpStatus).json(payload);
+  } catch (err) {
+    console.error('[admin/tron/auto-sweep]', err.code || '', err.message);
+    const status = err.status
+      || (err.code === 'SWEEP_IN_PROGRESS' ? 409 : null)
+      || (err.code === 'MASTER_WALLET_TRANSFERS_PAUSED' ? 503 : null)
+      || (err.code === 'SWEEP_ENV_NOT_READY' ? 503 : null)
+      || (err.code === 'SWEEP_PREFLIGHT_FAILED' ? 503 : null)
+      || 500;
+    res.status(status).json({
+      success: false,
+      error: err.message || 'Auto-sweep failed',
+      code: err.code || 'SWEEP_FAILED',
+      envReport: err.envReport || undefined,
+      preflight: err.preflight || undefined,
+    });
+  }
+});
+
+/**
+ * POST /api/admin/sweep-deposits — legacy alias for POST /api/admin/tron/auto-sweep
  */
 router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, res) => {
   try {
-    const { areMasterWalletTransfersPaused } = require('../services/securityFlags');
-    const body = req.body || {};
-    const dryRun = Boolean(body.dry_run ?? body.dryRun);
-
-    if (!dryRun && areMasterWalletTransfersPaused()) {
-      return res.status(503).json({
-        success: false,
-        error:
-          'Master wallet transfers are paused after the security incident. '
-          + 'Set MASTER_WALLET_TRANSFERS_PAUSED=false and WITHDRAWALS_PAUSED=false after key rotation.',
-        code: 'MASTER_WALLET_TRANSFERS_PAUSED',
-      });
-    }
-
-    if (isSweepInFlight()) {
-      return res.status(409).json({
-        success: false,
-        error: 'A TRON deposit sweep is already in progress',
-        code: 'SWEEP_IN_PROGRESS',
-      });
-    }
-
-    assertSweepBodyHasNoPrivateKey(body);
-
-    const forceGas = Boolean(body.force_gas ?? body.forceGas);
-    const userId = body.user_id ?? body.userId ?? null;
-    const limit = body.limit != null ? Number(body.limit) : 500;
-    const skipPreflight = Boolean(body.skip_preflight ?? body.skipPreflight);
-
-    if (!dryRun && !skipPreflight) {
-      await assertSweepPreflightOrThrow({ verifyAddresses: true, limit });
-    }
-
-    const summary = await runManualSweep({
-      userId,
-      dryRun,
-      forceGas,
-      limit,
+    const { executeAdminAutoSweep } = require('../services/adminTronAutoSweepService');
+    const { payload, httpStatus } = await executeAdminAutoSweep(req.body || {}, {
+      adminUserId: req.user?.id || null,
+      source: 'admin_sweep_deposits_legacy',
     });
-
-    const { summarizeSweepTransferTotals } = require('../services/tronSweepService');
-    const totals = summarizeSweepTransferTotals(summary);
-
-    TransactionLog.create({
-      userId: req.user?.id || null,
-      type: 'other',
-      direction: 'neutral',
-      description: dryRun
-        ? `Admin dry-run TRON deposit sweep (${summary.mode})`
-        : `Admin manual TRON deposit sweep (${summary.mode})`,
-      createdBy: 'admin',
-      metadata: {
-        action: 'sweep_deposits',
-        dry_run: dryRun,
-        mode: summary.mode,
-        checked: summary.checked,
-        swept: summary.swept,
-        skipped: summary.skipped,
-        failed: summary.failed,
-        total_usdt: totals.total_usdt,
-        transfer_count: totals.transfer_count,
-        user_id: userId,
-      },
-    }).catch((err) => {
-      console.warn('[admin/sweep-deposits] audit log skipped:', err.message);
-    });
-
-    const status = summary.failed > 0 ? 207 : 200;
-    res.status(status).json({
-      success: summary.ok,
-      message: dryRun
-        ? 'Dry-run complete — no on-chain transfers were broadcast'
-        : 'Manual TRON deposit sweep finished',
-      manual: true,
-      scheduled: false,
-      gas_trx: summary.gasTrx ?? getSweepGasTrx(),
-      netts_energy: summary.nettsEnergy ?? getNettsEnergyPerSweep(),
-      min_usdt: summary.minUsdt ?? getMinSweepUsdt(),
-      total_usdt: totals.total_usdt,
-      transfer_count: totals.transfer_count,
-      transfers: totals.transfers,
-      sweep: summary,
-    });
+    res.status(httpStatus).json(payload);
   } catch (err) {
     console.error('[admin/sweep-deposits]', err.code || '', err.message);
-    const status = (() => {
+    const status = err.status || (() => {
       if (err.code === 'SWEEP_IN_PROGRESS') return 409;
       if (err.code === 'SWEEP_INVALID_USER') return 400;
+      if (err.code === 'MASTER_WALLET_TRANSFERS_PAUSED') return 503;
+      if (err.code === 'SWEEP_ENV_NOT_READY') return 503;
       if (['MASTER_KEY_MISSING', 'MASTER_KEY_INVALID', 'MASTER_ADDRESS_INVALID', 'TRON_HD_NOT_CONFIGURED'].includes(err.code)) {
         return 503;
       }

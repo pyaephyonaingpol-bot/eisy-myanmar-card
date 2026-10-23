@@ -1086,8 +1086,11 @@
                 <button type="button" id="btnScanDepositsOverview" class="btn btn-secondary btn-sm" data-tron-deposit-scan title="Scan TronGrid and credit confirmed USDT deposits to user wallets (manual)">
                   Trigger Deposit Credit Scan
                 </button>
-                <button type="button" id="btnSweepDepositsOverview" class="btn btn-primary btn-sm" data-tron-deposit-sweep title="Scan HD deposit addresses and sweep USDT to the master wallet (manual, on-chain)">
-                  Trigger Manual Sweep
+                <button type="button" id="btnAutoSweepOverview" class="btn btn-primary btn-sm" data-tron-auto-sweep title="Rent Netts energy and sweep USDT from HD deposit addresses to the master wallet">
+                  Auto-sweep (Netts)
+                </button>
+                <button type="button" id="btnAutoSweepDryRunOverview" class="btn btn-secondary btn-sm" data-tron-auto-sweep-dry-run title="Simulate sweep — no on-chain transactions">
+                  Dry-run sweep
                 </button>
               </div>
             </div>
@@ -1100,8 +1103,9 @@
             </p>
             <div id="masterWalletDepositScanStatus" class="hint" style="margin:0.35rem 0 0" aria-live="polite"></div>
             <p class="hint" id="masterWalletSweepHint" style="margin:0.85rem 0 0">
-              <strong>Trigger Manual Sweep</strong> moves on-chain USDT from HD deposit addresses into this master wallet when each address holds at least <strong id="masterWalletSweepMinLabel">25</strong> USDT.
+              <strong>Auto-sweep (Netts)</strong> rents energy via Netts, then moves on-chain USDT from HD deposit addresses into this master wallet when each address holds at least <strong id="masterWalletSweepMinLabel">25</strong> USDT. Use <strong>Dry-run sweep</strong> to test without broadcasting.
             </p>
+            <div id="masterWalletAutoSweepReadiness" class="hint" style="margin:0.45rem 0 0" aria-live="polite"></div>
             <div id="masterWalletSweepStatus" class="hint" style="margin:0.5rem 0 0" aria-live="polite"></div>
           </div>
 
@@ -1167,12 +1171,13 @@
           <div class="master-wallet-panel-header">
             <div>
               <strong>Master wallet</strong>
-              <p class="hint" style="margin:0.25rem 0 0">Full balances live on <strong>Overview</strong>. Run <strong>Deposit Credit Scan</strong> to credit confirmed HD deposits, then <strong>Manual Sweep</strong> to collect on-chain USDT to master.</p>
+              <p class="hint" style="margin:0.25rem 0 0">Full balances live on <strong>Overview</strong>. Run <strong>Deposit Credit Scan</strong> to credit confirmed HD deposits, then <strong>Auto-sweep (Netts)</strong> to collect on-chain USDT to master.</p>
             </div>
             <div class="sa-card-actions">
               <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm" data-master-wallet-refresh>Refresh</button>
               <button type="button" id="btnScanDepositsPanel" class="btn btn-secondary btn-sm" data-tron-deposit-scan title="Scan TronGrid and credit confirmed USDT deposits to user wallets (manual)">Trigger Deposit Credit Scan</button>
-              <button type="button" id="btnSweepDepositsPanel" class="btn btn-primary btn-sm" data-tron-deposit-sweep title="Scan HD deposit addresses and sweep USDT to the master wallet (manual, on-chain)">Trigger Manual Sweep</button>
+              <button type="button" id="btnAutoSweepPanel" class="btn btn-primary btn-sm" data-tron-auto-sweep title="Rent Netts energy and sweep USDT to master">Auto-sweep (Netts)</button>
+              <button type="button" id="btnAutoSweepDryRunPanel" class="btn btn-secondary btn-sm" data-tron-auto-sweep-dry-run title="Simulate sweep without broadcasting">Dry-run sweep</button>
             </div>
           </div>
           <div id="masterWalletBalance" class="master-wallet-balance" aria-live="polite">

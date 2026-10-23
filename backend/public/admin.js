@@ -757,14 +757,19 @@
       document.querySelectorAll('[data-master-wallet-refresh]').forEach((btn) => {
         btn.addEventListener('click', () => this.checkMasterWalletBalance({ force: true }));
       });
-      document.querySelectorAll('[data-tron-deposit-sweep]').forEach((btn) => {
-        btn.addEventListener('click', () => this.runTronDepositSweep({ triggerBtn: btn }));
-      });
+      const bindAutoSweep = (selector, dryRun) => {
+        document.querySelectorAll(selector).forEach((btn) => {
+          btn.addEventListener('click', () => this.runTronAutoSweep({ dryRun, triggerBtn: btn }));
+        });
+      };
+      bindAutoSweep('[data-tron-auto-sweep]', false);
+      bindAutoSweep('[data-tron-auto-sweep-dry-run]', true);
+      bindAutoSweep('[data-tron-deposit-sweep]', false);
       document.querySelectorAll('[data-tron-deposit-scan]').forEach((btn) => {
         btn.addEventListener('click', () => this.runTronDepositScan({ triggerBtn: btn }));
       });
       if (this.hasPermission('master_wallet')) {
-        this.loadTronSweepConfig().catch(() => {});
+        this.loadTronAutoSweepStatus().catch(() => {});
       }
 
       const usdtWdTable = $('usdtWithdrawalsTable');
@@ -3345,21 +3350,43 @@
       }
     },
 
-    async loadTronSweepConfig() {
+    renderTronAutoSweepReadiness(data) {
+      const el = $('masterWalletAutoSweepReadiness');
+      if (!el || !data) return;
+      const netts = data.netts || data.preflight?.netts || {};
+      const paused = Boolean(data.transfers_paused);
+      const ready = Boolean(data.ready);
+      const parts = [
+        'Netts: ' + (netts.configured ? 'configured' : 'missing API URL/key'),
+        netts.real_ip_valid || netts.real_ip_set ? 'whitelist IP set' : 'TRON_NETTS_REAL_IP missing',
+        paused ? 'transfers PAUSED' : 'transfers allowed',
+        ready ? 'ready to sweep' : 'not ready — fix blockers in preflight',
+      ];
+      el.textContent = parts.join(' · ');
+      el.classList.toggle('text-danger', !ready);
+    },
+
+    async loadTronAutoSweepStatus() {
       if (!this.hasPermission('master_wallet')) return null;
       try {
-        const data = await this.api('GET', '/api/admin/sweep-deposits?preflight=1&verify=1');
+        const data = await this.api('GET', '/api/admin/tron/auto-sweep?verify=1');
         const minUsdt = Number(data.min_usdt);
         if (Number.isFinite(minUsdt)) {
           this._tronSweepMinUsdt = minUsdt;
           const label = $('masterWalletSweepMinLabel');
           if (label) label.textContent = String(minUsdt);
         }
+        this.renderTronAutoSweepReadiness(data);
         return data;
       } catch (err) {
-        console.warn('[admin] sweep config', err.message);
+        console.warn('[admin] auto-sweep status', err.message);
         return null;
       }
+    },
+
+    /** @deprecated use loadTronAutoSweepStatus */
+    async loadTronSweepConfig() {
+      return this.loadTronAutoSweepStatus();
     },
 
     formatTronSweepSummary(data) {
@@ -3372,7 +3399,7 @@
       const dryRun = Boolean(data.dry_run ?? sweep.dryRun);
       const totalUsdt = Number(data.total_usdt ?? 0);
       const transferCount = Number(data.transfer_count ?? 0);
-      const prefix = dryRun ? 'Dry-run' : 'Manual sweep';
+      const prefix = dryRun ? 'Dry-run' : 'Auto-sweep';
       let line = (
         prefix + ' finished — checked ' + checked
         + ', swept ' + swept
@@ -3401,7 +3428,8 @@
       return lines.join('\n');
     },
 
-    async runTronDepositSweep(opts = {}) {
+    async runTronAutoSweep(opts = {}) {
+      const dryRun = Boolean(opts.dryRun);
       if (!this.hasPermission('master_wallet')) {
         this.showAdminToast('Master wallet permission required', 'error');
         return;
@@ -3413,20 +3441,28 @@
 
       let config = null;
       try {
-        config = await this.loadTronSweepConfig();
+        config = await this.loadTronAutoSweepStatus();
       } catch (_) {
         config = null;
       }
       const minUsdt = Number(
         config?.min_usdt ?? this._tronSweepMinUsdt ?? 25
       );
-      const addressCount = Number(config?.count ?? config?.addresses?.length ?? 0);
+      const addressCount = Number(config?.address_count ?? config?.count ?? 0);
       const inFlight = Boolean(config?.in_flight);
       const preflight = config?.preflight || null;
-      const preflightReady = preflight?.ready !== false;
       const preflightBlockers = Array.isArray(preflight?.blockers) ? preflight.blockers : [];
+      const transfersPaused = Boolean(config?.transfers_paused);
 
-      if (!preflightReady && preflightBlockers.length) {
+      if (!dryRun && transfersPaused) {
+        this.showAdminToast(
+          'Master wallet transfers are paused — use Dry-run sweep or clear WITHDRAWALS_PAUSED / MASTER_WALLET_TRANSFERS_PAUSED.',
+          'error'
+        );
+        return;
+      }
+
+      if (preflightBlockers.length && !dryRun) {
         this.showAdminToast(
           'Sweep preflight failed: ' + preflightBlockers.join(', '),
           'error'
@@ -3440,7 +3476,7 @@
       }
 
       const confirmMsg = [
-        'Trigger manual sweep?',
+        dryRun ? 'Run dry-run auto-sweep?' : 'Run auto-sweep to master (Netts energy)?',
         '',
         'Scans custodial HD deposit addresses and moves USDT to the master wallet.',
         'Only balances at or above ' + minUsdt + ' USDT are swept.',
@@ -3452,23 +3488,28 @@
           ? ('Warning: ' + preflight.address_alignment.mismatch_count + ' deposit address(es) do not match HD seed — run HD resync before sweep.')
           : '',
         '',
-        'This rents Netts energy for each deposit address and broadcasts USDT transfers to the master wallet. Requires master_wallet permission and TRON_ENERGY_API_* configured.',
+        dryRun
+          ? 'No Netts orders or USDT transfers will be broadcast.'
+          : 'Each qualifying address: Netts /order1h energy rental, then USDT TRC-20 transfer to master.',
       ].filter(Boolean).join('\n');
 
       if (!window.confirm(confirmMsg)) return;
 
-      const buttons = Array.from(document.querySelectorAll('[data-tron-deposit-sweep]'));
+      const buttonSelectors = '[data-tron-auto-sweep], [data-tron-auto-sweep-dry-run], [data-tron-deposit-sweep]';
+      const buttons = Array.from(document.querySelectorAll(buttonSelectors));
       const prevLabels = buttons.map((b) => b.textContent);
       buttons.forEach((b) => {
         b.disabled = true;
-        b.textContent = 'Sweeping…';
+        b.textContent = dryRun ? 'Dry-run…' : 'Sweeping…';
       });
-      this.setTronSweepStatus('Manual sweep in progress (min ' + minUsdt + ' USDT)…');
+      this.setTronSweepStatus(
+        (dryRun ? 'Dry-run auto-sweep' : 'Auto-sweep (Netts)') + ' in progress (min ' + minUsdt + ' USDT)…'
+      );
       this._tronSweepInFlight = true;
 
       try {
-        const data = await this.api('POST', '/api/admin/sweep-deposits', {
-          dry_run: false,
+        const data = await this.api('POST', '/api/admin/tron/auto-sweep', {
+          dry_run: dryRun,
         });
         const summaryText = this.formatTronSweepSummary(data);
         const detailLog = this.formatTronSweepDetailLog(data);
@@ -3476,11 +3517,12 @@
         const hasFailures = Number(data.sweep?.failed || 0) > 0;
         this.setTronSweepStatus(statusBlock, { error: !data.success && hasFailures });
         this.showAdminToast(summaryText, data.success === false || hasFailures ? 'error' : 'ok');
-        if (detailLog) console.info('[admin/sweep]\n' + detailLog);
+        if (detailLog) console.info('[admin/auto-sweep]\n' + detailLog);
+        await this.loadTronAutoSweepStatus();
         await this.checkMasterWalletBalance({ force: true });
         return data;
       } catch (err) {
-        const msg = err.message || 'Sweep failed';
+        const msg = err.message || 'Auto-sweep failed';
         this.setTronSweepStatus(msg, { error: true });
         this.showAdminToast(msg, 'error');
         throw err;
@@ -3488,9 +3530,16 @@
         this._tronSweepInFlight = false;
         buttons.forEach((b, i) => {
           b.disabled = false;
-          b.textContent = prevLabels[i] || 'Trigger Manual Sweep';
+          const isDry = b.matches('[data-tron-auto-sweep-dry-run]');
+          const defaultLive = b.matches('[data-tron-auto-sweep]') ? 'Auto-sweep (Netts)' : 'Trigger Manual Sweep';
+          b.textContent = prevLabels[i] || (isDry ? 'Dry-run sweep' : defaultLive);
         });
       }
+    },
+
+    /** @deprecated use runTronAutoSweep */
+    async runTronDepositSweep(opts = {}) {
+      return this.runTronAutoSweep({ ...opts, dryRun: false });
     },
 
 
