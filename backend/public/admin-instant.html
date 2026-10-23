@@ -1107,10 +1107,10 @@
                 <button type="button" id="btnScanDepositsOverview" class="btn btn-secondary btn-sm" data-tron-deposit-scan title="Scan TronGrid and credit confirmed USDT deposits to user wallets (manual)">
                   Trigger Deposit Credit Scan
                 </button>
-                <button type="button" id="btnAutoSweepOverview" class="btn btn-primary btn-sm" data-tron-auto-sweep title="Rent Netts energy and sweep USDT from HD deposit addresses to the master wallet">
+                <button type="button" id="btnAutoSweepOverview" class="btn btn-primary btn-sm" data-tron-auto-sweep data-default-label="Auto-sweep (Netts)" title="Rent Netts energy and sweep USDT from HD deposit addresses to the master wallet">
                   Auto-sweep (Netts)
                 </button>
-                <button type="button" id="btnAutoSweepDryRunOverview" class="btn btn-secondary btn-sm" data-tron-auto-sweep-dry-run title="Simulate sweep — no on-chain transactions">
+                <button type="button" id="btnAutoSweepDryRunOverview" class="btn btn-secondary btn-sm" data-tron-auto-sweep-dry-run data-default-label="Dry-run sweep" title="Simulate sweep — no on-chain transactions">
                   Dry-run sweep
                 </button>
               </div>
@@ -1201,8 +1201,8 @@
             <div class="sa-card-actions">
               <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm" data-master-wallet-refresh>Refresh</button>
               <button type="button" id="btnScanDepositsPanel" class="btn btn-secondary btn-sm" data-tron-deposit-scan title="Scan TronGrid and credit confirmed USDT deposits to user wallets (manual)">Trigger Deposit Credit Scan</button>
-              <button type="button" id="btnAutoSweepPanel" class="btn btn-primary btn-sm" data-tron-auto-sweep title="Rent Netts energy and sweep USDT to master">Auto-sweep (Netts)</button>
-              <button type="button" id="btnAutoSweepDryRunPanel" class="btn btn-secondary btn-sm" data-tron-auto-sweep-dry-run title="Simulate sweep without broadcasting">Dry-run sweep</button>
+              <button type="button" id="btnAutoSweepPanel" class="btn btn-primary btn-sm" data-tron-auto-sweep data-default-label="Auto-sweep (Netts)" title="Rent Netts energy and sweep USDT to master">Auto-sweep (Netts)</button>
+              <button type="button" id="btnAutoSweepDryRunPanel" class="btn btn-secondary btn-sm" data-tron-auto-sweep-dry-run data-default-label="Dry-run sweep" title="Simulate sweep without broadcasting">Dry-run sweep</button>
             </div>
           </div>
           <div id="masterWalletBalance" class="master-wallet-balance" aria-live="polite">
@@ -1930,7 +1930,7 @@
   <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
   <script defer src="/src/hooks/submitBusy.js?v=20260817m2"></script>
-  <script src="/admin.js?v=20261023nettsSweep-d2d71d82b8" defer></script>
+  <script src="/admin.js?v=20261023nettsSweep-ce2160905f" defer></script>
   <script src="/adminUserDetail.js?v=20261023nettsSweep-cdd07fec69" defer></script>
 </body>
 </html>

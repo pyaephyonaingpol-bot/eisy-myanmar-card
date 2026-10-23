@@ -3451,6 +3451,20 @@
       return lines.join('\n');
     },
 
+    tronAutoSweepIsDryRunButton(btn) {
+      return Boolean(btn?.matches?.('[data-tron-auto-sweep-dry-run]'));
+    },
+
+    tronAutoSweepDefaultLabel(btn) {
+      const fromAttr = btn?.getAttribute?.('data-default-label');
+      if (fromAttr) return fromAttr.trim();
+      return this.tronAutoSweepIsDryRunButton(btn) ? 'Dry-run sweep' : 'Auto-sweep (Netts)';
+    },
+
+    tronAutoSweepBusyLabel(btn) {
+      return this.tronAutoSweepIsDryRunButton(btn) ? 'Dry-run…' : 'Sweeping…';
+    },
+
     async runTronAutoSweep(opts = {}) {
       const dryRun = Boolean(opts.dryRun);
       if (!this.hasPermission('master_wallet')) {
@@ -3522,10 +3536,9 @@
 
       const buttonSelectors = '[data-tron-auto-sweep], [data-tron-auto-sweep-dry-run]';
       const buttons = Array.from(document.querySelectorAll(buttonSelectors));
-      const prevLabels = buttons.map((b) => b.textContent);
       buttons.forEach((b) => {
         b.disabled = true;
-        b.textContent = dryRun ? 'Dry-run…' : 'Sweeping…';
+        b.textContent = this.tronAutoSweepBusyLabel(b);
       });
       this.setTronSweepStatus(
         (dryRun ? 'Dry-run auto-sweep' : 'Auto-sweep (Netts)') + ' in progress (min ' + minUsdt + ' USDT)…'
@@ -3554,10 +3567,9 @@
         throw err;
       } finally {
         this._tronSweepInFlight = false;
-        buttons.forEach((b, i) => {
+        buttons.forEach((b) => {
           b.disabled = false;
-          const isDry = b.matches('[data-tron-auto-sweep-dry-run]');
-          b.textContent = prevLabels[i] || (isDry ? 'Dry-run sweep' : 'Auto-sweep (Netts)');
+          b.textContent = this.tronAutoSweepDefaultLabel(b);
         });
       }
     },
