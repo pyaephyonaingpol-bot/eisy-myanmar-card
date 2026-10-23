@@ -72,10 +72,17 @@ flowchart LR
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TRON_SWEEP_GAS_TRX` | 1.1 | TRX sent from master → deposit for each sweep |
+| `TRON_ENERGY_API_URL` | — | Netts endpoint (e.g. `https://netts.io/apiv2/order1h`) |
+| `TRON_ENERGY_API_KEY` | — | Netts dashboard API key (`X-API-KEY`) |
+| `TRON_NETTS_REAL_IP` | — | **Required.** Droplet public IPv4 whitelisted in Netts; sent as `X-Real-IP` on every order |
+| `TRON_SWEEP_NETTS_SETTLE_MS` | 2000 | Wait after energy order before USDT transfer |
+| `TRON_NETTS_FETCH_TIMEOUT_MS` | 25000 | Netts HTTP timeout |
+| `TRON_SWEEP_GAS_TRX` | 1.1 | Legacy label; live sweeps use Netts energy (not master TRX gas) |
 | `TRON_SWEEP_GAS_WAIT_MS` | 3000 | Wait after gas tx before USDT transfer |
 | `TRON_SWEEP_MIN_USDT` | 25 | Skip sweep if deposit USDT below this |
 | `TRON_SWEEP_SKIP_GAS_IF_TRX` | ~0.55 TRX | Skip gas if deposit already has TRX |
+
+**Netts IP whitelist:** Netts documents `X-Real-IP` as required and returns `401 Invalid API key or IP not in whitelist` when the IP is wrong. This app sends `TRON_NETTS_REAL_IP` as that header from `lib/nettsUsdtSweep.js` (direct `fetch` to Netts — **not** via the Pago Card DigitalOcean proxy). Whitelist the same IPv4 in the Netts dashboard. Set `TRON_NETTS_REAL_IP` on **Vercel** and on the **Droplet** (PM2) to that address. Admin sweeps on production (`eisymyanmar.com`) run on **Vercel serverless**; the TCP egress IP is a Vercel pool address, while Netts auth uses the configured `X-Real-IP`. Prefer running live sweeps from the Droplet (`npm run sweep:tron-deposits` or PM2) when Netts ties orders to connection IP as well as the header.
 
 ### Monitoring (Telegram admin chat)
 

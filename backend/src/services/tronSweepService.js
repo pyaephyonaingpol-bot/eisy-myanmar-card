@@ -213,11 +213,14 @@ function deriveDepositSigningMaterial({
 function getNettsEnvReadiness() {
   const apiUrl = process.env.TRON_ENERGY_API_URL?.trim();
   const apiKey = process.env.TRON_ENERGY_API_KEY?.trim();
+  const realIp = process.env.TRON_NETTS_REAL_IP?.trim() || '';
+  const realIpValid = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(realIp);
   return {
     configured: Boolean(apiUrl && apiKey),
     api_url_set: Boolean(apiUrl),
     api_key_set: Boolean(apiKey),
-    real_ip_set: Boolean(process.env.TRON_NETTS_REAL_IP?.trim()),
+    real_ip_set: Boolean(realIp),
+    real_ip_valid: realIpValid,
     energy_per_sweep: ENERGY_ORDER_AMOUNT,
   };
 }
@@ -292,6 +295,7 @@ async function buildSweepPreflightReport({
   if (!hdEnabled) blockers.push('TRON_HD_NOT_CONFIGURED');
   if (hdError) blockers.push('TRON_HD_ERROR');
   if (!netts.configured) blockers.push('NETTS_ENV_INCOMPLETE');
+  if (netts.configured && !netts.real_ip_valid) blockers.push('NETTS_REAL_IP_NOT_SET');
   if (masterError) blockers.push('MASTER_WALLET_NOT_CONFIGURED');
   if (alignment.mismatch_count > 0) blockers.push('DEPOSIT_ADDRESS_MISMATCH');
 
