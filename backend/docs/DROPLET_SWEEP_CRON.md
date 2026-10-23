@@ -2,6 +2,8 @@
 
 Production web/API may stay on Vercel; **Netts sweeps should run on the Droplet** (whitelisted `TRON_NETTS_REAL_IP`).
 
+**CLI (repo root):** `node scripts/netts-sweep.js --status` then `node scripts/netts-sweep.js --dry-run --all --limit=10` / `npm run netts-sweep -- --all` — same logic as Admin auto-sweep, using `backend/.env`.
+
 ## Recommended: one-command setup (no crontab)
 
 After `backend/.env` contains Netts/TRON/Turso secrets:

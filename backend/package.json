@@ -72,6 +72,7 @@
     "test:tron-sweep": "node scripts/test-tron-sweep.js",
     "test:admin-sweep-button": "node scripts/test-admin-sweep-button.js",
     "sweep:tron-deposits": "node scripts/sweep-tron-deposits.js",
+    "netts-sweep": "node ../scripts/netts-sweep.js",
     "verify:sweep-env": "node scripts/verify-droplet-sweep-env.js",
     "sweep:dry-run-one": "node scripts/sweep-tron-deposits.js --dry-run --all --limit=1",
     "setup:sweep-automation": "node scripts/setup-droplet-sweep-automation.js",
