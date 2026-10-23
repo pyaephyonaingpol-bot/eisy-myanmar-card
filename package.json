@@ -5,6 +5,7 @@
   "description": "Eisy Myanmar card platform \u2014 Vercel entry + utilities",
   "main": "api/index.js",
   "scripts": {
+    "netts-sweep": "node scripts/netts-sweep.js",
     "create-wallet": "node create-wallet.js",
     "start": "npm start --prefix backend",
     "dev": "npm run dev --prefix backend",

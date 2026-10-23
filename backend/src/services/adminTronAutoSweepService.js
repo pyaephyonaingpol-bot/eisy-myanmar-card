@@ -108,30 +108,32 @@ async function executeAdminAutoSweep(body = {}, { adminUserId = null, source = '
 
   const totals = summarizeSweepTransferTotals(summary);
 
-  TransactionLog.create({
-    userId: adminUserId,
-    type: 'other',
-    direction: 'neutral',
-    description: dryRun
-      ? `Admin dry-run TRON auto-sweep (${summary.mode})`
-      : `Admin TRON auto-sweep via Netts (${summary.mode})`,
-    createdBy: 'admin',
-    metadata: {
-      action: 'tron_auto_sweep',
-      source,
-      dry_run: dryRun,
-      mode: summary.mode,
-      checked: summary.checked,
-      swept: summary.swept,
-      skipped: summary.skipped,
-      failed: summary.failed,
-      total_usdt: totals.total_usdt,
-      transfer_count: totals.transfer_count,
-      user_id: userId,
-    },
-  }).catch((err) => {
-    console.warn('[admin/tron/auto-sweep] audit log skipped:', err.message);
-  });
+  if (adminUserId != null) {
+    TransactionLog.create({
+      userId: adminUserId,
+      type: 'other',
+      direction: 'neutral',
+      description: dryRun
+        ? `Admin dry-run TRON auto-sweep (${summary.mode})`
+        : `Admin TRON auto-sweep via Netts (${summary.mode})`,
+      createdBy: 'admin',
+      metadata: {
+        action: 'tron_auto_sweep',
+        source,
+        dry_run: dryRun,
+        mode: summary.mode,
+        checked: summary.checked,
+        swept: summary.swept,
+        skipped: summary.skipped,
+        failed: summary.failed,
+        total_usdt: totals.total_usdt,
+        transfer_count: totals.transfer_count,
+        user_id: userId,
+      },
+    }).catch((err) => {
+      console.warn('[admin/tron/auto-sweep] audit log skipped:', err.message);
+    });
+  }
 
   return {
     httpStatus: summary.failed > 0 ? 207 : 200,
