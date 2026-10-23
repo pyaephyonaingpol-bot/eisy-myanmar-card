@@ -515,6 +515,16 @@ async function start() {
     console.log('[tron/orders] TRON HD deposit poll disabled');
   }
 
+  const {
+    isSweepSchedulerEnabled,
+    startTronSweepScheduler,
+  } = require('./services/tronSweepSchedulerService');
+  if (isSweepSchedulerEnabled()) {
+    startTronSweepScheduler();
+  } else {
+    console.log('[tron/sweep/scheduler] disabled (set TRON_SWEEP_SCHEDULER_ENABLED=true on Droplet)');
+  }
+
   await new Promise((resolve, reject) => {
     server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`Eisy Myanmar server: http://localhost:${PORT}/`);
