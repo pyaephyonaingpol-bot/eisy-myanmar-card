@@ -126,13 +126,17 @@ async function runMockedSweep(lib) {
   }
 }
 
+const TEST_NETTS_REAL_IP = '203.0.113.50';
+
 async function testNettsTimeout(lib) {
   const prev = {
     TRON_ENERGY_API_URL: process.env.TRON_ENERGY_API_URL,
     TRON_ENERGY_API_KEY: process.env.TRON_ENERGY_API_KEY,
+    TRON_NETTS_REAL_IP: process.env.TRON_NETTS_REAL_IP,
   };
   process.env.TRON_ENERGY_API_URL = 'https://netts.example/order1h';
   process.env.TRON_ENERGY_API_KEY = 'test-key';
+  process.env.TRON_NETTS_REAL_IP = TEST_NETTS_REAL_IP;
 
   const slowFetch = (_url, init) =>
     new Promise((_resolve, reject) => {
@@ -167,9 +171,11 @@ async function testNettsInsufficientBalance(lib) {
   const prev = {
     TRON_ENERGY_API_URL: process.env.TRON_ENERGY_API_URL,
     TRON_ENERGY_API_KEY: process.env.TRON_ENERGY_API_KEY,
+    TRON_NETTS_REAL_IP: process.env.TRON_NETTS_REAL_IP,
   };
   process.env.TRON_ENERGY_API_URL = 'https://netts.example/order1h';
   process.env.TRON_ENERGY_API_KEY = 'test-key';
+  process.env.TRON_NETTS_REAL_IP = TEST_NETTS_REAL_IP;
 
   const fetch403 = async () => ({
     status: 403,
@@ -193,9 +199,11 @@ async function testNetts409Conflict(lib) {
   const prev = {
     TRON_ENERGY_API_URL: process.env.TRON_ENERGY_API_URL,
     TRON_ENERGY_API_KEY: process.env.TRON_ENERGY_API_KEY,
+    TRON_NETTS_REAL_IP: process.env.TRON_NETTS_REAL_IP,
   };
   process.env.TRON_ENERGY_API_URL = 'https://netts.example/order1h';
   process.env.TRON_ENERGY_API_KEY = 'test-key';
+  process.env.TRON_NETTS_REAL_IP = TEST_NETTS_REAL_IP;
 
   const fetch409 = async () => ({
     status: 409,
@@ -229,11 +237,13 @@ async function testAmountCap(lib) {
   const prev = {
     TRON_ENERGY_API_URL: process.env.TRON_ENERGY_API_URL,
     TRON_ENERGY_API_KEY: process.env.TRON_ENERGY_API_KEY,
+    TRON_NETTS_REAL_IP: process.env.TRON_NETTS_REAL_IP,
     TRON_FULL_HOST: process.env.TRON_FULL_HOST,
     CENTRAL_WALLET_ADDRESS: process.env.CENTRAL_WALLET_ADDRESS,
   };
   process.env.TRON_ENERGY_API_URL = 'https://netts.io/apiv2/order1h';
   process.env.TRON_ENERGY_API_KEY = 'test-key';
+  process.env.TRON_NETTS_REAL_IP = TEST_NETTS_REAL_IP;
   process.env.TRON_FULL_HOST = 'https://api.trongrid.io';
   process.env.CENTRAL_WALLET_ADDRESS = 'TCentral111111111111111111111111111';
 
@@ -265,11 +275,13 @@ async function testChainFailureAfterEnergy(lib) {
   const prev = {
     TRON_ENERGY_API_URL: process.env.TRON_ENERGY_API_URL,
     TRON_ENERGY_API_KEY: process.env.TRON_ENERGY_API_KEY,
+    TRON_NETTS_REAL_IP: process.env.TRON_NETTS_REAL_IP,
     TRON_FULL_HOST: process.env.TRON_FULL_HOST,
     CENTRAL_WALLET_ADDRESS: process.env.CENTRAL_WALLET_ADDRESS,
   };
   process.env.TRON_ENERGY_API_URL = 'https://netts.example/order1h';
   process.env.TRON_ENERGY_API_KEY = 'test-key';
+  process.env.TRON_NETTS_REAL_IP = TEST_NETTS_REAL_IP;
   process.env.TRON_FULL_HOST = 'https://api.trongrid.io';
   process.env.CENTRAL_WALLET_ADDRESS = 'TCentral111111111111111111111111111';
 
@@ -348,6 +360,7 @@ async function main() {
   assert.ok(sweepService.includes('buildSweepPreflightReport'), 'preflight report helper exists');
   assert.ok(sweepService.includes('formatUsdtAmountFromSun'), 'exact USDT amount formatting');
   assert.ok(sweepService.includes('deriveDepositSigningMaterial'), 'centralized HD derive for sweep');
+  assert.ok(sweepService.includes('NETTS_REAL_IP_NOT_SET'), 'preflight blocks missing whitelisted IP');
 
   section('Shared sweep library');
   const lib = require(libPath);
@@ -359,6 +372,20 @@ async function main() {
   section('Netts error classification');
   const insufficient = lib.classifyNettsFailure(403, { code: 1004, msg: 'Insufficient funds' }, '');
   assert.strictEqual(insufficient.code, 'SWEEP_NETTS_INSUFFICIENT_BALANCE');
+
+  section('Netts requires TRON_NETTS_REAL_IP (whitelist header)');
+  {
+    const prevIp = process.env.TRON_NETTS_REAL_IP;
+    delete process.env.TRON_NETTS_REAL_IP;
+    process.env.TRON_ENERGY_API_URL = 'https://netts.example/order1h';
+    process.env.TRON_ENERGY_API_KEY = 'test-key';
+    try {
+      assert.throws(() => lib.buildNettsRequestHeaders('test-key'), (e) => e.code === 'SWEEP_CONFIG');
+    } finally {
+      if (prevIp == null) delete process.env.TRON_NETTS_REAL_IP;
+      else process.env.TRON_NETTS_REAL_IP = prevIp;
+    }
+  }
 
   section('Netts timeout, balance, conflict (mocked)');
   await testNettsTimeout(lib);
