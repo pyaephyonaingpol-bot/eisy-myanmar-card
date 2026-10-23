@@ -31,6 +31,10 @@ assert.ok(html.includes('>Master Wallet<'), 'sidebar links to Master Wallet');
 assert.ok(js.includes("'overview'"), 'overview is a core admin page');
 assert.ok(!js.includes("name === 'overview' || name === 'transactions'"), 'overview is not redirected away');
 assert.ok(js.includes('Auto-sweep (Netts)'), 'button label restores after sweep');
+assert.ok(js.includes('tronAutoSweepBusyLabel'), 'Per-button busy labels (live vs dry-run)');
+assert.ok(js.includes('tronAutoSweepDefaultLabel'), 'Restore canonical sweep button labels');
+assert.ok(html.includes('data-default-label="Auto-sweep (Netts)"'), 'Live sweep default label on button');
+assert.ok(html.includes('data-default-label="Dry-run sweep"'), 'Dry-run default label on button');
 assert.ok(js.includes('formatTronSweepDetailLog'), 'Sweep detail log formatter exists');
 assert.ok(js.includes('total_usdt'), 'UI reads total_usdt from API');
 assert.ok(
