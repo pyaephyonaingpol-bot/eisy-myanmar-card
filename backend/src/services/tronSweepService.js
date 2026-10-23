@@ -829,6 +829,7 @@ async function runManualSweep({
   dryRun = false,
   forceGas = false,
   limit = 500,
+  scheduled = false,
   createTw,
   waitFn,
   sweepUsdtWithNettsEnergyFn,
@@ -879,8 +880,8 @@ async function runManualSweep({
 
     const finished = {
       ...summary,
-      manual: true,
-      scheduled: false,
+      manual: !scheduled,
+      scheduled: Boolean(scheduled),
       started_at: startedAt,
       finished_at: new Date().toISOString(),
     };
