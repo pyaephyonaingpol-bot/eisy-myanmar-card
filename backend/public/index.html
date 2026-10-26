@@ -1284,9 +1284,13 @@
 
             <section class="panel pago-card-stage" id="pagoCardStage">
               <div class="pago-card-stage-head">
-                <h2 data-i18n="pago_cards_heading">Your virtual card</h2>
-                <p id="pagoCardDetailSummary" class="hint"></p>
+                <div>
+                  <h2 data-i18n="pago_cards_heading">Your virtual card</h2>
+                  <p id="pagoCardDetailSummary" class="hint"></p>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm hidden" id="pagoCardRequestAnotherBtn" data-i18n="pago_request_another">Request another card</button>
               </div>
+              <div id="pagoCardRequestSuccess" class="pago-card-request-alert pago-card-request-alert--ok hidden" role="status" aria-live="polite"></div>
               <div id="pagoCardCarousel" class="pago-card-carousel hidden">
                 <button type="button" class="pago-card-carousel-nav" id="pagoCardPrev" data-pago-step="-1" aria-label="Previous card">‹</button>
                 <div id="pagoCardList" class="pago-card-switcher" role="tablist" aria-label="Your cards"></div>
@@ -1463,6 +1467,7 @@
             <section class="panel pago-card-request-panel">
               <h2 data-i18n="pago_request_heading">Request a virtual card</h2>
               <p class="hint" data-i18n="pago_request_hint">A Visa card is issued on BIN 404. An optional starting balance (USD 10–2500) is taken from your USDT wallet.</p>
+              <p id="pagoCardRequestError" class="pago-card-request-alert pago-card-request-alert--err hidden" role="alert"></p>
               <form id="pagoCardRequestForm" class="form">
                 <div class="field">
                   <label for="pagoCardFirstName" data-i18n="pago_first_name">First name</label>

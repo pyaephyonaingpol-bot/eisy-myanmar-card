@@ -83,6 +83,10 @@ async function run() {
   assert.ok(dash.includes('_pagoCardRequestGuard'), 'card request in-flight guard');
   assert.ok(dash.includes('setSubmitBusy(btn, true'), 'card request submit shows busy state');
   assert.ok(dash.includes('pago_request_creating'), 'creating label for card request button');
+  assert.ok(dash.includes('focusPagoCardAfterCreate'), 'success navigates to card detail view');
+  assert.ok(dash.includes('formatPagoCardRequestError'), 'card request error formatter');
+  assert.ok(indexHtml.includes('id="pagoCardRequestSuccess"'), 'inline success alert on cards page');
+  assert.ok(indexHtml.includes('id="pagoCardRequestError"'), 'inline error alert on cards page');
   assert.ok(dash.includes('timeoutMs: 16000'), 'card list client timeout');
   assert.ok(dash.includes('timeoutMs: 12000'), 'card detail client timeout');
   assert.ok(dash.includes('cardTimeoutMessage'), 'timeout toast helper');

@@ -5838,6 +5838,38 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   margin-top: 0.15rem;
 }
 
+.pago-card-stage-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.pago-card-request-alert {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.pago-card-request-alert.hidden {
+  display: none;
+}
+
+.pago-card-request-alert--ok {
+  background: rgba(20, 83, 45, 0.22);
+  border: 1px solid var(--success, #22c55e);
+  color: #bbf7d0;
+}
+
+.pago-card-request-alert--err {
+  background: rgba(69, 10, 10, 0.35);
+  border: 1px solid var(--danger, #ef4444);
+  color: #fecaca;
+}
+
 .pago-card-stage:has(.pago-card-empty-state:not(.hidden)) {
   padding-bottom: 0.35rem;
 }

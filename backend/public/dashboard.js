@@ -9041,6 +9041,7 @@ const Dashboard = {
     this.pago3dsEvents = [];
     this.pago3dsKnownIds = new Set();
     $('pagoCardRequestForm')?.addEventListener('submit', (e) => this.submitPagoCardRequest(e));
+    $('pagoCardRequestAnotherBtn')?.addEventListener('click', () => this.reopenPagoCardRequestForm());
     $('pagoCardInitialLoad')?.addEventListener('input', () => this.updatePagoIssueSummary());
     $('pagoCardTopupForm')?.addEventListener('submit', (e) => this.submitPagoCardTopup(e));
     $('pagoCardTopupForm')?.addEventListener('click', (e) => {
@@ -10205,6 +10206,84 @@ const Dashboard = {
     return '';
   },
 
+  setPagoCardRequestSuccess(message) {
+    const el = $('pagoCardRequestSuccess');
+    if (!el) return;
+    const text = String(message || '').trim();
+    if (!text) {
+      el.textContent = '';
+      el.classList.add('hidden');
+      return;
+    }
+    el.textContent = text;
+    el.classList.remove('hidden');
+  },
+
+  setPagoCardRequestError(message) {
+    const el = $('pagoCardRequestError');
+    if (!el) return;
+    const text = String(message || '').trim();
+    if (!text) {
+      el.textContent = '';
+      el.classList.add('hidden');
+      return;
+    }
+    el.textContent = text;
+    el.classList.remove('hidden');
+  },
+
+  formatPagoCardRequestError(err) {
+    const code = String(err?.code || '');
+    if (code === 'INSUFFICIENT_USDT_BALANCE') {
+      return this.i18nText('pago_issue_insufficient', 'Insufficient balance');
+    }
+    if (code === 'SENSITIVE_AUTH_REQUIRED') {
+      return this.i18nText('pin_required', 'Enter your security PIN to continue.');
+    }
+    const timeout = this.cardTimeoutMessage(err);
+    if (timeout) return timeout;
+    if (
+      code === 'SWEEP_NETTS_NETWORK'
+      || code === 'NETWORK_ERROR'
+      || /network|fetch failed|failed to fetch/i.test(String(err?.message || ''))
+    ) {
+      return this.i18nText('pago_request_network_error', 'Network error — check your connection and try again.');
+    }
+    return err?.message || this.i18nText('pago_request_failed', 'Could not create your card. Please try again.');
+  },
+
+  setPagoCardRequestPanelCollapsed(collapsed) {
+    document.querySelector('.pago-card-request-panel')?.classList.toggle('hidden', Boolean(collapsed));
+    $('pagoCardRequestAnotherBtn')?.classList.toggle('hidden', !collapsed);
+  },
+
+  reopenPagoCardRequestForm() {
+    this.setPagoCardRequestPanelCollapsed(false);
+    this.setPagoCardRequestSuccess('');
+    this.setPagoCardRequestError('');
+    document.querySelector('.pago-card-request-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('pagoCardFirstName')?.focus();
+  },
+
+  async focusPagoCardAfterCreate(card) {
+    if (typeof AppNav !== 'undefined') {
+      AppNav.navigate('cards', { pushHash: true });
+    } else if (typeof location !== 'undefined') {
+      location.hash = '#cards';
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    if (card) {
+      this.showPagoCardDetail(card);
+    }
+    this.setPagoCardRequestPanelCollapsed(true);
+    const focusTarget = $('pagoCardDetailPanel') || $('pagoCardStage');
+    focusTarget?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (focusTarget && typeof focusTarget.focus === 'function') {
+      focusTarget.setAttribute('tabindex', '-1');
+      focusTarget.focus({ preventScroll: true });
+    }
+  },
+
   async openPagoCardDetail(cardId, fallback) {
     const requestId = String(cardId);
     this._pagoDetailRequestId = requestId;
@@ -10370,9 +10449,21 @@ const Dashboard = {
     const btn = $('pagoCardRequestSubmit');
     const form = $('pagoCardRequestForm');
     const creatingLabel = this.i18nText('pago_request_creating', 'Creating…');
+    this.setPagoCardRequestError('');
     if (btn) btn.dataset.busy = '1';
     this.setSubmitBusy(btn, true, { loadingLabel: creatingLabel });
     if (form) form.setAttribute('aria-busy', 'true');
+
+    const finishCardCreateSuccess = async (card, toastMsg) => {
+      const banner = this.i18nText(
+        'pago_request_success_banner',
+        'Your virtual card was created successfully. You can view and manage it below.',
+      );
+      const toastText = toastMsg || this.i18nText('card_issued_ok', 'Your virtual card is ready.');
+      this.toast(toastText, 'ok');
+      this.setPagoCardRequestSuccess(banner);
+      await this.focusPagoCardAfterCreate(card);
+    };
 
     try {
       const initial = $('pagoCardInitialLoad')?.value.trim();
@@ -10383,16 +10474,10 @@ const Dashboard = {
         email: $('pagoCardEmail')?.value.trim(),
         initial_load: initial || undefined,
       }, { sensitive: true, timeoutMs: 26000 });
-      const successMsg = data.message
-        || this.i18nText('card_issued_ok', 'Your virtual card is ready.');
-      this.toast(successMsg, 'ok');
       if ($('pagoCardInitialLoad')) $('pagoCardInitialLoad').value = '';
       const selectId = data.card?.id ?? null;
       const card = await this.refreshCardsAfterMutation(data, { selectCardId: selectId });
-      if (card) {
-        this.showPagoCardDetail(card);
-        $('pagoCardStage')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      await finishCardCreateSuccess(card, data.message);
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
       if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
@@ -10412,13 +10497,14 @@ const Dashboard = {
         const card = synced?.card
           || (this.allCards || []).find((item) => item.pago_card_id === orphanId);
         if (card) {
-          this.showPagoCardDetail(card);
-          this.toast(this.i18nText('card_issued_ok', 'Your virtual card is ready.'), 'ok');
-          $('pagoCardStage')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          await finishCardCreateSuccess(card);
           return;
         }
       }
-      this.toast(this.cardTimeoutMessage(err) || err.message || 'Card request failed', 'error');
+      const errMsg = this.formatPagoCardRequestError(err);
+      this.setPagoCardRequestError(errMsg);
+      this.toast(errMsg, 'error');
+      document.querySelector('.pago-card-request-panel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } finally {
       guard.end();
       if (btn) delete btn.dataset.busy;
