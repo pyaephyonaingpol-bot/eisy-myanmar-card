@@ -80,6 +80,9 @@ async function run() {
   assert.ok(userRoutes.includes('CARD_CREATE_ROUTE_TIMEOUT_MS'), 'card creation has a route timeout');
   assert.ok(userRoutes.includes('CARD_FETCH_TIMEOUT_MS') || userRoutes.includes('CARD_SYNC_BUDGET_MS'), 'card fetch has a route timeout');
   assert.ok(dash.includes('timeoutMs: 26000'), 'card create client timeout');
+  assert.ok(dash.includes('_pagoCardRequestGuard'), 'card request in-flight guard');
+  assert.ok(dash.includes('setSubmitBusy(btn, true'), 'card request submit shows busy state');
+  assert.ok(dash.includes('pago_request_creating'), 'creating label for card request button');
   assert.ok(dash.includes('timeoutMs: 16000'), 'card list client timeout');
   assert.ok(dash.includes('timeoutMs: 12000'), 'card detail client timeout');
   assert.ok(dash.includes('cardTimeoutMessage'), 'timeout toast helper');
