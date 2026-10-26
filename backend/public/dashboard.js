@@ -9015,9 +9015,26 @@ const Dashboard = {
     }, { force });
   },
 
+  _createPagoCardRequestGuard() {
+    let inFlight = false;
+    return {
+      get busy() { return inFlight; },
+      tryStart() {
+        if (inFlight) return false;
+        inFlight = true;
+        return true;
+      },
+      end() { inFlight = false; },
+    };
+  },
+
   bindPagoCardUi() {
     if (this._pagoCardBound) return;
     this._pagoCardBound = true;
+    if (!this._pagoCardRequestGuard) {
+      this._pagoCardRequestGuard = window.EisyHooks?.submitBusy?.createInFlightGuard?.()
+        || this._createPagoCardRequestGuard();
+    }
     this.pagoDetailRevealed = false;
     this.pagoWalletInfo = null;
     this.pagoWalletTarget = null;
@@ -10323,7 +10340,12 @@ const Dashboard = {
       warn.classList.toggle('hidden', !short);
     }
     const btn = $('pagoCardRequestSubmit');
-    if (btn && btn.dataset.busy !== '1') btn.disabled = short;
+    const requestBusy = Boolean(
+      this._pagoCardRequestGuard?.busy
+      || btn?.classList.contains('is-busy')
+      || btn?.dataset.busy === '1',
+    );
+    if (btn && !requestBusy) btn.disabled = short;
     return { ...quote, short };
   },
 
@@ -10340,11 +10362,18 @@ const Dashboard = {
     e.preventDefault();
     const preview = this.updatePagoIssueSummary();
     if (preview?.short) return;
+
+    const guard = this._pagoCardRequestGuard
+      || (this._pagoCardRequestGuard = this._createPagoCardRequestGuard());
+    if (!guard.tryStart()) return;
+
     const btn = $('pagoCardRequestSubmit');
-    if (btn) {
-      btn.dataset.busy = '1';
-      btn.disabled = true;
-    }
+    const form = $('pagoCardRequestForm');
+    const creatingLabel = this.i18nText('pago_request_creating', 'Creating…');
+    if (btn) btn.dataset.busy = '1';
+    this.setSubmitBusy(btn, true, { loadingLabel: creatingLabel });
+    if (form) form.setAttribute('aria-busy', 'true');
+
     try {
       const initial = $('pagoCardInitialLoad')?.value.trim();
       const data = await Auth.api('POST', '/api/user/cards/request', {
@@ -10354,11 +10383,16 @@ const Dashboard = {
         email: $('pagoCardEmail')?.value.trim(),
         initial_load: initial || undefined,
       }, { sensitive: true, timeoutMs: 26000 });
-      this.toast(data.message || 'Your virtual card is ready.', 'ok');
+      const successMsg = data.message
+        || this.i18nText('card_issued_ok', 'Your virtual card is ready.');
+      this.toast(successMsg, 'ok');
       if ($('pagoCardInitialLoad')) $('pagoCardInitialLoad').value = '';
       const selectId = data.card?.id ?? null;
       const card = await this.refreshCardsAfterMutation(data, { selectCardId: selectId });
-      if (card) this.showPagoCardDetail(card);
+      if (card) {
+        this.showPagoCardDetail(card);
+        $('pagoCardStage')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
       if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
@@ -10367,7 +10401,6 @@ const Dashboard = {
           warn.textContent = this.i18nText('pago_issue_insufficient', 'Insufficient balance');
           warn.classList.remove('hidden');
         }
-        if (btn) btn.disabled = true;
       }
       const orphanId = err.response?.pago_card_id || err.pago_card_id;
       if (err.code === 'PAGO_CARD_SAVE_FAILED' && orphanId) {
@@ -10380,13 +10413,17 @@ const Dashboard = {
           || (this.allCards || []).find((item) => item.pago_card_id === orphanId);
         if (card) {
           this.showPagoCardDetail(card);
-          this.toast('Your virtual card is ready.', 'ok');
+          this.toast(this.i18nText('card_issued_ok', 'Your virtual card is ready.'), 'ok');
+          $('pagoCardStage')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           return;
         }
       }
       this.toast(this.cardTimeoutMessage(err) || err.message || 'Card request failed', 'error');
     } finally {
+      guard.end();
       if (btn) delete btn.dataset.busy;
+      this.setSubmitBusy(btn, false);
+      form?.removeAttribute('aria-busy');
       await this.loadWallet({ force: true }).catch(() => {});
       this.updatePagoIssueSummary();
     }
