@@ -40,6 +40,12 @@ const instantHtml = fs.readFileSync(path.join(ROOT, 'public/instant.html'), 'utf
 assert.ok(indexHtml.includes('id="btnNavOpenUserPay"'), 'Pay nav button (index)');
 assert.ok(instantHtml.includes('id="btnNavOpenUserPay"'), 'Pay nav button (instant)');
 assert.ok(indexHtml.includes('id="userPayModal"'), 'Pay modal shell');
+assert.ok(
+  /id="userPayModal"[^>]*\bhidden\b/.test(indexHtml),
+  'Pay modal uses native hidden by default'
+);
+assert.ok(dash.includes('_setUserPayModalVisible'), 'Pay modal visibility helper');
+assert.ok(dash.includes('is-open'), 'Pay modal is-open toggle');
 assert.ok(dash.includes('openUserPayModal'), 'dashboard opens Pay modal');
 assert.ok(dash.includes('_userPayGuard'), 'in-flight guard for Pay submit');
 assert.ok(dash.includes('/api/user/usdt-wallet/pay/parse'), 'parse Pay QR API');
