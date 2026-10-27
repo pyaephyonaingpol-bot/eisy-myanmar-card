@@ -8150,6 +8150,9 @@ const Dashboard = {
   },
 
   openUserPayModal() {
+    if (typeof AppNav !== 'undefined' && typeof AppNav.closeMobileSidebar === 'function') {
+      AppNav.closeMobileSidebar();
+    }
     if (!Auth.isLoggedIn()) {
       this.toast(this.i18nText('sign_in_required', 'Sign in to continue'), 'error');
       return;
