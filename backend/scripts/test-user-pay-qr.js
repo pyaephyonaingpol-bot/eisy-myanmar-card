@@ -47,6 +47,10 @@ assert.ok(
 assert.ok(dash.includes('_setUserPayModalVisible'), 'Pay modal visibility helper');
 assert.ok(dash.includes('is-open'), 'Pay modal is-open toggle');
 assert.ok(dash.includes('openUserPayModal'), 'dashboard opens Pay modal');
+assert.ok(
+  /openUserPayModal\(\)\s*\{[^}]*closeMobileSidebar/s.test(dash),
+  'Pay open closes mobile sidebar drawer'
+);
 assert.ok(dash.includes('_userPayGuard'), 'in-flight guard for Pay submit');
 assert.ok(dash.includes('/api/user/usdt-wallet/pay/parse'), 'parse Pay QR API');
 assert.ok(dash.includes('/api/user/usdt-wallet/pay/receive-qr'), 'receive QR API');
