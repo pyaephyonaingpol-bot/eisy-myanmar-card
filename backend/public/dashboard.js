@@ -857,6 +857,7 @@ const Dashboard = {
       this.bindProofLightbox();
       this.bindReloadCard();
       this.bindWithdrawUsdt();
+      this.bindUserPayUi();
       this.bindWithdrawMmk();
       this.bindUsdtWalletPage();
     } catch (err) {
@@ -8065,6 +8066,361 @@ const Dashboard = {
     // Scan Pay is retired; backend also returns 410 FEATURE_DISABLED.
     this.toast?.('Scan Pay is disabled. Use Withdraw USDT instead.', 'error');
     this.closeScanPayModal();
+  },
+
+  /* ─── User Pay (QR scan + receive — internal USDT transfer) ─── */
+  bindUserPayUi() {
+    if (this._userPayBound) return;
+    this._userPayBound = true;
+    this._userPayGuard = window.EisyHooks?.submitBusy?.createInFlightGuard?.()
+      || this._createPagoCardRequestGuard();
+
+    $('btnNavOpenUserPay')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.openUserPayModal();
+    });
+    $('userPayModalClose')?.addEventListener('click', () => this.closeUserPayModal());
+    $('btnUserPayDone')?.addEventListener('click', () => this.closeUserPayModal());
+    $('btnUserPayViewWallet')?.addEventListener('click', () => {
+      this.closeUserPayModal();
+      if (typeof AppNav !== 'undefined') AppNav.navigate('usdt-wallet', { pushHash: true });
+    });
+    $('userPayModal')?.addEventListener('click', (e) => {
+      if (e.target === $('userPayModal')) this.closeUserPayModal();
+    });
+    $('btnUserPayTabScan')?.addEventListener('click', () => this.setUserPayTab('scan'));
+    $('btnUserPayTabReceive')?.addEventListener('click', () => this.setUserPayTab('receive'));
+    $('btnUserPayChooseCamera')?.addEventListener('click', () => this._userPayShowCameraPanel());
+    $('btnUserPayStartCamera')?.addEventListener('click', () => this.startUserPayCamera());
+    $('btnUserPayBackToChooser')?.addEventListener('click', () => this._userPayShowChooser());
+    $('btnUserPayRescan')?.addEventListener('click', () => {
+      this._userPayShowStep('scan');
+      this._userPayShowChooser();
+    });
+    $('btnUserPayConfirm')?.addEventListener('click', () => this.submitUserPay());
+    $('btnUserPayManualContinue')?.addEventListener('click', () => {
+      const email = $('userPayManualEmail')?.value?.trim();
+      if (!email) {
+        this._userPaySetError(this.i18nText('user_pay_enter_email', 'Enter a recipient email'));
+        return;
+      }
+      this.onUserPayPayload(email);
+    });
+    $('btnUserPayCopyPayload')?.addEventListener('click', () => this.copyUserPayReceiveLink());
+    $('userPayImageInput')?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) this.decodeUserPayImageFile(file);
+    });
+  },
+
+  openUserPayModal() {
+    if (!Auth.isLoggedIn()) {
+      this.toast(this.i18nText('sign_in_required', 'Sign in to continue'), 'error');
+      return;
+    }
+    if (Auth.needsPinUnlock?.()) {
+      this.openPinUnlockModal();
+      return;
+    }
+    this._userPayState = { mode: 'chooser' };
+    this._userPaySetError('');
+    this.setUserPayTab('scan');
+    this._userPayShowStep('scan');
+    this._userPayShowChooser();
+    $('userPayModal')?.classList.remove('hidden');
+    this.loadUserPayReceiveQr().catch(() => {});
+    if (this.walletUsdt == null) {
+      this.loadWallet({ force: false }).catch(() => {});
+    }
+  },
+
+  closeUserPayModal() {
+    this.stopUserPayCamera();
+    $('userPayModal')?.classList.add('hidden');
+    this._userPayState = null;
+    this._userPayGuard?.end?.();
+    const btn = $('btnUserPayConfirm');
+    if (btn) this.setSubmitBusy(btn, false);
+  },
+
+  setUserPayTab(tab) {
+    const receive = tab === 'receive';
+    $('btnUserPayTabScan')?.classList.toggle('is-active', !receive);
+    $('btnUserPayTabReceive')?.classList.toggle('is-active', receive);
+    $('btnUserPayTabScan')?.setAttribute('aria-selected', receive ? 'false' : 'true');
+    $('btnUserPayTabReceive')?.setAttribute('aria-selected', receive ? 'true' : 'false');
+    $('userPayPanelReceive')?.classList.toggle('hidden', !receive);
+    $('userPayPanelFlow')?.classList.toggle('hidden', receive);
+    if (receive) this.stopUserPayCamera();
+    else if (this._userPayState?.mode === 'camera') this.startUserPayCamera().catch(() => {});
+  },
+
+  async loadUserPayReceiveQr() {
+    const data = await Auth.api('GET', '/api/user/usdt-wallet/pay/receive-qr', null, { sensitive: true });
+    this._userPayReceivePayload = data.payload || '';
+    const img = $('userPayReceiveQr');
+    if (img && data.qr_image_url) {
+      img.src = data.qr_image_url;
+      img.alt = this.i18nText('user_pay_receive_qr_alt', 'Your Pay QR code');
+    }
+    if ($('userPayReceiveEmail')) {
+      $('userPayReceiveEmail').textContent = data.email
+        ? `${this.i18nText('recipient_email', 'Recipient email')}: ${data.email}`
+        : '';
+    }
+  },
+
+  async copyUserPayReceiveLink() {
+    const payload = this._userPayReceivePayload;
+    if (!payload) {
+      await this.loadUserPayReceiveQr().catch(() => {});
+    }
+    const link = this._userPayReceivePayload;
+    if (!link) return;
+    try {
+      await this.copyToClipboard(link);
+      this.toast(this.i18nText('user_pay_copy_ok', 'Pay link copied'), 'ok');
+    } catch (_) {
+      this.toast(this.i18nText('copy_failed', 'Could not copy'), 'error');
+    }
+  },
+
+  _userPayShowChooser() {
+    this.stopUserPayCamera();
+    if (this._userPayState) this._userPayState.mode = 'chooser';
+    $('userPayChooser')?.classList.remove('hidden');
+    $('userPayCameraPanel')?.classList.add('hidden');
+    this._userPaySetUploadStatus('');
+  },
+
+  _userPayShowCameraPanel() {
+    if (this._userPayState) this._userPayState.mode = 'camera';
+    $('userPayChooser')?.classList.add('hidden');
+    $('userPayCameraPanel')?.classList.remove('hidden');
+    this.startUserPayCamera().catch(() => {});
+  },
+
+  _userPayShowStep(step) {
+    $('userPayStepScan')?.classList.toggle('hidden', step !== 'scan');
+    $('userPayStepConfirm')?.classList.toggle('hidden', step !== 'confirm');
+    $('userPayStepResult')?.classList.toggle('hidden', step !== 'result');
+    if (step !== 'scan') this.stopUserPayCamera();
+  },
+
+  _userPaySetError(msg) {
+    const el = $('userPayError');
+    if (!el) return;
+    const text = String(msg || '').trim();
+    el.textContent = text;
+    el.classList.toggle('hidden', !text);
+  },
+
+  _userPaySetUploadStatus(msg) {
+    const el = $('userPayUploadStatus');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.classList.toggle('hidden', !msg);
+  },
+
+  async startUserPayCamera() {
+    const status = $('userPayCameraStatus');
+    const video = $('userPayVideo');
+    if (!video) return;
+    $('userPayChooser')?.classList.add('hidden');
+    $('userPayCameraPanel')?.classList.remove('hidden');
+    this.stopUserPayCamera();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+      video.srcObject = stream;
+      await video.play();
+      this._userPayState = this._userPayState || {};
+      this._userPayState.stream = stream;
+      this._userPayState.mode = 'camera';
+      if (status) status.textContent = this.i18nText('scan_pay_camera_live', 'Point at a Pay QR code');
+      this._userPayLoop();
+    } catch (err) {
+      if (status) status.textContent = err.message || 'Camera unavailable';
+      console.warn('[user-pay] camera', err.message);
+    }
+  },
+
+  stopUserPayCamera() {
+    const st = this._userPayState;
+    if (st?.raf) cancelAnimationFrame(st.raf);
+    if (st?.stream) {
+      st.stream.getTracks().forEach((t) => t.stop());
+      st.stream = null;
+    }
+    const video = $('userPayVideo');
+    if (video) video.srcObject = null;
+  },
+
+  _userPayLoop() {
+    const st = this._userPayState;
+    const video = $('userPayVideo');
+    const canvas = $('userPayCanvas');
+    if (!st || !video || !canvas || video.readyState < 2) {
+      if (st) st.raf = requestAnimationFrame(() => this._userPayLoop());
+      return;
+    }
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (w && h) {
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, w, h);
+      const imageData = ctx.getImageData(0, 0, w, h);
+      this._decodeScanPayImageData(imageData).then((payload) => {
+        if (payload) this.onUserPayPayload(payload);
+        else if (this._userPayState === st) {
+          st.raf = requestAnimationFrame(() => this._userPayLoop());
+        }
+      }).catch(() => {
+        if (this._userPayState === st) {
+          st.raf = requestAnimationFrame(() => this._userPayLoop());
+        }
+      });
+      return;
+    }
+    st.raf = requestAnimationFrame(() => this._userPayLoop());
+  },
+
+  async decodeUserPayImageFile(file) {
+    this._userPaySetError('');
+    this._userPaySetUploadStatus('Reading QR image…');
+    this.stopUserPayCamera();
+    try {
+      const bmp = await createImageBitmap(file);
+      const candidates = [
+        this._scanPayDrawScaled(bmp, 1200),
+        this._scanPayDrawScaled(bmp, 800),
+      ];
+      let payload = null;
+      for (const imageData of candidates) {
+        payload = await this._decodeScanPayImageData(imageData, { tryInvert: true });
+        if (payload) break;
+      }
+      bmp.close();
+      if (!payload) {
+        this._userPaySetUploadStatus('');
+        this._userPaySetError(this.i18nText('user_pay_qr_not_found', 'No Pay QR found in that image.'));
+        return;
+      }
+      this._userPaySetUploadStatus('');
+      await this.onUserPayPayload(payload);
+    } catch (err) {
+      this._userPaySetUploadStatus('');
+      this._userPaySetError(err.message || 'Could not read that image.');
+    }
+  },
+
+  async onUserPayPayload(rawPayload) {
+    if (!rawPayload || this._userPayState?.paying) return;
+    this.stopUserPayCamera();
+    this._userPaySetError('');
+    try {
+      const data = await Auth.api('POST', '/api/user/usdt-wallet/pay/parse', {
+        payload: rawPayload,
+      });
+      const parsed = data.parsed || {};
+      const label = parsed.recipient_label
+        || parsed.to_email
+        || (parsed.to_user_id ? `User #${parsed.to_user_id}` : '—');
+      if (parsed.recipient_found === false) {
+        throw new Error(this.i18nText('user_pay_recipient_missing', 'Recipient account not found'));
+      }
+      this._userPayState = {
+        ...(this._userPayState || {}),
+        payload: rawPayload,
+        parsed,
+        to_email: parsed.to_email || null,
+        to_user_id: parsed.to_user_id || null,
+      };
+      if ($('userPayRecipientDisplay')) $('userPayRecipientDisplay').textContent = label;
+      if ($('userPayAmountInput')) {
+        $('userPayAmountInput').value = parsed.amount_usdt != null ? String(parsed.amount_usdt) : '';
+      }
+      if ($('userPayNoteInput') && parsed.note) $('userPayNoteInput').value = parsed.note;
+      const avail = this.walletUsdt != null ? Number(this.walletUsdt) : null;
+      if ($('userPayBalanceHint')) {
+        $('userPayBalanceHint').textContent = avail != null
+          ? `${this.i18nText('available_balance', 'Available balance')}: ${this.formatUsdt(avail)}`
+          : '';
+      }
+      this.setUserPayTab('scan');
+      this._userPayShowStep('confirm');
+    } catch (err) {
+      this._userPaySetError(err.message || 'Invalid Pay QR');
+      this._userPayShowStep('scan');
+    }
+  },
+
+  async submitUserPay() {
+    const guard = this._userPayGuard;
+    if (!guard?.tryStart()) return;
+
+    const btn = $('btnUserPayConfirm');
+    const sendingLabel = this.i18nText('user_pay_sending', 'Sending…');
+    this.setSubmitBusy(btn, true, { loadingLabel: sendingLabel });
+    this._userPaySetError('');
+
+    const parsed = this._userPayState?.parsed || {};
+    const amount = parseFloat($('userPayAmountInput')?.value);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      guard.end();
+      this.setSubmitBusy(btn, false);
+      this._userPaySetError(this.i18nText('enter_valid_amount', 'Enter a valid amount'));
+      return;
+    }
+
+    const note = $('userPayNoteInput')?.value?.trim() || parsed.note || undefined;
+    const body = {
+      amount_usdt: amount,
+      note,
+      idempotency_key: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    };
+    if (parsed.to_user_id) body.to_user_id = parsed.to_user_id;
+    else if (parsed.to_email || this._userPayState?.to_email) {
+      body.to_email = parsed.to_email || this._userPayState.to_email;
+    } else {
+      guard.end();
+      this.setSubmitBusy(btn, false);
+      this._userPaySetError(this.i18nText('user_pay_no_recipient', 'Recipient missing'));
+      return;
+    }
+
+    try {
+      const data = await Auth.api('POST', '/api/user/usdt-wallet/transfer', body, { sensitive: true });
+      const email = body.to_email || parsed.to_email || 'recipient';
+      const msg = data.duplicate
+        ? this.i18nText('user_pay_duplicate', 'Transfer already processed')
+        : `${this.i18nText('user_pay_sent', 'Sent')} ${this.formatUsdt(amount)} ${this.i18nText('user_pay_to', 'to')} ${email}`;
+      this.toast(msg, 'ok');
+      if ($('userPayResultMessage')) $('userPayResultMessage').textContent = msg;
+      if (data.wallet) {
+        this.syncUsdtWalletBalancesFromPayload({
+          balance_usdt: data.wallet.available_usdt ?? data.wallet.balance_usdt,
+          balance_usdt_locked: data.wallet.locked_usdt ?? data.wallet.balance_usdt_locked ?? 0,
+        });
+      }
+      this.loadWallet({ force: true }).catch(() => {});
+      this._userPayShowStep('result');
+      if (typeof AppNav !== 'undefined') {
+        AppNav.navigate('usdt-wallet', { pushHash: false });
+      }
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      const errMsg = err.message || this.i18nText('user_pay_failed', 'Payment failed');
+      this._userPaySetError(errMsg);
+      this.toast(errMsg, 'error');
+    } finally {
+      guard.end();
+      this.setSubmitBusy(btn, false);
+    }
   },
 
   openWithdrawModal() {
