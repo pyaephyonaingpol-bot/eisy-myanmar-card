@@ -5351,16 +5351,22 @@ html.support-chat-scroll-lock .support-chat-compose {
 .scan-pay-modal { max-width: 520px; }
 
 .nav-item-pay {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(79, 70, 229, 0.22));
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  font-weight: 650;
+  font-weight: 600;
 }
 .nav-item-pay .nav-icon {
-  color: #7dd3fc;
+  color: inherit;
 }
 .nav-item-pay:hover,
-.nav-item-pay:focus-visible {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.28), rgba(79, 70, 229, 0.32));
+.nav-item-pay:focus-visible,
+.nav-item-pay.is-active {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(79, 70, 229, 0.26));
+  border-color: rgba(56, 189, 248, 0.35);
+}
+.nav-item-pay.is-active .nav-icon {
+  color: #7dd3fc;
+}
+#userPayModal:not(.is-open) {
+  display: none !important;
 }
 
 .user-pay-tabs {

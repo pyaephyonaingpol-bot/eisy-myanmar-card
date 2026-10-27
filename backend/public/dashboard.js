@@ -8111,6 +8111,42 @@ const Dashboard = {
       const file = e.target.files?.[0];
       if (file) this.decodeUserPayImageFile(file);
     });
+    this.closeUserPayModal();
+  },
+
+  _setUserPayModalVisible(visible) {
+    const modal = $('userPayModal');
+    const navBtn = $('btnNavOpenUserPay');
+    if (!modal) return;
+    if (visible) {
+      modal.classList.remove('hidden');
+      modal.classList.add('is-open');
+      modal.removeAttribute('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+      navBtn?.classList.add('is-active');
+      navBtn?.setAttribute('aria-expanded', 'true');
+    } else {
+      modal.classList.add('hidden');
+      modal.classList.remove('is-open');
+      modal.setAttribute('hidden', '');
+      modal.setAttribute('aria-hidden', 'true');
+      navBtn?.classList.remove('is-active');
+      navBtn?.setAttribute('aria-expanded', 'false');
+    }
+  },
+
+  _resetUserPayForm() {
+    $('userPayManualEmail') && ($('userPayManualEmail').value = '');
+    $('userPayAmountInput') && ($('userPayAmountInput').value = '');
+    $('userPayNoteInput') && ($('userPayNoteInput').value = '');
+    if ($('userPayReceiveQr')) $('userPayReceiveQr').removeAttribute('src');
+    if ($('userPayImageInput')) $('userPayImageInput').value = '';
+    this._userPayReceivePayload = '';
+    this._userPaySetError('');
+    this._userPaySetUploadStatus('');
+    this.setUserPayTab('scan');
+    this._userPayShowStep('scan');
+    this._userPayShowChooser();
   },
 
   openUserPayModal() {
@@ -8127,7 +8163,7 @@ const Dashboard = {
     this.setUserPayTab('scan');
     this._userPayShowStep('scan');
     this._userPayShowChooser();
-    $('userPayModal')?.classList.remove('hidden');
+    this._setUserPayModalVisible(true);
     this.loadUserPayReceiveQr().catch(() => {});
     if (this.walletUsdt == null) {
       this.loadWallet({ force: false }).catch(() => {});
@@ -8136,7 +8172,8 @@ const Dashboard = {
 
   closeUserPayModal() {
     this.stopUserPayCamera();
-    $('userPayModal')?.classList.add('hidden');
+    this._setUserPayModalVisible(false);
+    this._resetUserPayForm();
     this._userPayState = null;
     this._userPayGuard?.end?.();
     const btn = $('btnUserPayConfirm');
@@ -8149,8 +8186,14 @@ const Dashboard = {
     $('btnUserPayTabReceive')?.classList.toggle('is-active', receive);
     $('btnUserPayTabScan')?.setAttribute('aria-selected', receive ? 'false' : 'true');
     $('btnUserPayTabReceive')?.setAttribute('aria-selected', receive ? 'true' : 'false');
-    $('userPayPanelReceive')?.classList.toggle('hidden', !receive);
-    $('userPayPanelFlow')?.classList.toggle('hidden', receive);
+    const recv = $('userPayPanelReceive');
+    const flow = $('userPayPanelFlow');
+    recv?.classList.toggle('hidden', !receive);
+    flow?.classList.toggle('hidden', receive);
+    if (receive) recv?.removeAttribute('hidden');
+    else recv?.setAttribute('hidden', '');
+    if (receive) flow?.setAttribute('hidden', '');
+    else flow?.removeAttribute('hidden');
     if (receive) this.stopUserPayCamera();
     else if (this._userPayState?.mode === 'camera') this.startUserPayCamera().catch(() => {});
   },
