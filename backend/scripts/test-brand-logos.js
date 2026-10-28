@@ -71,7 +71,10 @@ assert.ok(
 );
 
 const manifest = read('manifest.webmanifest');
-assert.ok(manifest.includes('/brand/logo-icon.png'), 'PWA manifest uses logo-icon.png');
+assert.ok(
+  manifest.includes('/brand/logo-icon.png') && manifest.includes('/icons/Icon-192.png'),
+  'PWA manifest links brand and dedicated icons'
+);
 
 // Fallback /favicon.png must be a byte-identical copy of the header icon
 const iconBytes = fs.readFileSync(path.join(PUBLIC, 'brand/logo-icon.png'));

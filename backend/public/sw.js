@@ -1,16 +1,81 @@
 /**
  * Eisy Myanmar service worker.
- * The `push` event is what the phone runs when the app is in the background
- * or the screen is locked. It must call showNotification or the alert is dropped.
+ * - PWA: minimal shell precache + network-first navigation (install / Add to Home Screen).
+ * - Push: background notifications when the app is closed or the screen is locked.
  */
 'use strict';
 
+const PWA_CACHE = 'eisy-pwa-v1';
+const PWA_PRECACHE = [
+  '/',
+  '/manifest.webmanifest',
+  '/manifest.json',
+  '/brand/logo-icon.png',
+  '/icons/Icon-192.png',
+  '/icons/Icon-512.png',
+];
+
 self.addEventListener('install', (event) => {
-  event.waitUntil(self.skipWaiting());
+  event.waitUntil((async () => {
+    try {
+      const cache = await caches.open(PWA_CACHE);
+      await cache.addAll(PWA_PRECACHE);
+    } catch (_) {
+      /* precache is best-effort — push + fetch still work */
+    }
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys
+      .filter((key) => key.startsWith('eisy-pwa-') && key !== PWA_CACHE)
+      .map((key) => caches.delete(key)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  if (request.method !== 'GET') return;
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch (_) {
+    return;
+  }
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/')) return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith((async () => {
+      try {
+        return await fetch(request);
+      } catch (_) {
+        const cached = await caches.match('/');
+        if (cached) return cached;
+        throw _;
+      }
+    })());
+    return;
+  }
+
+  if (PWA_PRECACHE.includes(url.pathname)) {
+    event.respondWith((async () => {
+      const cached = await caches.match(request);
+      if (cached) return cached;
+      try {
+        const fresh = await fetch(request);
+        const cache = await caches.open(PWA_CACHE);
+        cache.put(request, fresh.clone());
+        return fresh;
+      } catch (_) {
+        return cached || Response.error();
+      }
+    })());
+  }
 });
 
 function absoluteUrl(path) {

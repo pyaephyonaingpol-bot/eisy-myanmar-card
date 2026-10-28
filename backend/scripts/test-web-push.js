@@ -41,6 +41,7 @@ for (const doc of [html, instant]) {
   assert.ok(settingsAt > -1 && panelAt > settingsAt, 'phone notifications sit on Settings');
 }
 
+assert.ok(sw.includes("addEventListener('fetch'"), 'service worker handles fetch (PWA install)');
 assert.ok(sw.includes("addEventListener('push'"), 'service worker handles push');
 assert.ok(sw.includes('readPushPayload'), 'push payload is parsed inside the worker');
 assert.ok(sw.includes('displayNotification'), 'worker owns notification display');

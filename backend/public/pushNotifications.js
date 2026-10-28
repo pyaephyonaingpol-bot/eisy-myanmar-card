@@ -35,7 +35,10 @@
   }
 
   function registerWorker() {
-    if (!supported()) return Promise.resolve(null);
+    if (!('serviceWorker' in navigator)) return Promise.resolve(null);
+    if (root.EisyPwa?.registerServiceWorker) {
+      return root.EisyPwa.registerServiceWorker();
+    }
     if (!registrationPromise) {
       registrationPromise = navigator.serviceWorker.register(SW_URL, { scope: '/', updateViaCache: 'none' })
         .catch((err) => {
