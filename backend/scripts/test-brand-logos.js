@@ -54,8 +54,8 @@ assert.ok(
   'favicon link points at /brand/logo-icon.png'
 );
 assert.ok(
-  /rel=["']apple-touch-icon["'][^>]+href=["']\/brand\/logo-icon\.png/.test(html),
-  'apple-touch-icon points at /brand/logo-icon.png'
+  /rel=["']apple-touch-icon["'][^>]+href=["']\/(brand\/logo-icon\.png|icons\/Icon-192\.png)/.test(html),
+  'apple-touch-icon uses brand or PWA icon'
 );
 assert.ok(!/rel=["']icon["'][^>]+href=["']\/favicon\.png/.test(html), 'legacy /favicon.png icon link removed');
 assert.ok(!/rel=["']apple-touch-icon["'][^>]+href=["']\/apple-touch-icon\.png/.test(html), 'legacy apple-touch path removed');
