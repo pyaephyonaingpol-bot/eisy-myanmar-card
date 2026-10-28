@@ -5347,6 +5347,59 @@ html.support-chat-scroll-lock .support-chat-compose {
   touch-action: pan-y !important;
 }
 
+/* —— PWA install banner —— */
+.pwa-install-banner {
+  margin: 0;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(79, 70, 229, 0.14));
+}
+.pwa-install-banner.hidden {
+  display: none !important;
+}
+.pwa-install-banner-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  max-width: 72rem;
+  margin: 0 auto;
+}
+.pwa-install-banner-icon {
+  border-radius: 0.65rem;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(2, 8, 23, 0.35);
+}
+.pwa-install-banner-copy {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.pwa-install-banner-copy strong {
+  display: block;
+  font-size: 0.95rem;
+  margin-bottom: 0.15rem;
+}
+.pwa-install-banner-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+.pwa-install-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+@media (max-width: 520px) {
+  .pwa-install-banner-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+  .pwa-install-banner-actions .btn {
+    flex: 1 1 auto;
+  }
+}
+
 /* —— Scan Pay —— */
 .scan-pay-modal { max-width: 520px; }
 

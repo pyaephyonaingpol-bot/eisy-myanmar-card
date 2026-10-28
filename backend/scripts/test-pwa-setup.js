@@ -31,16 +31,21 @@ for (const name of ['index.html', 'instant.html']) {
   assert.ok(page.includes('apple-mobile-web-app-capable'), `${name} iOS standalone meta`);
   assert.ok(page.includes('/icons/Icon-192.png'), `${name} apple-touch icon`);
   assert.ok(page.includes('/pwa.js'), `${name} PWA bootstrap script`);
+  assert.ok(page.includes('id="pwaInstallBanner"'), `${name} install banner shell`);
+  assert.ok(page.includes('id="pwaInstallBtn"'), `${name} install button`);
 }
+
+const pwa = read('pwa.js');
+assert.ok(pwa.includes('registerServiceWorker'), 'pwa.js registers worker');
+assert.ok(pwa.includes('EisyPwa'), 'pwa.js exposes EisyPwa');
+assert.ok(pwa.includes('beforeinstallprompt'), 'pwa.js listens for beforeinstallprompt');
+assert.ok(pwa.includes('promptInstall'), 'pwa.js exposes install prompt handler');
+assert.ok(pwa.includes('.prompt()'), 'pwa.js calls native install prompt');
 
 const sw = read('sw.js');
 assert.ok(sw.includes('PWA_CACHE'), 'service worker defines PWA cache');
 assert.ok(sw.includes("addEventListener('fetch'"), 'service worker handles fetch for installability');
 assert.ok(sw.includes("addEventListener('push'"), 'service worker still handles push');
-
-const pwa = read('pwa.js');
-assert.ok(pwa.includes('registerServiceWorker'), 'pwa.js registers worker');
-assert.ok(pwa.includes('EisyPwa'), 'pwa.js exposes EisyPwa');
 
 const push = read('pushNotifications.js');
 assert.ok(push.includes('EisyPwa?.registerServiceWorker'), 'push reuses PWA registration');
