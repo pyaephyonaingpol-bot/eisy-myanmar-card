@@ -156,19 +156,21 @@
 
   <div id="pwaIosInstallModal" class="modal hidden" role="dialog" aria-labelledby="pwaIosInstallModalTitle" aria-modal="true">
     <div class="modal-box pwa-ios-install-modal">
-      <div class="modal-header-row">
+      <div class="modal-header-row pwa-ios-install-header">
         <h3 id="pwaIosInstallModalTitle" data-i18n="pwa_install_ios_modal_title">Install Eisy on iPhone or iPad</h3>
-        <button type="button" id="pwaIosInstallModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+        <button type="button" id="pwaIosInstallModalClose" class="pwa-ios-install-close" data-i18n-aria="btn_close" aria-label="Close">×</button>
       </div>
-      <p class="hint pwa-ios-install-lead" data-i18n="pwa_install_ios_modal_lead">Safari cannot show a one-tap install button. Add Eisy to your Home Screen like this:</p>
-      <ol class="pwa-ios-install-steps">
-        <li data-i18n="pwa_install_ios_step1">Tap the Share button at the bottom of Safari (square with an arrow pointing up).</li>
-        <li data-i18n="pwa_install_ios_step2">Scroll the menu and tap “Add to Home Screen”.</li>
-        <li data-i18n="pwa_install_ios_step3">Tap “Add” in the top-right corner.</li>
-        <li data-i18n="pwa_install_ios_step4">Open Eisy from your Home Screen — it works like a native app.</li>
-      </ol>
-      <p class="hint pwa-ios-install-note" data-i18n="pwa_install_ios_modal_note">Use Safari if you opened this page in another browser on iOS.</p>
-      <button type="button" class="btn btn-primary" id="pwaIosInstallModalOk" data-i18n="btn_got_it" style="width:100%;margin-top:0.75rem">Got it</button>
+      <div class="pwa-ios-install-body">
+        <p class="hint pwa-ios-install-lead" data-i18n="pwa_install_ios_modal_lead">Safari cannot show a one-tap install button. Add Eisy to your Home Screen like this:</p>
+        <ol class="pwa-ios-install-steps">
+          <li data-i18n="pwa_install_ios_step1">Tap the Share button at the bottom of Safari (square with an arrow pointing up).</li>
+          <li data-i18n="pwa_install_ios_step2">Scroll the menu and tap “Add to Home Screen”.</li>
+          <li data-i18n="pwa_install_ios_step3">Tap “Add” in the top-right corner.</li>
+          <li data-i18n="pwa_install_ios_step4">Open Eisy from your Home Screen — it works like a native app.</li>
+        </ol>
+        <p class="hint pwa-ios-install-note" data-i18n="pwa_install_ios_modal_note">Use Safari if you opened this page in another browser on iOS.</p>
+        <button type="button" class="btn btn-primary pwa-ios-install-ok" id="pwaIosInstallModalOk" data-i18n="btn_got_it">Got it</button>
+      </div>
     </div>
   </div>
 
