@@ -548,50 +548,6 @@ small.hint {
   margin: 0 0 0.35rem;
 }
 
-/* Landing APK download — bottom of auth card, above legal links */
-.auth-apk-download {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  margin: 1.15rem 0 0;
-}
-
-/* Landing APK download — slate + emerald, compact */
-.apk-download-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  margin: 0;
-  padding: 0.5rem 0.9rem;
-  border-radius: 0.5rem;
-  border: 1px solid rgba(52, 211, 153, 0.28);
-  background: #1e293b; /* slate-800 */
-  color: #34d399; /* emerald-400 */
-  font-size: 0.8125rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  line-height: 1.2;
-  text-decoration: none;
-  box-shadow: 0 1px 2px rgba(2, 6, 23, 0.35);
-  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
-}
-.apk-download-btn:hover {
-  background: #334155; /* slate-700 */
-  border-color: rgba(52, 211, 153, 0.5);
-  color: #6ee7b7; /* emerald-300 */
-}
-.apk-download-btn:active {
-  transform: translateY(1px);
-}
-.apk-download-btn:focus-visible {
-  outline: 2px solid #34d399;
-  outline-offset: 2px;
-}
-.apk-download-icon {
-  flex-shrink: 0;
-  display: block;
-}
 .tabs { display: flex; gap: 0.65rem; margin-bottom: 1rem; }
 #authTabs.auth-tabs {
   display: grid;
@@ -5345,6 +5301,59 @@ html.support-chat-scroll-lock .support-chat-compose {
   overscroll-behavior: contain !important;
   -webkit-overflow-scrolling: touch !important;
   touch-action: pan-y !important;
+}
+
+/* —— PWA install banner —— */
+.pwa-install-banner {
+  margin: 0;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(79, 70, 229, 0.14));
+}
+.pwa-install-banner.hidden {
+  display: none !important;
+}
+.pwa-install-banner-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  max-width: 72rem;
+  margin: 0 auto;
+}
+.pwa-install-banner-icon {
+  border-radius: 0.65rem;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(2, 8, 23, 0.35);
+}
+.pwa-install-banner-copy {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.pwa-install-banner-copy strong {
+  display: block;
+  font-size: 0.95rem;
+  margin-bottom: 0.15rem;
+}
+.pwa-install-banner-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+.pwa-install-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+@media (max-width: 520px) {
+  .pwa-install-banner-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+  .pwa-install-banner-actions .btn {
+    flex: 1 1 auto;
+  }
 }
 
 /* —— Scan Pay —— */

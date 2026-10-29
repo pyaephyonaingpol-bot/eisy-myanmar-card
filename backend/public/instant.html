@@ -1012,20 +1012,6 @@
         </form>
       </div>
 
-      <div class="auth-apk-download">
-        <a
-          class="apk-download-btn"
-          href="/downloads/eisy-myanmar.apk"
-          download="eisy-myanmar.apk"
-          aria-label="Download Eisy Myanmar Android app APK"
-        >
-          <svg class="apk-download-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
-            <path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v8.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42L11 12.59V4a1 1 0 0 1 1-1Zm-7 14a1 1 0 0 1 1 1v1h12v-1a1 1 0 1 1 2 0v2a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1Z"/>
-          </svg>
-          <span>Download App (APK)</span>
-        </a>
-      </div>
-
       <nav class="auth-legal-links" aria-label="Legal">
         <a href="/about" target="_blank" rel="noopener noreferrer">About</a>
         <span aria-hidden="true">·</span>
@@ -1219,6 +1205,20 @@
             </div>
           </div>
         </header>
+
+        <div id="pwaInstallBanner" class="pwa-install-banner hidden" role="region" aria-labelledby="pwaInstallTitle" hidden>
+          <div class="pwa-install-banner-inner">
+            <img class="pwa-install-banner-icon" src="/icons/Icon-192.png" alt="" width="40" height="40" decoding="async" />
+            <div class="pwa-install-banner-copy">
+              <strong id="pwaInstallTitle" data-i18n="pwa_install_title">Install Eisy on your phone</strong>
+              <p class="hint pwa-install-banner-hint" data-i18n="pwa_install_hint">Open from your home screen like a native app — fast and secure.</p>
+            </div>
+            <div class="pwa-install-banner-actions">
+              <button type="button" class="btn btn-primary btn-sm" id="pwaInstallBtn" data-i18n="pwa_install_btn">Install app</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="pwaInstallDismiss" data-i18n="pwa_install_dismiss">Not now</button>
+            </div>
+          </div>
+        </div>
 
         <main class="app-content">
           <!-- Hidden titles for page heading sync -->
