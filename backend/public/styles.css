@@ -5340,6 +5340,28 @@ html.support-chat-scroll-lock .support-chat-compose {
 #authScreen .pwa-install-app-btn:not(.hidden) {
   box-shadow: 0 8px 24px rgba(14, 165, 233, 0.25);
 }
+.pwa-ios-install-modal {
+  max-width: 26rem;
+}
+.pwa-ios-install-lead {
+  margin: 0 0 0.75rem;
+}
+.pwa-ios-install-steps {
+  margin: 0 0 0.75rem 1.15rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.pwa-ios-install-steps li {
+  padding-left: 0.15rem;
+}
+.pwa-ios-install-note {
+  margin: 0;
+  font-size: 0.82rem;
+}
 .pwa-install-banner {
   margin: 0;
   padding: 0.65rem 1rem;

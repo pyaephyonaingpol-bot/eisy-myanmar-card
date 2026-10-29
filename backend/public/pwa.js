@@ -8,6 +8,7 @@
   const DISMISS_KEY = 'eisy_pwa_install_dismissed';
   let registrationPromise = null;
   let deferredPrompt = null;
+  let iosModalBound = false;
 
   function canUseServiceWorker() {
     return typeof navigator !== 'undefined' && 'serviceWorker' in navigator;
@@ -36,9 +37,15 @@
   }
 
   function t(key, fallback) {
-    if (typeof root.t === 'function') return root.t(key);
-    if (root.I18n && typeof root.I18n.t === 'function') return root.I18n.t(key);
-    return fallback;
+    const k = String(key || '');
+    if (root.I18n && typeof root.I18n.t === 'function') {
+      const translated = root.I18n.t(k);
+      if (translated && translated !== k) return translated;
+    } else if (typeof root.t === 'function') {
+      const translated = root.t(k);
+      if (translated && translated !== k) return translated;
+    }
+    return fallback != null ? fallback : k;
   }
 
   function registerServiceWorker() {
@@ -62,6 +69,10 @@
 
   function bannerEl() {
     return document.getElementById('pwaInstallBanner');
+  }
+
+  function iosModalEl() {
+    return document.getElementById('pwaIosInstallModal');
   }
 
   function setBannerVisible(visible) {
@@ -93,6 +104,15 @@
     setInstallAppButtonsVisible(!isStandaloneDisplay());
   }
 
+  function applyInstallButtonLabels() {
+    const label = t('pwa_install_app_btn', 'Install App');
+    installAppButtons().forEach((btn) => {
+      const labeled = btn.querySelector('[data-i18n="pwa_install_app_btn"]');
+      if (labeled) labeled.textContent = label;
+      else btn.textContent = label;
+    });
+  }
+
   function isLikelyIos() {
     if (typeof navigator === 'undefined') return false;
     const ua = navigator.userAgent || '';
@@ -100,12 +120,51 @@
     return navigator.platform === 'MacIntel' && Number(navigator.maxTouchPoints) > 1;
   }
 
+  function bindIosInstallModal() {
+    if (iosModalBound) return;
+    const modal = iosModalEl();
+    if (!modal) return;
+    iosModalBound = true;
+    const close = () => closeIosInstallModal();
+    modal.querySelector('#pwaIosInstallModalClose')?.addEventListener('click', close);
+    modal.querySelector('#pwaIosInstallModalOk')?.addEventListener('click', close);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) close();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) close();
+    });
+  }
+
+  function openIosInstallModal() {
+    const modal = iosModalEl();
+    if (!modal) {
+      window.alert(t('pwa_install_ios_hint', 'On iPhone/iPad: tap Share, then “Add to Home Screen”.'));
+      return;
+    }
+    bindIosInstallModal();
+    if (root.I18n && typeof root.I18n.apply === 'function') {
+      root.I18n.apply(modal);
+    }
+    modal.classList.remove('hidden');
+    modal.removeAttribute('hidden');
+    modal.querySelector('#pwaIosInstallModalOk')?.focus();
+  }
+
+  function closeIosInstallModal() {
+    const modal = iosModalEl();
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('hidden', '');
+  }
+
   function showInstallFallbackMessage() {
-    const msg = isLikelyIos()
-      ? t('pwa_install_ios_hint', 'On iPhone/iPad: tap Share, then “Add to Home Screen”.')
-      : t('pwa_install_unavailable', 'Install is not available in this browser right now.');
+    const msg = t(
+      'pwa_install_unavailable',
+      'Install is not available in this browser right now. Try Chrome on Android, or use Add to Home Screen on iPhone.',
+    );
     if (root.Dashboard?.toast) {
-      root.Dashboard.toast(msg, isLikelyIos() ? 'info' : 'error');
+      root.Dashboard.toast(msg, 'info');
     } else {
       window.alert(msg);
     }
@@ -113,10 +172,22 @@
 
   async function handleInstallAppClick(e) {
     e.preventDefault();
-    const result = await promptInstall();
-    if (!result.ok && (result.reason === 'no_prompt' || result.reason === 'error')) {
-      showInstallFallbackMessage();
+    if (isStandaloneDisplay()) return;
+
+    if (isLikelyIos()) {
+      openIosInstallModal();
+      return;
     }
+
+    if (deferredPrompt) {
+      const result = await promptInstall();
+      if (!result.ok && result.reason === 'error') {
+        showInstallFallbackMessage();
+      }
+      return;
+    }
+
+    showInstallFallbackMessage();
   }
 
   async function promptInstall() {
@@ -170,16 +241,31 @@
     canShowInstallBanner,
     refreshInstallBanner,
     refreshInstallAppButtons,
+    applyInstallButtonLabels,
     promptInstall,
     isStandaloneDisplay,
     canNativeInstall: () => Boolean(deferredPrompt),
+    openIosInstallModal,
+    closeIosInstallModal,
+    isLikelyIos,
   };
 
   function boot() {
     registerServiceWorker().catch(() => {});
     bindInstallUi();
+    applyInstallButtonLabels();
     refreshInstallAppButtons();
     refreshInstallBanner();
+    if (root.I18n && typeof root.I18n.onChange === 'function') {
+      root.I18n.onChange(() => {
+        applyInstallButtonLabels();
+        const modal = iosModalEl();
+        if (modal && !modal.classList.contains('hidden') && root.I18n.apply) {
+          root.I18n.apply(modal);
+        }
+      });
+    }
+    document.addEventListener('eisy:langchange', () => applyInstallButtonLabels());
   }
 
   if (document.readyState === 'loading') {
