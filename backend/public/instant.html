@@ -68,7 +68,7 @@
       #pageProfile .summary-grid { grid-template-columns: 1fr; }
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261011p2pRoute-ca13c897ea" />
+  <link rel="stylesheet" href="/styles.css?v=20261011p2pRoute-4b8560dfd2" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20261011supportMobile" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -918,6 +918,12 @@
         <h1 class="auth-brand-title">Eisymyanmar</h1>
         <p class="subtitle auth-brand-sub">Global USDT wallet &amp; virtual Visa cards</p>
       </div>
+      <button
+        type="button"
+        class="btn btn-primary pwa-install-app-btn js-pwa-install-app"
+        id="pwaInstallAppAuth"
+        data-i18n="pwa_install_app_btn"
+      >Install App</button>
       <p id="authSessionNotice" class="auth-session-notice hidden" role="status"></p>
 
       <div id="devOtpBanner" class="dev-otp-banner hidden" role="alert">
@@ -1129,6 +1135,10 @@
         </nav>
 
         <div class="sidebar-footer">
+          <button type="button" class="nav-item js-pwa-install-app" id="pwaInstallAppSidebar">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+            <span data-i18n="pwa_install_app_btn">Install App</span>
+          </button>
           <button type="button" class="nav-item sidebar-contact-trigger" data-contact-modal-open>
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
             <span>Contact Us</span>
@@ -1167,6 +1177,12 @@
               </div>
             </div>
             <div class="header-actions">
+              <button
+                type="button"
+                class="pwa-install-app-btn pwa-install-app-btn--header js-pwa-install-app"
+                id="pwaInstallAppHeader"
+                data-i18n="pwa_install_app_btn"
+              >Install App</button>
               <div id="portalNavHeader" class="portal-nav-header" aria-label="Portal navigation"></div>
               <div id="langSwitcher">
                 <div class="lang-switcher" role="group" aria-label="Language">

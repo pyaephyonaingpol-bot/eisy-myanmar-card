@@ -56,6 +56,10 @@
     return registrationPromise;
   }
 
+  function installAppButtons() {
+    return document.querySelectorAll('.js-pwa-install-app');
+  }
+
   function bannerEl() {
     return document.getElementById('pwaInstallBanner');
   }
@@ -69,14 +73,50 @@
   }
 
   function canShowInstallBanner() {
-    return Boolean(deferredPrompt)
-      && !isStandaloneDisplay()
-      && !isDismissed()
-      && bannerEl();
+    return false;
   }
 
   function refreshInstallBanner() {
-    setBannerVisible(canShowInstallBanner());
+    setBannerVisible(false);
+  }
+
+  function setInstallAppButtonsVisible(visible) {
+    installAppButtons().forEach((btn) => {
+      btn.classList.toggle('hidden', !visible);
+      if (visible) btn.removeAttribute('hidden');
+      else btn.setAttribute('hidden', '');
+      btn.disabled = false;
+    });
+  }
+
+  function refreshInstallAppButtons() {
+    setInstallAppButtonsVisible(!isStandaloneDisplay());
+  }
+
+  function isLikelyIos() {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/i.test(ua)) return true;
+    return navigator.platform === 'MacIntel' && Number(navigator.maxTouchPoints) > 1;
+  }
+
+  function showInstallFallbackMessage() {
+    const msg = isLikelyIos()
+      ? t('pwa_install_ios_hint', 'On iPhone/iPad: tap Share, then “Add to Home Screen”.')
+      : t('pwa_install_unavailable', 'Install is not available in this browser right now.');
+    if (root.Dashboard?.toast) {
+      root.Dashboard.toast(msg, isLikelyIos() ? 'info' : 'error');
+    } else {
+      window.alert(msg);
+    }
+  }
+
+  async function handleInstallAppClick(e) {
+    e.preventDefault();
+    const result = await promptInstall();
+    if (!result.ok && (result.reason === 'no_prompt' || result.reason === 'error')) {
+      showInstallFallbackMessage();
+    }
   }
 
   async function promptInstall() {
@@ -86,29 +126,24 @@
     try {
       promptEvent.prompt();
       const choice = await promptEvent.userChoice;
+      refreshInstallAppButtons();
       refreshInstallBanner();
       return { ok: choice.outcome === 'accepted', outcome: choice.outcome };
     } catch (err) {
       console.warn('[pwa] install prompt failed:', err.message || err);
+      refreshInstallAppButtons();
       refreshInstallBanner();
       return { ok: false, reason: 'error' };
     }
   }
 
   function bindInstallUi() {
+    installAppButtons().forEach((btn) => {
+      btn.addEventListener('click', handleInstallAppClick);
+    });
     const installBtn = document.getElementById('pwaInstallBtn');
     const dismissBtn = document.getElementById('pwaInstallDismiss');
-    installBtn?.addEventListener('click', (e) => {
-      e.preventDefault();
-      promptInstall().then((result) => {
-        if (!result.ok && result.reason === 'no_prompt') {
-          root.Dashboard?.toast?.(
-            t('pwa_install_unavailable', 'Install is not available in this browser right now.'),
-            'error',
-          );
-        }
-      });
-    });
+    installBtn?.addEventListener('click', handleInstallAppClick);
     dismissBtn?.addEventListener('click', (e) => {
       e.preventDefault();
       setDismissed();
@@ -119,11 +154,12 @@
   root.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    refreshInstallBanner();
+    refreshInstallAppButtons();
   });
 
   root.addEventListener('appinstalled', () => {
     deferredPrompt = null;
+    refreshInstallAppButtons();
     setBannerVisible(false);
   });
 
@@ -133,13 +169,16 @@
     getRegistration: () => registrationPromise,
     canShowInstallBanner,
     refreshInstallBanner,
+    refreshInstallAppButtons,
     promptInstall,
     isStandaloneDisplay,
+    canNativeInstall: () => Boolean(deferredPrompt),
   };
 
   function boot() {
     registerServiceWorker().catch(() => {});
     bindInstallUi();
+    refreshInstallAppButtons();
     refreshInstallBanner();
   }
 
