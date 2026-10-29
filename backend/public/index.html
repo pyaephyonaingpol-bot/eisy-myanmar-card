@@ -152,6 +152,24 @@
   <div id="authToast" class="auth-toast hidden" role="alert"></div>
   <div id="copyToast" class="copy-toast hidden" role="status" data-i18n="copied">Copied to clipboard!</div>
 
+  <div id="pwaIosInstallModal" class="modal hidden" role="dialog" aria-labelledby="pwaIosInstallModalTitle" aria-modal="true">
+    <div class="modal-box pwa-ios-install-modal">
+      <div class="modal-header-row">
+        <h3 id="pwaIosInstallModalTitle" data-i18n="pwa_install_ios_modal_title">Install Eisy on iPhone or iPad</h3>
+        <button type="button" id="pwaIosInstallModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p class="hint pwa-ios-install-lead" data-i18n="pwa_install_ios_modal_lead">Safari cannot show a one-tap install button. Add Eisy to your Home Screen like this:</p>
+      <ol class="pwa-ios-install-steps">
+        <li data-i18n="pwa_install_ios_step1">Tap the Share button at the bottom of Safari (square with an arrow pointing up).</li>
+        <li data-i18n="pwa_install_ios_step2">Scroll the menu and tap “Add to Home Screen”.</li>
+        <li data-i18n="pwa_install_ios_step3">Tap “Add” in the top-right corner.</li>
+        <li data-i18n="pwa_install_ios_step4">Open Eisy from your Home Screen — it works like a native app.</li>
+      </ol>
+      <p class="hint pwa-ios-install-note" data-i18n="pwa_install_ios_modal_note">Use Safari if you opened this page in another browser on iOS.</p>
+      <button type="button" class="btn btn-primary" id="pwaIosInstallModalOk" data-i18n="btn_got_it" style="width:100%;margin-top:0.75rem">Got it</button>
+    </div>
+  </div>
+
   <div id="proofLightbox" class="proof-lightbox hidden" role="dialog" aria-label="Payment proof preview">
     <div class="proof-lightbox-backdrop"></div>
     <div class="proof-lightbox-inner">
@@ -1228,7 +1246,7 @@
               <p class="hint pwa-install-banner-hint" data-i18n="pwa_install_hint">Open from your home screen like a native app — fast and secure.</p>
             </div>
             <div class="pwa-install-banner-actions">
-              <button type="button" class="btn btn-primary btn-sm" id="pwaInstallBtn" data-i18n="pwa_install_btn">Install app</button>
+              <button type="button" class="btn btn-primary btn-sm" id="pwaInstallBtn" data-i18n="pwa_install_app_btn">Install App</button>
               <button type="button" class="btn btn-secondary btn-sm" id="pwaInstallDismiss" data-i18n="pwa_install_dismiss">Not now</button>
             </div>
           </div>
@@ -2020,7 +2038,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261009depositFee"></script>
+  <script defer src="/i18n.js?v=20261029pwaInstall"></script>
   <script defer src="/auth.js?v=20261009authTabs"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -2041,7 +2059,7 @@
   <script defer src="/nav.js?v=20261011p2pRoute-db8412df6a"></script>
   <script defer src="/viewport.js?v=20261011p2pRoute-ecd7a6ebb9"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/pwa.js?v=20261028pwa"></script>
+  <script defer src="/pwa.js?v=20261029pwaInstall"></script>
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
   <script defer src="/src/services/p2pApi.js?v=20261011p2pRoute-ac84cfff67"></script>
   <script defer src="/src/lib/p2pEscrowFlow.js?v=20261011p2pRoute-9d2f027157"></script>

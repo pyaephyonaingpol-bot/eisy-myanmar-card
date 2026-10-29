@@ -12,6 +12,10 @@ const path = require('path');
 const PUBLIC = path.join(__dirname, '../public');
 const read = (rel) => fs.readFileSync(path.join(PUBLIC, rel), 'utf8');
 
+const i18nSrc = fs.readFileSync(path.join(PUBLIC, 'i18n.js'), 'utf8');
+assert.ok(i18nSrc.includes("pwa_install_app_btn: 'Install App'"), 'i18n defines Install App label');
+assert.ok(i18nSrc.includes('pwa_install_ios_modal_title'), 'i18n defines iOS install modal copy');
+
 const manifest = JSON.parse(read('manifest.webmanifest'));
 const manifestJson = JSON.parse(read('manifest.json'));
 
@@ -35,6 +39,7 @@ for (const name of ['index.html', 'instant.html']) {
   assert.ok(page.includes('id="pwaInstallBtn"'), `${name} install button`);
   assert.ok(page.includes('js-pwa-install-app'), `${name} persistent Install App control`);
   assert.ok(page.includes('id="pwaInstallAppHeader"'), `${name} header Install App button`);
+  assert.ok(page.includes('id="pwaIosInstallModal"'), `${name} iOS install instructions modal`);
 }
 
 const pwa = read('pwa.js');
@@ -45,6 +50,8 @@ assert.ok(pwa.includes('promptInstall'), 'pwa.js exposes install prompt handler'
 assert.ok(pwa.includes('.prompt()'), 'pwa.js calls native install prompt');
 assert.ok(pwa.includes('js-pwa-install-app'), 'pwa.js binds persistent Install App buttons');
 assert.ok(pwa.includes('refreshInstallAppButtons'), 'pwa.js toggles Install App visibility');
+assert.ok(pwa.includes('openIosInstallModal'), 'pwa.js shows iOS install instructions modal');
+assert.ok(pwa.includes('applyInstallButtonLabels'), 'pwa.js applies Install App button labels');
 
 const sw = read('sw.js');
 assert.ok(sw.includes('PWA_CACHE'), 'service worker defines PWA cache');
