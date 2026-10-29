@@ -33,6 +33,8 @@ for (const name of ['index.html', 'instant.html']) {
   assert.ok(page.includes('/pwa.js'), `${name} PWA bootstrap script`);
   assert.ok(page.includes('id="pwaInstallBanner"'), `${name} install banner shell`);
   assert.ok(page.includes('id="pwaInstallBtn"'), `${name} install button`);
+  assert.ok(page.includes('js-pwa-install-app'), `${name} persistent Install App control`);
+  assert.ok(page.includes('id="pwaInstallAppHeader"'), `${name} header Install App button`);
 }
 
 const pwa = read('pwa.js');
@@ -41,6 +43,8 @@ assert.ok(pwa.includes('EisyPwa'), 'pwa.js exposes EisyPwa');
 assert.ok(pwa.includes('beforeinstallprompt'), 'pwa.js listens for beforeinstallprompt');
 assert.ok(pwa.includes('promptInstall'), 'pwa.js exposes install prompt handler');
 assert.ok(pwa.includes('.prompt()'), 'pwa.js calls native install prompt');
+assert.ok(pwa.includes('js-pwa-install-app'), 'pwa.js binds persistent Install App buttons');
+assert.ok(pwa.includes('refreshInstallAppButtons'), 'pwa.js toggles Install App visibility');
 
 const sw = read('sw.js');
 assert.ok(sw.includes('PWA_CACHE'), 'service worker defines PWA cache');
