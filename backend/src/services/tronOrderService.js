@@ -16,7 +16,11 @@ const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require
 const { formatUsdt } = require('./walletService');
 
 const { tronFullHost, tronGridRequestHeaders } = require('../lib/envAliases');
-const { normalizeTronAddressOrNull } = require('../lib/tronAddress');
+const {
+  normalizeTronAddressOrNull,
+  hasNonEmptyAddressValue,
+  filterEmptyAddressErrors,
+} = require('../lib/tronAddress');
 
 const DEFAULT_MASTER_DEPOSIT_ADDRESS = 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH';
 const USDT_TRC20_CONTRACT = process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
@@ -456,11 +460,20 @@ async function verifyPendingTronOrders() {
     };
   }
 
-  // Group pending orders by their unique deposit address.
+  // Group pending orders by their unique deposit address (skip null / empty / invalid).
   const ordersByAddress = new Map();
+  let skipped_empty_deposit_address = 0;
+  let skipped_invalid_deposit_address = 0;
   for (const order of pending) {
-    const addr = normalizeTronAddress(order.deposit_address);
-    if (!addr) continue;
+    if (!hasNonEmptyAddressValue(order.deposit_address)) {
+      skipped_empty_deposit_address += 1;
+      continue;
+    }
+    const addr = normalizeTronAddressOrNull(order.deposit_address);
+    if (!addr) {
+      skipped_invalid_deposit_address += 1;
+      continue;
+    }
     if (!ordersByAddress.has(addr)) ordersByAddress.set(addr, []);
     ordersByAddress.get(addr).push(order);
   }
@@ -482,6 +495,10 @@ async function verifyPendingTronOrders() {
   const addressErrors = [];
 
   for (const [depositAddress, orders] of ordersByAddress.entries()) {
+    if (!hasNonEmptyAddressValue(depositAddress)) continue;
+    const watchAddress = normalizeTronAddressOrNull(depositAddress);
+    if (!watchAddress) continue;
+
     const oldestCreatedMs = orders.reduce((min, order) => {
       const ts = new Date(order.created_at).getTime();
       return Number.isFinite(ts) && ts < min ? ts : min;
@@ -491,12 +508,14 @@ async function verifyPendingTronOrders() {
     let transfers;
     try {
       transfers = await fetchIncomingUsdtTransfers({
-        address: depositAddress,
+        address: watchAddress,
         minTimestampMs,
       });
     } catch (err) {
-      console.error('[tron/orders] TronGrid fetch failed for', depositAddress, err.message);
-      addressErrors.push({ address: depositAddress, error: err.message, code: err.code });
+      console.error('[tron/orders] TronGrid fetch failed for', watchAddress, err.message);
+      if (hasNonEmptyAddressValue(watchAddress)) {
+        addressErrors.push({ address: watchAddress, error: err.message, code: err.code });
+      }
       continue;
     }
 
@@ -592,7 +611,9 @@ async function verifyPendingTronOrders() {
     credited,
     addresses_watched: ordersByAddress.size,
     transfers_scanned: transfersScanned,
-    address_errors: addressErrors.length ? addressErrors : undefined,
+    address_errors: filterEmptyAddressErrors(addressErrors),
+    skipped_empty_deposit_address: skipped_empty_deposit_address || undefined,
+    skipped_invalid_deposit_address: skipped_invalid_deposit_address || undefined,
     matches,
   };
 }

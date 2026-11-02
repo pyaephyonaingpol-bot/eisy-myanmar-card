@@ -10,6 +10,8 @@ const {
   isValidTronBase58Address,
   normalizeTronAddressOrNull,
   partitionCustodialAddressRows,
+  hasNonEmptyAddressValue,
+  filterEmptyAddressErrors,
 } = require('../src/lib/tronAddress');
 
 assert.strictEqual(normalizeTronAddressOrNull(null), null);
@@ -30,6 +32,20 @@ const { valid, invalid } = partitionCustodialAddressRows([
 ]);
 assert.strictEqual(valid.length, 1);
 assert.strictEqual(invalid.length, 3);
+
+assert.strictEqual(hasNonEmptyAddressValue(null), false);
+assert.strictEqual(hasNonEmptyAddressValue(''), false);
+assert.strictEqual(hasNonEmptyAddressValue('   '), false);
+assert.strictEqual(hasNonEmptyAddressValue(sample), true);
+
+assert.strictEqual(
+  filterEmptyAddressErrors([
+    { address: '', error: 'x' },
+    { address: sample, error: 'y' },
+  ])?.length,
+  1,
+);
+assert.strictEqual(filterEmptyAddressErrors([{ address: '', error: 'x' }]), undefined);
 
 (async () => {
   const { fetchIncomingUsdtTransfers } = require('../src/services/tronOrderService');

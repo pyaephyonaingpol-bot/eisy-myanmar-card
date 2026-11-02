@@ -8,6 +8,20 @@ function sanitizeTronAddressInput(addr) {
   return String(addr).trim();
 }
 
+/** False for null, undefined, "", or whitespace-only strings. */
+function hasNonEmptyAddressValue(addr) {
+  if (addr == null) return false;
+  return String(addr).trim() !== '';
+}
+
+function filterEmptyAddressErrors(errors) {
+  if (!Array.isArray(errors) || !errors.length) return undefined;
+  const kept = errors.filter(
+    (entry) => entry && hasNonEmptyAddressValue(entry.address),
+  );
+  return kept.length ? kept : undefined;
+}
+
 function isValidTronBase58Address(addr) {
   const s = sanitizeTronAddressInput(addr);
   if (!s) return false;
@@ -41,6 +55,8 @@ function partitionCustodialAddressRows(rows) {
 module.exports = {
   TRON_BASE58_ADDRESS_RE,
   sanitizeTronAddressInput,
+  hasNonEmptyAddressValue,
+  filterEmptyAddressErrors,
   isValidTronBase58Address,
   normalizeTronAddressOrNull,
   partitionCustodialAddressRows,

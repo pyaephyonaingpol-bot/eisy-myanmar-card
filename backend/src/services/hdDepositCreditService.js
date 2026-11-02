@@ -9,7 +9,12 @@
  */
 const { getDb } = require('../db');
 const { isTronDepositEnabled } = require('./securityFlags');
-const { normalizeTronAddressOrNull, partitionCustodialAddressRows } = require('../lib/tronAddress');
+const {
+  normalizeTronAddressOrNull,
+  partitionCustodialAddressRows,
+  hasNonEmptyAddressValue,
+  filterEmptyAddressErrors,
+} = require('../lib/tronAddress');
 
 const USDT_TRC20_CONTRACT = process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const SCAN_INTERVAL_MS = Math.max(5000, parseInt(process.env.TRON_HD_SCAN_INTERVAL_MS || '20000', 10) || 20000);
@@ -253,7 +258,11 @@ async function creditInboundHdDepositsForRows(rows, {
         orderBy: 'block_timestamp,desc',
       });
     } catch (err) {
-      errors.push({ address, error: err.message, code: err.code || 'TRONGRID_FETCH_FAILED' });
+      if (hasNonEmptyAddressValue(address)) {
+        errors.push({ address, error: err.message, code: err.code || 'TRONGRID_FETCH_FAILED' });
+      } else {
+        skipped += 1;
+      }
       continue;
     }
 
@@ -340,7 +349,7 @@ async function creditInboundHdDepositsForRows(rows, {
     scanned,
     addresses: rows.length,
     matches,
-    errors: errors.length ? errors : undefined,
+    errors: filterEmptyAddressErrors(errors),
   };
 }
 
