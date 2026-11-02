@@ -261,7 +261,7 @@ async function confirmMmkTransfer(orderId, userId, {
       seller: maker ? { name: maker.name } : null,
       user,
     }),
-    message: 'Payment confirmed — waiting for the seller to release USDT to your wallet.',
+    message: 'Payment Sent — seller USDT is held in escrow until they release it to your wallet.',
   };
 }
 
@@ -441,7 +441,7 @@ async function adminRefundP2pBuyOrderDispute(orderId, { adminNote, reviewedBy = 
 }
 
 async function listP2pBuyOrdersForAdmin({ status } = {}) {
-  const rows = await P2PBuyOrder.listByStatus(status || 'pending_seller_release');
+  const rows = await P2PBuyOrder.listByStatus(status === undefined ? 'pending_seller_release' : status);
   const settings = await getCardPricingSettings();
   const enriched = await Promise.all(rows.map(async (row) => {
     const maker = row.maker_user_id ? await User.findById(row.maker_user_id) : null;

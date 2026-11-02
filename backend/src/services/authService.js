@@ -19,9 +19,51 @@ const {
 
 const OTP_EXPIRY_MINUTES = parseInt(process.env.OTP_EXPIRY_MINUTES || '10', 10);
 const SESSION_EXPIRY_DAYS = parseInt(process.env.SESSION_EXPIRY_DAYS || '30', 10);
+const OTP_RESEND_COOLDOWN_SECONDS = Math.max(
+  15,
+  parseInt(process.env.OTP_RESEND_COOLDOWN_SECONDS || '60', 10) || 60
+);
 
 function otpExpiresAt() {
   return addMinutes(OTP_EXPIRY_MINUTES);
+}
+
+async function assertOtpResendAllowed(email, purpose) {
+  const latest = await OtpCode.findLatestAge(email, purpose);
+  const age = Number(latest?.age_seconds);
+  if (!Number.isFinite(age) || age < 0) return;
+  const wait = OTP_RESEND_COOLDOWN_SECONDS - age;
+  if (wait <= 0) return;
+  const err = new Error(`A code was just sent. Resend OTP in ${wait}s.`);
+  err.code = 'OTP_RESEND_COOLDOWN';
+  err.retry_after_seconds = wait;
+  throw err;
+}
+
+/**
+ * Persist the code and start Resend together.
+ * The HTTP handler still awaits the database write, not the provider.
+ */
+async function issueOtpEmail({ userId, email, purpose, ipAddress }) {
+  await assertOtpResendAllowed(email, purpose);
+  const otp = generateOtp();
+  const saved = OtpCode.create({
+    userId,
+    email,
+    otpCode: otp,
+    purpose,
+    expiresAt: otpExpiresAt(),
+    ipAddress,
+  });
+  dispatchOtpEmail({ email, otp, purpose });
+  await saved;
+  return {
+    email,
+    expires_in_minutes: OTP_EXPIRY_MINUTES,
+    email_queued: true,
+    resend_after_seconds: OTP_RESEND_COOLDOWN_SECONDS,
+    ...devOtpPayload(otp),
+  };
 }
 
 function sessionExpiresAt() {
@@ -146,6 +188,15 @@ async function resolveRegistrationPhone(normalizedEmail, phone) {
   return candidate;
 }
 
+function notifyNewUserRegistered(user, method) {
+  try {
+    const { notifyAdminNewUser } = require('./telegram');
+    notifyAdminNewUser({ user, method });
+  } catch (err) {
+    console.warn('[auth] signup telegram notify hook failed:', err.message);
+  }
+}
+
 async function sendRegistrationOtp(email, ipAddress) {
   const normalized = normalizeEmail(email);
   const existing = await User.findByEmail(normalized);
@@ -153,24 +204,11 @@ async function sendRegistrationOtp(email, ipAddress) {
     throw new Error('Email already registered');
   }
 
-  const otp = generateOtp();
-  await OtpCode.create({
+  return issueOtpEmail({
     email: normalized,
-    otpCode: otp,
     purpose: 'register',
-    expiresAt: otpExpiresAt(),
     ipAddress,
   });
-
-  // Do not block the HTTP response on Resend RTT — dispatch immediately after persist.
-  dispatchOtpEmail({ email: normalized, otp, purpose: 'register' });
-
-  return {
-    email: normalized,
-    expires_in_minutes: OTP_EXPIRY_MINUTES,
-    email_queued: true,
-    ...devOtpPayload(otp),
-  };
 }
 
 async function completeRegistration({ email, otp, name, phone, pin, ipAddress, deviceName, devicePlatform }) {
@@ -212,6 +250,7 @@ async function completeRegistration({ email, otp, name, phone, pin, ipAddress, d
     throw mapUserPersistenceError(err);
   }
   await User.verifyEmail(user.id);
+  notifyNewUserRegistered(user, 'email_otp');
 
   ensureSupabaseUserWalletInBackground(user.id, { syncIfExists: false });
   try {
@@ -266,23 +305,12 @@ async function sendLoginOtp(email, ipAddress) {
 
   assertUserNotBlocked(user, { action: 'log in' });
 
-  const otp = generateOtp();
-  await OtpCode.create({
+  return issueOtpEmail({
     userId: user.id,
     email: normalized,
-    otpCode: otp,
     purpose: 'login',
-    expiresAt: otpExpiresAt(),
     ipAddress,
   });
-
-  dispatchOtpEmail({ email: normalized, otp, purpose: 'login' });
-  return {
-    email: normalized,
-    expires_in_minutes: OTP_EXPIRY_MINUTES,
-    email_queued: true,
-    ...devOtpPayload(otp),
-  };
 }
 
 async function loginWithPin({ email, pin, ipAddress, deviceName, devicePlatform }) {
@@ -469,29 +497,23 @@ async function sendPinResetOtp(email, ipAddress) {
     return {
       email: normalized,
       expires_in_minutes: OTP_EXPIRY_MINUTES,
+      email_queued: false,
+      resend_after_seconds: OTP_RESEND_COOLDOWN_SECONDS,
       message: 'If an account exists for that email, a PIN reset code was sent.',
     };
   }
 
   assertUserNotBlocked(user, { action: 'reset PIN' });
 
-  const otp = generateOtp();
-  await OtpCode.create({
+  const issued = await issueOtpEmail({
     userId: user.id,
     email: normalized,
-    otpCode: otp,
     purpose: 'reset_pin',
-    expiresAt: otpExpiresAt(),
     ipAddress,
   });
-  dispatchOtpEmail({ email: normalized, otp, purpose: 'reset_pin' });
-
   return {
-    email: normalized,
-    expires_in_minutes: OTP_EXPIRY_MINUTES,
+    ...issued,
     message: 'PIN reset code sent to your email',
-    email_queued: true,
-    ...devOtpPayload(otp),
   };
 }
 
@@ -623,8 +645,34 @@ async function changePassword(userId, { currentPassword, newPassword, confirmPas
   return { message: 'Password updated successfully', has_password: true };
 }
 
-async function getMe(userId) {
-  const user = await User.findById(userId);
+function userRowFromSessionJoin(session) {
+  if (!session?.uid && !session?.user_id) return null;
+  return {
+    id: session.uid || session.user_id,
+    email: session.email,
+    name: session.name,
+    phone: session.phone,
+    username: session.username,
+    email_verified: session.email_verified,
+    pin_hash: session.pin_hash,
+    password_hash: session.password_hash,
+    biometrics_enabled: session.biometrics_enabled,
+    auth_status: session.auth_status,
+    admin_role: session.admin_role,
+    kyc_status: session.kyc_status,
+    balance: session.balance,
+    balance_mmk: session.balance_mmk,
+    balance_usdt: session.balance_usdt,
+    balance_usdt_locked: session.balance_usdt_locked,
+    last_login_at: session.last_login_at,
+    created_at: session.created_at,
+    updated_at: session.updated_at,
+  };
+}
+
+async function getMe(userId, { sessionJoin } = {}) {
+  const joined = userRowFromSessionJoin(sessionJoin);
+  const user = joined?.email ? joined : await User.findById(userId);
   if (!user) throw new Error('User not found');
 
   ensureSupabaseUserWalletInBackground(userId);
@@ -778,6 +826,7 @@ async function loginWithGoogleOAuth({
       await User.verifyEmail(user.id);
       user.email_verified = 1;
       created = true;
+      notifyNewUserRegistered(user, 'google');
       ensureSupabaseUserWalletInBackground(user.id, { syncIfExists: false });
       try {
         const { isTronWalletEnabled } = require('./securityFlags');

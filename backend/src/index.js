@@ -33,6 +33,20 @@ app.set('trust proxy', 1);
 // Security headers (XSS / clickjacking / MIME sniffing / HSTS)
 app.use(createHelmetMiddleware());
 
+try {
+  // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+  const compression = require('compression');
+  app.use(compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.path && String(req.path).startsWith('/api/webhook/')) return false;
+      return compression.filter(req, res);
+    },
+  }));
+} catch (err) {
+  console.warn('[server] compression middleware unavailable:', err.message);
+}
+
 app.use(cors(createCorsOptions()));
 app.options('*', cors(createCorsOptions()));
 app.use(express.json({
@@ -171,13 +185,14 @@ app.get('/admin', (_req, res) => {
   sendHtmlFile(res, path.join(PUBLIC_DIR, 'admin.html'));
 });
 
+// Instant/Hub split removed — keep legacy URLs working by redirecting to /admin.
 app.get(['/admin/instant', '/admin/instant.html'], (_req, res) => {
-  sendAdminPipeline(res, 'instant');
+  res.redirect(302, '/admin');
 });
 
-// Legacy Business/Standard admin URLs → Instant admin.
+// Legacy Business/Standard admin URLs → unified admin.
 app.get(['/admin/business', '/admin/business.html', '/admin/standard', '/admin/standard.html'], (_req, res) => {
-  res.redirect(302, '/admin/instant');
+  res.redirect(302, '/admin');
 });
 
 app.use(express.static(PUBLIC_DIR, {
@@ -189,6 +204,9 @@ app.use(express.static(PUBLIC_DIR, {
     } else if (/\.(webmanifest|json)$/i.test(filePath) && /manifest/i.test(filePath)) {
       res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
       res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    } else if (/\/sw\.js$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      res.setHeader('Service-Worker-Allowed', '/');
     } else if (/\.(js|css)$/i.test(filePath)) {
       // Versioned via ?v= query in HTML — always revalidate so deploys apply quickly
       res.setHeader('Cache-Control', 'no-cache, must-revalidate');
@@ -417,8 +435,10 @@ app.use('/api/deposit', depositRoutes);
 app.use('/api/tron/orders', require('./routes/tronOrders'));
 app.use('/api/tron/wallet', require('./routes/tronWallet'));
 app.use('/api/webhook', require('./routes/webhook'));
+app.use('/api/sweep', require('./routes/sweep'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/settings', require('./routes/publicSettings'));
 app.use('/api/support', supportRoutes);
 app.use('/api/kyc', createKycRateLimiter(), require('./routes/kyc'));
 app.use('/api/p2p', require('./routes/p2p'));
@@ -475,45 +495,8 @@ async function start() {
 
   await initDb();
 
-  try {
-    const { ensureEnvSuperAdmin } = require('./services/adminAuthService');
-    const ensured = await ensureEnvSuperAdmin({ source: 'boot' });
-    if (ensured.skipped) {
-      console.log('[admin] env super-admin ensure skipped:', ensured.reason);
-    } else {
-      console.log(
-        '[admin] env super-admin ensured:',
-        ensured.user?.email,
-        `created=${ensured.created}`,
-        `promoted=${ensured.promoted}`,
-        `password_synced=${ensured.password_synced}`
-      );
-    }
-  } catch (err) {
-    console.warn('[admin] env super-admin ensure failed:', err.message);
-  }
-
-  try {
-    const { isSupabaseEnabled } = require('./lib/supabase');
-    if (isSupabaseEnabled()) {
-      const {
-        getUserWalletsMirrorStatus,
-        backfillAllUserWalletsInBackground,
-      } = require('./services/supabaseSyncService');
-      const mirror = await getUserWalletsMirrorStatus();
-      if (mirror.enabled && !mirror.in_sync) {
-        console.warn(
-          `[supabase] user_wallets mirror incomplete `
-          + `(turso=${mirror.turso_total} supabase=${mirror.supabase_total} `
-          + `missing=${Array.isArray(mirror.missing_user_ids) ? mirror.missing_user_ids.length : '?'})`
-          + ' — starting background backfill'
-        );
-        backfillAllUserWalletsInBackground();
-      }
-    }
-  } catch (err) {
-    console.warn('[supabase] user mirror boot check skipped:', err.message);
-  }
+  const { scheduleDeferredServerTasks } = require('./serverBootstrap');
+  scheduleDeferredServerTasks('boot');
 
   const { processExpiredP2pOrders } = require('./services/p2pOrderExpiryService');
   const expiryInterval = setInterval(() => {
@@ -524,12 +507,24 @@ async function start() {
   expiryInterval.unref?.();
 
   const { isTronDepositEnabled } = require('./services/securityFlags');
-  const pollTron = String(process.env.TRON_ORDER_POLL_ENABLED || 'true').toLowerCase() !== 'false';
+  const pollTron = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.TRON_ORDER_POLL_ENABLED || 'false').trim().toLowerCase()
+  );
   if (isTronDepositEnabled() && pollTron) {
     const { startTronOrderPoller } = require('./services/tronOrderService');
     startTronOrderPoller();
   } else {
     console.log('[tron/orders] TRON HD deposit poll disabled');
+  }
+
+  const {
+    isSweepSchedulerEnabled,
+    startTronSweepScheduler,
+  } = require('./services/tronSweepSchedulerService');
+  if (isSweepSchedulerEnabled()) {
+    startTronSweepScheduler();
+  } else {
+    console.log('[tron/sweep/scheduler] disabled (set TRON_SWEEP_SCHEDULER_ENABLED=true on Droplet)');
   }
 
   await new Promise((resolve, reject) => {

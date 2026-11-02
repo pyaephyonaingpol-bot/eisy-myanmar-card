@@ -54,8 +54,8 @@ assert.ok(
   'favicon link points at /brand/logo-icon.png'
 );
 assert.ok(
-  /rel=["']apple-touch-icon["'][^>]+href=["']\/brand\/logo-icon\.png/.test(html),
-  'apple-touch-icon points at /brand/logo-icon.png'
+  /rel=["']apple-touch-icon["'][^>]+href=["']\/(brand\/logo-icon\.png|icons\/Icon-192\.png)/.test(html),
+  'apple-touch-icon uses brand or PWA icon'
 );
 assert.ok(!/rel=["']icon["'][^>]+href=["']\/favicon\.png/.test(html), 'legacy /favicon.png icon link removed');
 assert.ok(!/rel=["']apple-touch-icon["'][^>]+href=["']\/apple-touch-icon\.png/.test(html), 'legacy apple-touch path removed');
@@ -71,7 +71,10 @@ assert.ok(
 );
 
 const manifest = read('manifest.webmanifest');
-assert.ok(manifest.includes('/brand/logo-icon.png'), 'PWA manifest uses logo-icon.png');
+assert.ok(
+  manifest.includes('/brand/logo-icon.png') && manifest.includes('/icons/Icon-192.png'),
+  'PWA manifest links brand and dedicated icons'
+);
 
 // Fallback /favicon.png must be a byte-identical copy of the header icon
 const iconBytes = fs.readFileSync(path.join(PUBLIC, 'brand/logo-icon.png'));

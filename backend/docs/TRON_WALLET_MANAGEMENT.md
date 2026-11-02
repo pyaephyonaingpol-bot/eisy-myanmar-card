@@ -1,70 +1,286 @@
-# Per-user TRON wallet management
+# TRON HD wallet operations runbook
 
-Backend façade for unique TRC-20 deposit addresses, deposit credit, and
-master-wallet withdrawals.
+Operational guide for **eisymyanmar** custodial TRON (TRC-20 USDT) wallets: HD deposit addresses, deposit crediting, master wallet withdrawals, sweeps, monitoring, and balance integrity.
 
-## Service
+---
 
-`backend/src/services/tronWalletService.js`
+## Architecture overview
 
-| Function | Role |
-|----------|------|
-| `generateUserDepositAddress(userId)` | Deterministic HD TRC-20 address + Supabase sync |
-| `provisionDepositAddressInBackground(userId)` | Called after registration |
-| `getTronWalletSummary(userId)` | Address + internal USDT balances |
-| `createDepositIntent(userId, { amount_usdt })` | Order bound to unique address |
-| `creditDetectedDeposits()` / `detectAndCreditDeposits()` | Poller: match transfers → credit ledger |
-| `withdrawFromMasterWallet(userId, { toAddress, amountUsdt })` | Debit user → send from master wallet |
+```mermaid
+flowchart LR
+  User -->|USDT TRC20| HD[Per-user HD deposit address]
+  HD -->|Manual sweep| Master[Master hot wallet]
+  Master -->|Withdrawals| External[User external address]
+  Poll[TronGrid poll / webhooks] --> Credit[applyIncomingDepositCredit]
+  Credit --> DB[(SQLite users.balance_usdt)]
+```
 
-## HTTP API (`/api/tron/wallet`)
+| Component | Path | Role |
+|-----------|------|------|
+| HD derivation | `backend/src/services/tronHdWalletService.js` | BIP44 `m/44'/195'/0'/0/{index}`; keys never stored |
+| Deposit addresses | `backend/src/services/tronDepositAddressService.js` | Persist address + sync Supabase |
+| Order + poll | `backend/src/services/tronOrderService.js` | Pending Supabase orders → TronGrid match → credit |
+| HD inbound scan | `backend/src/services/hdDepositCreditService.js` | Unsolicited sends to HD addresses |
+| Wallet credit | `backend/src/services/depositCreditService.js` | Atomic `claimForCredit` + balance + ledger |
+| Master wallet | `backend/src/services/tronMasterWalletService.js` | Withdrawals + gas for sweeps |
+| Sweep | `backend/src/services/tronSweepService.js` | TRX gas → USDT to master (**manual only**) |
+| Monitor | `backend/src/services/tronWalletMonitorService.js` | Telegram alerts (TRX low, sweep failures) |
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/api/tron/wallet` | session + sensitive | Summary |
-| GET/POST | `/api/tron/wallet/address` | session | Ensure unique deposit address |
-| POST | `/api/tron/wallet/deposits` | session + sensitive | Create deposit intent |
-| GET | `/api/tron/wallet/deposits/:orderId` | session | Deposit status |
-| POST | `/api/tron/wallet/withdraw` | session + sensitive | Withdraw via master wallet |
-| POST | `/api/tron/wallet/sync-deposits` | `X-Deposit-Listener-Secret` | Worker credit pass |
+**Important:** User `balance_usdt` is updated when a deposit is **verified in the database**, not when USDT is swept to master. On-chain USDT may sit on HD addresses until ops run a sweep.
 
-Existing routes remain: `/api/tron/orders`, `/api/withdraw`, `/api/withdrawal/usdt`.
+---
 
-## Flow
+## Environment variables
 
-1. **Register** → background HD address provision → Supabase `user_wallets` / `user_tron_deposit_addresses`
-2. **Deposit** → `POST /deposits` → user pays unique address → poller / `sync-deposits` credits `balance_usdt`
-3. **Withdraw** → `POST /withdraw` → debit ledger → `transferUsdtTrc20` from `MASTER_PRIVATE_KEY`
-4. **Sweep (ops)** → master sends a little TRX for gas → deposit address sends all USDT back to master
+### HD seed (choose one)
 
-## Sweep (manual only — no cron)
+| Variable | Description |
+|----------|-------------|
+| `TRON_HD_MNEMONIC` | Preferred BIP39 mnemonic |
+| `TRON_HD_SEED_HEX` | Hex seed (≥16 bytes) |
+| `MASTER_PRIVATE_KEY` | Fallback seed material for HD (also signs master transfers) |
+| `TRON_HD_ENABLED` | `true` (default) / `false` |
+| `TRON_HD_INDEX_OFFSET` | Added to `userId` for derivation index |
 
-Trigger when you want to collect USDT from HD deposit addresses into the master wallet:
+### Master wallet
+
+| Variable | Description |
+|----------|-------------|
+| `MASTER_PRIVATE_KEY` | **Required** for withdrawals and sweep gas |
+| `MASTER_WALLET_ADDRESS` | Optional; must match key-derived address if set |
+| `MASTER_TRX_LOW_THRESHOLD` | Alert when TRX below this (default **30**) |
+| `USDT_TRC20_CONTRACT` | Default mainnet USDT |
+
+### TronGrid
+
+| Variable | Description |
+|----------|-------------|
+| `TRON_FULL_HOST` / `TRONGRID_FULL_HOST` | API host |
+| `TRONGRID_API_KEY` / `TRON_PRO_API_KEY` | Pro API key (recommended) |
+
+### Deposits
+
+| Variable | Description |
+|----------|-------------|
+| `DEPOSIT_LISTENER_SECRET` | Optional auth for `POST /api/tron/orders/check/pending` |
+| `TRON_ORDER_POLL_ENABLED` | Default **false** — set `true` only on long-running servers (not Vercel Hobby) |
+| `TRON_HD_SCAN_ON_READ` | Scan user HD address when wallet UI loads |
+| `TRON_HD_SCAN_BATCH_SIZE` | Addresses per batch in admin HD scan (default **200**) |
+| `TRON_HD_SCAN_MAX_ADDRESSES` | Max addresses per admin scan pass (default **5000**) |
+
+### Sweep (manual)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRON_ENERGY_API_URL` | — | Netts endpoint (e.g. `https://netts.io/apiv2/order1h`) |
+| `TRON_ENERGY_API_KEY` | — | Netts dashboard API key (`X-API-KEY`) |
+| `TRON_NETTS_REAL_IP` | — | **Required.** Droplet public IPv4 whitelisted in Netts; sent as `X-Real-IP` on every order |
+| `TRON_SWEEP_NETTS_SETTLE_MS` | 2000 | Wait after energy order before USDT transfer |
+| `TRON_NETTS_FETCH_TIMEOUT_MS` | 25000 | Netts HTTP timeout |
+| `TRON_SWEEP_GAS_TRX` | 1.1 | Legacy label; live sweeps use Netts energy (not master TRX gas) |
+| `TRON_SWEEP_GAS_WAIT_MS` | 3000 | Wait after gas tx before USDT transfer |
+| `TRON_SWEEP_MIN_USDT` | 25 | Skip sweep if deposit USDT below this |
+| `TRON_SWEEP_SKIP_GAS_IF_TRX` | ~0.55 TRX | Skip gas if deposit already has TRX |
+
+**Netts IP whitelist:** Netts documents `X-Real-IP` as required and returns `401 Invalid API key or IP not in whitelist` when the IP is wrong. This app sends `TRON_NETTS_REAL_IP` as that header from `lib/nettsUsdtSweep.js` (direct `fetch` to Netts — **not** via the Pago Card DigitalOcean proxy). Whitelist the same IPv4 in the Netts dashboard. Set `TRON_NETTS_REAL_IP` on **Vercel** and on the **Droplet** (PM2) to that address. Admin sweeps on production (`eisymyanmar.com`) run on **Vercel serverless**; the TCP egress IP is a Vercel pool address, while Netts auth uses the configured `X-Real-IP`. Prefer running live sweeps from the Droplet (`npm run sweep:tron-deposits` or PM2) when Netts ties orders to connection IP as well as the header.
+
+### Monitoring (Telegram admin chat)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRON_WALLET_MONITOR_ENABLED` | on (off in `NODE_ENV=test`) | Master TRX + sweep alerts |
+| `TRON_MONITOR_ALERT_COOLDOWN_MINUTES` | 60 | Throttle repeat alerts |
+| `TELEGRAM_BOT_TOKEN` / admin chat id | — | Required for alerts (see `telegram.js`) |
+
+---
+
+## Deposit crediting (balance accuracy)
+
+All USDT top-ups converge on:
+
+1. `applyIncomingDepositCredit()` — resolve user/deposit, verify tx when required  
+2. `creditDepositAndVerify()` — purpose-specific path  
+3. `creditUsdtBalanceAtomic()` — **single transaction**: `claimForCredit` → `users.balance_usdt` += net → `usdt_wallet_transactions`
+
+**Double-credit protection**
+
+- DB unique indexes on `tx_hash` / `txn_id`  
+- `assertTxHashAvailable()` before attach  
+- `claimForCredit()` only succeeds once per deposit row  
+
+**Detection paths**
+
+1. **TRON order poll** — pending Supabase order amount matches inbound transfer to that order’s HD address (FIFO by order `created_at` when multiple pending).  
+2. **Admin HD inbound scan** (`POST /api/admin/scan-deposits`) — paginated scan of all custodial addresses.  
+3. **Webhooks** — `/api/webhook/tron` with on-chain verification.  
+4. **Read scan** — best-effort when user opens wallet/deposit UI (`TRON_HD_SCAN_ON_READ`).
+
+Regression scripts:
+
+```bash
+node backend/scripts/test-deposit-security.js
+node backend/scripts/test-deposit-wallet-credit.js
+node backend/scripts/test-tron-auto-deposit-withdraw.js
+node backend/scripts/test-tron-orders.js
+```
+
+---
+
+## Sweep procedure (collect USDT to master)
+
+Sweeps are **never scheduled automatically**. Use admin API or CLI after deposits accumulate on HD addresses.
+
+### Preconditions
+
+- Master wallet holds enough **TRX** for gas (`TRON_SWEEP_GAS_TRX` × number of addresses swept).  
+- Master **USDT** is not required for sweep (USDT moves deposit → master).  
+- `MASTER_WALLET_TRANSFERS_PAUSED` must be `false` for live sweeps.
+
+### Admin API
 
 ```http
 POST /api/admin/sweep-deposits
-Authorization: admin session / X-Admin-Key
-Permission: master_wallet (super_admin)
+Authorization: admin session (permission: master_wallet)
 
 { "dry_run": true }
 { "user_id": 42 }
-{ "force_gas": true, "limit": 100 }
+{ "force_gas": true, "limit": 500 }
 ```
 
+`GET /api/admin/sweep-deposits` — list sweepable custodial addresses (no chain txs).
+
+Successful `POST` responses include `total_usdt`, `transfer_count`, and up to 100 `transfers` rows (user, address, amount, tx id).
+
+### Admin dashboard
+
+**Overview → Master Wallet** and the deposits master-wallet panel expose **Trigger Manual Sweep** (`master_wallet` permission). The UI confirms before broadcasting, then shows a toast and status log with checked/swept/skipped/failed counts and total USDT moved to master.
+
+### CLI
+
 ```bash
-# Optional CLI (also manual — not scheduled)
+cd backend
+npm run verify:sweep-env
+npm run sweep:dry-run-one
 npm run sweep:tron-deposits -- --dry-run --all
 npm run sweep:tron-deposits -- --user-id=42
 npm run sweep:tron-deposits -- --all
 ```
 
-Service: `backend/src/services/tronSweepService.js`  
-CLI: `backend/scripts/sweep-tron-deposits.js`
+**DigitalOcean daily cron:** see [`DROPLET_SWEEP_CRON.md`](./DROPLET_SWEEP_CRON.md).
 
-Env: `TRON_SWEEP_GAS_TRX` (default `1.1`), `TRON_SWEEP_GAS_WAIT_MS`, `TRON_SWEEP_MIN_USDT` (default `25`).
+### Flow per address
 
-Admin UI: Overview → Master wallet → **Sweep** (also on the Deposits master-wallet panel). Calls `POST /api/admin/sweep-deposits` and only moves balances at or above the min USDT threshold.
+1. Read USDT balance on HD address; skip if &lt; `TRON_SWEEP_MIN_USDT`.  
+2. If deposit TRX &lt; threshold → master sends `TRON_SWEEP_GAS_TRX` TRX.  
+3. Deposit address signs USDT `transfer` → master address.  
 
-## Env
+Failures (insufficient master TRX, transfer errors) trigger **Telegram alerts** when monitoring is enabled.
 
-See `.env.example`: `TRON_HD_MNEMONIC`, `MASTER_PRIVATE_KEY`, `DEPOSIT_LISTENER_SECRET`.
-Apply `supabase/user_tron_hd_addresses.sql`.
+---
+
+## Monitoring and alerts
+
+Service: `backend/src/services/tronWalletMonitorService.js`
+
+| Alert | When |
+|-------|------|
+| `master_trx_low` | Master TRX &lt; `MASTER_TRX_LOW_THRESHOLD` |
+| `master_address_mismatch` | `MASTER_WALLET_ADDRESS` ≠ address from private key |
+| `master_balance_unreachable` | TronGrid/Tronscan/TronWeb all fail |
+| `sweep_failures` | Manual sweep finished with `failed` &gt; 0 |
+| `sweep_insufficient_trx` | Sweep failed for lack of master TRX |
+
+**When alerts run**
+
+- After each admin **`POST /api/admin/scan-deposits`** (includes `runTronOrderPollSafely()`).  
+- After **`runManualSweep()`** completes (or throws on catastrophic error).
+
+Admin UI: **Overview → Master wallet** shows TRX/USDT and low-TRX styling (`GET /api/admin/master-wallet-balance`).
+
+Test:
+
+```bash
+node backend/scripts/test-tron-wallet-monitor.js
+```
+
+---
+
+## Manual admin operations (production — no Vercel cron)
+
+**`vercel.json` does not define scheduled crons** (Hobby plan schedules are unreliable). Deposit crediting and on-chain sweeps are **admin-triggered only** (`master_wallet` permission).
+
+### Trigger Deposit Credit Scan
+
+Admin dashboard: **Trigger Deposit Credit Scan** (Overview → Master Wallet and USDT Withdrawals panel).
+
+```http
+POST /api/admin/scan-deposits
+Authorization: admin session (permission: master_wallet)
+```
+
+Runs in one request:
+
+1. Pending TRON order verification (Supabase → TronGrid → wallet credit)  
+2. HD inbound deposit scan (all custodial addresses, batched)  
+3. Master wallet monitor (TRX low Telegram alerts)
+
+`GET /api/admin/scan-deposits` — `in_flight` status only.
+
+### Trigger Manual Sweep
+
+See [Sweep procedure](#sweep-procedure-collect-usdt-to-master) and **Trigger Manual Sweep** in the admin UI (`POST /api/admin/sweep-deposits`).
+
+### Optional listener hook (not scheduled)
+
+| Endpoint | Auth |
+|----------|------|
+| `POST /api/tron/orders/check/pending` | `X-Deposit-Listener-Secret` |
+
+Prefer **Trigger Deposit Credit Scan** for day-to-day crediting.
+
+---
+
+## Health checks
+
+- `GET /api/health/tron` — master address consistency, TronGrid reachability, master balances (used for deploy smoke tests).
+
+---
+
+## Supabase
+
+Apply `supabase/user_tron_hd_addresses.sql` (or legacy `user_tron_deposit_addresses`).  
+HD sync uses adaptive upsert if columns are missing.
+
+---
+
+## Incident checklist
+
+| Symptom | Action |
+|---------|--------|
+| Users paid but balance unchanged | Admin **Trigger Deposit Credit Scan**; check Supabase pending order; verify TronGrid key; check min deposit |
+| Sweep stuck / failed | Fund master TRX; check Telegram alert; retry with `force_gas`; inspect `SWEEP_*` codes in logs |
+| Withdrawals fail | Master USDT + TRX; `MASTER_WALLET_TRANSFERS_PAUSED`; address mismatch |
+| Duplicate credit concern | Query `deposit_requests_v2` for tx_hash; verify single VERIFIED row; ledger `usdt_wallet_transactions` |
+
+---
+
+## Security notes
+
+- Never log or persist HD private keys or mnemonics.  
+- `BYPASS_USDT_TX_VERIFICATION` is refused in production.  
+- Rotate `MASTER_PRIVATE_KEY` after any leak; set pause flags until rotation completes.  
+- Sweeps and withdrawals share the master key — restrict admin `master_wallet` permission.
+
+---
+
+## Related HTTP routes
+
+| Route | Notes |
+|-------|--------|
+| `/api/tron/orders` | Create/list TRON deposit orders |
+| `/api/admin/scan-deposits` | Manual deposit credit scan + monitor |
+| `/api/admin/sweep-deposits` | Manual sweep |
+| `/api/admin/master-wallet-balance` | Ops dashboard balances |
+| `/api/webhook/tron` | Tron-style deposit webhooks |
+
+Legacy façade (still documented in code): `backend/src/services/tronWalletService.js`, `/api/tron/wallet/*`.

@@ -104,13 +104,17 @@ async function main() {
 
   const adminRoute = fs.readFileSync(path.join(__dirname, '../src/routes/admin.js'), 'utf8');
   assert.ok(!/FROM users[\s\S]{0,220}LIMIT\s+15\b/i.test(adminRoute), 'must not hard-cap users at 15');
-  assert.ok(adminRoute.includes('listForAdmin'), 'admin users list uses User.listForAdmin');
+  assert.ok(adminRoute.includes('listAdminUserDirectory'), 'admin users list unions Turso users with Supabase wallets');
   assert.ok(adminRoute.includes('has_more'), 'admin users response includes has_more');
   assert.ok(adminRoute.includes('/users/mirror-status'), 'mirror status is a separate route');
   assert.ok(adminRoute.includes('/users/backfill-wallets'), 'admin backfill wallets route exists');
   assert.ok(adminRoute.includes('total'), 'admin users response includes total');
   assert.ok(!adminRoute.includes('backfillAllUserWalletsInBackground'), 'list route must not trigger background backfill');
-  assert.ok(adminJs.includes('usersLoadMoreBtn') || adminJs.includes('usersGoNextPage'), 'admin UI supports pagination');
+  assert.ok(adminJs.includes('usersPageSize'), 'admin UI has a page size control');
+  assert.ok(adminJs.includes('created_at_desc'), 'admin UI sorts users newest first');
+  assert.ok(adminHtml.includes('id="usersPageSize"'), 'page size control is in the users toolbar');
+  assert.ok(adminHtml.includes('id="usersSort"'), 'sort control is in the users toolbar');
+  assert.ok(adminHtml.includes('users-directory-scroll'), 'user list scrolls inside the table');
   assert.ok(adminJs.includes('limit') && adminJs.includes('offset'), 'admin UI requests limit/offset');
 
   const syncSrc = fs.readFileSync(path.join(__dirname, '../src/services/supabaseSyncService.js'), 'utf8');

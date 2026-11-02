@@ -1,6 +1,6 @@
 const { getDb } = require('../db');
 
-const SUPPORTED_NETWORKS = ['TRC20', 'BEP20', 'ERC20'];
+const SUPPORTED_NETWORKS = ['TRC20'];
 
 const UserUsdtWalletAddress = {
   TABLE: 'user_usdt_wallet_addresses',

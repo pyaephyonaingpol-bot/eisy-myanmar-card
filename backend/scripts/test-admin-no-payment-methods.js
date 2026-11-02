@@ -38,9 +38,8 @@ assert.ok(!adminRoles.includes('payment_methods'), 'adminRoles payment_methods p
 assert.ok(!adminRoles.includes("'payment-methods'"), 'adminRoles payment-methods page removed');
 
 assert.ok(adminHtml.includes('id="usdtWithdrawalsTable"'), 'USDT withdrawal table kept');
-assert.ok(adminHtml.includes('id="mmkWithdrawalsTable"'), 'MMK withdrawal table kept');
+assert.ok(!adminHtml.includes('id="mmkWithdrawalsTable"'), 'MMK withdrawal table removed from admin UI');
 assert.ok(adminJs.includes('async loadUsdtWithdrawals()'), 'loadUsdtWithdrawals kept');
-assert.ok(adminJs.includes('async loadMmkWithdrawals()'), 'loadMmkWithdrawals kept');
-assert.ok(adminHtml.includes('id="withdrawalRatesForm"'), 'withdrawal rates form kept');
+assert.ok(adminHtml.includes('id="withdrawalRatesPreview"'), 'withdrawal rates preview kept');
 
 console.log('Admin payment methods removed; withdrawal management intact — ok');

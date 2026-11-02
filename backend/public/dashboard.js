@@ -4,6 +4,10 @@ const CARD_CACHE_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.st
 const Dashboard = {
   pollTimer: null,
   cardsPollTimer: null,
+  /** Local 3DS re-read while the card is open. Never calls the provider. */
+  PAGO_3DS_POLL_MS: 15000,
+  /** Stop the local re-read after two minutes. Refresh Code starts a provider scan. */
+  PAGO_3DS_POLL_LIMIT_MS: 120000,
   /** Bumped on card mutations so in-flight GET /cards cannot overwrite fresher state. */
   _cardsEpoch: 0,
   currentCard: null,
@@ -15,6 +19,10 @@ const Dashboard = {
   usdtAddresses: null,
   withdrawalFees: null,
   walletUsdtLocked: null,
+  /** Mirrors AppNav.currentPage — updated on every routed view change. */
+  _activePage: null,
+  /** Hash route to restore after login (e.g. #p2p). */
+  _savedRouteHash: null,
 
   /* ── Client fetch freshness / in-flight dedupe ── */
   _fetchMeta: {},
@@ -81,7 +89,7 @@ const Dashboard = {
     const available = Number(this.walletUsdt ?? 0);
     const locked = Number(this.walletUsdtLocked ?? 0);
     let text = `Available: $${available.toFixed(2)} USDT`;
-    if (locked > 0.001) text += ` · Locked: $${locked.toFixed(2)} USDT (P2P escrow)`;
+    if (locked > 0.001) text += ` · Locked: $${locked.toFixed(2)} USDT`;
     return text;
   },
 
@@ -787,6 +795,15 @@ const Dashboard = {
 
   init() {
     console.log('[Dashboard] init');
+    Auth.startIdleWatch?.();
+    if (!this._sessionEndBound) {
+      this._sessionEndBound = true;
+      window.addEventListener('eisy:session-end', () => {
+        this._navInitialized = false;
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+        this.refreshAuthUI();
+      });
+    }
     const finishBoot = () => {
       try {
         Auth.initLoginPanel();
@@ -840,6 +857,7 @@ const Dashboard = {
       this.bindProofLightbox();
       this.bindReloadCard();
       this.bindWithdrawUsdt();
+      this.bindUserPayUi();
       this.bindWithdrawMmk();
       this.bindUsdtWalletPage();
     } catch (err) {
@@ -909,6 +927,53 @@ const Dashboard = {
     if (token != null && token !== this._hydrationToken) return;
     this._hydrating = false;
     this.setHydrating(false);
+  },
+
+  getActivePage() {
+    if (typeof AppNav !== 'undefined' && AppNav.currentPage) return AppNav.currentPage;
+    return this._activePage || this.portalDefaultPage();
+  },
+
+  /**
+   * Keep sidebar, hash target, header title, and .app-page.is-active in sync.
+   * Guards against stale "cards" (or other) panels staying visible after #p2p.
+   */
+  reconcileAppPageView(page) {
+    if (!page) return;
+    this._activePage = page;
+    const shell = $('userAppShell');
+    if (!shell) return;
+
+    shell.querySelectorAll('.app-page[data-page]').forEach((panel) => {
+      panel.classList.toggle('is-active', panel.dataset.page === page);
+    });
+    shell.querySelectorAll('.sidebar-nav [data-page]').forEach((btn) => {
+      const active = btn.dataset.page === page;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-current', active ? 'page' : 'false');
+    });
+
+    if (typeof AppNav !== 'undefined') AppNav.currentPage = page;
+
+    const titleEl = shell.querySelector(`[data-page-title="${page}"]`);
+    const heading = shell.querySelector('.header .page-heading');
+    if (titleEl && heading) {
+      const key = titleEl.getAttribute('data-i18n');
+      heading.textContent = (key && typeof I18n !== 'undefined') ? I18n.t(key) : titleEl.textContent.trim();
+      if (key) heading.setAttribute('data-i18n', key);
+      else heading.removeAttribute('data-i18n');
+    }
+  },
+
+  /** Apply #hash route when logged in (e.g. deep link or post-login restore). */
+  syncRouteFromHash(opts = {}) {
+    if (typeof AppNav === 'undefined') return;
+    const page = AppNav.pageFromHash?.();
+    if (!page) return;
+    const exists = document.querySelector(`#userAppShell .app-page[data-page="${page}"]`);
+    if (!exists) return;
+    if (AppNav.currentPage === page && !opts.force) return;
+    AppNav.navigate(page, { pushHash: false, forceReload: Boolean(opts.force) });
   },
 
   initNavigationIfNeeded() {
@@ -1144,6 +1209,8 @@ const Dashboard = {
 
   onPageChange(page, opts = {}) {
     const force = Boolean(opts.forceReload);
+    const prevPage = this._activePage;
+    this.reconcileAppPageView(page);
     this.setPageLoading(page, true);
     try {
       if (page === 'deposits') {
@@ -1155,13 +1222,14 @@ const Dashboard = {
       if (page === 'usdt-wallet') this.loadUsdtWalletPage(force);
       if (page === 'rates') {
         this.renderRatesPage();
-        // Honor TTL — force only when explicitly requested.
-        this.loadWithdrawalFees({ force }).catch(() => {});
-        this.loadCardPricing().catch(() => {});
+        this.loadWithdrawalFees({ force: true }).catch(() => {});
+        this.loadCardPricing({ force: true }).catch(() => {});
       }
+      if (page !== 'p2p') this.closeKycGateModal();
       if (page === 'p2p') {
         if (opts.p2pTab) this.switchP2pTab(opts.p2pTab);
-        this.loadP2pPage({ force });
+        this.loadP2pPage({ force: force || prevPage !== 'p2p' });
+        this.promptP2pKycGate();
       }
       if (page === 'settings') {
         this.loadSupportThreads();
@@ -1174,7 +1242,7 @@ const Dashboard = {
       }
       if (page === 'cards') {
         this.prefillPagoCardRequest();
-        this.loadAllCards({ forceRefresh: force, silent: false });
+        this.loadAllCards({ forceRefresh: force, silent: false, reconcilePago: true });
       }
       if (page === 'instant-card') {
         this.enterInstantCardPage({ force });
@@ -1475,11 +1543,25 @@ const Dashboard = {
   },
 
   toast(message, type = 'ok', otpCode = null) {
+    const hidden = typeof document !== 'undefined' && document.hidden;
+    if (window.EisyPush?.show && (otpCode || (type !== 'error' && hidden))) {
+      const title = otpCode
+        ? this.i18nText('push_3ds_title', '3DS verification code')
+        : this.i18nText('push_app_title', 'Eisy Myanmar');
+      const body = otpCode ? `${message}: ${otpCode}` : String(message || '');
+      window.EisyPush.show({
+        title,
+        body,
+        url: otpCode ? '/#cards' : '/',
+        tag: otpCode ? 'eisy-3ds' : 'eisy',
+      }).catch(() => {});
+    }
     if (window.EisyComponents?.toast?.showToast) {
       return window.EisyComponents.toast.showToast(message, type, otpCode);
     }
     const el = $('authToast');
     if (!el) return;
+    window.EisyComponents?.toast?.syncToastViewportInsets?.();
     if (otpCode) {
       el.className = 'auth-toast otp';
       el.innerHTML = `${message}<span class="toast-otp-code">${otpCode}</span><small>Auto-filled in OTP field</small>`;
@@ -1521,6 +1603,7 @@ const Dashboard = {
     if ($('headerEmail')) $('headerEmail').textContent = profile.email || '—';
     if ($('sumName')) $('sumName').textContent = profile.name || '—';
     if ($('sumEmail')) $('sumEmail').textContent = profile.email || '—';
+    if ($('sumUserId')) $('sumUserId').textContent = profile.id != null && profile.id !== '' ? ('#' + profile.id) : '—';
     if ($('sumPhone')) {
       $('sumPhone').textContent = this.formatUserPhone(profile.phone || profile.phone_display) || '—';
     }
@@ -1529,6 +1612,78 @@ const Dashboard = {
   setHomeWalletBalanceDisplay(text) {
     const label = text == null || text === '' ? '—' : String(text);
     if ($('sumBalanceUsdt')) $('sumBalanceUsdt').textContent = label;
+  },
+
+  setBalanceLoading(on) {
+    document.documentElement.classList.toggle('balance-loading', Boolean(on));
+    const el = $('sumBalanceUsdt');
+    if (el) el.setAttribute('aria-busy', on ? 'true' : 'false');
+  },
+
+  setCardsLoading(on) {
+    this._cardsUiLoading = Boolean(on);
+    document.documentElement.classList.toggle('cards-loading', Boolean(on));
+    const skeleton = $('pagoCardSkeleton');
+    const empty = $('pagoCardEmpty');
+    const waiting = Boolean(on) && !(this.allCards || []).length;
+    skeleton?.classList.toggle('hidden', !waiting);
+    if (waiting) empty?.classList.add('hidden');
+    else if (!(this.allCards || []).length) empty?.classList.remove('hidden');
+    skeleton?.setAttribute('aria-busy', waiting ? 'true' : 'false');
+  },
+
+  showIdleLogoutNotice() {
+    const el = $('authSessionNotice');
+    if (!el) return;
+    let reason = '';
+    try {
+      reason = sessionStorage.getItem('eisy_logout_notice') || '';
+      if (reason) sessionStorage.removeItem('eisy_logout_notice');
+    } catch (_) { /* ignore */ }
+    if (reason !== 'inactive') {
+      el.classList.add('hidden');
+      return;
+    }
+    el.textContent = this.i18nText(
+      'session_idle_notice',
+      'You were signed out after 20 minutes of inactivity. Please sign in again.'
+    );
+    el.classList.remove('hidden');
+  },
+
+  saveWalletCache(data) {
+    if (!Auth.user?.id || !data) return;
+    try {
+      sessionStorage.setItem('eisy_wallet_cache', JSON.stringify({
+        userId: Auth.user.id,
+        balance_usdt: data.balance_usdt,
+        balance_usdt_locked: data.balance_usdt_locked || 0,
+        balance_mmk: data.balance_mmk,
+      }));
+    } catch (_) { /* ignore */ }
+  },
+
+  applyCachedWallet() {
+    try {
+      const raw = JSON.parse(sessionStorage.getItem('eisy_wallet_cache') || 'null');
+      if (!raw || Number(raw.userId) !== Number(Auth.user?.id)) return false;
+      if (raw.balance_usdt == null && raw.balance_mmk == null) return false;
+      this.walletUsdt = raw.balance_usdt;
+      this.walletUsdtLocked = raw.balance_usdt_locked || 0;
+      this.walletMmk = raw.balance_mmk;
+      this.renderWalletBalances({
+        balance_usdt: raw.balance_usdt ?? 0,
+        balance_usdt_locked: raw.balance_usdt_locked || 0,
+        balance_mmk: raw.balance_mmk ?? 0,
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  },
+
+  clearWalletCache() {
+    try { sessionStorage.removeItem('eisy_wallet_cache'); } catch (_) { /* ignore */ }
   },
 
   syncModeScopedHomeWallets() {
@@ -1553,7 +1708,26 @@ const Dashboard = {
     if (cached) this.applySessionUserToUI(cached);
 
     const incomplete = !cached?.email && !cached?.name;
-    if (!force && cached && !incomplete) return cached;
+    if (!force && cached && !incomplete) {
+      if (!Auth.isSessionFresh?.()) {
+        Auth.api('GET', '/api/auth/me', null, { timeoutMs: 8000 })
+          .then((data) => {
+            if (!data?.user) return;
+            Auth.setSession({
+              sessionToken: Auth.sessionToken,
+              user: data.user,
+              pinToken: Auth.pinToken,
+              pinTokenExpiresInSeconds: Math.max(
+                0,
+                Math.floor(((Auth.pinTokenExpiresAt?.() || 0) - Date.now()) / 1000)
+              ),
+            });
+            this.applySessionUserToUI(data.user);
+          })
+          .catch(() => {});
+      }
+      return cached;
+    }
 
     try {
       const data = await Auth.api('GET', '/api/auth/me', null, { timeoutMs: 12000 });
@@ -1874,6 +2048,8 @@ const Dashboard = {
       return;
     }
     $('usdtTopUpModal')?.classList.remove('hidden');
+    this.loadDepositFees().catch(() => {});
+    this.updateUsdtDepositFeePreview();
     this.loadTronHdDepositAddress().catch(() => {});
   },
 
@@ -2734,6 +2910,7 @@ const Dashboard = {
   },
 
   bindP2pMarket() {
+    if (!document.getElementById('pageP2p')) return;
     this._p2pTab = 'buy';
 
     document.querySelectorAll('.p2p-tab[data-p2p-tab]').forEach((btn) => {
@@ -3013,7 +3190,7 @@ const Dashboard = {
       return;
     }
     if (!this.isKycVerified()) {
-      this.showKycGateModal();
+      this.promptP2pKycGate();
       return;
     }
     if (side === 'buy') {
@@ -3075,15 +3252,41 @@ const Dashboard = {
     const intro = $('kycModalIntro');
     if (intro) {
       if (status === 'VERIFIED') {
-        intro.textContent = 'Your identity is verified. You can use P2P trading and verified banking features.';
+        intro.textContent = 'Your identity is verified. You can post ads and place P2P orders.';
       } else if (status === 'PENDING_REVIEW') {
-        intro.textContent = 'Your submission is under review. You will be notified once approved.';
+        intro.textContent = 'Your ID is under review. P2P trading unlocks after an admin approves it. Virtual cards do not need KYC.';
       } else if (status === 'REJECTED') {
         const reason = this._kycStatus?.latest_submission?.rejection_reason;
-        intro.textContent = reason ? `Previous submission rejected: ${reason}. Please resubmit.` : 'Please resubmit your documents.';
+        intro.textContent = reason
+          ? `Previous submission rejected: ${reason}. Resubmit your NRC or Passport to trade P2P.`
+          : 'Please resubmit your NRC or Passport to trade P2P.';
       } else {
-        intro.textContent = 'Submit your identity documents to unlock P2P trading and verified banking features.';
+        intro.textContent = 'Submit your NRC or Passport to trade P2P. Virtual Visa cards do not need KYC.';
       }
+    }
+  },
+
+  promptP2pKycGate() {
+    if (!Auth.isLoggedIn()) return;
+    const apply = () => {
+      if (typeof AppNav !== 'undefined' && AppNav.currentPage !== 'p2p') return;
+      if (this.isKycVerified()) {
+        this.closeKycGateModal();
+        return;
+      }
+      const status = (this._kycStatus?.kyc_status || Auth.user?.kyc_status || 'UNVERIFIED').toUpperCase();
+      const message = status === 'PENDING_REVIEW'
+        ? 'Your ID is under review. P2P trading unlocks after an admin approves it.'
+        : 'Complete identity verification before posting ads or placing P2P orders.';
+      this.showKycGateModal(message);
+    };
+    if (!this._kycStatus && !Auth.user?.kyc_status) {
+      this.loadKycStatus({ force: true }).then(apply).catch(() => {});
+      return;
+    }
+    apply();
+    if (!this.isKycVerified()) {
+      this.loadKycStatus({ force: true }).then(apply).catch(() => {});
     }
   },
 
@@ -3095,13 +3298,20 @@ const Dashboard = {
     if ($('kycGateMessage')) {
       $('kycGateMessage').textContent = message || 'KYC Verification Required to Trade P2P';
     }
+    const status = (this._kycStatus?.kyc_status || Auth.user?.kyc_status || '').toUpperCase();
+    const completeBtn = $('kycGateCompleteBtn');
+    if (completeBtn) {
+      completeBtn.textContent = status === 'PENDING_REVIEW' ? 'View KYC Status' : 'Complete KYC Now';
+    }
     $('kycGateModal')?.classList.remove('hidden');
     document.body.classList.add('sidebar-scroll-lock');
   },
 
   closeKycGateModal() {
-    $('kycGateModal')?.classList.add('hidden');
-    document.body.classList.remove('sidebar-scroll-lock');
+    const modal = $('kycGateModal');
+    const wasOpen = Boolean(modal && !modal.classList.contains('hidden'));
+    modal?.classList.add('hidden');
+    if (wasOpen) document.body.classList.remove('sidebar-scroll-lock');
   },
 
   openKycModal() {
@@ -3413,6 +3623,7 @@ const Dashboard = {
   },
 
   bindP2pSellModal() {
+    if (!document.getElementById('p2pSellModal')) return;
     this._p2pSellListing = null;
     this._p2pSellOrder = null;
 
@@ -3459,6 +3670,7 @@ const Dashboard = {
     $('p2pSellStepAmount')?.classList.remove('hidden');
     $('p2pSellStepWaiting')?.classList.add('hidden');
     $('p2pSellStepDone')?.classList.add('hidden');
+    $('p2pSellEscrowPanel')?.classList.add('hidden');
     $('p2pSellConfirmMmkBtn')?.classList.remove('hidden');
     $('p2pSellCancelBtn')?.classList.remove('hidden');
 
@@ -3535,6 +3747,7 @@ const Dashboard = {
     $('p2pSellStepDone')?.classList.add('hidden');
     $('p2pSellConfirmMmkBtn')?.classList.remove('hidden');
     $('p2pSellCancelBtn')?.classList.remove('hidden');
+    this.syncP2pEscrowStepperUi(order.status || 'pending_merchant_mmk', { sell: true });
     if (data.user) {
       this.renderWalletBalances(data.user);
     } else {
@@ -3607,8 +3820,10 @@ const Dashboard = {
       $('p2pSellConfirmMmkBtn')?.classList.add('hidden');
       $('p2pSellCancelBtn')?.classList.add('hidden');
       $('p2pSellRefCode').textContent = data.order?.ref_code || this._p2pSellOrder.ref_code;
-      $('p2pSellDoneMessage').textContent = data.message || 'USDT escrow released to buyer.';
-      this.toast('Order complete — USDT released', 'ok');
+      $('p2pSellDoneMessage').textContent = data.message || 'USDT Released — escrow sent to buyer wallet.';
+      $('p2pSellEscrowPanel')?.classList.remove('hidden');
+      this.updateP2pEscrowStepper('p2pSellEscrowStepper', 'released');
+      this.toast('USDT Released from escrow', 'ok');
       this.log(`P2P sell order ${data.order?.ref_code} completed`, 'ok');
       this.loadP2pActiveOrders();
       this.refreshP2pWalletState();
@@ -3640,6 +3855,7 @@ const Dashboard = {
   },
 
   bindP2pBuyModal() {
+    if (!document.getElementById('p2pBuyModal')) return;
     this._p2pBuyListing = null;
     this._p2pBuyOrder = null;
 
@@ -3712,6 +3928,7 @@ const Dashboard = {
     $('p2pBuyStepAmount')?.classList.remove('hidden');
     $('p2pBuyStepPayment')?.classList.add('hidden');
     $('p2pBuyStepDone')?.classList.add('hidden');
+    $('p2pBuyEscrowPanel')?.classList.add('hidden');
     $('p2pBuyConfirmTransferBtn')?.classList.remove('hidden');
     this.resetP2pBuyPaymentProofState();
     $('p2pBuyPaymentProofInline')?.classList.remove('hidden');
@@ -3865,6 +4082,7 @@ const Dashboard = {
     if ($('p2pBuyPaymentHeading')) {
       $('p2pBuyPaymentHeading').textContent = `Send ${Math.round(order.amount_mmk).toLocaleString()} MMK via ${order.payment_method}`;
     }
+    this.syncP2pEscrowStepperUi(order.status || 'pending_payment', { buy: true });
     this.setupP2pTradePanel('buy', order);
   },
 
@@ -4051,16 +4269,11 @@ const Dashboard = {
           }, { sensitive: true }));
       }
 
-      this._p2pBuyOrder = { ...this._p2pBuyOrder, ...(data.order || {}) };
-      this.stopP2pTradePolling();
+      this._p2pBuyOrder = { ...this._p2pBuyOrder, ...(data.order || {}), status: data.order?.status || 'pending_seller_release' };
       this.resetP2pBuyPaymentProofState();
-      $('p2pBuyStepPayment')?.classList.add('hidden');
-      $('p2pBuyStepDone')?.classList.remove('hidden');
-      $('p2pBuyRefCode').textContent = data.order?.ref_code || this._p2pBuyOrder.ref_code;
-      $('p2pBuyDoneMessage').textContent = data.message
-        || 'Pending seller release — USDT will be credited to your wallet after the seller approves. Use Withdraw USDT when you want an on-chain payout.';
-      this.toast(data.message || 'Payment proof submitted — pending seller release', 'ok');
-      this.log(`P2P buy order ${data.order?.ref_code} pending seller release`, 'ok');
+      this.renderP2pBuyPendingReleaseStep(this._p2pBuyOrder);
+      this.toast(data.message || 'Payment Sent — waiting for seller to release USDT from escrow', 'ok');
+      this.log(`P2P buy order ${data.order?.ref_code} — Payment Sent`, 'ok');
       this.loadP2pActiveOrders();
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
@@ -4170,6 +4383,28 @@ const Dashboard = {
     return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
   },
 
+  updateP2pEscrowStepper(hostId, status) {
+    const el = typeof hostId === 'string' ? $(hostId) : hostId;
+    if (!el || !window.P2pEscrowFlow?.renderP2pEscrowStepperHtml) return;
+    el.innerHTML = `<ol class="p2p-escrow-stepper" aria-label="One-way USDT escrow">${window.P2pEscrowFlow.renderP2pEscrowStepperHtml(status)}</ol>`;
+  },
+
+  syncP2pEscrowStepperUi(status, { buy = false, sell = false } = {}) {
+    if (buy) {
+      $('p2pBuyEscrowPanel')?.classList.remove('hidden');
+      this.updateP2pEscrowStepper('p2pBuyEscrowStepper', status);
+      this.updateP2pEscrowStepper('p2pBuyEscrowStepperDone', status);
+    }
+    if (sell) {
+      $('p2pSellEscrowPanel')?.classList.remove('hidden');
+      this.updateP2pEscrowStepper('p2pSellEscrowStepper', status);
+    }
+  },
+
+  p2pEscrowStepLabel(status) {
+    return window.P2pEscrowFlow?.p2pEscrowStepLabel(status) || String(status || 'Unknown');
+  },
+
   parseP2pExpiresMs(expiresAt) {
     if (!expiresAt) return null;
     const iso = String(expiresAt).includes('T') ? expiresAt : `${String(expiresAt).replace(' ', 'T')}Z`;
@@ -4252,7 +4487,7 @@ const Dashboard = {
 
     this.loadP2pChatMessages(orderType, order.id);
     this._p2pChatInterval = setInterval(() => {
-      if (window.EisyScroll?.isScrolling?.()) return;
+      if (document.hidden || window.EisyScroll?.isScrolling?.()) return;
       this.loadP2pChatMessages(orderType, order.id, { silent: true });
     }, 8000);
 
@@ -4262,7 +4497,7 @@ const Dashboard = {
       && !order.maker_can_release;
     if (shouldPollRelease) {
       this._p2pStatusPollInterval = setInterval(async () => {
-        if (window.EisyScroll?.isScrolling?.()) return;
+        if (document.hidden || window.EisyScroll?.isScrolling?.()) return;
         try {
           const data = await (this.p2pApi()?.getActiveOrder
             ? this.p2pApi().getActiveOrder(orderType, order.id)
@@ -4407,7 +4642,11 @@ const Dashboard = {
       list.innerHTML = this._p2pActiveOrders.map((o) => {
         const amount = Number(o.escrow_amount_usdt ?? o.amount_usdt).toFixed(2);
         const statusClass = o.requires_action ? 'needs-action' : '';
-        const badgeClass = o.display_status_code === 'ESCROWED' ? 'is-escrowed' : (o.is_disputed ? 'is-disputed' : '');
+        const badgeClass = o.is_disputed ? 'is-disputed'
+          : o.display_status_code === 'PENDING_PAYMENT' ? 'is-pending-payment'
+            : o.display_status_code === 'PAYMENT_SENT' ? 'is-payment-sent'
+              : o.display_status_code === 'USDT_RELEASED' ? 'is-released'
+                : o.display_status_code === 'ESCROWED' ? 'is-escrowed' : '';
         const timerHtml = o.show_timer && o.seconds_remaining != null
           ? `<span class="p2p-active-order-timer">⏱ ${this.formatP2pTimer(o.seconds_remaining)} left</span>`
           : '';
@@ -4531,11 +4770,11 @@ const Dashboard = {
       <div class="p2p-buy-summary-row"><span>${isMaker ? 'Release to buyer' : 'You receive'}</span><strong>${buyerReceives.toFixed(2)} USDT</strong></div>
       <div class="p2p-buy-summary-row"><span>External payment</span><strong>${Math.round(order.amount_mmk).toLocaleString()} MMK</strong></div>
       <div class="p2p-buy-summary-row"><span>Order ref</span><strong>${esc(order.ref_code)}</strong></div>
-      <div class="p2p-buy-summary-row"><span>Status</span><strong>${isMaker ? 'Confirm & Release' : 'Pending Release'}</strong></div>
+      <div class="p2p-buy-summary-row"><span>Escrow status</span><strong>${esc(this.p2pEscrowStepLabel(order.status || 'pending_seller_release'))}</strong></div>
     `;
     $('p2pBuyPaymentDetails').innerHTML = isMaker
-      ? '<p class="hint">Buyer confirmed MMK payment with receipt. Review the payment proof below, then release USDT. Platform fee is deducted from your escrow automatically.</p>'
-      : '<p class="hint">MMK payment confirmed. Waiting for seller to release USDT to your wallet.</p>';
+      ? '<p class="hint">Payment Sent — buyer paid fiat externally. USDT remains in one-way escrow until you release it to the buyer (platform fee deducted from escrow).</p>'
+      : '<p class="hint">Payment Sent — your fiat transfer is recorded. Seller USDT stays locked in escrow until they release it to your USDT wallet.</p>';
     const proofView = $('p2pBuyPaymentProofView');
     const proofBody = $('p2pBuyPaymentProofViewBody');
     const hasProof = order.payment_proof_url || order.paymentProofUrl || order.payment_proof_path || order.payment_tx_ref;
@@ -4558,9 +4797,10 @@ const Dashboard = {
     $('p2pBuyReleaseBtn')?.classList.toggle('hidden', !isMaker || order.is_disputed);
     $('p2pBuySellerActions')?.classList.toggle('hidden', !isMaker || order.is_disputed || order.dispute_status === 'open');
     if ($('p2pBuyPaymentHeading')) {
-      $('p2pBuyPaymentHeading').textContent = isMaker ? 'Release USDT to buyer' : 'Order pending seller release';
+      $('p2pBuyPaymentHeading').textContent = isMaker ? 'Release USDT from escrow' : 'Payment Sent — awaiting release';
     }
     $('p2pBuyTimerBanner')?.classList.add('hidden');
+    this.syncP2pEscrowStepperUi(order.status || 'pending_seller_release', { buy: true });
     this.setupP2pTradePanel('buy', order);
   },
 
@@ -4685,9 +4925,10 @@ const Dashboard = {
         $('p2pBuySellerActions')?.classList.add('hidden');
         $('p2pBuyRefCode').textContent = data.order?.ref_code || this._p2pBuyOrder.ref_code;
         $('p2pBuyDoneMessage').textContent = data.message
-          || 'USDT released to buyer wallet. No on-chain transfer — buyer can withdraw explicitly when ready.';
+          || 'USDT Released — escrow sent to the buyer USDT wallet.';
+        this.syncP2pEscrowStepperUi('released', { buy: true });
       }
-      this.toast('USDT released to buyer', 'ok');
+      this.toast('USDT Released from escrow', 'ok');
       this.loadP2pActiveOrders();
       this.loadMyP2pAds();
       this.refreshP2pWalletState();
@@ -4700,6 +4941,7 @@ const Dashboard = {
   },
 
   bindP2pPostAdModal() {
+    if (!document.getElementById('p2pPostAdModal')) return;
     $('p2pPostAdModalClose')?.addEventListener('click', () => this.closePostP2pAdModal());
     $('p2pPostAdModal')?.addEventListener('click', (e) => {
       if (e.target.id === 'p2pPostAdModal') this.closePostP2pAdModal();
@@ -4712,13 +4954,11 @@ const Dashboard = {
   },
 
   updateP2pAdEscrowHint() {
-    const side = $('p2pAdSide')?.value;
     const hint = $('p2pAdEscrowHint');
     if (hint) {
-      hint.textContent = side === 'sell'
-        ? 'Sell ads: this amount is escrowed from your USDT wallet immediately.'
-        : 'Buy ads: no USDT escrow — you pay MMK externally when sellers accept your ad.';
+      hint.textContent = 'This amount is escrowed from your USDT wallet as soon as the ad is posted.';
     }
+    if ($('p2pAdSide')) $('p2pAdSide').value = 'sell';
   },
 
   openPostP2pAdModal() {
@@ -4727,7 +4967,7 @@ const Dashboard = {
       return;
     }
     if (!this.isKycVerified()) {
-      this.showKycGateModal();
+      this.promptP2pKycGate();
       return;
     }
     $('p2pPostAdError').textContent = '';
@@ -4745,7 +4985,7 @@ const Dashboard = {
   },
 
   async submitPostP2pAd() {
-    const side = $('p2pAdSide')?.value || 'sell';
+    const side = 'sell';
     const methods = [...document.querySelectorAll('input[name="p2pAdPayMethod"]:checked')].map((el) => el.value);
     if (!methods.length) {
       $('p2pPostAdError').textContent = 'Select at least one payment method';
@@ -4831,11 +5071,31 @@ const Dashboard = {
     }
   },
 
+  async loadDepositFees() {
+    if (!Auth.isLoggedIn()) return;
+    try {
+      const data = await Auth.api('GET', '/api/deposit/fees');
+      this.depositFees = data || {};
+      this.updateUsdtDepositFeePreview();
+      this.updateMmkDepositFeePreview();
+    } catch (err) {
+      console.warn('[Dashboard] deposit fees:', err.message);
+    }
+  },
+
   calculateUsdtDepositFeePreviewClient(amountUsdt) {
     const fees = this.depositFees || this.pricingSettings || {};
-    if (window.EisyHooks?.depositFees?.calculateUsdtDepositFeePreview) {
-      return window.EisyHooks.depositFees.calculateUsdtDepositFeePreview(amountUsdt, fees);
-    }
+    const preview = window.EisyHooks?.depositFees?.calculateUsdtDepositFeePreview
+      ? window.EisyHooks.depositFees.calculateUsdtDepositFeePreview(amountUsdt, fees)
+      : this.fallbackUsdtDepositFeePreview(amountUsdt);
+    if (!preview) return null;
+    const min = Number(fees.minimum_usdt_deposit);
+    preview.minimum_usdt_deposit = Number.isFinite(min) ? min : null;
+    preview.below_minimum = Number.isFinite(min) && min > 0 && preview.amount_usdt + 1e-9 < min;
+    return preview;
+  },
+
+  fallbackUsdtDepositFeePreview(amountUsdt) {
     const amount = Math.round((Number(amountUsdt) || 0) * 100) / 100;
     if (!(amount > 0)) return null;
     return {
@@ -4845,6 +5105,20 @@ const Dashboard = {
       fee_label: 'No service fee',
       invalid_net: false,
     };
+  },
+
+  formatDepositUsdt(amount) {
+    const value = Number(amount);
+    if (!Number.isFinite(value)) return '—';
+    return `$${value.toFixed(2)} USDT`;
+  },
+
+  depositPreviewText(key, fallback, params) {
+    if (typeof t === 'function') {
+      const translated = t(key, params);
+      if (translated && translated !== key) return translated;
+    }
+    return fallback;
   },
 
   calculateMmkDepositFeePreviewClient(amountMmk) {
@@ -4858,15 +5132,17 @@ const Dashboard = {
     const cfg = (window.Eisy && window.Eisy.config) || {};
     const amount = Math.round(Number(amountMmk) || 0);
     if (!(amount > 0)) return null;
-    const mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
-    const feePercent = Number(fees.payment_service_fee_percent ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
+    const mode = String(fees.deposit_service_fee_mode || fees.payment_service_fee_mode || 'fixed_plus_percent').toLowerCase();
+    const feePercent = Number(fees.deposit_service_fee_percent ?? fees.payment_service_fee_percent ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_PERCENT ?? 2);
     const rate = Number(fees.mmk_to_usd_rate || this.pricingSettings?.mmk_to_usd_rate || 4500);
-    const minimumFee = Math.round(Number(fees.payment_service_fee_minimum_usdt ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1) * rate);
+    const minimumFee = Math.round(Number(fees.deposit_service_fee_minimum_usdt ?? fees.payment_service_fee_minimum_usdt ?? cfg.DEFAULT_PAYMENT_SERVICE_FEE_MINIMUM_USDT ?? 1) * rate);
+    const fixedFee = Math.round(Number(fees.deposit_service_fee_fixed_usdt ?? fees.payment_service_fee_fixed_usdt ?? 0) * rate);
     const percentFee = Math.round(amount * feePercent / 100);
     let fee = 0;
     if (mode === 'off') fee = 0;
     else if (mode === 'percent') fee = percentFee;
     else if (mode === 'fixed') fee = minimumFee;
+    else if (mode === 'fixed_plus_percent') fee = Math.max(fixedFee + percentFee, minimumFee);
     else fee = Math.max(percentFee, minimumFee);
     const net = amount - fee;
     let feeLabel = 'No service fee';
@@ -4891,19 +5167,72 @@ const Dashboard = {
     const preview = this.calculateUsdtDepositFeePreviewClient(amount);
     if (window.EisyComponents?.depositFeePreview?.renderUsdtDepositFeePreview) {
       window.EisyComponents.depositFeePreview.renderUsdtDepositFeePreview(preview);
+    } else {
+      if ($('usdtDepositPreviewGross')) {
+        $('usdtDepositPreviewGross').textContent = preview ? this.formatDepositUsdt(preview.amount_usdt) : '—';
+      }
+      if ($('usdtDepositPreviewFee')) {
+        $('usdtDepositPreviewFee').textContent = preview ? this.formatDepositUsdt(preview.fee_usdt) : '—';
+      }
+      if ($('usdtDepositPreviewFeeLabel')) {
+        $('usdtDepositPreviewFeeLabel').textContent = preview?.fee_label || '';
+      }
+      if ($('usdtDepositPreviewNet')) {
+        $('usdtDepositPreviewNet').textContent = preview && !preview.invalid_net
+          ? this.formatDepositUsdt(preview.net_usdt)
+          : '—';
+      }
+    }
+    this.paintUsdtDepositFeeSummary(preview);
+  },
+
+  paintUsdtDepositFeeSummary(preview) {
+    const min = Number(preview?.minimum_usdt_deposit ?? this.depositFees?.minimum_usdt_deposit);
+    const minHint = $('usdtDepositMinHint');
+    if (minHint) {
+      minHint.textContent = Number.isFinite(min) && min > 0
+        ? this.depositPreviewText(
+          'deposit_preview_min_hint',
+          `Minimum deposit ${min.toFixed(2)} USDT. Smaller transfers are not credited.`,
+          { min: min.toFixed(2) }
+        )
+        : '';
+    }
+    const summary = $('usdtDepositPreviewSummary');
+    if (!summary) return;
+    summary.classList.remove('is-warn');
+    if (!preview) {
+      summary.textContent = this.depositPreviewText(
+        'deposit_preview_empty',
+        'Enter the amount you plan to send to see the fee and wallet credit.'
+      );
       return;
     }
-    if ($('usdtDepositPreviewGross')) {
-      $('usdtDepositPreviewGross').textContent = preview ? `$${preview.amount_usdt.toFixed(2)}` : '—';
+    const amount = this.formatDepositUsdt(preview.amount_usdt);
+    const fee = this.formatDepositUsdt(preview.fee_usdt);
+    const net = this.formatDepositUsdt(preview.net_usdt);
+    if (preview.below_minimum) {
+      summary.classList.add('is-warn');
+      summary.textContent = this.depositPreviewText(
+        'deposit_preview_below_min',
+        `Minimum deposit is ${min.toFixed(2)} USDT. Smaller transfers are not credited.`,
+        { min: Number.isFinite(min) ? min.toFixed(2) : '' }
+      );
+      return;
     }
-    if ($('usdtDepositPreviewFee')) {
-      $('usdtDepositPreviewFee').textContent = preview ? preview.fee_label : '—';
+    if (preview.invalid_net) {
+      summary.classList.add('is-warn');
+      summary.textContent = this.depositPreviewText(
+        'deposit_preview_invalid',
+        'The fee uses the whole deposit, so nothing would be credited. Send a larger amount.'
+      );
+      return;
     }
-    if ($('usdtDepositPreviewNet')) {
-      $('usdtDepositPreviewNet').textContent = preview
-        ? (preview.invalid_net ? 'Invalid' : `$${preview.net_usdt.toFixed(2)}`)
-        : '—';
-    }
+    summary.textContent = this.depositPreviewText(
+      'deposit_preview_summary',
+      `You send ${amount}. Fee ${fee} is deducted. ${net} is credited to your wallet.`,
+      { amount, fee, net }
+    );
   },
 
   updateMmkDepositFeePreview() {
@@ -4933,7 +5262,9 @@ const Dashboard = {
     });
 
     $('usdtAmount')?.addEventListener('input', () => this.updateUsdtDepositFeePreview());
+    document.addEventListener('eisy:langchange', () => this.updateUsdtDepositFeePreview());
 
+    this.loadDepositFees().catch(() => {});
     this.updateUsdtDepositFeePreview();
 
     $('btnCreateTronDeposit')?.addEventListener('click', async () => {
@@ -5117,6 +5448,50 @@ const Dashboard = {
       `Expiry: ${card.exp_date}`,
       `CVV: ${card.cvv}`,
     ].join('\n');
+  },
+
+  normalizeWalletExpiry(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return '';
+    const monthYear = text.match(/^(\d{1,2})\s*[/\-.]\s*(\d{2,4})$/);
+    if (monthYear) {
+      const month = Number(monthYear[1]);
+      if (month >= 1 && month <= 12) {
+        return `${String(month).padStart(2, '0')}/${monthYear[2].slice(-2)}`;
+      }
+    }
+    const yearMonth = text.match(/^(\d{4})\s*[/\-.]\s*(\d{1,2})$/);
+    if (yearMonth) {
+      const month = Number(yearMonth[2]);
+      if (month >= 1 && month <= 12) {
+        return `${String(month).padStart(2, '0')}/${yearMonth[1].slice(-2)}`;
+      }
+    }
+    const digits = text.replace(/\D/g, '');
+    if (digits.length === 4 && digits === text.replace(/\s/g, '')) {
+      const month = Number(digits.slice(0, 2));
+      if (month >= 1 && month <= 12) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+    if (digits.length === 6 && digits === text) {
+      const monthFirst = Number(digits.slice(0, 2));
+      if (monthFirst >= 1 && monthFirst <= 12) return `${digits.slice(0, 2)}/${digits.slice(4)}`;
+      const monthLast = Number(digits.slice(4));
+      if (monthLast >= 1 && monthLast <= 12) return `${digits.slice(4)}/${digits.slice(2, 4)}`;
+    }
+    return text;
+  },
+
+  walletClipboardParts(card) {
+    return {
+      number: String(card?.card_number || '').replace(/\D/g, ''),
+      expiry: this.normalizeWalletExpiry(card?.exp_date),
+      cvv: String(card?.cvv || '').replace(/\D/g, ''),
+    };
+  },
+
+  formatWalletClipboard(card) {
+    const parts = this.walletClipboardParts(card);
+    return [parts.number, parts.expiry, parts.cvv].join('\n');
   },
 
   bindCardCopyButtons() {
@@ -5570,6 +5945,75 @@ const Dashboard = {
     }
   },
 
+  otpStatusEl(btn) {
+    const id = btn?.dataset?.otpStatus;
+    return id ? document.getElementById(id) : null;
+  },
+
+  clearOtpResendTimer(btn) {
+    const timer = this._otpResendTimers?.get(btn);
+    if (timer) clearInterval(timer);
+    this._otpResendTimers?.delete(btn);
+  },
+
+  beginOtpSend(btn) {
+    if (!btn) return;
+    if (!btn.dataset.otpIdle) btn.dataset.otpIdle = (btn.textContent || '').trim();
+    this.clearOtpResendTimer(btn);
+    btn.disabled = true;
+    btn.classList.add('is-busy');
+    btn.classList.remove('is-cooldown');
+    btn.setAttribute('aria-busy', 'true');
+    btn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>Sending…</span>';
+  },
+
+  startOtpResendCountdown(btn, seconds) {
+    if (!btn) return;
+    const total = Math.max(1, Math.round(Number(seconds) || 60));
+    const status = this.otpStatusEl(btn);
+    this.clearOtpResendTimer(btn);
+    btn.classList.remove('is-busy');
+    btn.classList.add('is-cooldown');
+    btn.removeAttribute('aria-busy');
+    btn.disabled = true;
+    btn.dataset.otpIdle = 'Resend OTP';
+    let left = total;
+    const paint = () => {
+      if (left <= 0) {
+        this.clearOtpResendTimer(btn);
+        btn.disabled = false;
+        btn.classList.remove('is-cooldown');
+        btn.textContent = 'Resend OTP';
+        if (status) status.textContent = 'You can request a new code.';
+        return;
+      }
+      btn.textContent = `Resend OTP in ${left}s`;
+      if (status && left === total) status.textContent = `Code sent. Resend OTP in ${left}s.`;
+      left -= 1;
+    };
+    paint();
+    if (!this._otpResendTimers) this._otpResendTimers = new Map();
+    this._otpResendTimers.set(btn, setInterval(paint, 1000));
+  },
+
+  finishOtpSend(btn, { ok, seconds, err } = {}) {
+    if (!btn) return;
+    const retry = Number(err?.response?.retry_after_seconds);
+    if (!ok && err?.code === 'OTP_RESEND_COOLDOWN' && retry > 0) {
+      this.startOtpResendCountdown(btn, retry);
+      return;
+    }
+    btn.classList.remove('is-busy');
+    btn.removeAttribute('aria-busy');
+    if (!ok) {
+      btn.disabled = false;
+      btn.classList.remove('is-cooldown');
+      btn.textContent = btn.dataset.otpIdle || 'Resend OTP';
+      return;
+    }
+    this.startOtpResendCountdown(btn, seconds || 60);
+  },
+
   bindAuthForms() {
     const authTabs = $('authTabs');
     if (!authTabs) {
@@ -5653,7 +6097,7 @@ const Dashboard = {
           return;
         }
         const btn = $('loginSendOtp');
-        if (btn) btn.disabled = true;
+        this.beginOtpSend(btn);
         try {
           const data = await Auth.sendLoginOtp(email);
           $('loginVerifyForm')?.classList.remove('hidden');
@@ -5661,11 +6105,11 @@ const Dashboard = {
           this.toast('Login OTP sent!', 'ok', data.dev_otp || null);
           this.log(`OTP sent to ${email}`, 'ok');
           $('loginOtp')?.focus();
+          this.finishOtpSend(btn, { ok: true, seconds: data.resend_after_seconds });
         } catch (err) {
+          this.finishOtpSend(btn, { ok: false, err });
           this.toast(err.message || 'Failed to send OTP', 'error');
           this.log(err.message, 'error');
-        } finally {
-          if (btn) btn.disabled = false;
         }
       });
     }
@@ -5727,10 +6171,7 @@ const Dashboard = {
         }
 
         const btn = $('registerSendOtp');
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = 'Sending…';
-        }
+        this.beginOtpSend(btn);
         try {
           const data = await Auth.sendRegisterOtp(email);
           $('registerCompleteForm')?.classList.remove('hidden');
@@ -5739,11 +6180,13 @@ const Dashboard = {
           if (otp) {
             this.toast('Registration OTP — use this code:', 'ok', otp);
           } else {
-            this.toast('Registration OTP sent! Check server console.', 'ok');
+            this.toast('Registration OTP sent! Check your email.', 'ok');
           }
           this.log(`Registration OTP sent to ${email}`, 'ok');
           $('regOtp')?.focus();
+          this.finishOtpSend(btn, { ok: true, seconds: data.resend_after_seconds });
         } catch (err) {
+          this.finishOtpSend(btn, { ok: false, err });
           const msg = err.message || 'Failed to send registration OTP';
           this.toast(msg, 'error');
           this.setInlineError('regAuthError', msg);
@@ -5751,11 +6194,6 @@ const Dashboard = {
             this.setInlineError('regAuthError', `${msg} — switch to Login tab instead.`);
           }
           this.log(msg, 'error');
-        } finally {
-          if (btn) {
-            btn.disabled = false;
-            btn.textContent = 'Send Registration OTP';
-          }
         }
       });
     }
@@ -5915,8 +6353,8 @@ const Dashboard = {
     const pinResetSendOtpBtn = $('pinResetSendOtpBtn');
     if (pinResetSendOtpBtn) {
       pinResetSendOtpBtn.onclick = async () => {
+        this.beginOtpSend(pinResetSendOtpBtn);
         try {
-          pinResetSendOtpBtn.disabled = true;
           const email = ($('pinResetEmail')?.value || Auth.user?.email || '').trim();
           const data = await Auth.sendPinResetOtp(email);
           const confirmForm = $('pinResetConfirmForm');
@@ -5932,11 +6370,11 @@ const Dashboard = {
               otpInput?.scrollIntoView({ block: 'center', behavior: 'auto' });
             } catch (_) { /* ignore */ }
           }, 300);
+          this.finishOtpSend(pinResetSendOtpBtn, { ok: true, seconds: data.resend_after_seconds });
         } catch (err) {
+          this.finishOtpSend(pinResetSendOtpBtn, { ok: false, err });
           $('pinResetError').textContent = err.message || 'Failed to send reset code';
           this.toast(err.message || 'Failed to send reset code', 'error');
-        } finally {
-          pinResetSendOtpBtn.disabled = false;
         }
       };
     }
@@ -5983,6 +6421,8 @@ const Dashboard = {
       authPinResetSendForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const errEl = $('authPinResetError');
+        const btn = $('authPinResetSendBtn');
+        this.beginOtpSend(btn);
         try {
           if (errEl) errEl.textContent = '';
           const email = $('authPinResetEmail')?.value.trim();
@@ -5990,7 +6430,9 @@ const Dashboard = {
           $('authPinResetConfirmForm')?.classList.remove('hidden');
           this.showDevOtp?.(data, 'authPinResetOtp');
           this.toast(data.message || 'PIN reset code sent', 'ok', data.dev_otp);
+          this.finishOtpSend(btn, { ok: true, seconds: data.resend_after_seconds });
         } catch (err) {
+          this.finishOtpSend(btn, { ok: false, err });
           if (errEl) errEl.textContent = err.message || 'Failed to send reset code';
           this.toast(err.message || 'Failed to send reset code', 'error');
         }
@@ -6025,16 +6467,16 @@ const Dashboard = {
     const settingsPinResetBtn = $('settingsPinResetBtn');
     if (settingsPinResetBtn) {
       settingsPinResetBtn.onclick = async () => {
+        this.beginOtpSend(settingsPinResetBtn);
         try {
-          settingsPinResetBtn.disabled = true;
           const data = await Auth.sendPinResetOtp(Auth.user?.email);
           $('settingsPinResetForm')?.classList.remove('hidden');
           this.showDevOtp?.(data, 'settingsPinResetOtp');
           this.toast(data.message || 'PIN reset code sent', 'ok', data.dev_otp);
+          this.finishOtpSend(settingsPinResetBtn, { ok: true, seconds: data.resend_after_seconds });
         } catch (err) {
+          this.finishOtpSend(settingsPinResetBtn, { ok: false, err });
           this.toast(err.message || 'Failed to send reset code', 'error');
-        } finally {
-          settingsPinResetBtn.disabled = false;
         }
       };
     }
@@ -6195,6 +6637,7 @@ const Dashboard = {
       const parts = [
         user.name || user.email || 'User',
         user.email ? `(${user.email})` : null,
+        user.id != null && user.id !== '' ? `· #${user.id}` : null,
         phoneLabel ? `· ${phoneLabel}` : null,
       ].filter(Boolean);
       acctInfo.textContent = `Signed in as ${parts.join(' ')}`;
@@ -6511,9 +6954,16 @@ const Dashboard = {
 
     if (!loggedIn) {
       this.clearCardsCache();
+      this.clearWalletCache();
       this.allCards = [];
+      this.walletUsdt = null;
+      this.walletUsdtLocked = null;
+      this.setBalanceLoading(false);
+      this.setCardsLoading(false);
       this.endHydration();
+      this.showIdleLogoutNotice();
       if (window.location.hash && !window.location.hash.startsWith('#admin')) {
+        this._savedRouteHash = window.location.hash;
         history.replaceState(null, '', window.location.pathname + window.location.search);
       }
       return;
@@ -6523,7 +6973,19 @@ const Dashboard = {
     // does not race bootstrap and double-fetch wallet/deposits.
     const hydrateToken = this.beginHydration();
     this.initNavigationIfNeeded();
+    if (this._savedRouteHash) {
+      const savedPage = String(this._savedRouteHash).replace(/^#/, '').trim();
+      this._savedRouteHash = null;
+      const savedTarget = savedPage
+        && document.querySelector(`#userAppShell .app-page[data-page="${savedPage}"]`);
+      if (savedTarget && typeof AppNav !== 'undefined') {
+        AppNav.navigate(savedPage, { pushHash: true, forceReload: true });
+      }
+    } else {
+      this.syncRouteFromHash();
+    }
     this.applySessionUserToUI();
+    window.EisyPush?.sync?.().catch(() => {});
 
     const finishHydration = () => this.endHydration(hydrateToken);
     const hydrationSafety = setTimeout(finishHydration, 5000);
@@ -6531,6 +6993,11 @@ const Dashboard = {
     const bootstrap = async () => {
       await this.ensureSessionUser().catch(() => null);
       this.updateProfileFormUI();
+
+      const cachedCards = !Auth.needsPinUnlock() && this.applyCachedCardsIfAvailable();
+      const cachedWallet = !Auth.needsPinUnlock() && this.applyCachedWallet();
+      if (!cachedWallet && !Auth.needsPinUnlock()) this.setBalanceLoading(true);
+      if (!cachedCards && !Auth.needsPinUnlock()) this.setCardsLoading(true);
 
       if (Auth.needsPinUnlock()) {
         const needsSetup = !Auth.user?.has_pin;
@@ -6542,24 +7009,41 @@ const Dashboard = {
           $('pinSetupModal')?.classList.add('hidden');
         }
         this.applyCachedCardsIfAvailable();
+        this.setBalanceLoading(false);
+        this.setCardsLoading(false);
         this.setHomeWalletBalanceDisplay('🔒 Locked');
       } else {
         $('pinUnlockModal')?.classList.add('hidden');
         $('pinSetupModal')?.classList.add('hidden');
-        this.applyCachedCardsIfAvailable();
-        this.loadAllCards({ preserveSelection: true, silent: true });
       }
 
-      this.setHomeWalletBalanceDisplay('Loading…');
       if ($('sumName') && $('sumName').textContent === '—' && Auth.user?.name) {
         $('sumName').textContent = Auth.user.name;
       }
 
-      // Home-critical path only — pricing/fees/KYC/methods load on demand per page.
+      // Home-critical path: local balance and local cards in parallel.
+      // The Tron scan and an empty-list Pago import follow without blocking paint.
+      const cardsReady = Auth.needsPinUnlock()
+        ? Promise.resolve()
+        : this.loadAllCards({ preserveSelection: true, silent: true });
       await Promise.allSettled([
-        this.loadWallet({ force: true }),
-        this.loadDepositHistory(),
+        Auth.needsPinUnlock() ? Promise.resolve() : this.loadWallet({ force: true, fast: true }),
+        cardsReady,
       ]);
+      this.loadDepositHistory().catch(() => {});
+      if (!Auth.needsPinUnlock()) {
+        clearTimeout(this._walletDeepScanTimer);
+        this._walletDeepScanTimer = setTimeout(() => {
+          if (document.hidden || Auth.needsPinUnlock()) return;
+          this.loadWallet({ force: true, silent: true }).catch(() => {});
+        }, 2500);
+        if (!(this.allCards || []).length) {
+          this.loadAllCards({ preserveSelection: true, silent: true, reconcilePago: true })
+            .finally(() => this.setCardsLoading(false));
+        } else {
+          this.setCardsLoading(false);
+        }
+      }
       this.loadCardPricing().catch(() => {});
     };
 
@@ -6697,8 +7181,35 @@ const Dashboard = {
     this.mountInstantAppUi();
   },
 
-  async loadCardPricing() {
-    return;
+  async loadCardPricing({ force = false } = {}) {
+    if (!Auth.isLoggedIn()) return;
+    if (!force && this.cardPricing && this._isFresh('pricing')) {
+      this.renderRatesPage();
+      this.updateHomeRateSummary();
+      return;
+    }
+    return this._withInflight('pricing', async () => {
+      try {
+        const data = await Auth.api('GET', '/api/user/pricing');
+        const pricing = data.pricing || data;
+        this.cardPricing = {
+          ...(this.cardPricing || {}),
+          ...pricing,
+          rate_effective_date: pricing.rate_effective_date
+            || data.current_rate?.effective_date
+            || this.cardPricing?.rate_effective_date,
+          withdrawal_fees: {
+            ...(pricing.withdrawal_fees || {}),
+            ...(this.withdrawalFees || {}),
+          },
+        };
+        this._markFetched('pricing');
+        this.renderRatesPage();
+        this.updateHomeRateSummary();
+      } catch (err) {
+        console.warn('[Dashboard] card pricing:', err.message);
+      }
+    }, { force });
   },
 
   updateCardPricingBreakdown() {
@@ -6852,9 +7363,9 @@ const Dashboard = {
     const topUp = parseFloat(amountUsdt);
     const feePercent = Number(p.card_reload_fee_percent ?? 0);
     const feeFixed = Number(p.card_reload_fee_usd ?? 0);
-    const fee = feePercent > 0
-      ? Math.round(topUp * feePercent) / 100
-      : feeFixed;
+    const feeMinimum = Number(p.card_reload_fee_minimum_usd ?? 0);
+    const additive = (Number.isFinite(feeFixed) ? feeFixed : 0) + (topUp * (Number.isFinite(feePercent) ? feePercent : 0) / 100);
+    const fee = Math.max(additive, Number.isFinite(feeMinimum) ? feeMinimum : 0);
     const minUsdt = p.minimum_usdt_reload ?? 5;
 
     if (!Number.isFinite(topUp) || topUp <= 0) return null;
@@ -6961,6 +7472,16 @@ const Dashboard = {
           ?? rawFees.withdrawal_service_fee_percent
           ?? data.payment_service_fee_percent
           ?? rawFees.payment_service_fee_percent,
+        withdrawal_service_fee_fixed_usdt:
+          data.withdrawal_service_fee_fixed_usdt
+          ?? rawFees.withdrawal_service_fee_fixed_usdt
+          ?? data.payment_service_fee_fixed_usdt
+          ?? rawFees.payment_service_fee_fixed_usdt
+          ?? 0,
+        payment_service_fee_fixed_usdt:
+          data.payment_service_fee_fixed_usdt
+          ?? rawFees.payment_service_fee_fixed_usdt
+          ?? 0,
         withdrawal_service_fee_minimum_usdt:
           data.withdrawal_service_fee_minimum_usdt
           ?? rawFees.withdrawal_service_fee_minimum_usdt
@@ -6973,14 +7494,13 @@ const Dashboard = {
           ?? rawFees.payment_service_fee_mode,
       };
       this._markFetched('withdrawalFees');
-      // Keep Rates page in sync with the live withdrawal fee endpoint (not a stale cardPricing cache).
       if (this.cardPricing) {
         this.cardPricing.withdrawal_fees = {
           ...(this.cardPricing.withdrawal_fees || {}),
           ...this.withdrawalFees,
         };
-        this.renderRatesPage();
       }
+      this.renderRatesPage();
       this.updateWithdrawUsdtHint();
       const min = Number(this.withdrawalFees.minimum_usdt_withdrawal ?? 10);
       const minInput = $('withdrawAmountUsdt');
@@ -7057,7 +7577,7 @@ const Dashboard = {
     if (bankFields) bankFields.classList.toggle('hidden', method !== 'bank');
     if (walletInput) {
       walletInput.required = cryptoLike;
-      walletInput.placeholder = (networkSelect?.value || 'TRC20') === 'BEP20' ? '0x…' : 'T…';
+      walletInput.placeholder = 'T…';
     }
     if (networkSelect) {
       networkSelect.required = cryptoLike;
@@ -7114,7 +7634,7 @@ const Dashboard = {
     let mode = String(
       fees.withdrawal_service_fee_mode
       || fees.payment_service_fee_mode
-      || 'max_percent_or_min'
+      || 'fixed_plus_percent'
     ).toLowerCase();
     let feePercent = Number(
       fees.withdrawal_service_fee_percent
@@ -7126,6 +7646,12 @@ const Dashboard = {
       ?? fees.payment_service_fee_minimum_usdt
       ?? 0
     );
+    let fixedFee = Number(
+      fees.withdrawal_service_fee_fixed_usdt
+      ?? fees.payment_service_fee_fixed_usdt
+      ?? 0
+    );
+    if (!Number.isFinite(fixedFee) || fixedFee < 0) fixedFee = 0;
     if (hook?.normalizeFeeMode) mode = hook.normalizeFeeMode(mode);
     else if (mode === 'max_percent_or_minimum' || mode === 'percent_with_minimum' || mode === 'legacy' || mode === 'max') {
       mode = 'max_percent_or_min';
@@ -7136,22 +7662,22 @@ const Dashboard = {
     const hasScopedPercent = Number.isFinite(
       Number(fees.withdrawal_service_fee_percent ?? fees.payment_service_fee_percent)
     );
-    if (mode === 'fixed' || (!hasScopedPercent && mode !== 'off' && mode !== 'percent' && mode !== 'max_percent_or_min')) {
+    if (mode !== 'fixed_plus_percent' && (mode === 'fixed' || (!hasScopedPercent && mode !== 'off' && mode !== 'percent' && mode !== 'max_percent_or_min'))) {
       const feeAmountKey = isBank
         ? 'usdt_withdraw_fee_bank'
-        : net === 'BEP20'
-          ? 'usdt_withdraw_fee_bep20'
-          : 'usdt_withdraw_fee_trc20';
+        : 'usdt_withdraw_fee_trc20';
       mode = 'fixed';
       feePercent = 0;
       minimumFee = Number(fees[feeAmountKey] ?? fees.payment_service_fee_minimum_usdt ?? 2);
     }
 
     const percentFee = Math.round(amountUsdt * feePercent) / 100;
+    const additive = Math.round((fixedFee + percentFee) * 100) / 100;
     let feeUsdt = 0;
     if (mode === 'off') feeUsdt = 0;
     else if (mode === 'percent') feeUsdt = Math.round(percentFee * 100) / 100;
     else if (mode === 'fixed') feeUsdt = Math.round(minimumFee * 100) / 100;
+    else if (mode === 'fixed_plus_percent') feeUsdt = Math.round(Math.max(additive, minimumFee) * 100) / 100;
     else feeUsdt = Math.round(Math.max(percentFee, minimumFee) * 100) / 100;
     const netUsdt = Math.round((amountUsdt - feeUsdt) * 100) / 100;
     const min = Number(fees.minimum_usdt_withdrawal ?? 10);
@@ -7161,11 +7687,14 @@ const Dashboard = {
 
     let feeLabel = 'No service fee';
     if (feeUsdt > 0) {
-      if (mode === 'fixed') feeLabel = `fixed $${feeUsdt.toFixed(2)}`;
+      if (mode === 'fixed_plus_percent') {
+        if (minimumFee > additive + 0.0001) feeLabel = `min $${minimumFee.toFixed(2)}`;
+        else if (fixedFee > 0) feeLabel = `$${fixedFee.toFixed(2)} + ${feePercent}% ($${feeUsdt.toFixed(2)})`;
+        else feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
+      } else if (mode === 'fixed') feeLabel = `fixed $${feeUsdt.toFixed(2)}`;
       else if (mode === 'percent' || feePercent === 4 || Number(fees.withdraw_markup_percent) === 4) {
         feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
-      } else if (mode === 'percent') feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
-      else if (usedMinimum) feeLabel = `min $${minimumFee.toFixed(2)} (${feePercent}% = $${percentFee.toFixed(2)})`;
+      } else if (usedMinimum) feeLabel = `min $${minimumFee.toFixed(2)} (${feePercent}% = $${percentFee.toFixed(2)})`;
       else feeLabel = `${feePercent}% ($${feeUsdt.toFixed(2)})`;
     }
 
@@ -7214,10 +7743,8 @@ const Dashboard = {
     if ($('withdrawPreviewNetwork')) {
       if (method === 'bank') {
         $('withdrawPreviewNetwork').textContent = 'Bank (USDT → MMK) · 48h';
-      } else if (network === 'BEP20') {
-        $('withdrawPreviewNetwork').textContent = 'BEP20 (BSC) · 48h';
       } else {
-        $('withdrawPreviewNetwork').textContent = 'TRC20 · 48h';
+        $('withdrawPreviewNetwork').textContent = 'TRC20 (Tron) · 48h';
       }
     }
 
@@ -7541,6 +8068,407 @@ const Dashboard = {
     this.closeScanPayModal();
   },
 
+  /* ─── User Pay (QR scan + receive — internal USDT transfer) ─── */
+  bindUserPayUi() {
+    if (this._userPayBound) return;
+    this._userPayBound = true;
+    this._userPayGuard = window.EisyHooks?.submitBusy?.createInFlightGuard?.()
+      || this._createPagoCardRequestGuard();
+
+    $('btnNavOpenUserPay')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.openUserPayModal();
+    });
+    $('userPayModalClose')?.addEventListener('click', () => this.closeUserPayModal());
+    $('btnUserPayDone')?.addEventListener('click', () => this.closeUserPayModal());
+    $('btnUserPayViewWallet')?.addEventListener('click', () => {
+      this.closeUserPayModal();
+      if (typeof AppNav !== 'undefined') AppNav.navigate('usdt-wallet', { pushHash: true });
+    });
+    $('userPayModal')?.addEventListener('click', (e) => {
+      if (e.target === $('userPayModal')) this.closeUserPayModal();
+    });
+    $('btnUserPayTabScan')?.addEventListener('click', () => this.setUserPayTab('scan'));
+    $('btnUserPayTabReceive')?.addEventListener('click', () => this.setUserPayTab('receive'));
+    $('btnUserPayChooseCamera')?.addEventListener('click', () => this._userPayShowCameraPanel());
+    $('btnUserPayStartCamera')?.addEventListener('click', () => this.startUserPayCamera());
+    $('btnUserPayBackToChooser')?.addEventListener('click', () => this._userPayShowChooser());
+    $('btnUserPayRescan')?.addEventListener('click', () => {
+      this._userPayShowStep('scan');
+      this._userPayShowChooser();
+    });
+    $('btnUserPayConfirm')?.addEventListener('click', () => this.submitUserPay());
+    $('btnUserPayManualContinue')?.addEventListener('click', () => {
+      const email = $('userPayManualEmail')?.value?.trim();
+      if (!email) {
+        this._userPaySetError(this.i18nText('user_pay_enter_email', 'Enter a recipient email'));
+        return;
+      }
+      this.onUserPayPayload(email);
+    });
+    $('btnUserPayCopyPayload')?.addEventListener('click', () => this.copyUserPayReceiveLink());
+    $('userPayImageInput')?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) this.decodeUserPayImageFile(file);
+    });
+    this.closeUserPayModal();
+  },
+
+  _setUserPayModalVisible(visible) {
+    const modal = $('userPayModal');
+    const navBtn = $('btnNavOpenUserPay');
+    if (!modal) return;
+    if (visible) {
+      modal.classList.remove('hidden');
+      modal.classList.add('is-open');
+      modal.removeAttribute('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+      navBtn?.classList.add('is-active');
+      navBtn?.setAttribute('aria-expanded', 'true');
+    } else {
+      modal.classList.add('hidden');
+      modal.classList.remove('is-open');
+      modal.setAttribute('hidden', '');
+      modal.setAttribute('aria-hidden', 'true');
+      navBtn?.classList.remove('is-active');
+      navBtn?.setAttribute('aria-expanded', 'false');
+    }
+  },
+
+  _resetUserPayForm() {
+    $('userPayManualEmail') && ($('userPayManualEmail').value = '');
+    $('userPayAmountInput') && ($('userPayAmountInput').value = '');
+    $('userPayNoteInput') && ($('userPayNoteInput').value = '');
+    if ($('userPayReceiveQr')) $('userPayReceiveQr').removeAttribute('src');
+    if ($('userPayImageInput')) $('userPayImageInput').value = '';
+    this._userPayReceivePayload = '';
+    this._userPaySetError('');
+    this._userPaySetUploadStatus('');
+    this.setUserPayTab('scan');
+    this._userPayShowStep('scan');
+    this._userPayShowChooser();
+  },
+
+  openUserPayModal() {
+    if (typeof AppNav !== 'undefined' && typeof AppNav.closeMobileSidebar === 'function') {
+      AppNav.closeMobileSidebar();
+    }
+    if (!Auth.isLoggedIn()) {
+      this.toast(this.i18nText('sign_in_required', 'Sign in to continue'), 'error');
+      return;
+    }
+    if (Auth.needsPinUnlock?.()) {
+      this.openPinUnlockModal();
+      return;
+    }
+    this._userPayState = { mode: 'chooser' };
+    this._userPaySetError('');
+    this.setUserPayTab('scan');
+    this._userPayShowStep('scan');
+    this._userPayShowChooser();
+    this._setUserPayModalVisible(true);
+    this.loadUserPayReceiveQr().catch(() => {});
+    if (this.walletUsdt == null) {
+      this.loadWallet({ force: false }).catch(() => {});
+    }
+  },
+
+  closeUserPayModal() {
+    this.stopUserPayCamera();
+    this._setUserPayModalVisible(false);
+    this._resetUserPayForm();
+    this._userPayState = null;
+    this._userPayGuard?.end?.();
+    const btn = $('btnUserPayConfirm');
+    if (btn) this.setSubmitBusy(btn, false);
+  },
+
+  setUserPayTab(tab) {
+    const receive = tab === 'receive';
+    $('btnUserPayTabScan')?.classList.toggle('is-active', !receive);
+    $('btnUserPayTabReceive')?.classList.toggle('is-active', receive);
+    $('btnUserPayTabScan')?.setAttribute('aria-selected', receive ? 'false' : 'true');
+    $('btnUserPayTabReceive')?.setAttribute('aria-selected', receive ? 'true' : 'false');
+    const recv = $('userPayPanelReceive');
+    const flow = $('userPayPanelFlow');
+    recv?.classList.toggle('hidden', !receive);
+    flow?.classList.toggle('hidden', receive);
+    if (receive) recv?.removeAttribute('hidden');
+    else recv?.setAttribute('hidden', '');
+    if (receive) flow?.setAttribute('hidden', '');
+    else flow?.removeAttribute('hidden');
+    if (receive) this.stopUserPayCamera();
+    else if (this._userPayState?.mode === 'camera') this.startUserPayCamera().catch(() => {});
+  },
+
+  async loadUserPayReceiveQr() {
+    const data = await Auth.api('GET', '/api/user/usdt-wallet/pay/receive-qr', null, { sensitive: true });
+    this._userPayReceivePayload = data.payload || '';
+    const img = $('userPayReceiveQr');
+    if (img && data.qr_image_url) {
+      img.src = data.qr_image_url;
+      img.alt = this.i18nText('user_pay_receive_qr_alt', 'Your Pay QR code');
+    }
+    if ($('userPayReceiveEmail')) {
+      $('userPayReceiveEmail').textContent = data.email
+        ? `${this.i18nText('recipient_email', 'Recipient email')}: ${data.email}`
+        : '';
+    }
+  },
+
+  async copyUserPayReceiveLink() {
+    const payload = this._userPayReceivePayload;
+    if (!payload) {
+      await this.loadUserPayReceiveQr().catch(() => {});
+    }
+    const link = this._userPayReceivePayload;
+    if (!link) return;
+    try {
+      await this.copyToClipboard(link);
+      this.toast(this.i18nText('user_pay_copy_ok', 'Pay link copied'), 'ok');
+    } catch (_) {
+      this.toast(this.i18nText('copy_failed', 'Could not copy'), 'error');
+    }
+  },
+
+  _userPayShowChooser() {
+    this.stopUserPayCamera();
+    if (this._userPayState) this._userPayState.mode = 'chooser';
+    $('userPayChooser')?.classList.remove('hidden');
+    $('userPayCameraPanel')?.classList.add('hidden');
+    this._userPaySetUploadStatus('');
+  },
+
+  _userPayShowCameraPanel() {
+    if (this._userPayState) this._userPayState.mode = 'camera';
+    $('userPayChooser')?.classList.add('hidden');
+    $('userPayCameraPanel')?.classList.remove('hidden');
+    this.startUserPayCamera().catch(() => {});
+  },
+
+  _userPayShowStep(step) {
+    $('userPayStepScan')?.classList.toggle('hidden', step !== 'scan');
+    $('userPayStepConfirm')?.classList.toggle('hidden', step !== 'confirm');
+    $('userPayStepResult')?.classList.toggle('hidden', step !== 'result');
+    if (step !== 'scan') this.stopUserPayCamera();
+  },
+
+  _userPaySetError(msg) {
+    const el = $('userPayError');
+    if (!el) return;
+    const text = String(msg || '').trim();
+    el.textContent = text;
+    el.classList.toggle('hidden', !text);
+  },
+
+  _userPaySetUploadStatus(msg) {
+    const el = $('userPayUploadStatus');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.classList.toggle('hidden', !msg);
+  },
+
+  async startUserPayCamera() {
+    const status = $('userPayCameraStatus');
+    const video = $('userPayVideo');
+    if (!video) return;
+    $('userPayChooser')?.classList.add('hidden');
+    $('userPayCameraPanel')?.classList.remove('hidden');
+    this.stopUserPayCamera();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+      video.srcObject = stream;
+      await video.play();
+      this._userPayState = this._userPayState || {};
+      this._userPayState.stream = stream;
+      this._userPayState.mode = 'camera';
+      if (status) status.textContent = this.i18nText('scan_pay_camera_live', 'Point at a Pay QR code');
+      this._userPayLoop();
+    } catch (err) {
+      if (status) status.textContent = err.message || 'Camera unavailable';
+      console.warn('[user-pay] camera', err.message);
+    }
+  },
+
+  stopUserPayCamera() {
+    const st = this._userPayState;
+    if (st?.raf) cancelAnimationFrame(st.raf);
+    if (st?.stream) {
+      st.stream.getTracks().forEach((t) => t.stop());
+      st.stream = null;
+    }
+    const video = $('userPayVideo');
+    if (video) video.srcObject = null;
+  },
+
+  _userPayLoop() {
+    const st = this._userPayState;
+    const video = $('userPayVideo');
+    const canvas = $('userPayCanvas');
+    if (!st || !video || !canvas || video.readyState < 2) {
+      if (st) st.raf = requestAnimationFrame(() => this._userPayLoop());
+      return;
+    }
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (w && h) {
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, w, h);
+      const imageData = ctx.getImageData(0, 0, w, h);
+      this._decodeScanPayImageData(imageData).then((payload) => {
+        if (payload) this.onUserPayPayload(payload);
+        else if (this._userPayState === st) {
+          st.raf = requestAnimationFrame(() => this._userPayLoop());
+        }
+      }).catch(() => {
+        if (this._userPayState === st) {
+          st.raf = requestAnimationFrame(() => this._userPayLoop());
+        }
+      });
+      return;
+    }
+    st.raf = requestAnimationFrame(() => this._userPayLoop());
+  },
+
+  async decodeUserPayImageFile(file) {
+    this._userPaySetError('');
+    this._userPaySetUploadStatus('Reading QR image…');
+    this.stopUserPayCamera();
+    try {
+      const bmp = await createImageBitmap(file);
+      const candidates = [
+        this._scanPayDrawScaled(bmp, 1200),
+        this._scanPayDrawScaled(bmp, 800),
+      ];
+      let payload = null;
+      for (const imageData of candidates) {
+        payload = await this._decodeScanPayImageData(imageData, { tryInvert: true });
+        if (payload) break;
+      }
+      bmp.close();
+      if (!payload) {
+        this._userPaySetUploadStatus('');
+        this._userPaySetError(this.i18nText('user_pay_qr_not_found', 'No Pay QR found in that image.'));
+        return;
+      }
+      this._userPaySetUploadStatus('');
+      await this.onUserPayPayload(payload);
+    } catch (err) {
+      this._userPaySetUploadStatus('');
+      this._userPaySetError(err.message || 'Could not read that image.');
+    }
+  },
+
+  async onUserPayPayload(rawPayload) {
+    if (!rawPayload || this._userPayState?.paying) return;
+    this.stopUserPayCamera();
+    this._userPaySetError('');
+    try {
+      const data = await Auth.api('POST', '/api/user/usdt-wallet/pay/parse', {
+        payload: rawPayload,
+      });
+      const parsed = data.parsed || {};
+      const label = parsed.recipient_label
+        || parsed.to_email
+        || (parsed.to_user_id ? `User #${parsed.to_user_id}` : '—');
+      if (parsed.recipient_found === false) {
+        throw new Error(this.i18nText('user_pay_recipient_missing', 'Recipient account not found'));
+      }
+      this._userPayState = {
+        ...(this._userPayState || {}),
+        payload: rawPayload,
+        parsed,
+        to_email: parsed.to_email || null,
+        to_user_id: parsed.to_user_id || null,
+      };
+      if ($('userPayRecipientDisplay')) $('userPayRecipientDisplay').textContent = label;
+      if ($('userPayAmountInput')) {
+        $('userPayAmountInput').value = parsed.amount_usdt != null ? String(parsed.amount_usdt) : '';
+      }
+      if ($('userPayNoteInput') && parsed.note) $('userPayNoteInput').value = parsed.note;
+      const avail = this.walletUsdt != null ? Number(this.walletUsdt) : null;
+      if ($('userPayBalanceHint')) {
+        $('userPayBalanceHint').textContent = avail != null
+          ? `${this.i18nText('available_balance', 'Available balance')}: ${this.formatUsdt(avail)}`
+          : '';
+      }
+      this.setUserPayTab('scan');
+      this._userPayShowStep('confirm');
+    } catch (err) {
+      this._userPaySetError(err.message || 'Invalid Pay QR');
+      this._userPayShowStep('scan');
+    }
+  },
+
+  async submitUserPay() {
+    const guard = this._userPayGuard;
+    if (!guard?.tryStart()) return;
+
+    const btn = $('btnUserPayConfirm');
+    const sendingLabel = this.i18nText('user_pay_sending', 'Sending…');
+    this.setSubmitBusy(btn, true, { loadingLabel: sendingLabel });
+    this._userPaySetError('');
+
+    const parsed = this._userPayState?.parsed || {};
+    const amount = parseFloat($('userPayAmountInput')?.value);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      guard.end();
+      this.setSubmitBusy(btn, false);
+      this._userPaySetError(this.i18nText('enter_valid_amount', 'Enter a valid amount'));
+      return;
+    }
+
+    const note = $('userPayNoteInput')?.value?.trim() || parsed.note || undefined;
+    const body = {
+      amount_usdt: amount,
+      note,
+      idempotency_key: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    };
+    if (parsed.to_user_id) body.to_user_id = parsed.to_user_id;
+    else if (parsed.to_email || this._userPayState?.to_email) {
+      body.to_email = parsed.to_email || this._userPayState.to_email;
+    } else {
+      guard.end();
+      this.setSubmitBusy(btn, false);
+      this._userPaySetError(this.i18nText('user_pay_no_recipient', 'Recipient missing'));
+      return;
+    }
+
+    try {
+      const data = await Auth.api('POST', '/api/user/usdt-wallet/transfer', body, { sensitive: true });
+      const email = body.to_email || parsed.to_email || 'recipient';
+      const msg = data.duplicate
+        ? this.i18nText('user_pay_duplicate', 'Transfer already processed')
+        : `${this.i18nText('user_pay_sent', 'Sent')} ${this.formatUsdt(amount)} ${this.i18nText('user_pay_to', 'to')} ${email}`;
+      this.toast(msg, 'ok');
+      if ($('userPayResultMessage')) $('userPayResultMessage').textContent = msg;
+      if (data.wallet) {
+        this.syncUsdtWalletBalancesFromPayload({
+          balance_usdt: data.wallet.available_usdt ?? data.wallet.balance_usdt,
+          balance_usdt_locked: data.wallet.locked_usdt ?? data.wallet.balance_usdt_locked ?? 0,
+        });
+      }
+      this.loadWallet({ force: true }).catch(() => {});
+      this._userPayShowStep('result');
+      if (typeof AppNav !== 'undefined') {
+        AppNav.navigate('usdt-wallet', { pushHash: false });
+      }
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      const errMsg = err.message || this.i18nText('user_pay_failed', 'Payment failed');
+      this._userPaySetError(errMsg);
+      this.toast(errMsg, 'error');
+    } finally {
+      guard.end();
+      this.setSubmitBusy(btn, false);
+    }
+  },
+
   openWithdrawModal() {
     $('withdrawUsdtForm')?.classList.remove('hidden');
     $('withdrawSuccessBox')?.classList.add('hidden');
@@ -7580,22 +8508,28 @@ const Dashboard = {
     const fees = this.withdrawalFees || {};
     const amount = Math.round(Number(amountMmk) || 0);
     if (!Number.isFinite(amount) || amount <= 0) return null;
-    const mode = String(fees.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
-    const feePercent = Number(fees.payment_service_fee_percent ?? fees.mmk_withdraw_fee_percent ?? 2);
+    const mode = String(fees.withdrawal_service_fee_mode || fees.payment_service_fee_mode || 'fixed_plus_percent').toLowerCase();
+    const feePercent = Number(fees.withdrawal_service_fee_percent ?? fees.payment_service_fee_percent ?? fees.mmk_withdraw_fee_percent ?? 4);
     const rate = Number(fees.mmk_to_usd_rate || 4500);
-    const minimumFee = Math.round(Number(fees.payment_service_fee_minimum_usdt ?? 1) * rate);
+    const minimumFee = Math.round(Number(fees.withdrawal_service_fee_minimum_usdt ?? fees.payment_service_fee_minimum_usdt ?? 0) * rate);
+    const fixedFee = Math.round(Number(fees.withdrawal_service_fee_fixed_usdt ?? fees.payment_service_fee_fixed_usdt ?? 0) * rate);
     const percentFee = Math.round(amount * feePercent / 100);
     let feeMmk = 0;
     if (mode === 'off') feeMmk = 0;
     else if (mode === 'percent') feeMmk = percentFee;
     else if (mode === 'fixed') feeMmk = minimumFee;
+    else if (mode === 'fixed_plus_percent') feeMmk = Math.max(fixedFee + percentFee, minimumFee);
     else feeMmk = Math.max(percentFee, minimumFee);
     const netMmk = amount - feeMmk;
     const min = Number(fees.minimum_mmk_withdrawal || 10000);
     const usedMinimum = mode === 'max_percent_or_min' && percentFee < minimumFee;
     let feeLabel = 'No service fee';
     if (feeMmk > 0) {
-      if (mode === 'fixed') feeLabel = `fixed ${feeMmk.toLocaleString()} MMK`;
+      if (mode === 'fixed_plus_percent') {
+        feeLabel = fixedFee > 0
+          ? `fixed ${fixedFee.toLocaleString()} MMK + ${feePercent}% (${feeMmk.toLocaleString()} MMK)`
+          : `${feePercent}% (${feeMmk.toLocaleString()} MMK)`;
+      } else if (mode === 'fixed') feeLabel = `fixed ${feeMmk.toLocaleString()} MMK`;
       else if (mode === 'percent') feeLabel = `${feePercent}% (${feeMmk.toLocaleString()} MMK)`;
       else if (usedMinimum) {
         feeLabel = `min ${minimumFee.toLocaleString()} MMK (${feePercent}% = ${percentFee.toLocaleString()} MMK)`;
@@ -8026,65 +8960,104 @@ const Dashboard = {
     el.textContent = `Card issue: 1 USDT ≈ 1 USD · Fee $${cardFee} · Min $${minDep} · Reload: USDT wallet only${eff}`;
   },
 
+  formatRatesFeeLabel({ mode, fixed, percent, minimum } = {}) {
+    const modeName = String(mode || 'fixed_plus_percent').toLowerCase();
+    const pct = Number(percent);
+    const minFee = Number(minimum);
+    const fixedFee = Number(fixed);
+    const safePct = Number.isFinite(pct) ? pct : 0;
+    const safeMin = Number.isFinite(minFee) ? minFee : 0;
+    const safeFixed = Number.isFinite(fixedFee) ? fixedFee : 0;
+    const money = (n) => `$${n.toFixed(2)}`;
+    const pctLabel = String(Math.round(safePct * 100) / 100);
+    if (modeName === 'off') return 'No service fee';
+    if (modeName === 'fixed') return `fixed ${money(safeMin)}`;
+    if (modeName === 'percent') {
+      return safeMin > 0 ? `${pctLabel}% (min ${money(safeMin)})` : `${pctLabel}%`;
+    }
+    if (safeFixed > 0 && safePct > 0) {
+      const base = `${money(safeFixed)} + ${pctLabel}%`;
+      return safeMin > 0 ? `${base} (min ${money(safeMin)})` : base;
+    }
+    if (safeFixed > 0) {
+      return safeMin > safeFixed ? `${money(safeFixed)} (min ${money(safeMin)})` : `${money(safeFixed)} fixed`;
+    }
+    if (safePct > 0) {
+      return safeMin > 0 ? `${pctLabel}% (min ${money(safeMin)})` : `${pctLabel}%`;
+    }
+    if (safeMin > 0) return `min ${money(safeMin)}`;
+    return money(0);
+  },
+
   renderRatesPage() {
     const p = this.cardPricing;
-    if (!p) return;
+    const wf = (p && p.withdrawal_fees) || this.withdrawalFees || null;
+    if (!p && !wf) return;
 
-    const rate = p.mmk_to_usd_rate || 4500;
-    const fee = p.card_issuance_fee_usd || 0;
-    const min = p.minimum_initial_deposit_usd || 10;
-    const eff = p.rate_effective_date || '';
+    const setText = (id, text) => {
+      const el = $(id);
+      if (el && text != null && text !== '') el.textContent = text;
+    };
 
-    if ($('ratesExchangeValue')) {
-      $('ratesExchangeValue').textContent = `1 USD = ${rate.toLocaleString()} MMK`;
-    }
-    if ($('ratesEffectiveDate')) {
-      $('ratesEffectiveDate').textContent = eff ? `Effective: ${eff}` : '';
-    }
-    if ($('ratesCardFee')) $('ratesCardFee').textContent = `$${fee.toFixed(2)}`;
-    if ($('ratesMinDeposit')) $('ratesMinDeposit').textContent = `$${min.toFixed(2)}`;
+    if (p && p.mmk_to_usd_rate != null) {
+      const rate = Number(p.mmk_to_usd_rate);
+      const fee = Number(p.card_issuance_fee_usd);
+      const min = Number(p.minimum_initial_deposit_usd);
+      const eff = p.rate_effective_date || '';
+      if (Number.isFinite(rate) && rate > 0) {
+        setText('ratesExchangeValue', `1 USD = ${rate.toLocaleString()} MMK`);
+      }
+      setText('ratesEffectiveDate', eff ? `Effective: ${eff}` : '');
+      if (Number.isFinite(fee)) setText('ratesCardFee', `$${fee.toFixed(2)}`);
+      if (Number.isFinite(min)) setText('ratesMinDeposit', `$${min.toFixed(2)}`);
+      if (
+        p.card_reload_fee_usd != null
+        || p.card_reload_fee_percent != null
+        || p.card_reload_fee_minimum_usd != null
+      ) {
+        setText('ratesReloadFee', this.formatRatesFeeLabel({
+          mode: 'fixed_plus_percent',
+          fixed: p.card_reload_fee_usd,
+          percent: p.card_reload_fee_percent,
+          minimum: p.card_reload_fee_minimum_usd,
+        }));
+      }
 
-    const reloadFeeEl = $('ratesReloadFee');
-    if (reloadFeeEl) reloadFeeEl.textContent = '$3.50 fixed (+ $2.00 platform profit per reload)';
-
-    const wf = p.withdrawal_fees || this.withdrawalFees || {};
-    const mode = String(wf.withdrawal_service_fee_mode || wf.payment_service_fee_mode || 'max_percent_or_min').toLowerCase();
-    const pct = Number(wf.withdrawal_service_fee_percent ?? wf.payment_service_fee_percent ?? 2);
-    const minFee = Number(wf.withdrawal_service_fee_minimum_usdt ?? wf.payment_service_fee_minimum_usdt ?? 1);
-    const unifiedLabel = mode === 'off'
-      ? 'No service fee'
-      : mode === 'fixed'
-        ? `fixed $${minFee.toFixed(2)}`
-        : mode === 'percent'
-          ? `${pct}%`
-          : `${pct}% (min $${minFee.toFixed(2)})`;
-    if ($('ratesWithdrawFeeTrc20')) {
-      $('ratesWithdrawFeeTrc20').textContent = unifiedLabel;
-    }
-    if ($('ratesWithdrawFeeBep20')) {
-      $('ratesWithdrawFeeBep20').textContent = unifiedLabel;
-    }
-    if ($('ratesMinWithdrawal')) {
-      $('ratesMinWithdrawal').textContent = `$${Number(wf.minimum_usdt_withdrawal || 10).toFixed(2)}`;
+      const fundingPercent = Number(p.card_funding_fee_percent) || 0;
+      const fundingFee = Math.round((min * fundingPercent / 100) * 100) / 100;
+      const processingFee = Number(p.card_processing_fee_usd);
+      const processingFeeUsd = Number.isFinite(processingFee) && processingFee >= 0 ? processingFee : 1.5;
+      const totalUsd = Math.round((min + fee + fundingFee + processingFeeUsd) * 100) / 100;
+      const totalMmk = Math.ceil(totalUsd * rate);
+      const sample = $('ratesSampleBreakdown');
+      if (sample && Number.isFinite(rate) && Number.isFinite(fee) && Number.isFinite(min)) {
+        sample.innerHTML = `
+          <div class="pricing-row"><span>Initial Card Load (min)</span><strong>$${min.toFixed(2)}</strong></div>
+          <div class="pricing-row"><span>+ Card Issuance Fee</span><strong>$${fee.toFixed(2)}</strong></div>
+          <div class="pricing-row"><span>+ Funding Fee</span><strong>$${fundingFee.toFixed(2)}</strong></div>
+          <div class="pricing-row"><span>+ Processing Fee</span><strong>$${processingFeeUsd.toFixed(2)}</strong></div>
+          <div class="pricing-row pricing-total"><span>= Total USD Required</span><strong>$${totalUsd.toFixed(2)}</strong></div>
+          <div class="pricing-row pricing-mmk"><span>Total Payable (MMK)</span><strong>${totalMmk.toLocaleString()} MMK</strong></div>
+          <p class="hint pricing-rate">At today's rate: 1 USD = ${rate.toLocaleString()} MMK</p>
+        `;
+      }
     }
 
-    const fundingPercent = Number(p.card_funding_fee_percent) || 0;
-    const fundingFee = Math.round((min * fundingPercent / 100) * 100) / 100;
-    const processingFee = Number(p.card_processing_fee_usd);
-    const processingFeeUsd = Number.isFinite(processingFee) && processingFee >= 0 ? processingFee : 1.5;
-    const totalUsd = Math.round((min + fee + fundingFee + processingFeeUsd) * 100) / 100;
-    const totalMmk = Math.ceil(totalUsd * rate);
-    const sample = $('ratesSampleBreakdown');
-    if (sample) {
-      sample.innerHTML = `
-        <div class="pricing-row"><span>Initial Card Load (min)</span><strong>$${min.toFixed(2)}</strong></div>
-        <div class="pricing-row"><span>+ Card Issuance Fee</span><strong>$${fee.toFixed(2)}</strong></div>
-        <div class="pricing-row"><span>+ Funding Fee</span><strong>$${fundingFee.toFixed(2)}</strong></div>
-        <div class="pricing-row"><span>+ Processing Fee</span><strong>$${processingFeeUsd.toFixed(2)}</strong></div>
-        <div class="pricing-row pricing-total"><span>= Total USD Required</span><strong>$${totalUsd.toFixed(2)}</strong></div>
-        <div class="pricing-row pricing-mmk"><span>Total Payable (MMK)</span><strong>${totalMmk.toLocaleString()} MMK</strong></div>
-        <p class="hint pricing-rate">At today's rate: 1 USD = ${rate.toLocaleString()} MMK</p>
-      `;
+    if (wf && (
+      wf.withdrawal_service_fee_percent != null
+      || wf.withdrawal_service_fee_fixed_usdt != null
+      || wf.minimum_usdt_withdrawal != null
+      || wf.payment_service_fee_percent != null
+    )) {
+      const unifiedLabel = this.formatRatesFeeLabel({
+        mode: wf.withdrawal_service_fee_mode || wf.payment_service_fee_mode || 'fixed_plus_percent',
+        fixed: wf.withdrawal_service_fee_fixed_usdt ?? wf.payment_service_fee_fixed_usdt ?? 0,
+        percent: wf.withdrawal_service_fee_percent ?? wf.payment_service_fee_percent ?? 0,
+        minimum: wf.withdrawal_service_fee_minimum_usdt ?? wf.payment_service_fee_minimum_usdt ?? 0,
+      });
+      setText('ratesWithdrawFeeTrc20', unifiedLabel);
+      const minWd = Number(wf.minimum_usdt_withdrawal);
+      if (Number.isFinite(minWd)) setText('ratesMinWithdrawal', `$${minWd.toFixed(2)}`);
     }
   },
 
@@ -8376,7 +9349,10 @@ const Dashboard = {
     if (!Auth.isLoggedIn()) return;
     const force = Boolean(opts.force);
     if (!force && this._isFresh('wallet')) {
-      if (this.renderWalletBalancesFromCache()) return;
+      if (this.renderWalletBalancesFromCache()) {
+        this.updatePagoIssueSummary();
+        return;
+      }
     }
 
     if (Auth.needsPinUnlock()) {
@@ -8388,24 +9364,33 @@ const Dashboard = {
       return;
     }
 
-    return this._withInflight('wallet', async () => {
-      if (!force && this._isFresh('wallet') && this.renderWalletBalancesFromCache()) return;
+    const showSkeleton = !opts.silent && this.walletUsdt == null;
+    if (showSkeleton) this.setBalanceLoading(true);
 
-      this.setHomeWalletBalanceDisplay('Loading…');
+    return this._withInflight('wallet', async () => {
+      if (!force && this._isFresh('wallet') && this.renderWalletBalancesFromCache()) {
+        this.setBalanceLoading(false);
+        return;
+      }
+
       try {
-        const data = await Auth.api('GET', '/api/user/wallet', null, {
+        const data = await Auth.api('GET', '/api/user/wallet' + (opts.fast ? '?fast=1' : ''), null, {
           sensitive: true,
-          timeoutMs: 8000,
+          timeoutMs: opts.fast ? 8000 : 12000,
         });
         this.renderWalletBalances(data);
         this.walletUsdt = data.balance_usdt;
         this.walletUsdtLocked = data.balance_usdt_locked || 0;
+        this.saveWalletCache(data);
+        this.setBalanceLoading(false);
         this._markFetched('wallet');
+        this.updatePagoIssueSummary();
         this.applySessionUserToUI();
         if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
           this.syncUsdtWalletBalancesFromPayload(data);
         }
       } catch (err) {
+        this.setBalanceLoading(false);
         if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
           this.setHomeWalletBalanceDisplay('🔒 Locked');
           if (typeof AppNav !== 'undefined' && AppNav.currentPage === 'usdt-wallet') {
@@ -8432,16 +9417,699 @@ const Dashboard = {
     }, { force });
   },
 
+  _createPagoCardRequestGuard() {
+    let inFlight = false;
+    return {
+      get busy() { return inFlight; },
+      tryStart() {
+        if (inFlight) return false;
+        inFlight = true;
+        return true;
+      },
+      end() { inFlight = false; },
+    };
+  },
+
   bindPagoCardUi() {
     if (this._pagoCardBound) return;
     this._pagoCardBound = true;
+    if (!this._pagoCardRequestGuard) {
+      this._pagoCardRequestGuard = window.EisyHooks?.submitBusy?.createInFlightGuard?.()
+        || this._createPagoCardRequestGuard();
+    }
+    this.pagoDetailRevealed = false;
+    this.pagoWalletInfo = null;
+    this.pagoWalletTarget = null;
+    this.pago3dsEvents = [];
+    this.pago3dsKnownIds = new Set();
     $('pagoCardRequestForm')?.addEventListener('submit', (e) => this.submitPagoCardRequest(e));
+    $('pagoCardInitialLoad')?.addEventListener('input', () => this.updatePagoIssueSummary());
     $('pagoCardTopupForm')?.addEventListener('submit', (e) => this.submitPagoCardTopup(e));
-    $('pagoCardList')?.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-pago-view]');
-      if (!btn) return;
-      this.openPagoCardDetail(btn.getAttribute('data-pago-view'));
+    $('pagoCardTopupForm')?.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-pago-topup-quick]');
+      if (!chip) return;
+      const input = $('pagoTopupAmount');
+      if (input) input.value = chip.dataset.pagoTopupQuick || '';
+      this.markPagoTopupQuick(chip.dataset.pagoTopupQuick);
+      this.updatePagoTopupPreview();
     });
+    $('pagoTopupAmount')?.addEventListener('input', () => {
+      this.markPagoTopupQuick($('pagoTopupAmount')?.value);
+      this.updatePagoTopupPreview();
+    });
+    $('pagoCardTopupOpenBtn')?.addEventListener('click', () => this.openPagoTopupModal());
+    $('pagoTopupModalClose')?.addEventListener('click', () => this.closePagoTopupModal());
+    $('pagoTopupCancel')?.addEventListener('click', () => this.closePagoTopupModal());
+    $('pagoTopupModal')?.addEventListener('click', (e) => {
+      if (e.target === $('pagoTopupModal')) this.closePagoTopupModal();
+    });
+    $('pagoCardWithdrawOpenBtn')?.addEventListener('click', () => this.openPagoWithdrawModal());
+    $('pagoCardWithdrawForm')?.addEventListener('submit', (e) => this.submitPagoCardWithdraw(e));
+    $('pagoWithdrawAmount')?.addEventListener('input', () => this.updatePagoWithdrawPreview());
+    $('pagoWithdrawModalClose')?.addEventListener('click', () => this.closePagoWithdrawModal());
+    $('pagoWithdrawCancel')?.addEventListener('click', () => this.closePagoWithdrawModal());
+    $('pagoWithdrawModal')?.addEventListener('click', (e) => {
+      if (e.target === $('pagoWithdrawModal')) this.closePagoWithdrawModal();
+    });
+    $('pagoCardBlockBtn')?.addEventListener('click', () => this.submitPagoCardBlock());
+    $('pagoCardUnblockBtn')?.addEventListener('click', () => this.submitPagoCardUnblock());
+    $('pagoCardTerminateOpenBtn')?.addEventListener('click', () => this.openPagoTerminateModal());
+    $('pagoTerminateModalClose')?.addEventListener('click', () => this.closePagoTerminateModal());
+    $('pagoTerminateCancel')?.addEventListener('click', () => this.closePagoTerminateModal());
+    $('pagoTerminateConfirm')?.addEventListener('click', () => this.confirmPagoTerminate());
+    $('pagoTerminateModal')?.addEventListener('click', (e) => {
+      if (e.target === $('pagoTerminateModal')) this.closePagoTerminateModal();
+    });
+    $('pagoCardRevealBtn')?.addEventListener('click', () => this.togglePagoCardReveal());
+    $('pagoCardCopyNumberBtn')?.addEventListener('click', () => this.copyPagoCard());
+    $('pago3dsCopyBtn')?.addEventListener('click', () => this.copyPago3dsCode());
+    $('pago3dsRefreshBtn')?.addEventListener('click', () => this.refreshPago3dsCode());
+    $('pagoTxRefreshBtn')?.addEventListener('click', () => {
+      const card = this.getSelectedPagoCard();
+      if (card) this.loadPagoCardTransactions(card.id).catch(() => {});
+    });
+    $('pagoAddAppleWalletBtn')?.addEventListener('click', () => this.openPagoWalletGuide('apple'));
+    $('pagoAddGooglePayBtn')?.addEventListener('click', () => this.openPagoWalletGuide('google'));
+    $('pagoWalletModalClose')?.addEventListener('click', () => this.closePagoWalletModal());
+    $('pagoWalletCopyAllBtn')?.addEventListener('click', () => this.copyPagoWalletDetails());
+    $('pagoWalletCopyNumberBtn')?.addEventListener('click', () => this.copyPagoWalletField('number'));
+    $('pagoWalletCopyExpiryBtn')?.addEventListener('click', () => this.copyPagoWalletField('expiry'));
+    $('pagoWalletCopyCvvBtn')?.addEventListener('click', () => this.copyPagoWalletField('cvv'));
+    $('pagoWalletOpenAppBtn')?.addEventListener('click', () => this.openPagoWalletDestination());
+    $('pagoWalletModal')?.addEventListener('click', (e) => {
+      if (e.target === $('pagoWalletModal')) this.closePagoWalletModal();
+    });
+    $('pagoCardStage')?.addEventListener('click', (e) => {
+      const stepBtn = e.target.closest('[data-pago-step]');
+      if (stepBtn && stepBtn.closest('#pagoCardCarousel')) {
+        this.stepPagoCard(Number(stepBtn.getAttribute('data-pago-step')) || 0);
+        return;
+      }
+      const btn = e.target.closest('[data-pago-view]');
+      if (!btn || !btn.closest('#pagoCardList')) return;
+      this.selectPagoCard(btn.getAttribute('data-pago-view'));
+    });
+    $('pagoCardList')?.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        this.stepPagoCard(1);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        this.stepPagoCard(-1);
+      }
+    });
+  },
+
+  selectPagoCard(cardId) {
+    const cards = this.allCards || [];
+    const idx = cards.findIndex((card) => String(card.id) === String(cardId));
+    if (idx < 0) return;
+    this.activeCardIndex = idx;
+    this.pagoDetailRevealed = false;
+    this.pagoWalletInfo = null;
+    this.paintPagoCardSwitcher();
+    this.openPagoCardDetail(cards[idx].id, cards[idx]);
+  },
+
+  stepPagoCard(delta) {
+    const cards = this.allCards || [];
+    if (cards.length < 2 || !delta) return;
+    const next = (this.activeCardIndex + delta + cards.length) % cards.length;
+    this.selectPagoCard(cards[next].id);
+  },
+
+  stopPago3dsPoll() {
+    if (this._pago3dsPollTimer) {
+      clearInterval(this._pago3dsPollTimer);
+      this._pago3dsPollTimer = null;
+    }
+    this._pago3dsPollUntil = 0;
+  },
+
+  /**
+   * While the card detail is open, re-read codes already stored by the webhook.
+   * This does not call Pago. It stops itself after PAGO_3DS_POLL_LIMIT_MS.
+   * A live provider scan happens only when the user taps Refresh Code.
+   */
+  startPago3dsPoll(cardId) {
+    this.stopPago3dsPoll();
+    if (!cardId) return;
+    const limitMs = this.PAGO_3DS_POLL_LIMIT_MS || 120000;
+    const everyMs = this.PAGO_3DS_POLL_MS || 15000;
+    this._pago3dsPollCardId = String(cardId);
+    this._pago3dsPollUntil = Date.now() + limitMs;
+    this._pago3dsPollTimer = setInterval(() => {
+      if (Date.now() >= this._pago3dsPollUntil) {
+        this.stopPago3dsPoll();
+        return;
+      }
+      if (String(this._pago3dsPollCardId) !== String(cardId)) return;
+      if (this._pago3dsInFlight) return;
+      const panel = $('pagoCardDetailPanel');
+      if (!panel || panel.classList.contains('hidden')) {
+        this.stopPago3dsPoll();
+        return;
+      }
+      this.loadPago3dsEvents(cardId, { silent: true, refresh: false }).catch(() => {});
+    }, everyMs);
+  },
+
+  refreshPago3dsCode() {
+    const card = this.getSelectedPagoCard?.() || null;
+    const cardId = card?.id || this._pago3dsPollCardId;
+    if (!cardId || this._pago3dsInFlight) return;
+    this.loadPago3dsEvents(cardId, { silent: false, refresh: true }).catch(() => {});
+  },
+
+  setPago3dsRefreshing(on) {
+    const btn = $('pago3dsRefreshBtn');
+    if (!btn) return;
+    btn.disabled = Boolean(on);
+    btn.setAttribute('aria-busy', on ? 'true' : 'false');
+    const key = on ? 'pago_3ds_refreshing' : 'pago_3ds_refresh';
+    btn.setAttribute('data-i18n', key);
+    const fallback = on ? 'Refreshing…' : 'Refresh Code';
+    btn.textContent = (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(key) : this.i18nText(key, fallback);
+  },
+
+  async loadPago3dsEvents(cardId, { silent = true, refresh = false } = {}) {
+    if (!cardId || !Auth.isLoggedIn()) return null;
+    if (Auth.needsPinUnlock()) {
+      this.renderPago3dsPanel(this.pago3dsEvents || []);
+      return null;
+    }
+    const requestId = String(cardId);
+    if (this._pago3dsInFlight && this._pago3dsRequestId === requestId) return null;
+    this._pago3dsRequestId = requestId;
+    this._pago3dsInFlight = true;
+    if (refresh) this.setPago3dsRefreshing(true);
+    try {
+      const path = `/api/user/cards/${cardId}/3ds${refresh ? '?refresh=1' : ''}`;
+      const data = await Auth.api('GET', path, null, {
+        sensitive: true,
+        timeoutMs: refresh ? 25000 : 8000,
+      });
+      if (this._pago3dsRequestId !== requestId) return data;
+      const events = Array.isArray(data.events) ? data.events : [];
+      const prevIds = this._pago3dsSeenByCard?.[requestId] || new Set();
+      const incoming = events.filter((ev) => ev?.otp && !prevIds.has(String(ev.id)));
+      this.pago3dsEvents = events;
+      this.pago3dsKnownIds = new Set(events.map((ev) => String(ev.id)));
+      this._pago3dsSeenByCard = this._pago3dsSeenByCard || {};
+      this._pago3dsSeenByCard[requestId] = this.pago3dsKnownIds;
+      this.renderPago3dsPanel(events);
+
+      for (const ev of incoming) {
+        // Toast on first sight of any code (prevIds empty) and on newly arrived codes.
+        this.toast(
+          this.i18nText('pago_3ds_toast', 'New 3D Secure code'),
+          'ok',
+          ev.otp
+        );
+        if (!ev.seen_at && ev.id) {
+          Auth.api('POST', `/api/user/cards/3ds/${ev.id}/seen`, {}, { sensitive: true })
+            .catch(() => {});
+        }
+      }
+      return data;
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+        this.stopPago3dsPoll();
+        if (!silent) this.openPinUnlockModal();
+        return null;
+      }
+      console.warn('[Dashboard] 3DS poll:', err.message || err);
+      if (!silent) this.toast(err.message || 'Could not refresh 3DS code', 'error');
+      return null;
+    } finally {
+      if (this._pago3dsRequestId === requestId) {
+        this._pago3dsInFlight = false;
+        this.setPago3dsRefreshing(false);
+      }
+    }
+  },
+
+  renderPago3dsPanel(events) {
+    const panel = $('pago3dsPanel');
+    if (!panel) return;
+    panel.hidden = false;
+    const withOtp = (events || []).filter((ev) => ev && ev.otp);
+    const latest = withOtp[0] || null;
+    const codeEl = $('pago3dsCode');
+    const metaEl = $('pago3dsMeta');
+    const listEl = $('pago3dsList');
+    const copyBtn = $('pago3dsCopyBtn');
+
+    panel.classList.toggle('has-code', Boolean(latest?.otp));
+    if (codeEl) codeEl.textContent = latest?.otp || '————';
+    if (copyBtn) copyBtn.disabled = !latest?.otp;
+    this._pago3dsLatestOtp = latest?.otp || null;
+
+    if (metaEl) {
+      if (!latest) {
+        metaEl.textContent = this.i18nText('pago_3ds_empty', 'No active verification codes for this card.');
+      } else {
+        const bits = [];
+        if (latest.merchant_name) {
+          bits.push(`${this.i18nText('pago_3ds_merchant', 'Merchant')}: ${latest.merchant_name}`);
+        }
+        if (latest.transaction_amount) {
+          const cur = latest.transaction_currency || '';
+          bits.push(`${this.i18nText('pago_3ds_amount', 'Amount')}: ${latest.transaction_amount}${cur ? ` ${cur}` : ''}`);
+        }
+        if (latest.received_at) bits.push(latest.received_at);
+        metaEl.textContent = bits.join(' · ');
+      }
+    }
+
+    if (listEl) listEl.innerHTML = '';
+  },
+
+  async copyPago3dsCode() {
+    const otp = this._pago3dsLatestOtp;
+    if (!otp) return;
+    await this.copyToClipboard(String(otp));
+    this.copyToast(this.i18nText('pago_3ds_copied', '3D Secure code copied'));
+  },
+
+  i18nText(key, fallback) {
+    return (typeof t === 'function' ? t(key) : null) || fallback;
+  },
+
+  formatPagoTxDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  },
+
+  formatPagoTxAmount(tx) {
+    const amount = Number(tx?.amount);
+    if (!Number.isFinite(amount)) return '—';
+    const currency = String(tx?.currency || 'USD').toUpperCase();
+    const formatted = Math.abs(amount).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const sign = amount < 0 ? '-' : '';
+    if (currency === 'USD') return `${sign}$${formatted}`;
+    return `${sign}${formatted} ${currency}`;
+  },
+
+  renderPagoCardTransactions(transactions, { message } = {}) {
+    const list = $('pagoTxList');
+    const meta = $('pagoTxMeta');
+    if (!list) return;
+    const rows = Array.isArray(transactions) ? transactions : [];
+    if (!rows.length) {
+      list.innerHTML = '';
+      if (meta) {
+        meta.textContent = message || this.i18nText('pago_tx_empty', 'No transactions for this card yet.');
+      }
+      return;
+    }
+    if (meta) {
+      meta.textContent = this.i18nText('pago_tx_count', '{n} recent transactions')
+        .replace('{n}', String(rows.length));
+    }
+    const labels = {
+      completed: this.i18nText('pago_tx_status_completed', 'Completed'),
+      pending: this.i18nText('pago_tx_status_pending', 'Pending'),
+      declined: this.i18nText('pago_tx_status_declined', 'Declined'),
+      refunded: this.i18nText('pago_tx_status_refunded', 'Refunded'),
+      unknown: this.i18nText('pago_tx_status_unknown', 'Unknown'),
+    };
+    list.innerHTML = rows.map((tx) => {
+      const status = labels[tx.status] ? String(tx.status) : 'unknown';
+      const merchant = tx.merchant || this.i18nText('pago_tx_merchant_unknown', 'Card payment');
+      return `<li class="pago-tx-item">
+        <span class="pago-tx-merchant">${this.escapeHtml(merchant)}</span>
+        <time class="pago-tx-date" datetime="${this.escapeAttr(tx.date || '')}">${this.escapeHtml(this.formatPagoTxDate(tx.date))}</time>
+        <span class="pago-tx-amount${Number(tx.amount) < 0 ? ' is-credit' : ''}">${this.escapeHtml(this.formatPagoTxAmount(tx))}</span>
+        <span class="pago-tx-status is-${status}">${this.escapeHtml(labels[status])}</span>
+      </li>`;
+    }).join('');
+  },
+
+  async loadPagoCardTransactions(cardId) {
+    const list = $('pagoTxList');
+    const meta = $('pagoTxMeta');
+    if (!list || !cardId) return null;
+    const requestId = String(cardId);
+    this._pagoTxRequestId = requestId;
+    if (meta) meta.textContent = this.i18nText('pago_tx_loading', 'Loading transactions…');
+    list.innerHTML = '';
+    const refreshBtn = $('pagoTxRefreshBtn');
+    if (refreshBtn) refreshBtn.disabled = true;
+    try {
+      const data = await Auth.api('GET', `/api/user/cards/${cardId}/transactions`, null, {
+        sensitive: true,
+        timeoutMs: 14000,
+      });
+      if (this._pagoTxRequestId !== requestId) return data;
+      this.renderPagoCardTransactions(data?.transactions || []);
+      return data;
+    } catch (err) {
+      if (this._pagoTxRequestId !== requestId) return null;
+      const timedOut = err?.code === 'REQUEST_TIMEOUT' || err?.code === 'PAGO_TIMEOUT' || err?.code === 'CARD_REQUEST_TIMEOUT';
+      const message = timedOut
+        ? this.i18nText('pago_tx_timeout', 'Transactions timed out. Tap Refresh.')
+        : (err?.message || this.i18nText('pago_tx_error', 'Could not load transactions.'));
+      this.renderPagoCardTransactions([], { message });
+      return null;
+    } finally {
+      if (this._pagoTxRequestId === requestId && refreshBtn) refreshBtn.disabled = false;
+    }
+  },
+
+  detectPagoWalletPlatform() {
+    const ua = String(navigator.userAgent || '').toLowerCase();
+    if (/iphone|ipad|ipod/.test(ua)) return 'ios';
+    if (/android/.test(ua)) return 'android';
+    if (/mac os x|macintosh/.test(ua) && !('ontouchend' in document)) return 'macos';
+    return 'other';
+  },
+
+  fallbackPagoWalletInfo(card = {}) {
+    const product = String(card.product_code || '').toLowerCase();
+    const isAtm = product.includes('atm');
+    return {
+      mode: 'manual_add',
+      push_provisioning_available: false,
+      network_support: { apple_pay: true, google_pay: true },
+      contactless_google_pay: isAtm,
+      deep_links: {
+        google_wallet_web: 'https://pay.google.com/',
+        google_wallet_play: 'https://play.google.com/store/apps/details?id=com.google.android.apps.walletnfcrel',
+        apple_wallet_store: 'https://apps.apple.com/app/wallet/id1160481993',
+      },
+      google_pay: {
+        contactless_hint: isAtm
+          ? this.i18nText(
+            'pago_wallet_atm_hint',
+            'Visa ATM cards support contactless spend in Google Pay after you add the card.'
+          )
+          : null,
+      },
+    };
+  },
+
+  async loadPagoWalletInfo(card) {
+    if (!card?.id) return this.fallbackPagoWalletInfo(card);
+    try {
+      const data = await Auth.api('GET', `/api/user/cards/${card.id}/wallet`, null, {
+        sensitive: true,
+        timeoutMs: 8000,
+      });
+      this.pagoWalletInfo = data.wallet || this.fallbackPagoWalletInfo(card);
+      return this.pagoWalletInfo;
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') throw err;
+      console.warn('[Dashboard] wallet capability:', err.message);
+      this.pagoWalletInfo = this.fallbackPagoWalletInfo(card);
+      return this.pagoWalletInfo;
+    }
+  },
+
+  updatePagoWalletUi(card) {
+    const atmHint = $('pagoWalletAtmHint');
+    if (!atmHint) return;
+    const info = this.pagoWalletInfo || this.fallbackPagoWalletInfo(card || {});
+    const showAtm = Boolean(
+      info.contactless_google_pay
+      || info.google_pay?.contactless_hint
+      || String(card?.product_code || '').toLowerCase().includes('atm')
+    );
+    atmHint.classList.toggle('hidden', !showAtm);
+  },
+
+  getPagoWalletGuideCopy(target) {
+    const isApple = target === 'apple';
+    return {
+      title: this.i18nText(
+        isApple ? 'pago_wallet_apple_title' : 'pago_wallet_google_title',
+        isApple ? 'Add to Apple Wallet' : 'Add to Google Pay'
+      ),
+      lead: this.i18nText(
+        isApple ? 'pago_wallet_apple_lead' : 'pago_wallet_google_lead',
+        isApple
+          ? 'Your card details are ready. Paste them into Wallet on your iPhone or Apple Watch.'
+          : 'Your card details are ready. Paste them into Google Wallet / Google Pay on your phone.'
+      ),
+      steps: [
+        this.i18nText(
+          isApple ? 'pago_wallet_apple_step1' : 'pago_wallet_google_step1',
+          'Tap Copy All Details below (card number, expiry, and CVV).'
+        ),
+        this.i18nText(
+          isApple ? 'pago_wallet_apple_step2' : 'pago_wallet_google_step2',
+          isApple
+            ? 'Open the Wallet app, then tap the + button.'
+            : 'Open Google Wallet (or Google Pay) and tap Add to Wallet.'
+        ),
+        this.i18nText(
+          isApple ? 'pago_wallet_apple_step3' : 'pago_wallet_google_step3',
+          isApple
+            ? 'Choose Debit or Credit Card and paste or type the details.'
+            : 'Choose Payment card and paste or type the details.'
+        ),
+        this.i18nText(
+          isApple ? 'pago_wallet_apple_step4' : 'pago_wallet_google_step4',
+          isApple
+            ? 'Confirm with Face ID / Touch ID when Apple asks.'
+            : 'Verify with the code Google sends if prompted.'
+        ),
+      ],
+    };
+  },
+
+  fillPagoWalletFieldValues(card) {
+    const parts = this.walletClipboardParts(card);
+    const numberEl = $('pagoWalletNumberValue');
+    if (numberEl) numberEl.textContent = parts.number ? this.formatCardNumber(parts.number) : '—';
+    const expiryEl = $('pagoWalletExpiryValue');
+    if (expiryEl) expiryEl.textContent = parts.expiry || '—';
+    const cvvEl = $('pagoWalletCvvValue');
+    if (cvvEl) cvvEl.textContent = parts.cvv || '—';
+  },
+
+  closePagoWalletModal() {
+    $('pagoWalletModal')?.classList.add('hidden');
+    this.pagoWalletTarget = null;
+  },
+
+  async ensurePagoCardSecrets(card) {
+    if (card?.card_number && card?.cvv && card?.exp_date) return card;
+    if (!card?.id) return card;
+    try {
+      this.invalidateFetch('cards');
+      const data = await Auth.api('GET', `/api/user/cards/${card.id}`, null, { sensitive: true });
+      return this.applyCardsPayload(data, { selectCardId: card.id })
+        || data.card
+        || card;
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+        this.openPinUnlockModal();
+        throw err;
+      }
+      throw err;
+    }
+  },
+
+  async openPagoWalletGuide(target) {
+    const selected = this.getSelectedPagoCard();
+    if (!selected) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
+      return;
+    }
+
+    try {
+      const card = await this.ensurePagoCardSecrets(selected);
+      if (!card?.card_number || !card?.cvv) {
+        this.toast(
+          this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before adding to a wallet.'),
+          'error'
+        );
+        return;
+      }
+
+      this.pagoDetailRevealed = true;
+      this.showPagoCardDetail(card);
+      await this.loadPagoWalletInfo(card);
+      this.updatePagoWalletUi(card);
+
+      this.pagoWalletTarget = target === 'google' ? 'google' : 'apple';
+      const copy = this.getPagoWalletGuideCopy(this.pagoWalletTarget);
+      if ($('pagoWalletModalTitle')) $('pagoWalletModalTitle').textContent = copy.title;
+      if ($('pagoWalletModalLead')) $('pagoWalletModalLead').textContent = copy.lead;
+      const steps = $('pagoWalletModalSteps');
+      if (steps) {
+        steps.innerHTML = copy.steps.map((step) => `<li>${this.escapeHtml(step)}</li>`).join('');
+      }
+      this.fillPagoWalletFieldValues(card);
+      $('pagoWalletModal')?.classList.remove('hidden');
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') return;
+      this.toast(err.message || 'Could not prepare wallet add', 'error');
+    }
+  },
+
+  async copyPagoWalletDetails({ silentToast = false } = {}) {
+    const card = this.getSelectedPagoCard();
+    if (!card?.card_number) {
+      this.toast(
+        this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before adding to a wallet.'),
+        'error'
+      );
+      return false;
+    }
+    this.pagoDetailRevealed = true;
+    this.showPagoCardDetail(card);
+    try {
+      await this.copyToClipboard(this.formatWalletClipboard(card));
+    } catch (err) {
+      // Clipboard can fail without window focus (mobile WebView / headless).
+      // Details stay revealed on the plastic card so the user can still copy manually.
+      if (!silentToast) {
+        this.toast(
+          this.i18nText(
+            'pago_wallet_copy_failed',
+            'Could not auto-copy. Card details are shown — copy them manually into your wallet app.'
+          ),
+          'error'
+        );
+      }
+      console.warn('[Dashboard] wallet clipboard:', err?.message || err);
+      return false;
+    }
+    if (!silentToast) {
+      this.copyToast(
+        this.i18nText('pago_wallet_copied', 'Card details copied — paste them in your wallet app')
+      );
+    }
+    return true;
+  },
+
+  async copyPagoWalletField(field) {
+    const card = this.getSelectedPagoCard();
+    const parts = this.walletClipboardParts(card);
+    const value = parts[field];
+    if (!value) {
+      this.toast(
+        this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before adding to a wallet.'),
+        'error'
+      );
+      return false;
+    }
+    const notices = {
+      number: ['pago_wallet_copied_number', 'Card number copied'],
+      expiry: ['pago_wallet_copied_expiry', 'Expiry copied'],
+      cvv: ['pago_wallet_copied_cvv', 'CVV copied'],
+    };
+    const notice = notices[field];
+    if (!notice) return false;
+    try {
+      await this.copyToClipboard(value);
+    } catch (err) {
+      this.toast(
+        this.i18nText(
+          'pago_wallet_copy_failed',
+          'Could not auto-copy. Card details are shown — copy them manually into your wallet app.'
+        ),
+        'error'
+      );
+      console.warn('[Dashboard] wallet field clipboard:', err?.message || err);
+      return false;
+    }
+    this.copyToast(this.i18nText(notice[0], notice[1]));
+    return true;
+  },
+
+  openPagoWalletDestination() {
+    const info = this.pagoWalletInfo || this.fallbackPagoWalletInfo(this.getSelectedPagoCard() || {});
+    const links = info.deep_links || {};
+    const platform = this.detectPagoWalletPlatform();
+    const target = this.pagoWalletTarget || 'apple';
+    let url = null;
+    if (target === 'google') {
+      url = platform === 'android'
+        ? (links.google_wallet_play || links.google_wallet_web)
+        : (links.google_wallet_web || links.google_wallet_play);
+    } else if (platform === 'ios' || platform === 'macos') {
+      url = links.apple_wallet_store || null;
+    } else {
+      url = links.apple_wallet_store || links.google_wallet_web || null;
+    }
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    this.toast(
+      this.i18nText(
+        target === 'google' ? 'pago_wallet_google_step2' : 'pago_wallet_apple_step2',
+        'Open your wallet app on this device.'
+      ),
+      'ok'
+    );
+  },
+
+  getSelectedPagoCard() {
+    const panel = $('pagoCardDetailPanel');
+    const id = panel?.dataset.cardId;
+    if (!id) return null;
+    return (this.allCards || []).find((card) => String(card.id) === String(id)) || null;
+  },
+
+  resolvePagoNetwork(card) {
+    const blob = `${card?.brand || ''} ${card?.product_code || ''}`.toLowerCase();
+    if (blob.includes('master') || blob.includes('536')) return 'mastercard';
+    if (blob.includes('atm')) return 'atm';
+    return 'visa';
+  },
+
+  pagoNetworkClass(network) {
+    if (network === 'mastercard') return 'is-mastercard';
+    if (network === 'atm') return 'is-atm';
+    return 'is-visa';
+  },
+
+  maskPagoNumber(card) {
+    const last4 = String(card?.last4 || '').replace(/\D/g, '').slice(-4) || '••••';
+    return `•••• •••• •••• ${last4}`;
+  },
+
+  async togglePagoCardReveal() {
+    const card = this.getSelectedPagoCard();
+    if (!card) return;
+    const next = !this.pagoDetailRevealed;
+    if (!next) {
+      this.pagoDetailRevealed = false;
+      this.showPagoCardDetail(card);
+      return;
+    }
+    let full = card;
+    try {
+      if (!card.card_number || !card.cvv || !card.exp_date) {
+        full = await this.ensurePagoCardSecrets(card);
+      }
+    } catch (err) {
+      if (err?.code !== 'SENSITIVE_AUTH_REQUIRED') {
+        this.toast(err.message || 'Could not show card details', 'error');
+      }
+      return;
+    }
+    if (!full?.card_number && !full?.cvv && !full?.exp_date) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before copying.'), 'error');
+      return;
+    }
+    this.pagoDetailRevealed = true;
+    this.showPagoCardDetail(full);
   },
 
   prefillPagoCardRequest() {
@@ -8452,6 +10120,71 @@ const Dashboard = {
     const last = $('pagoCardLastName');
     if (first && !first.value && parts[0]) first.value = parts[0];
     if (last && !last.value && parts.length > 1) last.value = parts.slice(1).join(' ');
+    this.refreshPagoIssueSummary();
+  },
+
+  pagoCardNetworkLabel(card) {
+    const network = this.resolvePagoNetwork(card);
+    if (network === 'mastercard') return 'Mastercard';
+    if (network === 'atm') return 'ATM';
+    return 'Visa';
+  },
+
+  pagoCardBalanceText(card) {
+    if (card?.balance_usd == null || card.balance_usd === '') return '—';
+    const amount = Number(card.balance_usd);
+    if (!Number.isFinite(amount)) return '—';
+    return `$${amount.toFixed(2)}`;
+  },
+
+  paintPagoCardSwitcher() {
+    const list = $('pagoCardList');
+    const carousel = $('pagoCardCarousel');
+    const meta = $('pagoCardCarouselMeta');
+    const heading = document.querySelector('#pagoCardStage .pago-card-stage-head h2');
+    if (!list) return;
+    const cards = this.allCards || [];
+    if (this.activeCardIndex >= cards.length) this.activeCardIndex = 0;
+    const many = cards.length > 1;
+    carousel?.classList.toggle('hidden', !many);
+    meta?.classList.toggle('hidden', !many);
+    if (heading) {
+      const key = many ? 'pago_cards_heading_many' : 'pago_cards_heading';
+      heading.setAttribute('data-i18n', key);
+      heading.textContent = this.i18nText(key, many ? 'Your virtual cards' : 'Your virtual card');
+    }
+    const prev = $('pagoCardPrev');
+    const next = $('pagoCardNext');
+    if (prev) prev.setAttribute('aria-label', this.i18nText('pago_card_prev', 'Previous card'));
+    if (next) next.setAttribute('aria-label', this.i18nText('pago_card_next', 'Next card'));
+    if (!many) {
+      list.innerHTML = '';
+      if (meta) meta.textContent = '';
+      return;
+    }
+    list.innerHTML = cards.map((card, index) => {
+      const last4 = this.escapeHtml(card.last4 || '••••');
+      const label = this.escapeHtml(this.pagoCardNetworkLabel(card));
+      const balance = this.escapeHtml(this.pagoCardBalanceText(card));
+      const status = this.escapeHtml(card.display_status || card.status || '');
+      const active = index === this.activeCardIndex;
+      return `<button type="button" class="pago-card-chip pago-card-slide${active ? ' is-active' : ''}" role="tab" aria-selected="${active ? 'true' : 'false'}" data-pago-view="${this.escapeAttr(card.id)}">
+        <span class="pago-card-slide-brand">${label}</span>
+        <span class="pago-card-slide-number">•••• ${last4}</span>
+        <span class="pago-card-slide-balance">${balance}</span>
+        <span class="pago-card-slide-status">${status}</span>
+      </button>`;
+    }).join('');
+    if (meta) {
+      meta.textContent = this.i18nText('pago_card_position', '{n} of {total}')
+        .replace('{n}', String(this.activeCardIndex + 1))
+        .replace('{total}', String(cards.length));
+    }
+    const activeEl = list.querySelector('.is-active');
+    if (activeEl) {
+      const left = activeEl.offsetLeft - (list.clientWidth - activeEl.clientWidth) / 2;
+      list.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+    }
   },
 
   renderPagoCardList() {
@@ -8459,87 +10192,742 @@ const Dashboard = {
     if (!list) return;
     const empty = $('pagoCardEmpty');
     const cards = this.allCards || [];
+    const panel = $('pagoCardDetailPanel');
     if (!cards.length) {
       list.innerHTML = '';
-      empty?.classList.remove('hidden');
-      $('pagoCardDetailPanel')?.classList.add('hidden');
+      list.classList.add('hidden');
+      if (this._cardsUiLoading) {
+        empty?.classList.add('hidden');
+        $('pagoCardSkeleton')?.classList.remove('hidden');
+      } else {
+        $('pagoCardSkeleton')?.classList.add('hidden');
+        empty?.classList.remove('hidden');
+      }
+      panel?.classList.add('hidden');
+      this.stopPago3dsPoll();
+      this.renderPagoCardTransactions([], {
+        message: this.i18nText('pago_tx_empty', 'No transactions for this card yet.'),
+      });
       return;
     }
     empty?.classList.add('hidden');
-    list.innerHTML = cards.map((card) => {
-      const brand = this.escapeHtml(card.brand || card.product_code || 'Pago Card');
-      const last4 = this.escapeHtml(card.last4 || '????');
-      const status = this.escapeHtml(card.display_status || card.status || '');
-      const balance = card.balance_usd == null ? '—' : this.escapeHtml(Number(card.balance_usd).toFixed(2));
-      return `<article class="pago-card-row">
-        <div><strong>${brand}</strong><span>•••• ${last4}</span></div>
-        <div><span class="hint">${status}</span> · $${balance}</div>
-        <button type="button" class="btn btn-secondary btn-sm" data-pago-view="${card.id}" data-i18n="pago_view">View details</button>
-      </article>`;
-    }).join('');
-    if (typeof I18n !== 'undefined' && I18n.apply) I18n.apply(list);
+    $('pagoCardSkeleton')?.classList.add('hidden');
+    if (this.activeCardIndex >= cards.length) this.activeCardIndex = 0;
+    this.paintPagoCardSwitcher();
+    const selected = cards[this.activeCardIndex];
+    if (selected) this.showPagoCardDetail(selected);
+  },
+
+  async copyPagoCard() {
+    let card = this.getSelectedPagoCard();
+    if (!card) return;
+    try {
+      if (!card.card_number) card = await this.ensurePagoCardSecrets(card);
+    } catch (err) {
+      if (err?.code !== 'SENSITIVE_AUTH_REQUIRED') {
+        this.toast(err.message || 'Could not copy card', 'error');
+      }
+      return;
+    }
+    const number = String(card?.card_number || '').replace(/\s/g, '');
+    if (!number) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before copying.'), 'error');
+      return;
+    }
+    try {
+      await this.copyToClipboard(number);
+    } catch (err) {
+      this.toast(err.message || 'Could not copy card', 'error');
+      return;
+    }
+    this.copyToast(this.i18nText('pago_copy_card_done', 'Card number copied'));
+  },
+
+  pagoCardHolderName(card) {
+    const fromCard = card?.card_holder_name || card?.cardholderName;
+    if (fromCard && String(fromCard).trim()) return String(fromCard).trim().toUpperCase();
+    const user = typeof Auth !== 'undefined' && Auth.user ? Auth.user : {};
+    const fromProfile = user.name
+      || [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+    if (fromProfile) return String(fromProfile).toUpperCase();
+    return '—';
   },
 
   showPagoCardDetail(card) {
     const panel = $('pagoCardDetailPanel');
     if (!panel || !card) return;
+    const nextId = String(card.id);
+    const sameCard = panel.dataset.cardId === nextId && !panel.classList.contains('hidden');
+    if (!sameCard) {
+      this.closePagoTopupModal();
+      this.closePagoWithdrawModal();
+      this.closePagoTerminateModal();
+      if (panel.dataset.cardId && panel.dataset.cardId !== nextId) {
+        this.pagoDetailRevealed = false;
+        this.pagoWalletInfo = null;
+        this.pago3dsEvents = [];
+        this.pago3dsKnownIds = this._pago3dsSeenByCard?.[nextId] || new Set();
+        this.renderPago3dsPanel([]);
+        this.renderPagoCardTransactions([], {
+          message: this.i18nText('pago_tx_loading', 'Loading transactions…'),
+        });
+      }
+      panel.dataset.cardId = nextId;
+      this.startPago3dsPoll(card.id);
+      this.renderPago3dsPanel(this.pago3dsEvents || []);
+      this.loadPago3dsEvents(card.id, { silent: true, refresh: false }).catch(() => {});
+      this.loadPagoCardTransactions(card.id).catch(() => {});
+    }
     panel.classList.remove('hidden');
-    panel.dataset.cardId = String(card.id);
+
     const brand = card.brand || card.product_code || 'Pago Card';
+    const network = this.resolvePagoNetwork(card);
+    const plastic = $('pagoPlasticCard');
+    if (plastic) {
+      plastic.classList.remove('is-visa', 'is-mastercard', 'is-atm');
+      plastic.classList.add('pago-plastic-reference', this.pagoNetworkClass(network));
+    }
+    const netEl = $('pagoPlasticNetwork');
+    if (netEl) {
+      const netClass = this.pagoNetworkClass(network);
+      netEl.className = `pago-plastic-visa-corner visa-wordmark ${netClass}`;
+      if (netClass === 'is-visa') netEl.textContent = 'VISA';
+      else if (netClass === 'is-mastercard') netEl.textContent = '';
+      else netEl.textContent = network ? String(network).toUpperCase() : 'VISA';
+    }
     if ($('pagoCardDetailSummary')) {
       $('pagoCardDetailSummary').textContent = `${brand} · •••• ${card.last4 || '????'}`;
     }
-    if ($('pagoCardDetailStatus')) $('pagoCardDetailStatus').textContent = card.display_status || card.status || '—';
-    if ($('pagoCardDetailBalance')) {
-      $('pagoCardDetailBalance').textContent = card.balance_usd == null
-        ? '—'
-        : `$${Number(card.balance_usd).toFixed(2)}`;
+    if ($('pagoPlasticHolder')) {
+      $('pagoPlasticHolder').textContent = this.pagoCardHolderName(card);
     }
-    const number = card.card_number ? this.formatCardNumber(card.card_number) : '—';
-    if ($('pagoCardDetailNumber')) $('pagoCardDetailNumber').textContent = number;
-    if ($('pagoCardDetailExpiry')) $('pagoCardDetailExpiry').textContent = card.exp_date || '—';
-    if ($('pagoCardDetailCvv')) $('pagoCardDetailCvv').textContent = card.cvv || '—';
+
+    const statusEl = $('pagoCardDetailStatus');
+    if (statusEl) {
+      const statusKey = String(card.status || '').toLowerCase();
+      statusEl.textContent = card.display_status || card.status || '—';
+      statusEl.className = `pago-status-pill${statusKey ? ` is-${statusKey}` : ''}`;
+    }
+
+    if ($('pagoCardDetailBalance')) {
+      $('pagoCardDetailBalance').textContent = this.pagoCardBalanceText(card);
+    }
+
+    const revealed = Boolean(this.pagoDetailRevealed);
+    const hasNumber = Boolean(card.card_number);
+    if ($('pagoCardDetailNumber')) {
+      $('pagoCardDetailNumber').textContent = revealed && hasNumber
+        ? this.formatCardNumber(card.card_number)
+        : this.maskPagoNumber(card);
+    }
+    if ($('pagoCardDetailExpiry')) {
+      $('pagoCardDetailExpiry').textContent = revealed
+        ? (card.exp_date || '—')
+        : (card.exp_date ? '••/••' : '—');
+    }
+    if ($('pagoCardDetailCvv')) {
+      $('pagoCardDetailCvv').textContent = revealed
+        ? (card.cvv || '—')
+        : '•••';
+    }
+
+    const revealBtn = $('pagoCardRevealBtn');
+    if (revealBtn) {
+      const showLabel = typeof t === 'function' ? t('pago_show_details') : 'Show number & CVV';
+      const hideLabel = typeof t === 'function' ? t('pago_hide_details') : 'Hide number & CVV';
+      revealBtn.setAttribute('aria-label', revealed ? hideLabel : showLabel);
+      revealBtn.setAttribute('aria-pressed', revealed ? 'true' : 'false');
+    }
+    this.updatePagoWalletUi(card);
+    this.updatePagoCardLifecycleUi(card);
+  },
+
+  pagoCardBalanceUsd(card) {
+    const raw = card?.balance_usd ?? card?.balance_display_usd;
+    const amount = Number(raw);
+    return Number.isFinite(amount) ? amount : null;
+  },
+
+  updatePagoCardLifecycleUi(card) {
+    const status = String(card?.status || '').toLowerCase();
+    const terminated = status === 'terminated';
+    const frozen = status === 'frozen';
+    const active = !status || status === 'active';
+    const topupBtn = $('pagoCardTopupOpenBtn');
+    const withdrawBtn = $('pagoCardWithdrawOpenBtn');
+    const blockBtn = $('pagoCardBlockBtn');
+    const unblockBtn = $('pagoCardUnblockBtn');
+    const terminateBtn = $('pagoCardTerminateOpenBtn');
+    if (topupBtn) topupBtn.classList.toggle('hidden', !active || terminated);
+    if (withdrawBtn) withdrawBtn.classList.toggle('hidden', !active || terminated);
+    if (blockBtn) blockBtn.classList.toggle('hidden', !active || terminated);
+    if (unblockBtn) unblockBtn.classList.toggle('hidden', !frozen || terminated);
+    if (terminateBtn) terminateBtn.classList.toggle('hidden', terminated);
+  },
+
+  setPagoWithdrawError(message) {
+    const errEl = $('pagoWithdrawError');
+    if (!errEl) return;
+    const text = String(message || '').trim();
+    errEl.textContent = text;
+    errEl.classList.toggle('hidden', !text);
+  },
+
+  updatePagoWithdrawPreview() {
+    const card = this.getSelectedPagoCard();
+    const balance = this.pagoCardBalanceUsd(card);
+    const minRemain = 5;
+    const amountRaw = $('pagoWithdrawAmount')?.value;
+    const amount = Number(amountRaw);
+    const maxWithdraw = balance != null ? Math.max(0, Math.trunc((balance - minRemain) * 100) / 100) : null;
+    const hint = $('pagoWithdrawMaxHint');
+    if (hint) {
+      hint.textContent = maxWithdraw != null && maxWithdraw > 0
+        ? `${this.i18nText('pago_withdraw_max', 'Maximum withdraw')}: $${maxWithdraw.toFixed(2)} (${this.i18nText('pago_withdraw_min_remain', 'At least $5 must remain on the card')})`
+        : (balance != null && balance <= minRemain
+          ? this.i18nText('pago_withdraw_min_remain', 'At least $5 must remain on the card')
+          : '—');
+    }
+    const set = (id, text) => {
+      const el = $(id);
+      if (el) el.textContent = text;
+    };
+    const valid = Number.isFinite(amount) && amount > 0 && balance != null;
+    const remaining = valid ? Math.trunc((balance - amount) * 100) / 100 : null;
+    const ok = valid && remaining != null && remaining + 1e-9 >= minRemain && amount <= balance + 1e-9;
+    set('pagoWithdrawFromCard', valid ? `$${amount.toFixed(2)}` : '—');
+    set('pagoWithdrawToWallet', ok ? `$${amount.toFixed(2)} USDT` : '—');
+    set('pagoWithdrawRemaining', ok ? `$${remaining.toFixed(2)}` : '—');
+    const submit = $('pagoCardWithdrawSubmit');
+    if (submit && submit.dataset.busy !== '1') {
+      submit.disabled = !ok;
+    }
+    if (valid && !ok) {
+      this.setPagoWithdrawError(this.i18nText('pago_withdraw_min_remain', 'At least $5 must remain on the card'));
+    } else if (submit?.dataset.busy !== '1') {
+      this.setPagoWithdrawError('');
+    }
+  },
+
+  openPagoWithdrawModal() {
+    const card = this.getSelectedPagoCard();
+    if (!card) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
+      return;
+    }
+    const status = String(card.status || '').toLowerCase();
+    if (status && status !== 'active') {
+      this.toast(this.i18nText('pago_withdraw_inactive', 'Only active cards can withdraw balance'), 'error');
+      return;
+    }
+    const line = $('pagoWithdrawCardLine');
+    if (line) {
+      const last4 = card.last4 || '••••';
+      line.textContent = `•••• ${last4} · ${this.pagoCardBalanceText(card)}`;
+    }
+    if ($('pagoWithdrawAmount')) $('pagoWithdrawAmount').value = '';
+    const submit = $('pagoCardWithdrawSubmit');
+    if (submit) {
+      submit.disabled = true;
+      delete submit.dataset.busy;
+    }
+    this.setPagoWithdrawError('');
+    this.updatePagoWithdrawPreview();
+    $('pagoWithdrawModal')?.classList.remove('hidden');
+    $('pagoWithdrawAmount')?.focus();
+  },
+
+  closePagoWithdrawModal() {
+    $('pagoWithdrawModal')?.classList.add('hidden');
+    const submit = $('pagoCardWithdrawSubmit');
+    if (submit) {
+      submit.disabled = false;
+      delete submit.dataset.busy;
+    }
+  },
+
+  async submitPagoCardWithdraw(e) {
+    e.preventDefault();
+    const panel = $('pagoCardDetailPanel');
+    const cardId = panel?.dataset.cardId;
+    const amount = $('pagoWithdrawAmount')?.value;
+    if (!cardId) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
+      return;
+    }
+    const btn = $('pagoCardWithdrawSubmit');
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.busy = '1';
+    }
+    this.setPagoWithdrawError('');
+    try {
+      const data = await Auth.api('POST', `/api/user/cards/${cardId}/withdraw`, {
+        amount_usd: amount,
+      }, { sensitive: true });
+      this.toast(data.message || this.i18nText('pago_withdraw_done', 'Withdraw complete'), 'ok');
+      if ($('pagoWithdrawAmount')) $('pagoWithdrawAmount').value = '';
+      this.closePagoWithdrawModal();
+      const card = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
+      if (card) this.showPagoCardDetail(card);
+      this.loadWallet({ force: true }).catch(() => {});
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      const message = err.message || 'Withdraw failed';
+      this.setPagoWithdrawError(message);
+      this.toast(message, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        delete btn.dataset.busy;
+      }
+      this.updatePagoWithdrawPreview();
+    }
+  },
+
+  setPagoLifecycleBusy(btn, on) {
+    if (!btn) return;
+    btn.disabled = Boolean(on);
+    btn.setAttribute('aria-busy', on ? 'true' : 'false');
+  },
+
+  async submitPagoCardBlock() {
+    const card = this.getSelectedPagoCard();
+    const cardId = card?.id || $('pagoCardDetailPanel')?.dataset.cardId;
+    if (!cardId) return;
+    const btn = $('pagoCardBlockBtn');
+    this.setPagoLifecycleBusy(btn, true);
+    try {
+      const data = await Auth.api('POST', `/api/user/cards/${cardId}/block`, {}, { sensitive: true });
+      this.toast(data.message || this.i18nText('pago_block_done', 'Card blocked'), 'ok');
+      const updated = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
+      if (updated) this.showPagoCardDetail(updated);
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      else this.toast(err.message || 'Could not block card', 'error');
+    } finally {
+      this.setPagoLifecycleBusy(btn, false);
+    }
+  },
+
+  async submitPagoCardUnblock() {
+    const card = this.getSelectedPagoCard();
+    const cardId = card?.id || $('pagoCardDetailPanel')?.dataset.cardId;
+    if (!cardId) return;
+    const btn = $('pagoCardUnblockBtn');
+    this.setPagoLifecycleBusy(btn, true);
+    try {
+      const data = await Auth.api('POST', `/api/user/cards/${cardId}/unblock`, {}, { sensitive: true });
+      this.toast(data.message || this.i18nText('pago_unblock_done', 'Card unblocked'), 'ok');
+      const updated = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
+      if (updated) this.showPagoCardDetail(updated);
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      else this.toast(err.message || 'Could not unblock card', 'error');
+    } finally {
+      this.setPagoLifecycleBusy(btn, false);
+    }
+  },
+
+  openPagoTerminateModal() {
+    const card = this.getSelectedPagoCard();
+    if (!card) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
+      return;
+    }
+    const status = String(card.status || '').toLowerCase();
+    if (status === 'terminated') return;
+    const balance = this.pagoCardBalanceUsd(card);
+    const warn = $('pagoTerminateBalanceWarn');
+    if (warn) {
+      warn.classList.toggle('hidden', !(balance != null && balance > 5));
+    }
+    $('pagoTerminateError')?.classList.add('hidden');
+    if ($('pagoTerminateError')) $('pagoTerminateError').textContent = '';
+    const confirmBtn = $('pagoTerminateConfirm');
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      delete confirmBtn.dataset.busy;
+    }
+    $('pagoTerminateModal')?.classList.remove('hidden');
+  },
+
+  closePagoTerminateModal() {
+    $('pagoTerminateModal')?.classList.add('hidden');
+    const confirmBtn = $('pagoTerminateConfirm');
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      delete confirmBtn.dataset.busy;
+    }
+  },
+
+  async confirmPagoTerminate() {
+    const cardId = $('pagoCardDetailPanel')?.dataset.cardId;
+    if (!cardId) return;
+    const btn = $('pagoTerminateConfirm');
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.busy = '1';
+    }
+    const errEl = $('pagoTerminateError');
+    try {
+      const data = await Auth.api('POST', `/api/user/cards/${cardId}/terminate`, {}, { sensitive: true });
+      this.toast(data.message || this.i18nText('pago_terminate_done', 'Card terminated'), 'ok');
+      this.closePagoTerminateModal();
+      const updated = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
+      if (updated) this.showPagoCardDetail(updated);
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      else {
+        const message = err.message || 'Terminate failed';
+        if (errEl) {
+          errEl.textContent = message;
+          errEl.classList.remove('hidden');
+        }
+        this.toast(message, 'error');
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        delete btn.dataset.busy;
+      }
+    }
+  },
+
+  cardTimeoutMessage(err) {
+    const code = String(err?.code || '');
+    if (
+      code === 'REQUEST_TIMEOUT'
+      || code === 'PAGO_TIMEOUT'
+      || code === 'CARD_REQUEST_TIMEOUT'
+      || Number(err?.status) === 504
+    ) {
+      return this.i18nText('pago_timeout', 'Card service timed out. Please try again.');
+    }
+    return '';
   },
 
   async openPagoCardDetail(cardId, fallback) {
+    const requestId = String(cardId);
+    this._pagoDetailRequestId = requestId;
     const local = (this.allCards || []).find((card) => String(card.id) === String(cardId)) || fallback;
+    this.pagoDetailRevealed = false;
+    this.pagoWalletInfo = null;
     if (local) this.showPagoCardDetail(local);
     try {
       this.invalidateFetch('cards');
-      const data = await Auth.api('GET', `/api/user/cards/${cardId}`, null, { sensitive: true });
+      const data = await Auth.api('GET', `/api/user/cards/${cardId}`, null, {
+        sensitive: true,
+        timeoutMs: 12000,
+      });
+      if (this._pagoDetailRequestId !== requestId) return null;
       const card = this.applyCardsPayload(data, { selectCardId: cardId })
         || data.card
         || (data.cards || []).find((item) => String(item.id) === String(cardId));
-      if (card) this.showPagoCardDetail(card);
+      if (this._pagoDetailRequestId !== requestId) return null;
+      if (data.timed_out) {
+        this.toast(this.i18nText('pago_timeout', 'Card service timed out. Please try again.'), 'error');
+      }
+      if (card) {
+        this.showPagoCardDetail(card);
+        this.loadPagoWalletInfo(card).then(() => {
+          if (this._pagoDetailRequestId !== requestId) return;
+          this.updatePagoWalletUi(card);
+        }).catch(() => {});
+      }
+      return card;
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
-      else this.toast(err.message || 'Could not refresh card details', 'error');
+      else this.toast(this.cardTimeoutMessage(err) || err.message || 'Could not refresh card details', 'error');
     }
+  },
+
+  async syncPagoCardsFromProvider({ pagoCardId = null, silent = true } = {}) {
+    if (!Auth.isLoggedIn() || Auth.needsPinUnlock()) return null;
+    try {
+      const body = pagoCardId ? { pago_card_id: pagoCardId } : {};
+      const data = await Auth.api('POST', '/api/user/cards/sync', body, {
+        sensitive: true,
+        timeoutMs: 16000,
+      });
+      if (Array.isArray(data.cards)) {
+        this.applyCardsPayload(data, {
+          selectCardId: data.card?.id || null,
+          markFresh: true,
+        });
+      }
+      if (!silent && data.timed_out) {
+        this.toast(this.i18nText('pago_timeout', 'Card service timed out. Please try again.'), 'error');
+      } else if (!silent && data.message) this.toast(data.message, 'ok');
+      return data;
+    } catch (err) {
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+        if (!silent) this.openPinUnlockModal();
+        return null;
+      }
+      console.warn('[Dashboard] pago sync failed:', err.message);
+      if (!silent) {
+        this.toast(this.cardTimeoutMessage(err) || err.message || 'Could not sync cards from Pago', 'error');
+      }
+      return null;
+    }
+  },
+
+  quotePagoIssue(initialRaw) {
+    const pricing = this.pagoIssuePricing || {
+      card_issuance_fee_usd: 5,
+      card_processing_fee_usd: 1.5,
+      card_funding_fee_percent: 0,
+    };
+    const round = (value) => Math.round(Number(value) * 100) / 100;
+    const nonNeg = (value, fallback) => {
+      const n = Number(value);
+      return Number.isFinite(n) && n >= 0 ? round(n) : fallback;
+    };
+    const issuance = nonNeg(pricing.card_issuance_fee_usd, 5);
+    const processing = nonNeg(pricing.card_processing_fee_usd, 1.5);
+    const raw = String(initialRaw ?? '').trim();
+    let load = 0;
+    if (raw) {
+      const value = Number(raw);
+      if (Number.isFinite(value) && value > 0) load = Math.trunc(value * 100) / 100;
+    }
+    const percent = nonNeg(pricing.card_funding_fee_percent, 0);
+    const funding = percent > 0 ? round((load * percent) / 100) : 0;
+    return {
+      issuance,
+      processing,
+      funding,
+      load,
+      total: round(issuance + processing + funding + load),
+    };
+  },
+
+  async ensurePagoIssuePricing() {
+    if (this.pagoIssuePricing) return this.pagoIssuePricing;
+    const data = await Auth.api('GET', '/api/user/cards/issue-pricing', null, { sensitive: true });
+    const num = (value, fallback) => {
+      const n = Number(value);
+      return Number.isFinite(n) && n >= 0 ? n : fallback;
+    };
+    this.pagoIssuePricing = {
+      card_issuance_fee_usd: num(data.card_issuance_fee_usd, 5),
+      card_processing_fee_usd: num(data.card_processing_fee_usd, 1.5),
+      card_funding_fee_percent: num(data.card_funding_fee_percent, 0),
+    };
+    return this.pagoIssuePricing;
+  },
+
+  updatePagoIssueSummary() {
+    if (!$('pagoIssueSummary')) return null;
+    const quote = this.quotePagoIssue($('pagoCardInitialLoad')?.value);
+    const money = (amount) => `$${Number(amount).toFixed(2)}`;
+    const set = (id, text) => {
+      const el = $(id);
+      if (el) el.textContent = text;
+    };
+    set('pagoIssueFee', money(quote.issuance));
+    set('pagoIssueProcessing', money(quote.processing));
+    set('pagoIssueFunding', money(quote.funding));
+    set('pagoIssueLoad', money(quote.load));
+    set('pagoIssueTotal', money(quote.total));
+    $('pagoIssueFundingRow')?.classList.toggle('hidden', !(quote.funding > 0));
+    const wallet = Number(this.walletUsdt);
+    const known = Number.isFinite(wallet);
+    set('pagoIssueWallet', known ? `${wallet.toFixed(2)} USDT` : '—');
+    const short = known && wallet + 1e-9 < quote.total;
+    const warn = $('pagoIssueBalanceWarning');
+    if (warn) {
+      warn.textContent = this.i18nText('pago_issue_insufficient', 'Insufficient balance');
+      warn.classList.toggle('hidden', !short);
+    }
+    const btn = $('pagoCardRequestSubmit');
+    const requestBusy = Boolean(
+      this._pagoCardRequestGuard?.busy
+      || btn?.classList.contains('is-busy')
+      || btn?.dataset.busy === '1',
+    );
+    if (btn && !requestBusy) btn.disabled = short;
+    return { ...quote, short };
+  },
+
+  async refreshPagoIssueSummary() {
+    try {
+      const tasks = [this.ensurePagoIssuePricing()];
+      if (this.walletUsdt == null) tasks.push(this.loadWallet({ force: false }));
+      await Promise.all(tasks);
+    } catch (_) { /* summary still shows the default issuing fee */ }
+    this.updatePagoIssueSummary();
   },
 
   async submitPagoCardRequest(e) {
     e.preventDefault();
+    const preview = this.updatePagoIssueSummary();
+    if (preview?.short) return;
+
+    const guard = this._pagoCardRequestGuard
+      || (this._pagoCardRequestGuard = this._createPagoCardRequestGuard());
+    if (!guard.tryStart()) return;
+
     const btn = $('pagoCardRequestSubmit');
-    if (btn) btn.disabled = true;
+    const form = $('pagoCardRequestForm');
+    const creatingLabel = this.i18nText('pago_request_creating', 'Creating…');
+    if (btn) btn.dataset.busy = '1';
+    this.setSubmitBusy(btn, true, { loadingLabel: creatingLabel });
+    if (form) form.setAttribute('aria-busy', 'true');
+
     try {
       const initial = $('pagoCardInitialLoad')?.value.trim();
       const data = await Auth.api('POST', '/api/user/cards/request', {
-        product_code: $('pagoCardProduct')?.value,
+        product_code: 'us_404_visa_bin',
         first_name: $('pagoCardFirstName')?.value.trim(),
         last_name: $('pagoCardLastName')?.value.trim(),
         email: $('pagoCardEmail')?.value.trim(),
         initial_load: initial || undefined,
-      }, { sensitive: true });
-      this.toast(data.message || 'Your virtual card is ready.', 'ok');
+      }, { sensitive: true, timeoutMs: 26000 });
+      const successMsg = data.message
+        || this.i18nText('card_issued_ok', 'Your virtual card is ready.');
+      this.toast(successMsg, 'ok');
       if ($('pagoCardInitialLoad')) $('pagoCardInitialLoad').value = '';
       const selectId = data.card?.id ?? null;
       const card = await this.refreshCardsAfterMutation(data, { selectCardId: selectId });
-      if (card) this.showPagoCardDetail(card);
+      if (card) {
+        this.showPagoCardDetail(card);
+        $('pagoCardStage')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
-      this.toast(err.message || 'Card request failed', 'error');
+      if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
+        const warn = $('pagoIssueBalanceWarning');
+        if (warn) {
+          warn.textContent = this.i18nText('pago_issue_insufficient', 'Insufficient balance');
+          warn.classList.remove('hidden');
+        }
+      }
+      const orphanId = err.response?.pago_card_id || err.pago_card_id;
+      if (err.code === 'PAGO_CARD_SAVE_FAILED' && orphanId) {
+        this.toast('Card issued at Pago — importing into your account…', 'ok');
+        const synced = await this.syncPagoCardsFromProvider({
+          pagoCardId: orphanId,
+          silent: true,
+        });
+        const card = synced?.card
+          || (this.allCards || []).find((item) => item.pago_card_id === orphanId);
+        if (card) {
+          this.showPagoCardDetail(card);
+          this.toast(this.i18nText('card_issued_ok', 'Your virtual card is ready.'), 'ok');
+          $('pagoCardStage')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+      }
+      this.toast(this.cardTimeoutMessage(err) || err.message || 'Card request failed', 'error');
     } finally {
-      if (btn) btn.disabled = false;
+      guard.end();
+      if (btn) delete btn.dataset.busy;
+      this.setSubmitBusy(btn, false);
+      form?.removeAttribute('aria-busy');
+      await this.loadWallet({ force: true }).catch(() => {});
+      this.updatePagoIssueSummary();
+    }
+  },
+
+  markPagoTopupQuick(value) {
+    const current = String(value ?? '');
+    $('pagoCardTopupForm')?.querySelectorAll('[data-pago-topup-quick]').forEach((btn) => {
+      btn.classList.toggle('is-selected', btn.dataset.pagoTopupQuick === current);
+    });
+  },
+
+  setPagoTopupError(message) {
+    const errEl = $('pagoTopupError');
+    if (!errEl) return;
+    errEl.textContent = message || '';
+    errEl.classList.toggle('hidden', !message);
+  },
+
+  previewPagoTopupAmount(amountUsdt) {
+    const pricing = this.pagoTopupPricing || this.cardPricing;
+    return this.calculateReloadPreviewUsdtClient.call({ cardPricing: pricing }, amountUsdt);
+  },
+
+  async ensurePagoTopupPricing() {
+    if (this.pagoTopupPricing) return this.pagoTopupPricing;
+    const data = await Auth.api('GET', '/api/user/cards/topup-pricing', null, { sensitive: true });
+    const num = (value, fallback) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    this.pagoTopupPricing = {
+      card_reload_fee_percent: num(data.card_reload_fee_percent, 0),
+      card_reload_fee_usd: num(data.card_reload_fee_usd, 0),
+      card_reload_fee_minimum_usd: num(data.card_reload_fee_minimum_usd, 0),
+      minimum_usdt_reload: num(data.minimum_usdt_reload, 5),
+    };
+    return this.pagoTopupPricing;
+  },
+
+  updatePagoTopupPreview() {
+    const preview = this.previewPagoTopupAmount($('pagoTopupAmount')?.value);
+    const wallet = Number(this.walletUsdt);
+    const set = (id, text) => {
+      const el = $(id);
+      if (el) el.textContent = text;
+    };
+    set('pagoTopupWallet', Number.isFinite(wallet) ? this.formatUsdt(wallet) : '—');
+    set('pagoTopupToCard', preview ? `$${preview.top_up_usd.toFixed(2)}` : '—');
+    set('pagoTopupFee', preview ? `$${preview.reload_fee_usd.toFixed(2)}` : '—');
+    set('pagoTopupTotal', preview ? `$${preview.total_wallet_usd.toFixed(2)} USDT` : '—');
+    const submit = $('pagoCardTopupSubmit');
+    if (submit && submit.dataset.busy !== '1') {
+      submit.disabled = Boolean(preview?.below_min);
+    }
+    if (preview?.below_min) {
+      const min = Number(preview.min_usdt || 5).toFixed(2);
+      this.setPagoTopupError(`Minimum top-up is $${min}.`);
+    } else if (!submit || submit.dataset.busy !== '1') {
+      this.setPagoTopupError('');
+    }
+  },
+
+  openPagoTopupModal() {
+    const card = this.getSelectedPagoCard();
+    if (!card) {
+      this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
+      return;
+    }
+    const status = String(card.status || '').toLowerCase();
+    if (status && status !== 'active') {
+      this.toast(this.i18nText('pago_topup_inactive', 'Only active cards can be topped up'), 'error');
+      return;
+    }
+    const line = $('pagoTopupCardLine');
+    if (line) {
+      const last4 = card.last4 || '••••';
+      line.textContent = `•••• ${last4} · ${this.pagoCardBalanceText(card)}`;
+    }
+    if ($('pagoTopupAmount')) $('pagoTopupAmount').value = '';
+    this.markPagoTopupQuick('');
+    const submit = $('pagoCardTopupSubmit');
+    if (submit) {
+      submit.disabled = false;
+      delete submit.dataset.busy;
+    }
+    this.setPagoTopupError('');
+    this.updatePagoTopupPreview();
+    $('pagoTopupModal')?.classList.remove('hidden');
+    $('pagoTopupAmount')?.focus();
+    if (this.walletUsdt == null) {
+      this.loadWallet().then(() => this.updatePagoTopupPreview()).catch(() => {});
+    }
+    this.ensurePagoTopupPricing().then(() => this.updatePagoTopupPreview()).catch(() => {});
+  },
+
+  closePagoTopupModal() {
+    $('pagoTopupModal')?.classList.add('hidden');
+    const submit = $('pagoCardTopupSubmit');
+    if (submit) {
+      submit.disabled = false;
+      delete submit.dataset.busy;
     }
   },
 
@@ -8549,33 +10937,50 @@ const Dashboard = {
     const cardId = panel?.dataset.cardId;
     const amount = $('pagoTopupAmount')?.value;
     if (!cardId) {
-      this.toast('Choose a card first', 'error');
+      this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
       return;
     }
     const btn = $('pagoCardTopupSubmit');
-    if (btn) btn.disabled = true;
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.busy = '1';
+    }
+    this.setPagoTopupError('');
     try {
       const data = await Auth.api('POST', `/api/user/cards/${cardId}/topup`, {
         amount_usdt: amount,
       }, { sensitive: true });
       this.toast(data.message || 'Card topped up.', 'ok');
       if ($('pagoTopupAmount')) $('pagoTopupAmount').value = '';
+      this.closePagoTopupModal();
       const card = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
       if (card) this.showPagoCardDetail(card);
+      this.loadWallet({ force: true }).catch(() => {});
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
       if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
         this.toast(err.message, 'error');
+        this.closePagoTopupModal();
         this.openUsdtTopUpModal();
         return;
       }
-      this.toast(err.message || 'Top-up failed', 'error');
+      const message = err.message || 'Top-up failed';
+      this.setPagoTopupError(message);
+      this.toast(message, 'error');
     } finally {
-      if (btn) btn.disabled = false;
+      if (btn) {
+        btn.disabled = false;
+        delete btn.dataset.busy;
+      }
     }
   },
 
-  async loadAllCards({ preserveSelection = false, silent = false, forceRefresh = false } = {}) {
+  async loadAllCards({
+    preserveSelection = false,
+    silent = false,
+    forceRefresh = false,
+    reconcilePago = false,
+  } = {}) {
     if (!Auth.isLoggedIn()) return;
 
     if (Auth.needsPinUnlock()) {
@@ -8585,8 +10990,13 @@ const Dashboard = {
     }
 
     // Honor cards TTL for silent/background refreshes (including empty lists).
-    if (!forceRefresh && this._isFresh('cards')) {
+    if (!forceRefresh && !reconcilePago && this._isFresh('cards')) {
       return;
+    }
+
+    // Pull orphaned Pago cards (provider-created, missing locally) before listing.
+    if (reconcilePago || (!this.allCards.length && forceRefresh)) {
+      await this.syncPagoCardsFromProvider({ silent: true });
     }
 
     // Never drop refreshes while a request is in flight — queue and replay
@@ -8595,11 +11005,13 @@ const Dashboard = {
         preserveSelection: false,
         silent: true,
         forceRefresh: false,
+        reconcilePago: false,
       };
       this._cardsLoadQueued = {
         preserveSelection: queued.preserveSelection || preserveSelection,
         silent: queued.silent && silent,
         forceRefresh: queued.forceRefresh || forceRefresh,
+        reconcilePago: queued.reconcilePago || reconcilePago,
       };
       return;
     }
@@ -8620,7 +11032,7 @@ const Dashboard = {
 
       let data;
       try {
-        data = await Auth.api('GET', '/api/user/cards', null, { sensitive: true });
+        data = await Auth.api('GET', '/api/user/cards', null, { sensitive: true, timeoutMs: 16000 });
       } catch (err) {
         // Back-compat: older servers returned 404 for empty card lists
         if (err.status === 404 && Array.isArray(err.response?.cards)) {
@@ -8652,6 +11064,9 @@ const Dashboard = {
       this.allCards = newCards;
       this.saveCardsCache(this.allCards);
       this._markFetched('cards');
+      if (data.provider_timed_out && !silent) {
+        this.toast(this.i18nText('pago_timeout', 'Card service timed out. Please try again.'), 'error');
+      }
 
       if (prevCardId != null) {
         const idx = this.allCards.findIndex((c) => c.id === prevCardId);
@@ -8710,7 +11125,7 @@ const Dashboard = {
           if ($('sumCard')) $('sumCard').textContent = 'No card';
           this.updateCardStatusSummary(null);
         }
-        showOutput('viewCardOutput', err.message, true);
+        showOutput('viewCardOutput', this.cardTimeoutMessage(err) || err.message, true);
       } else {
         console.warn('[Dashboard] silent loadAllCards failed:', err.message);
       }

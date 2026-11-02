@@ -1,18 +1,12 @@
 /**
- * USDT on-chain verification via public Tronscan (TRC20) and BSC RPC (BEP20).
+ * USDT on-chain verification via public Tronscan (TRC20 only).
  */
 
 const USDT_TRC20_CONTRACT = process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const USDT_BEP20_CONTRACT = (process.env.USDT_BEP20_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
-const BSC_RPC_URL = process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org/';
 const TRONSCAN_API = process.env.TRONSCAN_API_URL || 'https://apilist.tronscan.org';
-const BSCSCAN_API_KEY = process.env.BSCSCAN_API_KEY || '';
-// keccak256("Transfer(address,address,uint256)")
-const TRANSFER_EVENT_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df5bb2db6';
 const MIN_CONFIRMATIONS = Math.max(0, parseInt(process.env.USDT_MIN_CONFIRMATIONS || '1', 10) || 0);
 
 const TRC20_DECIMALS = 6;
-const BEP20_DECIMALS = 18;
 
 /** Known dummy TxHashes — accepted only when NODE_ENV === 'development'. */
 const MOCK_TX_HASHES = new Set([
@@ -63,16 +57,6 @@ function normalizeTronAddress(addr) {
   return String(addr || '').trim();
 }
 
-function normalizeBscAddress(addr) {
-  const s = String(addr || '').trim().toLowerCase();
-  return s.startsWith('0x') ? s : `0x${s}`;
-}
-
-function topicToAddress(topic) {
-  if (!topic || topic.length < 42) return null;
-  return `0x${topic.slice(-40)}`.toLowerCase();
-}
-
 function parseTokenAmount(raw, decimals) {
   if (raw == null) return NaN;
   const str = String(raw).trim();
@@ -99,18 +83,6 @@ async function fetchJson(url, options = {}, timeoutMs = 15000) {
   } finally {
     clearTimeout(timer);
   }
-}
-
-async function bscRpc(method, params) {
-  const data = await fetchJson(BSC_RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-  });
-  if (data.error) {
-    throw new Error(data.error.message || 'BSC RPC error');
-  }
-  return data.result;
 }
 
 async function verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt) {
@@ -200,170 +172,6 @@ async function verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt) {
   };
 }
 
-async function checkBep20Confirmations(receipt) {
-  if (MIN_CONFIRMATIONS <= 0 || !receipt?.blockNumber) return null;
-  try {
-    const txBlock = parseInt(receipt.blockNumber, 16);
-    const latestHex = await bscRpc('eth_blockNumber', []);
-    const latest = latestHex ? parseInt(latestHex, 16) : null;
-    if (!Number.isFinite(txBlock) || !Number.isFinite(latest)) return null;
-    const confirmations = Math.max(0, latest - txBlock + 1);
-    if (confirmations < MIN_CONFIRMATIONS) {
-      return {
-        ok: false,
-        status: 'pending',
-        message: `Waiting for confirmations (${confirmations}/${MIN_CONFIRMATIONS}).`,
-        confirmations,
-      };
-    }
-    return { confirmations };
-  } catch (err) {
-    console.warn('[usdt-blockchain] BEP20 confirmation check failed:', err.message);
-    return null;
-  }
-}
-
-async function verifyBep20UsdtViaRpc(txHash, expectedAddress, expectedAmountUsdt) {
-  const hash = String(txHash).trim();
-  const expectedTo = normalizeBscAddress(expectedAddress);
-
-  const receipt = await bscRpc('eth_getTransactionReceipt', [hash]);
-
-  if (!receipt) {
-    return { ok: false, status: 'pending', message: 'Transaction pending on blockchain or invalid TxHash.' };
-  }
-
-  if (receipt.status !== '0x1') {
-    return { ok: false, status: 'invalid', message: 'Transaction failed on blockchain — check your TxHash.' };
-  }
-
-  const conf = await checkBep20Confirmations(receipt);
-  if (conf && conf.ok === false) return conf;
-
-  const logs = receipt.logs || [];
-  const usdtLogs = logs.filter((log) => {
-    const addr = normalizeBscAddress(log.address);
-    const topic0 = (log.topics && log.topics[0] || '').toLowerCase();
-    return addr === USDT_BEP20_CONTRACT && topic0 === TRANSFER_EVENT_TOPIC;
-  });
-
-  if (!usdtLogs.length) {
-    return { ok: false, status: 'invalid', message: 'No USDT (BEP20) transfer found in this transaction.' };
-  }
-
-  let matched = null;
-  for (const log of usdtLogs) {
-    const to = topicToAddress(log.topics[2]);
-    if (to === expectedTo) {
-      matched = log;
-      break;
-    }
-  }
-
-  if (!matched) {
-    const firstTo = topicToAddress(usdtLogs[0].topics[2]);
-    return {
-      ok: false,
-      status: 'invalid',
-      message: 'Recipient address does not match the platform deposit wallet.',
-      actualTo: firstTo,
-    };
-  }
-
-  const amountUsdt = parseTokenAmount(matched.data, BEP20_DECIMALS);
-
-  if (!amountWithinTolerance(amountUsdt, expectedAmountUsdt)) {
-    return {
-      ok: false,
-      status: 'invalid',
-      message: `Transfer amount ($${amountUsdt.toFixed(2)} USDT) does not match expected deposit ($${Number(expectedAmountUsdt).toFixed(2)} USDT).`,
-      actualAmount: amountUsdt,
-    };
-  }
-
-  return {
-    ok: true,
-    status: 'confirmed',
-    network: 'BEP20',
-    amountUsdt,
-    toAddress: expectedTo,
-    txHash: hash,
-    blockNumber: receipt.blockNumber,
-    confirmations: conf?.confirmations ?? null,
-  };
-}
-
-async function verifyBep20UsdtViaBscScan(txHash, expectedAddress, expectedAmountUsdt) {
-  if (!BSCSCAN_API_KEY) return null;
-  const hash = String(txHash).trim();
-  const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionReceipt&txhash=${encodeURIComponent(hash)}&apikey=${encodeURIComponent(BSCSCAN_API_KEY)}`;
-  try {
-    const data = await fetchJson(url);
-    if (data.result) {
-      return verifyBep20UsdtFromReceipt(data.result, hash, expectedAddress, expectedAmountUsdt);
-    }
-  } catch (err) {
-    console.warn('[usdt-blockchain] BscScan fallback failed:', err.message);
-  }
-  return null;
-}
-
-async function verifyBep20UsdtFromReceipt(receipt, hash, expectedAddress, expectedAmountUsdt) {
-  const expectedTo = normalizeBscAddress(expectedAddress);
-  if (!receipt) {
-    return { ok: false, status: 'pending', message: 'Transaction pending on blockchain or invalid TxHash.' };
-  }
-  if (receipt.status !== '0x1') {
-    return { ok: false, status: 'invalid', message: 'Transaction failed on blockchain — check your TxHash.' };
-  }
-
-  const conf = await checkBep20Confirmations(receipt);
-  if (conf && conf.ok === false) return conf;
-
-  const logs = receipt.logs || [];
-  const usdtLogs = logs.filter((log) => {
-    const addr = normalizeBscAddress(log.address);
-    const topic0 = (log.topics && log.topics[0] || '').toLowerCase();
-    return addr === USDT_BEP20_CONTRACT && topic0 === TRANSFER_EVENT_TOPIC;
-  });
-  if (!usdtLogs.length) {
-    return { ok: false, status: 'invalid', message: 'No USDT (BEP20) transfer found in this transaction.' };
-  }
-  const matched = usdtLogs.find((log) => topicToAddress(log.topics[2]) === expectedTo);
-  if (!matched) {
-    return { ok: false, status: 'invalid', message: 'Recipient address does not match the platform deposit wallet.' };
-  }
-  const amountUsdt = parseTokenAmount(matched.data, BEP20_DECIMALS);
-  if (!amountWithinTolerance(amountUsdt, expectedAmountUsdt)) {
-    return {
-      ok: false,
-      status: 'invalid',
-      message: `Transfer amount ($${amountUsdt.toFixed(2)} USDT) does not match expected deposit ($${Number(expectedAmountUsdt).toFixed(2)} USDT).`,
-      actualAmount: amountUsdt,
-    };
-  }
-  return {
-    ok: true,
-    status: 'confirmed',
-    network: 'BEP20',
-    amountUsdt,
-    toAddress: expectedTo,
-    txHash: hash,
-    confirmations: conf?.confirmations ?? null,
-  };
-}
-
-async function verifyBep20Usdt(txHash, expectedAddress, expectedAmountUsdt) {
-  try {
-    return await verifyBep20UsdtViaRpc(txHash, expectedAddress, expectedAmountUsdt);
-  } catch (err) {
-    console.warn('[usdt-blockchain] BSC RPC failed:', err.message);
-    const fallback = await verifyBep20UsdtViaBscScan(txHash, expectedAddress, expectedAmountUsdt);
-    if (fallback) return fallback;
-    return { ok: false, status: 'pending', message: 'Transaction pending on blockchain or invalid TxHash.' };
-  }
-}
-
 async function verifyUsdtTransaction({
   network,
   txHash,
@@ -371,6 +179,13 @@ async function verifyUsdtTransaction({
   expectedAmountUsdt,
 }) {
   const net = String(network || 'TRC20').toUpperCase();
+  if (net !== 'TRC20' && net !== 'TRON') {
+    return {
+      ok: false,
+      status: 'invalid',
+      message: 'USDT deposits use TRC20 (Tron) only.',
+    };
+  }
   if (!txHash || !String(txHash).trim()) {
     return { ok: false, status: 'invalid', message: 'TxHash is required.' };
   }
@@ -397,45 +212,7 @@ async function verifyUsdtTransaction({
     });
   }
 
-  if (net === 'TRC20') {
-    return verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt);
-  }
-  if (net === 'BEP20') {
-    return verifyBep20Usdt(txHash, expectedAddress, expectedAmountUsdt);
-  }
-
-  return { ok: false, status: 'invalid', message: `Unsupported network: ${network}` };
-}
-
-const USDT_ERC20_CONTRACT = (process.env.USDT_ERC20_CONTRACT || '0xdAC17F958D2ee523a2206206994597C13D831ec7').toLowerCase();
-const ETH_RPC_URL = process.env.ETH_RPC_URL || 'https://ethereum.publicnode.com';
-const ERC20_DECIMALS = 6;
-
-function decodeUint256(hex, decimals = 18) {
-  if (!hex || hex === '0x') return 0;
-  const cleaned = String(hex).replace(/^0x/, '');
-  if (!cleaned) return 0;
-  return Number(BigInt(`0x${cleaned}`)) / (10 ** decimals);
-}
-
-async function evmUsdtBalanceViaRpc(rpcUrl, contractAddress, walletAddress, decimals = 18) {
-  const addr = walletAddress.toLowerCase().replace(/^0x/, '');
-  const data = `0x70a08231${addr.padStart(64, '0')}`;
-  const response = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'eth_call',
-      params: [{ to: contractAddress, data }, 'latest'],
-    }),
-  });
-  const json = await response.json();
-  if (json.error) {
-    throw new Error(json.error.message || 'RPC balance call failed');
-  }
-  return decodeUint256(json.result, decimals);
+  return verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt);
 }
 
 async function fetchTrc20UsdtBalance(address) {
@@ -459,20 +236,13 @@ async function fetchUsdtOnChainBalance(network, address) {
   const addr = String(address || '').trim();
   if (!addr) return { ok: false, error: 'Address required' };
 
+  if (net !== 'TRC20' && net !== 'TRON') {
+    return { ok: false, error: 'USDT balances use TRC20 (Tron) only.' };
+  }
+
   try {
-    if (net === 'TRC20') {
-      const balanceUsdt = await fetchTrc20UsdtBalance(addr);
-      return { ok: true, network: net, address: addr, balance_usdt: balanceUsdt };
-    }
-    if (net === 'BEP20') {
-      const balanceUsdt = await evmUsdtBalanceViaRpc(BSC_RPC_URL, USDT_BEP20_CONTRACT, addr, BEP20_DECIMALS);
-      return { ok: true, network: net, address: addr, balance_usdt: balanceUsdt };
-    }
-    if (net === 'ERC20') {
-      const balanceUsdt = await evmUsdtBalanceViaRpc(ETH_RPC_URL, USDT_ERC20_CONTRACT, addr, ERC20_DECIMALS);
-      return { ok: true, network: net, address: addr, balance_usdt: balanceUsdt };
-    }
-    return { ok: false, error: `Unsupported network: ${network}` };
+    const balanceUsdt = await fetchTrc20UsdtBalance(addr);
+    return { ok: true, network: 'TRC20', address: addr, balance_usdt: balanceUsdt };
   } catch (err) {
     return { ok: false, network: net, address: addr, error: err.message };
   }
@@ -485,8 +255,5 @@ module.exports = {
   isDevelopmentMode,
   isMockTxHash,
   USDT_TRC20_CONTRACT,
-  USDT_BEP20_CONTRACT,
-  USDT_ERC20_CONTRACT,
-  TRANSFER_EVENT_TOPIC,
   MIN_CONFIRMATIONS,
 };

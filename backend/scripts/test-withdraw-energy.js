@@ -31,8 +31,8 @@ async function main() {
     customerAddress: validTrc20,
     withdrawAmount: 25,
   });
-  assert.strictEqual(ok.feeUsdt, 2);
-  assert.strictEqual(ok.netPayout, 23);
+  assert.strictEqual(ok.feeUsdt, 2.5);
+  assert.strictEqual(ok.netPayout, 22.5);
   assert.strictEqual(ok.withdrawAmount, 25);
 
   assert.throws(
@@ -63,6 +63,9 @@ async function main() {
   const dbFile = path.join(os.tmpdir(), `eisy-withdraw-manual-${Date.now()}.db`);
   process.env.DATABASE_URL = `file:${dbFile}`;
   process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+  process.env.WITHDRAWALS_PAUSED = 'false';
+  process.env.AUTO_ONCHAIN_WITHDRAWALS = 'true';
+  process.env.MASTER_WALLET_TRANSFERS_PAUSED = 'false';
   process.env.MASTER_PRIVATE_KEY = 'a'.repeat(64);
 
   const { initDb, closeDb, getDb } = require('../src/db');
@@ -96,9 +99,9 @@ async function main() {
   });
 
   assert.strictEqual(result.txId, 'txid-withdraw-abc');
-  assert.strictEqual(result.netPayout, 23);
-  assert.strictEqual(result.fee_collected, 2);
-  assert.strictEqual(transferArgs.amountUsdt, 23);
+  assert.strictEqual(result.netPayout, 22.5);
+  assert.strictEqual(result.fee_collected, 2.5);
+  assert.strictEqual(transferArgs.amountUsdt, 22.5);
   assert.strictEqual(transferArgs.toAddress, validTrc20);
   assert.strictEqual(result.energyRental, undefined);
 
@@ -111,8 +114,8 @@ async function main() {
   );
   assert.strictEqual(row.status, 'completed');
   assert.strictEqual(row.tx_hash, 'txid-withdraw-abc');
-  assert.strictEqual(Number(row.net_usdt), 23);
-  assert.strictEqual(Number(row.fee_usdt), 2);
+  assert.strictEqual(Number(row.net_usdt), 22.5);
+  assert.strictEqual(Number(row.fee_usdt), 2.5);
   assert.match(String(row.admin_note || ''), /master wallet/i);
   assert.doesNotMatch(String(row.admin_note || ''), /energy rental/i);
 

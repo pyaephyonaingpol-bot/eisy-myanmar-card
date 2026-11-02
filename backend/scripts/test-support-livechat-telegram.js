@@ -47,19 +47,25 @@ async function main() {
   includes(styles, '.support-chat-panel', 'widget panel styles');
 
   includes(adminHtml, 'value="pending">Open', 'Open status label');
-  includes(adminHtml, 'value="completed">Resolved', 'Resolved status label');
+  includes(adminHtml, 'value="completed">Closed', 'Closed status label');
   includes(adminHtml, 'value="mmk_payouts">MMK Payouts', 'admin MMK category');
   includes(adminHtml, 'value="card_issuing">Card Issuing Issues', 'admin card category');
   includes(adminJs, 'startSupportMessagePolling', 'admin live message polling');
   includes(adminJs, 'onSupportMessageRealtime', 'admin message realtime handler');
   includes(adminJs, "pending: 'Open'", 'admin Open status map');
-  includes(adminJs, "completed: 'Resolved'", 'admin Resolved status map');
+  includes(adminJs, "completed: 'Closed'", 'admin Closed status map');
 
   includes(supportRoutes, 'notifySupportEvent', 'telegram notify on customer message');
   includes(supportRoutes, 'syncSupportMessage', 'supabase message sync');
   includes(adminRoutes, 'notifySupportEvent', 'telegram notify on admin web reply');
   includes(webhook, "router.post('/telegram'", 'telegram webhook route');
+  includes(webhook, "router.get('/telegram'", 'telegram webhook GET probe');
   includes(webhook, 'handleTelegramUpdate', 'webhook uses bridge handler');
+  includes(webhook, 'parseTelegramWebhookPayload', 'webhook parses Telegram reply payloads');
+  includes(webhook, 'eisymyanmar.com/api/webhook/telegram', 'canonical webhook url documented on the route');
+  const nextTelegram = read('app/api/webhook/telegram/route.ts');
+  includes(nextTelegram, 'request.json()', 'Next route reads JSON body');
+  includes(nextTelegram, 'eisymyanmar.com/api/webhook/telegram', 'Next route documents the live path');
   includes(telegramSvc, 'sendAdminMessage', 'telegram send helper');
   includes(telegramSvc, 'isTelegramConfigured', 'telegram config helper');
   includes(bridge, 'notifySupportEvent', 'bridge outbound');
@@ -87,7 +93,7 @@ async function main() {
   assert.strictEqual(normalizeSupportStatus('open'), 'pending');
   assert.strictEqual(normalizeSupportStatus('resolved'), 'completed');
   assert.strictEqual(SUPPORT_STATUS_LABELS.pending, 'Open');
-  assert.strictEqual(SUPPORT_STATUS_LABELS.completed, 'Resolved');
+  assert.strictEqual(SUPPORT_STATUS_LABELS.completed, 'Closed');
   assert.deepStrictEqual([...SUPPORT_MAIN_CATEGORIES], ['mmk_payouts', 'card_issuing']);
   console.log('ok');
 
@@ -97,6 +103,10 @@ async function main() {
   process.env.NODE_ENV = 'test';
   process.env.TELEGRAM_BOT_TOKEN = '';
   process.env.TELEGRAM_ADMIN_CHAT_ID = '';
+  require('../src/lib/loadEnv');
+  for (const key of Object.keys(process.env)) {
+    if (/SUPABASE|TURSO/i.test(key)) delete process.env[key];
+  }
 
   const { initDb, closeDb } = require('../src/db');
   await initDb();
@@ -137,6 +147,64 @@ async function main() {
   });
   assert.ok(first.id);
   assert.strictEqual(first.source || 'web', 'web');
+
+  console.log('\n== Outbound customer support message ==');
+  process.env.TELEGRAM_ADMIN_CHAT_ID = '-100123';
+  process.env.TELEGRAM_BOT_TOKEN = '000000:TEST';
+  delete process.env.TELEGRAM_SUPPORT_TOPIC_ID;
+  delete process.env.TELEGRAM_FORUM_TOPIC_ID;
+
+  const { notifySupportEvent, isTelegramConfigured } = require('../src/services/supportTelegramService');
+  assert.strictEqual(isTelegramConfigured(), true);
+
+  const sentBodies = [];
+  const previousFetch = global.fetch;
+  global.fetch = async (url, init) => {
+    sentBodies.push({ url: String(url), body: JSON.parse(init.body) });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, result: { message_id: 9100 + sentBodies.length } }),
+    };
+  };
+  try {
+    const opened = await notifySupportEvent({
+      thread,
+      message: first,
+      user,
+      isNewTicket: true,
+    });
+    assert.strictEqual(opened.ok, true, JSON.stringify(opened));
+    assert.strictEqual(sentBodies.length, 1);
+    assert.match(String(sentBodies[0].url), /\/sendMessage$/);
+    assert.strictEqual(String(sentBodies[0].body.chat_id), '-100123');
+    assert.match(sentBodies[0].body.text, /Please check my MMK payout/);
+    assert.match(sentBodies[0].body.text, new RegExp(`#T${thread.id}`));
+
+    const follow = await SupportMessage.create({
+      threadId: thread.id,
+      senderType: 'user',
+      senderId: user.id,
+      message: 'Any update on the payout?',
+      source: 'web',
+    });
+    const continued = await notifySupportEvent({
+      thread,
+      message: follow,
+      user,
+      isNewTicket: false,
+    });
+    assert.strictEqual(continued.ok, true, JSON.stringify(continued));
+    assert.strictEqual(sentBodies.length, 2);
+    assert.match(sentBodies[1].body.text, /Any update on the payout\?/);
+    assert.strictEqual(Number(sentBodies[1].body.reply_to_message_id), 9101);
+  } finally {
+    global.fetch = previousFetch;
+  }
+
+  const linked = await SupportThread.findById(thread.id);
+  assert.strictEqual(Number(linked.telegram_root_message_id), 9101);
+  assert.strictEqual(String(linked.telegram_chat_id), '-100123');
 
   // Simulate Telegram linkage + inbound admin reply.
   const { getDb } = require('../src/db');
@@ -193,8 +261,214 @@ async function main() {
   const updated = await SupportThread.findById(thread.id);
   assert.strictEqual(updated.status, 'in_progress');
 
+  console.log('\n== HTTP webhook reply in user inbox ==');
+  const http = require('http');
+  const express = require('express');
+  const { createSession } = require('../src/services/authService');
+  const { parseTelegramWebhookPayload } = require('../src/services/supportTelegramService');
+
+  const quoted = JSON.stringify({
+    update_id: 77,
+    message: {
+      message_id: 42,
+      text: 'quoted',
+      chat: { id: -100123 },
+      reply_to_message: { message_id: 1, text: `#T${thread.id}` },
+    },
+  });
+  const parsedQuote = parseTelegramWebhookPayload(quoted);
+  assert.strictEqual(parsedQuote.message.text, 'quoted');
+  assert.strictEqual(parsedQuote.message.chat.id, -100123);
+
+  process.env.TELEGRAM_WEBHOOK_SECRET = 'hook-secret';
+  const mini = express();
+  mini.use(express.json({
+    verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); },
+  }));
+  mini.use('/api/webhook', require('../src/routes/webhook'));
+  mini.use('/api/support', require('../src/routes/support'));
+  const server = http.createServer(mini);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+
+  function requestJson(method, urlPath, body, headers) {
+    return new Promise((resolve, reject) => {
+      const payload = body == null ? null : JSON.stringify(body);
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port,
+        path: urlPath,
+        method,
+        headers: {
+          ...(payload ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } : {}),
+          ...headers,
+        },
+      }, (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const raw = Buffer.concat(chunks).toString('utf8');
+          let json = {};
+          try { json = raw ? JSON.parse(raw) : {}; } catch (_) { json = { raw }; }
+          resolve({ status: res.statusCode, json });
+        });
+      });
+      req.on('error', reject);
+      if (payload) req.write(payload);
+      req.end();
+    });
+  }
+
+  const replyPayload = {
+    update_id: 90010,
+    message: {
+      message_id: 9010,
+      text: 'Your payout is on the way',
+      chat: { id: -100123, type: 'supergroup' },
+      from: { id: 55, is_bot: false, first_name: 'Admin' },
+      reply_to_message: {
+        message_id: 9001,
+        text: `🎫 New Support Ticket\n🔖 Ticket: #T${thread.id}`,
+      },
+    },
+  };
+
+  const info = await requestJson('GET', '/api/webhook/telegram', null, {});
+  assert.strictEqual(info.status, 200);
+  assert.strictEqual(info.json.ok, true);
+  assert.match(info.json.url, /\/api\/webhook\/telegram$/);
+
+  const probe = await requestJson('POST', '/api/webhook/telegram', {}, {});
+  assert.strictEqual(probe.status, 200);
+  assert.strictEqual(probe.json.ok, true, 'empty setWebhook probe must be HTTP 200');
+
+  const denied = await requestJson('POST', '/api/webhook/telegram', replyPayload, {});
+  assert.strictEqual(denied.status, 401);
+
+  const accepted = await requestJson('POST', '/api/webhook/telegram', replyPayload, {
+    'x-telegram-bot-api-secret-token': 'hook-secret',
+  });
+  assert.strictEqual(accepted.status, 200);
+  assert.strictEqual(accepted.json.ok, true);
+  assert.strictEqual(accepted.json.result.ok, true);
+  assert.strictEqual(accepted.json.result.threadId, thread.id);
+
+  const quotedOnly = {
+    update_id: 90011,
+    message: {
+      message_id: 9011,
+      text: 'Checking the card issue now',
+      chat: { id: '-100123', type: 'supergroup' },
+      from: { id: 55, is_bot: false },
+      reply_to_message: { message_id: 7777 },
+      quote: { text: `Ticket: #T${thread.id}` },
+    },
+  };
+  const quotedReply = await requestJson('POST', '/api/webhook/telegram', quotedOnly, {
+    'x-telegram-bot-api-secret-token': 'hook-secret',
+  });
+  assert.strictEqual(quotedReply.status, 200);
+  assert.strictEqual(quotedReply.json.result.ok, true);
+
+  const duplicate = await requestJson('POST', '/api/webhook/telegram', replyPayload, {
+    'x-telegram-bot-api-secret-token': 'hook-secret',
+  });
+  assert.strictEqual(duplicate.json.result.duplicate, true);
+
+  const { sessionToken } = await createSession({ userId: user.id });
+  const inbox = await requestJson(
+    'GET',
+    `/api/support/threads/${thread.id}/messages`,
+    null,
+    { authorization: `Bearer ${sessionToken}` }
+  );
+  assert.strictEqual(inbox.status, 200);
+  const payout = inbox.json.messages.find((m) => /Your payout is on the way/.test(m.message));
+  const card = inbox.json.messages.find((m) => /Checking the card issue now/.test(m.message));
+  assert.ok(payout, 'admin reply is in the user inbox');
+  assert.strictEqual(payout.sender_type, 'admin');
+  assert.strictEqual(payout.source, 'telegram');
+  assert.ok(card, 'quoted reply is in the user inbox');
+  assert.strictEqual(card.sender_type, 'admin');
+  assert.strictEqual(card.source, 'telegram');
+
+  const unsignedChat = await requestJson('POST', '/api/webhook/telegram', {
+    update_id: 90012,
+    message: {
+      message_id: 9012,
+      text: 'Chat id without a minus sign still maps',
+      chat: { id: 100123, type: 'supergroup' },
+      from: { id: 55, is_bot: false },
+      reply_to_message: { message_id: 4242, text: `Ticket #T${thread.id}` },
+    },
+  }, { 'x-telegram-bot-api-secret-token': 'hook-secret' });
+  assert.strictEqual(unsignedChat.status, 200);
+  assert.strictEqual(unsignedChat.json.ok, true);
+  assert.strictEqual(unsignedChat.json.result.ok, true, JSON.stringify(unsignedChat.json));
+
+  const stringBody = JSON.stringify({
+    update_id: 90013,
+    message: {
+      message_id: 9013,
+      text: 'String JSON body reaches live chat',
+      chat: { id: '-100123' },
+      from: { id: 55, is_bot: false },
+      reply_to_message: { message_id: 1, text: `#T${thread.id}` },
+    },
+  });
+  const parsedString = parseTelegramWebhookPayload(stringBody);
+  assert.strictEqual(parsedString.message.text, 'String JSON body reaches live chat');
+
+  delete process.env.TELEGRAM_WEBHOOK_SECRET;
+  await new Promise((resolve) => server.close(resolve));
+
   await closeDb();
   try { fs.unlinkSync(dbFile); } catch (_) { /* ignore */ }
+
+  console.log('\n== setWebhook URL ==');
+  const prevBase = process.env.PUBLIC_BASE_URL;
+  const prevWebhookUrl = process.env.TELEGRAM_WEBHOOK_URL;
+  process.env.PUBLIC_BASE_URL = 'https://eisy-preview.vercel.app';
+  delete process.env.TELEGRAM_WEBHOOK_URL;
+  const {
+    canonicalTelegramWebhookUrl,
+    registerTelegramWebhook,
+  } = require('../src/services/supportTelegramService');
+  assert.strictEqual(
+    canonicalTelegramWebhookUrl(),
+    'https://eisymyanmar.com/api/webhook/telegram'
+  );
+  process.env.TELEGRAM_BOT_TOKEN = '123456:TESTTOKEN';
+  process.env.TELEGRAM_WEBHOOK_SECRET = 'bad secret!';
+  let sentBody = null;
+  const badSecret = await registerTelegramWebhook({
+    fetchImpl: async (_url, opts) => {
+      sentBody = JSON.parse(opts.body);
+      return { json: async () => ({ ok: false, description: 'Bad Request: secret token contains invalid characters' }) };
+    },
+  });
+  assert.ok(!sentBody.secret_token, 'invalid secret must not be sent to setWebhook');
+  assert.strictEqual(sentBody.url, 'https://eisymyanmar.com/api/webhook/telegram');
+  assert.strictEqual(badSecret.ok, false);
+
+  process.env.TELEGRAM_WEBHOOK_SECRET = 'hook-secret';
+  const good = await registerTelegramWebhook({
+    fetchImpl: async (url, opts) => {
+      sentBody = JSON.parse(opts.body);
+      assert.match(String(url), /\/setWebhook$/);
+      assert.ok(!String(url).includes('hook-secret'));
+      return { json: async () => ({ ok: true, description: 'Webhook was set', result: true }) };
+    },
+  });
+  assert.strictEqual(good.ok, true);
+  assert.strictEqual(sentBody.url, 'https://eisymyanmar.com/api/webhook/telegram');
+  assert.strictEqual(sentBody.secret_token, 'hook-secret');
+  assert.ok(sentBody.allowed_updates.includes('message'));
+  if (prevBase == null) delete process.env.PUBLIC_BASE_URL;
+  else process.env.PUBLIC_BASE_URL = prevBase;
+  if (prevWebhookUrl == null) delete process.env.TELEGRAM_WEBHOOK_URL;
+  else process.env.TELEGRAM_WEBHOOK_URL = prevWebhookUrl;
+  delete process.env.TELEGRAM_WEBHOOK_SECRET;
   console.log('ok');
 
   console.log('\nSupport live chat + Telegram bridge checks passed.');

@@ -122,7 +122,33 @@ router.get('/cards', requireAuth, requireSensitive, async (req, res) => {
   try {
     setCardsNoStore(res);
     const user = await User.findById(req.user.id);
-    const payload = await getUserCardsPayload(req.user.id);
+    const wantSync = String(req.query?.sync || req.query?.reconcile || '').trim() === '1'
+      || String(req.query?.sync || '').toLowerCase() === 'true';
+
+    let payload = await getUserCardsPayload(req.user.id);
+    let providerTimedOut = false;
+    // Local rows return immediately. Provider import runs only for ?sync=1
+    // so an empty list does not sit on the Pago timeout during dashboard paint.
+    if (wantSync) {
+      try {
+        const {
+          syncPagoCardsForUser,
+          withCardApiTimeout,
+          CARD_SYNC_BUDGET_MS,
+        } = require('../services/pagoCardService');
+        const synced = await withCardApiTimeout(
+          syncPagoCardsForUser(req.user.id, {}),
+          CARD_SYNC_BUDGET_MS + 1500,
+          'Card fetch'
+        );
+        providerTimedOut = Boolean(synced?.timed_out);
+        payload = await getUserCardsPayload(req.user.id);
+      } catch (err) {
+        const { isCardTimeoutError } = require('../services/pagoCardService');
+        if (isCardTimeoutError(err)) providerTimedOut = true;
+        console.warn('[user/cards] pago sync skipped:', err.code || err.message);
+      }
+    }
 
     // Always 200 — empty list is a valid state (new users / post-request).
     // Returning 404 here made the dashboard wipe cards and look "broken".
@@ -130,6 +156,7 @@ router.get('/cards', requireAuth, requireSensitive, async (req, res) => {
       user: { id: user.id, name: user.name },
       ...payload,
       card: payload.cards.length ? payload.cards[payload.active_index] : null,
+      provider_timed_out: providerTimedOut,
     });
   } catch (err) {
     console.error('[user/cards]', err);
@@ -180,6 +207,17 @@ router.post('/cards/:id/remove', requireAuth, requireSensitive, async (req, res)
   } catch (err) {
     console.error('[user/cards/remove]', err);
     res.status(500).json({ error: err.message || 'Failed to remove card' });
+  }
+});
+
+router.get('/pricing', requireAuth, async (_req, res) => {
+  try {
+    const { getPublicRatesAndFees } = require('../services/settingsService');
+    const payload = await getPublicRatesAndFees();
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('[user/pricing]', err.message);
+    res.status(500).json({ error: 'Could not load rates and fees', code: 'RATES_FEES_FAILED' });
   }
 });
 
@@ -247,6 +285,8 @@ router.get('/wallet/deposit-addresses', requireAuth, async (req, res) => {
         if (assigned?.address) {
           trc20Address = assigned.address;
           trc20Source = assigned.source || 'hd';
+          const { scanUserHdDepositsBestEffort } = require('../services/hdDepositCreditService');
+          await scanUserHdDepositsBestEffort(req.user.id);
         }
       } catch (err) {
         console.warn('[user/wallet/deposit-addresses] HD resolve skipped:', err.message);
@@ -254,7 +294,6 @@ router.get('/wallet/deposit-addresses', requireAuth, async (req, res) => {
     }
     res.json({
       usdt_trc20_address: trc20Address,
-      usdt_bep20_address: null,
       minimum_usdt_deposit: settings.minimum_usdt_deposit,
       trc20_address_source: trc20Source,
       deposit_provider: 'tron-hd',
@@ -285,6 +324,18 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
     // Mirror ensure is non-blocking — balances come from Turso (+ cached overlay).
     ensureSupabaseUserWalletInBackground(req.user.id);
 
+    // ?fast=1 paints the saved balance without waiting on TronGrid.
+    // The dashboard follows up with a normal wallet read that still scans.
+    const fast = req.query.fast === '1' || req.query.fast === 'true';
+    let hdScan = { skipped: true, reason: fast ? 'fast' : 'not_run', credited: 0 };
+    if (!fast) {
+      const { scanUserHdDepositsBestEffort } = require('../services/hdDepositCreditService');
+      hdScan = await scanUserHdDepositsBestEffort(req.user.id);
+      if (hdScan && Number(hdScan.credited) > 0) {
+        user = await User.findById(req.user.id);
+      }
+    }
+
     const localPayload = {
       ...walletPayload(user),
       email: user.email || req.user.email,
@@ -313,6 +364,8 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
       balance: balances.balance_mmk ?? user.balance_mmk ?? 0,
       currency: 'MMK',
       legacy_migration: legacyMigration.migrated ? legacyMigration : null,
+      scan_deferred: Boolean(fast),
+      hd_scan: hdScan?.reason || (Number(hdScan?.credited) > 0 ? 'credited' : 'checked'),
     });
   } catch (err) {
     console.error('[user/wallet]', err);
@@ -342,13 +395,17 @@ router.get('/card', requireAuth, requireSensitive, async (req, res) => {
 });
 
 function sendPagoError(res, err, fallback) {
+  const { isCardTimeoutError } = require('../services/pagoCardService');
+  const timedOut = isCardTimeoutError(err);
   const status = err.code === 'INSUFFICIENT_USDT_BALANCE'
     ? 400
-    : (err.status || 500);
+    : timedOut
+      ? 504
+      : (err.status || 500);
   res.status(status).json({
     success: false,
     error: err.message || fallback,
-    code: err.code || 'PAGO_ERROR',
+    code: timedOut ? (err.code || 'CARD_REQUEST_TIMEOUT') : (err.code || 'PAGO_ERROR'),
     pago_card_id: err.pago_card_id || undefined,
     detail: err.detail || undefined,
   });
@@ -357,15 +414,21 @@ function sendPagoError(res, err, fallback) {
 router.post('/cards/request', requireAuth, requireSensitive, async (req, res) => {
   try {
     setCardsNoStore(res);
-    const { issuePagoCardForUser, PAGO_PRODUCTS } = require('../services/pagoCardService');
-    const result = await issuePagoCardForUser({
+    const {
+      issuePagoCardForUser,
+      PAGO_PRODUCTS,
+      DEFAULT_ISSUE_PRODUCT,
+      withCardApiTimeout,
+      CARD_CREATE_ROUTE_TIMEOUT_MS,
+    } = require('../services/pagoCardService');
+    const result = await withCardApiTimeout(issuePagoCardForUser({
       userId: req.user.id,
-      productCode: req.body?.product_code,
+      productCode: DEFAULT_ISSUE_PRODUCT,
       firstName: req.body?.first_name,
       lastName: req.body?.last_name,
       email: req.body?.email,
       initialLoad: req.body?.initial_load,
-    });
+    }), CARD_CREATE_ROUTE_TIMEOUT_MS, 'Card creation');
     const payload = await getUserCardsPayload(req.user.id);
     const card = payload.cards.find((item) => Number(item.id) === Number(result.card?.id)) || null;
     res.status(201).json({
@@ -373,6 +436,7 @@ router.post('/cards/request', requireAuth, requireSensitive, async (req, res) =>
       message: 'Your virtual card is ready.',
       products: PAGO_PRODUCTS,
       debited_usdt: result.debited_usdt,
+      pricing: result.pricing || null,
       card,
       ...payload,
     });
@@ -382,9 +446,118 @@ router.post('/cards/request', requireAuth, requireSensitive, async (req, res) =>
   }
 });
 
+/**
+ * Reconcile provider-issued Pago cards into local cards_v2.
+ * Body may include pago_card_id to import one orphaned card by id.
+ */
+router.post('/cards/sync', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const {
+      syncPagoCardsForUser,
+      withCardApiTimeout,
+      CARD_SYNC_BUDGET_MS,
+    } = require('../services/pagoCardService');
+    const result = await withCardApiTimeout(syncPagoCardsForUser(req.user.id, {
+      pagoCardId: req.body?.pago_card_id || req.body?.card_id || null,
+    }), CARD_SYNC_BUDGET_MS + 1500, 'Card fetch');
+    const payload = await getUserCardsPayload(req.user.id);
+    const message = result.timed_out
+      ? 'Card sync timed out. Showing cards saved so far.'
+      : result.imported > 0
+        ? `Imported ${result.imported} card${result.imported === 1 ? '' : 's'} from Pago Card.`
+        : (result.updated > 0
+          ? 'Card details refreshed from Pago Card.'
+          : 'No new Pago cards to import.');
+    res.json({
+      success: true,
+      message,
+      timed_out: Boolean(result.timed_out),
+      imported: result.imported || 0,
+      updated: result.updated || 0,
+      ...payload,
+      card: payload.cards.length ? payload.cards[payload.active_index] : null,
+    });
+  } catch (err) {
+    console.error('[user/cards/sync]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to sync Pago cards');
+  }
+});
+
 router.get('/cards/products', requireAuth, (_req, res) => {
   const { PAGO_PRODUCTS } = require('../services/pagoCardService');
   res.json({ products: PAGO_PRODUCTS });
+});
+
+router.get('/cards/issue-pricing', requireAuth, requireSensitive, async (_req, res) => {
+  try {
+    const { getCardPricingSettings } = require('../services/settingsService');
+    const { quoteCardIssuanceCheckout } = require('../constants/cardIssuanceFees');
+    const settings = await getCardPricingSettings();
+    const quote = quoteCardIssuanceCheckout({ initialLoadUsd: 0, settings });
+    res.json({
+      success: true,
+      card_issuance_fee_usd: quote.card_issuance_fee_usd,
+      card_processing_fee_usd: quote.card_processing_fee_usd,
+      card_funding_fee_percent: quote.card_funding_fee_percent,
+      fee_rule: 'total = issuing fee + processing fee + funding percent of starting balance + starting balance',
+    });
+  } catch (err) {
+    console.error('[user/cards/issue-pricing]', err.message);
+    res.status(500).json({ error: 'Could not load card issuing fees', code: 'ISSUE_PRICING_FAILED' });
+  }
+});
+
+router.get('/cards/topup-pricing', requireAuth, requireSensitive, async (_req, res) => {
+  try {
+    const { getCardPricingSettings } = require('../services/settingsService');
+    const settings = await getCardPricingSettings();
+    res.json({
+      success: true,
+      minimum_usdt_reload: settings.minimum_usdt_reload,
+      card_reload_fee_usd: settings.card_reload_fee_usd,
+      card_reload_fee_percent: settings.card_reload_fee_percent,
+      card_reload_fee_minimum_usd: settings.card_reload_fee_minimum_usd,
+      fee_rule: 'fee = max(fixed + amount * percent/100, minimum)',
+    });
+  } catch (err) {
+    console.error('[user/cards/topup-pricing]', err.message);
+    res.status(500).json({ error: 'Could not load top-up pricing', code: 'TOPUP_PRICING_FAILED' });
+  }
+});
+
+/** All recent 3DS codes across the user's Pago cards (must be before /cards/:id). */
+router.get('/cards/3ds', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const { listUser3dsEvents } = require('../services/pago3dsWebhookService');
+    const events = await listUser3dsEvents(req.user.id, { limit: 30 });
+    res.json({
+      success: true,
+      latest: events.find((item) => item.otp) || events[0] || null,
+      events,
+    });
+  } catch (err) {
+    console.error('[user/cards/3ds-list]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to load 3DS codes');
+  }
+});
+
+router.post('/cards/3ds/:eventId/seen', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const eventId = parseInt(req.params.eventId, 10);
+    if (!Number.isFinite(eventId) || eventId <= 0) {
+      return res.status(400).json({ error: 'Invalid event id', code: 'INVALID_EVENT_ID' });
+    }
+    const { markUser3dsSeen } = require('../services/pago3dsWebhookService');
+    const event = await markUser3dsSeen(req.user.id, eventId);
+    if (!event) return res.status(404).json({ error: 'Event not found', code: 'EVENT_NOT_FOUND' });
+    res.json({ success: true, event });
+  } catch (err) {
+    console.error('[user/cards/3ds/seen]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to mark 3DS code seen');
+  }
 });
 
 router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
@@ -394,15 +567,141 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
     if (!Number.isFinite(cardId) || cardId <= 0) {
       return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
     }
-    const { refreshPagoCard } = require('../services/pagoCardService');
-    await refreshPagoCard(req.user.id, cardId);
+    const {
+      refreshPagoCard,
+      withCardApiTimeout,
+      isCardTimeoutError,
+      CARD_FETCH_TIMEOUT_MS,
+    } = require('../services/pagoCardService');
+    let timedOut = false;
+    try {
+      await withCardApiTimeout(
+        refreshPagoCard(req.user.id, cardId),
+        CARD_FETCH_TIMEOUT_MS + 2000,
+        'Card fetch'
+      );
+    } catch (err) {
+      if (!isCardTimeoutError(err)) throw err;
+      timedOut = true;
+      console.warn('[user/cards/detail] timed out, returning saved card');
+    }
     const payload = await getUserCardsPayload(req.user.id);
     const card = payload.cards.find((item) => Number(item.id) === cardId);
     if (!card) return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
-    res.json({ card, ...payload });
+    res.json({ card, ...payload, timed_out: timedOut });
   } catch (err) {
     console.error('[user/cards/detail]', err.code || err.message);
     sendPagoError(res, err, 'Failed to load card details');
+  }
+});
+
+/**
+ * Wallet add capability for a card. Pago supports Apple/Google Pay at the
+ * network level but has no public push-provisioning API — clients use the
+ * guided manual-add flow with revealed PAN/expiry/CVV.
+ */
+router.get('/cards/:id/wallet', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId);
+    if (!card) return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
+    const { getWalletProvisioningInfo } = require('../services/pagoCardService');
+    const wallet = getWalletProvisioningInfo(card);
+    res.json({
+      success: true,
+      card_id: card.id,
+      last4: card.last4,
+      brand: card.brand,
+      product_code: card.product_code,
+      has_pan: Boolean(card.card_number),
+      has_cvv: Boolean(card.cvv),
+      wallet,
+    });
+  } catch (err) {
+    console.error('[user/cards/wallet]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to load wallet add options');
+  }
+});
+
+/**
+ * Recent Pagocards spend for one card.
+ * GET /api/v1/cards/{id}/transactions — date, merchant, amount, status.
+ */
+router.get('/cards/:id/transactions', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const page = parseInt(req.query.page, 10);
+    const { listPagoCardTransactions } = require('../services/pagoCardService');
+    const result = await listPagoCardTransactions({
+      userId: req.user.id,
+      localCardId: cardId,
+      page: Number.isFinite(page) ? page : 1,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[user/cards/transactions]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to load card transactions');
+  }
+});
+
+/**
+ * Recent Pagocards 3DS verification codes for one card.
+ * ?refresh=1 also reads the documented card + transactions endpoints and
+ * stores any OTP fields found there. Webhook rows are always included.
+ */
+router.get('/cards/:id/3ds', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId);
+    if (!card) return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
+
+    const wantsRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    const {
+      listUser3dsEvents,
+      refreshCard3dsFromProvider,
+    } = require('../services/pago3dsWebhookService');
+
+    let provider = null;
+    if (wantsRefresh) {
+      provider = await refreshCard3dsFromProvider({
+        userId: req.user.id,
+        localCardId: cardId,
+        pagoCardId: card.pago_card_id || null,
+      });
+    }
+
+    const events = await listUser3dsEvents(req.user.id, {
+      localCardId: cardId,
+      pagoCardId: card.pago_card_id || null,
+      limit: 20,
+    });
+    const latest = events.find((item) => item.otp) || events[0] || null;
+    res.json({
+      success: true,
+      card_id: cardId,
+      pago_card_id: card.pago_card_id || null,
+      latest,
+      events,
+      provider_checked: Boolean(provider?.provider_checked),
+      provider_imported: provider?.imported || 0,
+    });
+  } catch (err) {
+    console.error('[user/cards/3ds]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to load 3DS codes');
   }
 });
 
@@ -438,6 +737,106 @@ router.post('/cards/:id/topup', requireAuth, requireSensitive, async (req, res) 
   }
 });
 
+router.post('/cards/:id/withdraw', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const amount = req.body?.amount_usd ?? req.body?.amount;
+    const { withdrawPagoCard } = require('../services/pagoCardService');
+    const result = await withdrawPagoCard({
+      userId: req.user.id,
+      localCardId: cardId,
+      amountUsd: amount,
+    });
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId) || null;
+    res.json({
+      success: true,
+      message: `$${Number(result.withdrawn_usd).toFixed(2)} returned to your USDT wallet.`,
+      withdrawn_usd: result.withdrawn_usd,
+      credited_usdt: result.credited_usdt,
+      transaction_id: result.transaction_id,
+      card,
+      ...payload,
+    });
+  } catch (err) {
+    console.error('[user/cards/withdraw]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to withdraw from the card');
+  }
+});
+
+router.post('/cards/:id/block', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const { blockPagoCard } = require('../services/pagoCardService');
+    const result = await blockPagoCard({ userId: req.user.id, localCardId: cardId });
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId) || null;
+    res.json({
+      success: true,
+      message: 'Card blocked. New charges are paused until you unblock it.',
+      card,
+      ...payload,
+    });
+  } catch (err) {
+    console.error('[user/cards/block]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to block the card');
+  }
+});
+
+router.post('/cards/:id/unblock', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const { unblockPagoCard } = require('../services/pagoCardService');
+    const result = await unblockPagoCard({ userId: req.user.id, localCardId: cardId });
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId) || null;
+    res.json({
+      success: true,
+      message: 'Card unblocked. You can use it for purchases again.',
+      card,
+      ...payload,
+    });
+  } catch (err) {
+    console.error('[user/cards/unblock]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to unblock the card');
+  }
+});
+
+router.post('/cards/:id/terminate', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    setCardsNoStore(res);
+    const cardId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(cardId) || cardId <= 0) {
+      return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
+    }
+    const { terminatePagoCard } = require('../services/pagoCardService');
+    const result = await terminatePagoCard({ userId: req.user.id, localCardId: cardId });
+    const payload = await getUserCardsPayload(req.user.id);
+    const card = payload.cards.find((item) => Number(item.id) === cardId) || null;
+    res.json({
+      success: true,
+      message: 'Card terminated. Any remaining balance may take time to refund.',
+      card,
+      ...payload,
+    });
+  } catch (err) {
+    console.error('[user/cards/terminate]', err.code || err.message);
+    sendPagoError(res, err, 'Failed to terminate the card');
+  }
+});
+
 router.post('/card/reload', requireAuth, requireSensitive, async (req, res) => {
   try {
     const cardId = parseInt(req.body?.card_id, 10);
@@ -459,6 +858,61 @@ router.post('/card/reload', requireAuth, requireSensitive, async (req, res) => {
   } catch (err) {
     console.error('[user/card/reload]', err.code || err.message);
     sendPagoError(res, err, 'Failed to top up the card');
+  }
+});
+
+router.get('/push/config', async (_req, res) => {
+  try {
+    const { getPublicConfig } = require('../services/webPushService');
+    const config = await getPublicConfig();
+    res.json({ success: true, ...config });
+  } catch (err) {
+    console.error('[user/push/config]', err.message);
+    res.status(500).json({ success: false, error: 'Push is unavailable', code: 'PUSH_UNAVAILABLE' });
+  }
+});
+
+router.post('/push/subscribe', requireAuth, async (req, res) => {
+  try {
+    const { saveSubscription } = require('../services/webPushService');
+    await saveSubscription(req.user.id, req.body?.subscription || req.body, req.get('user-agent'));
+    res.json({ success: true });
+  } catch (err) {
+    const status = err.status || 500;
+    res.status(status).json({
+      success: false,
+      error: err.message || 'Could not save push subscription',
+      code: err.code || 'PUSH_SUBSCRIBE_FAILED',
+    });
+  }
+});
+
+router.post('/push/unsubscribe', requireAuth, async (req, res) => {
+  try {
+    const { removeSubscription } = require('../services/webPushService');
+    const endpoint = req.body?.endpoint || req.body?.subscription?.endpoint;
+    await removeSubscription(req.user.id, endpoint);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Could not remove push subscription' });
+  }
+});
+
+router.post('/push/test', requireAuth, async (req, res) => {
+  try {
+    const { notifyUserPush } = require('../services/webPushService');
+    const title = String(req.body?.title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    const body = String(req.body?.body || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+    const result = await notifyUserPush(req.user.id, {
+      title: title || 'Eisy notifications are on',
+      body: body || 'Verification codes and deposit alerts will appear on this phone.',
+      url: '/#settings',
+      tag: 'eisy-push-test',
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[user/push/test]', err.message);
+    res.status(500).json({ success: false, error: 'Could not send a test notification' });
   }
 });
 

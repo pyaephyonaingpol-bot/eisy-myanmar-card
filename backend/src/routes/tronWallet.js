@@ -4,8 +4,9 @@
  * Mounted at /api/tron/wallet
  *
  * Deposit address provisioning is on by default (TRON_DEPOSITS_ENABLED).
- * Master-wallet sends stay off (TRON_WALLET_ENABLED=false). Withdrawals use
- * the 4% markup queue. Sync-deposits remains available for ops recovery.
+ * Confirmed USDT sent to that address is credited by the HD watcher.
+ * User TRC20 withdrawals use POST /api/withdrawal/usdt. The legacy master-wallet
+ * route stays off unless TRON_WALLET_ENABLED=true.
  */
 const express = require('express');
 const { requireAuth, requireSensitive } = require('../middleware/auth');
@@ -42,7 +43,7 @@ function rejectIfDepositsDisabled(res) {
 
 /** GET /api/tron/wallet — address + internal balances */
 router.get('/', requireAuth, requireSensitive, async (req, res) => {
-  if (rejectIfDisabled(res)) return;
+  if (rejectIfDepositsDisabled(res)) return;
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     const summary = await getTronWalletSummary(req.user.id);
@@ -62,6 +63,8 @@ router.get('/address', requireAuth, async (req, res) => {
   if (rejectIfDepositsDisabled(res)) return;
   try {
     const address = await generateUserDepositAddress(req.user.id);
+    const { scanUserHdDepositsBestEffort } = require('../services/hdDepositCreditService');
+    await scanUserHdDepositsBestEffort(req.user.id);
     res.json({ success: true, ...address });
   } catch (err) {
     console.error('[tron/wallet/address GET]', err.message);
@@ -78,6 +81,8 @@ router.post('/address', requireAuth, async (req, res) => {
   if (rejectIfDepositsDisabled(res)) return;
   try {
     const address = await generateUserDepositAddress(req.user.id);
+    const { scanUserHdDepositsBestEffort } = require('../services/hdDepositCreditService');
+    await scanUserHdDepositsBestEffort(req.user.id);
     res.status(address.created ? 201 : 200).json({ success: true, ...address });
   } catch (err) {
     console.error('[tron/wallet/address POST]', err.message);
@@ -95,7 +100,7 @@ router.post('/address', requireAuth, async (req, res) => {
  * Creates a deposit intent bound to the user's unique address.
  */
 router.post('/deposits', requireAuth, requireSensitive, async (req, res) => {
-  if (rejectIfDisabled(res)) return;
+  if (rejectIfDepositsDisabled(res)) return;
   try {
     const result = await createDepositIntent(req.user.id, req.body || {});
     res.status(201).json({ success: true, ...result });
@@ -120,7 +125,7 @@ router.post('/deposits', requireAuth, requireSensitive, async (req, res) => {
 
 /** GET /api/tron/wallet/deposits/:orderId */
 router.get('/deposits/:orderId', requireAuth, async (req, res) => {
-  if (rejectIfDisabled(res)) return;
+  if (rejectIfDepositsDisabled(res)) return;
   try {
     const order = await getDepositIntent(req.params.orderId, req.user.id);
     if (!order) {

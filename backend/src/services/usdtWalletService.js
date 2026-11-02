@@ -8,8 +8,6 @@ const { formatUsdt } = require('./walletService');
 
 const NETWORK_LABELS = {
   TRC20: 'TRC20 (Tron)',
-  BEP20: 'BEP20 (BSC)',
-  ERC20: 'ERC20 (Ethereum)',
 };
 
 /** Users whose USDT ledger has already been backfilled (or confirmed present). */
@@ -18,8 +16,6 @@ const _ledgerSyncedUsers = new Set();
 function normalizeNetwork(network) {
   const n = String(network || '').trim().toUpperCase();
   if (n === 'TRC20' || n === 'TRON') return 'TRC20';
-  if (n === 'BEP20' || n === 'BSC') return 'BEP20';
-  if (n === 'ERC20' || n === 'ETH' || n === 'ETHEREUM') return 'ERC20';
   return null;
 }
 
@@ -27,23 +23,16 @@ function validateWalletAddress(network, address) {
   const net = normalizeNetwork(network);
   const addr = String(address || '').trim();
   if (!addr) throw new Error('Enter a USDT wallet address');
-  if (!net) throw new Error('Select a supported network: TRC20, BEP20, or ERC20');
-
-  if (net === 'TRC20') {
-    if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(addr)) {
-      throw new Error('Invalid TRC20 address — must start with T and be 34 characters');
-    }
-    return { network: net, address: addr };
+  if (!net) {
+    const err = new Error('USDT wallets use TRC20 (Tron) only');
+    err.code = 'TRC20_ONLY';
+    throw err;
   }
 
-  if (net === 'BEP20' || net === 'ERC20') {
-    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
-      throw new Error(`Invalid ${net} address — must be a 42-character hex address starting with 0x`);
-    }
-    return { network: net, address: addr };
+  if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(addr)) {
+    throw new Error('Invalid TRC20 address — must start with T and be 34 characters');
   }
-
-  throw new Error('Unsupported network');
+  return { network: net, address: addr };
 }
 
 function platformAddressForNetwork(settings, network) {
@@ -55,8 +44,6 @@ function platformAddressForNetwork(settings, network) {
       return settings.usdt_trc20_address || null;
     }
   }
-  if (network === 'BEP20') return settings.usdt_bep20_address || null;
-  if (network === 'ERC20') return settings.usdt_erc20_address || null;
   return null;
 }
 
@@ -358,8 +345,6 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
   let settings = {
     minimum_usdt_deposit: 10,
     usdt_trc20_address: null,
-    usdt_bep20_address: null,
-    usdt_erc20_address: null,
   };
   let custodial = [];
   let linked = [];
@@ -442,6 +427,7 @@ async function getWalletOverview(userId, { includeOnChain = false } = {}) {
   try {
     for (const row of rows) {
       const mapped = mapAddressRow(row);
+      if (row.network !== 'TRC20') continue;
       if (row.address_type === 'linked') {
         if (includeOnChain) {
           mapped.on_chain_balance = await fetchLinkedOnChainBalance(row.network, row.address);

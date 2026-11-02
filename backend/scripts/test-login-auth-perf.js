@@ -33,6 +33,8 @@ function assertIncludes(haystack, needle, msg) {
 async function main() {
   console.log('== Static wiring ==');
   const authSvc = read('src/services/authService.js');
+  const authPublic = read('public/auth.js');
+  const dashboardJs = read('public/dashboard.js');
   const adminAuth = read('src/services/adminAuthService.js');
   const cryptoSvc = read('src/services/cryptoService.js');
   const middleware = read('src/middleware/auth.js');
@@ -82,12 +84,18 @@ async function main() {
   );
 
   assertIncludes(adminJs, 'loadActiveTabData', 'admin loads active tab first');
-  assertIncludes(adminJs, 'this.loadActiveTabData();\n        this.loadAll();', 'restore does not await loadAll');
+  assertIncludes(adminJs, 'scheduleBackgroundAdminWarm', 'admin warms tabs in background');
+  assertIncludes(authSvc, 'userRowFromSessionJoin', 'GET /me can skip user re-SELECT');
+  const apiIndex = read('api/index.js');
+  assertIncludes(apiIndex, 'scheduleDeferredServerTasks', 'vercel bootstrap defers heavy work');
 
   assertIncludes(sessionModel, 'Avoid a round-trip SELECT on the login hot path', 'session create skips SELECT');
 
   assertIncludes(migration, 'idx_user_sessions_token_active', 'session token index');
   assertIncludes(migration, 'idx_otp_email_purpose_created', 'otp login index');
+  assertIncludes(authPublic, 'markSessionFresh', 'client skips redundant /me after login');
+  assertIncludes(dashboardJs, 'Auth.isSessionFresh', 'dashboard respects fresh session');
+  assertIncludes(dashboardJs, 'loadDepositHistory().catch', 'deposit history off login critical path');
   const authPatch = read('migrations/patches/applyUserAuthColumns.js');
   assertIncludes(authPatch, 'idx_users_email_lower', 'email lookup index in auth patch');
   console.log('ok');

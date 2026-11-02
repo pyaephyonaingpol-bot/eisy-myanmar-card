@@ -5,7 +5,8 @@
  *   - off                 → no fee (0)
  *   - percent             → amount × percent/100
  *   - fixed               → flat minimum_usdt (MMK uses $min × rate)
- *   - max_percent_or_min  → Math.max(percent, minimum)  [default, legacy]
+ *   - max_percent_or_min  → Math.max(percent, minimum)  [legacy]
+ *   - fixed_plus_percent  → Math.max(fixed + amount × percent/100, minimum)
  */
 
 const DEFAULT_FEE_PERCENT = 2;
@@ -17,6 +18,7 @@ const FEE_MODES = Object.freeze({
   PERCENT: 'percent',
   FIXED: 'fixed',
   MAX_PERCENT_OR_MIN: 'max_percent_or_min',
+  FIXED_PLUS_PERCENT: 'fixed_plus_percent',
 });
 
 function roundMoney(value, decimals = 2) {
@@ -29,6 +31,14 @@ function normalizeFeeMode(raw) {
   if (mode === 'disabled' || mode === 'none' || mode === '0') return FEE_MODES.OFF;
   if (mode === 'pct' || mode === 'percentage') return FEE_MODES.PERCENT;
   if (mode === 'flat' || mode === 'fixed_usdt') return FEE_MODES.FIXED;
+  if (
+    mode === 'fixed_plus_percent'
+    || mode === 'fixed+percent'
+    || mode === 'fixed_and_percent'
+    || mode === 'fixed_plus_percentage'
+  ) {
+    return FEE_MODES.FIXED_PLUS_PERCENT;
+  }
   if (
     mode === 'max'
     || mode === 'max_percent_or_minimum'
@@ -51,11 +61,30 @@ function resolveFeePercent(settings) {
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_FEE_PERCENT;
 }
 
+function resolveFixedFeeUsdt(settings) {
+  const mode = normalizeFeeMode(settings?.payment_service_fee_mode);
+  if (mode !== FEE_MODES.FIXED_PLUS_PERCENT) return 0;
+  const raw = settings?.payment_service_fee_fixed_usdt;
+  if (raw == null || raw === '') return 0;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
 function resolveMinimumFeeUsdt(settings) {
-  const raw = settings?.payment_service_fee_minimum_usdt
-    ?? settings?.payment_service_fee_fixed_usdt;
-  const n = raw == null ? DEFAULT_MINIMUM_FEE_USDT : parseFloat(raw);
-  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_MINIMUM_FEE_USDT;
+  const mode = normalizeFeeMode(settings?.payment_service_fee_mode);
+  const raw = settings?.payment_service_fee_minimum_usdt;
+  // Legacy alias only. The fixed component of fixed_plus_percent is not a minimum.
+  if ((raw == null || raw === '') && mode !== FEE_MODES.FIXED_PLUS_PERCENT) {
+    const alias = settings?.payment_service_fee_fixed_usdt;
+    if (alias != null && alias !== '') {
+      const aliased = parseFloat(alias);
+      if (Number.isFinite(aliased) && aliased >= 0) return aliased;
+    }
+  }
+  const fallback = mode === FEE_MODES.FIXED_PLUS_PERCENT ? 0 : DEFAULT_MINIMUM_FEE_USDT;
+  if (raw == null || raw === '') return fallback;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
 function resolveMinimumFeeMmk(settings) {
@@ -67,7 +96,7 @@ function resolveMinimumFeeMmk(settings) {
 /**
  * Core fee calculator with optional mode.
  * @param {number} amount
- * @param {{ feePercent?: number, minimumFee?: number, decimals?: number, mode?: string }} [opts]
+ * @param {{ feePercent?: number, minimumFee?: number, fixedFee?: number, decimals?: number, mode?: string }} [opts]
  */
 function calculatePaymentServiceFee(amount, opts = {}) {
   const amt = Number(amount) || 0;
@@ -78,15 +107,19 @@ function calculatePaymentServiceFee(amount, opts = {}) {
 
   const feePercent = opts.feePercent != null ? Number(opts.feePercent) : DEFAULT_FEE_PERCENT;
   const minimumFee = opts.minimumFee != null ? Number(opts.minimumFee) : DEFAULT_MINIMUM_FEE_USDT;
+  const fixedFee = opts.fixedFee != null ? Number(opts.fixedFee) : 0;
   const decimals = opts.decimals != null ? opts.decimals : 2;
   const percentFee = amt * ((Number.isFinite(feePercent) ? feePercent : 0) / 100);
   const min = Number.isFinite(minimumFee) ? minimumFee : 0;
+  const fixed = Number.isFinite(fixedFee) && fixedFee > 0 ? fixedFee : 0;
 
   let fee = 0;
   if (mode === FEE_MODES.PERCENT) {
     fee = percentFee;
   } else if (mode === FEE_MODES.FIXED) {
     fee = min;
+  } else if (mode === FEE_MODES.FIXED_PLUS_PERCENT) {
+    fee = Math.max(fixed + percentFee, min);
   } else {
     // max_percent_or_min (legacy / default)
     fee = Math.max(percentFee, min);
@@ -100,11 +133,28 @@ function buildFeeLabel({
   fee,
   feePercent,
   minimumFee,
+  fixedFee = 0,
   percentComponent,
   currency = 'USDT',
   usedMinimum = false,
 }) {
   if (mode === FEE_MODES.OFF || !(fee > 0)) return 'No service fee';
+  if (mode === FEE_MODES.FIXED_PLUS_PERCENT) {
+    const fixed = Number(fixedFee) || 0;
+    if (usedMinimum) {
+      return currency === 'MMK'
+        ? `min ${Math.round(minimumFee).toLocaleString()} MMK`
+        : `min $${Number(minimumFee).toFixed(2)}`;
+    }
+    if (fixed > 0) {
+      return currency === 'MMK'
+        ? `fixed ${Math.round(fixed).toLocaleString()} MMK + ${feePercent}% (${Math.round(fee).toLocaleString()} MMK)`
+        : `$${fixed.toFixed(2)} + ${feePercent}% ($${Number(fee).toFixed(2)})`;
+    }
+    return currency === 'MMK'
+      ? `${feePercent}% (${Math.round(fee).toLocaleString()} MMK)`
+      : `${feePercent}% ($${Number(fee).toFixed(2)})`;
+  }
   if (mode === FEE_MODES.FIXED) {
     return currency === 'MMK'
       ? `fixed ${Math.round(fee).toLocaleString()} MMK`
@@ -137,16 +187,21 @@ function calculateUsdtPaymentFeeBreakdown(amountUsdt, settings = {}) {
   const mode = resolveFeeMode(settings);
   const feePercent = resolveFeePercent(settings);
   const minimumFee = resolveMinimumFeeUsdt(settings);
+  const fixedFee = resolveFixedFeeUsdt(settings);
   const fee = calculatePaymentServiceFee(amount, {
     feePercent,
     minimumFee,
+    fixedFee,
     decimals: 2,
     mode,
   });
   const net = roundMoney(amount - fee, 2);
   const percentComponent = roundMoney(amount * (feePercent / 100), 2);
-  const usedMinimum = mode === FEE_MODES.MAX_PERCENT_OR_MIN
-    && (fee > percentComponent + 0.0001 || (fee === minimumFee && percentComponent < minimumFee));
+  const additive = roundMoney(fixedFee + percentComponent, 2);
+  const usedMinimum = mode === FEE_MODES.FIXED_PLUS_PERCENT
+    ? minimumFee > additive + 0.0001
+    : mode === FEE_MODES.MAX_PERCENT_OR_MIN
+      && (fee > percentComponent + 0.0001 || (fee === minimumFee && percentComponent < minimumFee));
 
   const feeRule = mode === FEE_MODES.OFF
     ? 'fee = 0'
@@ -154,7 +209,9 @@ function calculateUsdtPaymentFeeBreakdown(amountUsdt, settings = {}) {
       ? 'fee = amount * feePercent/100'
       : mode === FEE_MODES.FIXED
         ? 'fee = fixedUsdt'
-        : 'Math.max(amount * feePercent/100, minimumFee)';
+        : mode === FEE_MODES.FIXED_PLUS_PERCENT
+          ? 'fee = max(fixed + amount * percent/100, minimum)'
+          : 'Math.max(amount * feePercent/100, minimumFee)';
 
   return {
     amount,
@@ -166,7 +223,11 @@ function calculateUsdtPaymentFeeBreakdown(amountUsdt, settings = {}) {
     fee_percent: feePercent,
     minimum_fee: minimumFee,
     minimum_fee_usdt: minimumFee,
-    fixed_fee_usdt: mode === FEE_MODES.FIXED ? fee : minimumFee,
+    fixed_fee_usdt: mode === FEE_MODES.FIXED
+      ? fee
+      : mode === FEE_MODES.FIXED_PLUS_PERCENT
+        ? fixedFee
+        : minimumFee,
     percent_fee_usdt: percentComponent,
     used_minimum_fee: usedMinimum,
     fee_mode: mode,
@@ -178,6 +239,7 @@ function calculateUsdtPaymentFeeBreakdown(amountUsdt, settings = {}) {
       fee,
       feePercent,
       minimumFee,
+      fixedFee,
       percentComponent,
       currency: 'USDT',
       usedMinimum,
@@ -202,17 +264,23 @@ function calculateMmkPaymentFeeBreakdown(amountMmk, settings = {}) {
   const mode = resolveFeeMode(settings);
   const feePercent = resolveFeePercent(settings);
   const minimumFee = resolveMinimumFeeMmk(settings);
+  const rate = parseFloat(settings?.mmk_to_usd_rate) || 4500;
+  const fixedFee = Math.round(resolveFixedFeeUsdt(settings) * rate);
   const fee = Math.round(calculatePaymentServiceFee(amount, {
     feePercent,
     minimumFee,
+    fixedFee,
     decimals: 0,
     mode,
   }));
   const net = amount - fee;
   const percentComponent = Math.round(amount * (feePercent / 100));
-  const usedMinimum = mode === FEE_MODES.MAX_PERCENT_OR_MIN
-    && fee >= minimumFee
-    && percentComponent < minimumFee;
+  const additive = fixedFee + percentComponent;
+  const usedMinimum = mode === FEE_MODES.FIXED_PLUS_PERCENT
+    ? minimumFee > additive
+    : mode === FEE_MODES.MAX_PERCENT_OR_MIN
+      && fee >= minimumFee
+      && percentComponent < minimumFee;
 
   const feeRule = mode === FEE_MODES.OFF
     ? 'fee = 0'
@@ -220,7 +288,9 @@ function calculateMmkPaymentFeeBreakdown(amountMmk, settings = {}) {
       ? 'fee = amount * feePercent/100'
       : mode === FEE_MODES.FIXED
         ? 'fee = fixedMmk($min × rate)'
-        : 'Math.max(amount * feePercent/100, minimumFee)';
+        : mode === FEE_MODES.FIXED_PLUS_PERCENT
+          ? 'fee = max(fixed + amount * percent/100, minimum)'
+          : 'Math.max(amount * feePercent/100, minimumFee)';
 
   return {
     amount,
@@ -232,7 +302,11 @@ function calculateMmkPaymentFeeBreakdown(amountMmk, settings = {}) {
     fee_percent: feePercent,
     minimum_fee: minimumFee,
     minimum_fee_mmk: minimumFee,
-    fixed_fee_mmk: mode === FEE_MODES.FIXED ? fee : minimumFee,
+    fixed_fee_mmk: mode === FEE_MODES.FIXED
+      ? fee
+      : mode === FEE_MODES.FIXED_PLUS_PERCENT
+        ? fixedFee
+        : minimumFee,
     percent_fee_mmk: percentComponent,
     used_minimum_fee: usedMinimum,
     fee_mode: mode,
@@ -244,6 +318,7 @@ function calculateMmkPaymentFeeBreakdown(amountMmk, settings = {}) {
       fee,
       feePercent,
       minimumFee,
+      fixedFee,
       percentComponent,
       currency: 'MMK',
       usedMinimum,
@@ -276,6 +351,7 @@ module.exports = {
   calculateUsdtPaymentFeeBreakdown,
   calculateMmkPaymentFeeBreakdown,
   resolveFeePercent,
+  resolveFixedFeeUsdt,
   resolveMinimumFeeUsdt,
   resolveMinimumFeeMmk,
   resolveFeeMode,

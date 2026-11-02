@@ -1,4 +1,5 @@
 const { getDb } = require('../db');
+const User = require('../models/User');
 const UsdtWithdrawal = require('../models/UsdtWithdrawal');
 const MmkWithdrawal = require('../models/MmkWithdrawal');
 const {
@@ -49,7 +50,6 @@ async function uniqueRefCode(table, prefix) {
 function normalizeNetwork(network) {
   const n = String(network || '').trim().toUpperCase();
   if (n === 'TRC20' || n === 'TRON') return 'TRC20';
-  if (n === 'BEP20' || n === 'BSC') return 'BEP20';
   if (n === 'BANK') return 'BANK';
   return null;
 }
@@ -77,14 +77,7 @@ function validateWalletAddress(network, address) {
     return addr;
   }
 
-  if (network === 'BEP20') {
-    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
-      throw new Error('Invalid BEP20 address — must be a 42-character hex address starting with 0x');
-    }
-    return addr;
-  }
-
-  throw new Error('Select TRC20 or BEP20 network');
+  throw new Error('USDT withdrawals use TRC20 (Tron) only');
 }
 
 function validateBankDetails({ bank_name, account_name, account_number }) {
@@ -132,19 +125,43 @@ async function createUsdtWithdrawalRequest(userId, body = {}) {
 
   const payoutMethod = normalizePayoutMethod(body.payout_method || (body.network === 'BANK' ? 'bank' : 'crypto'));
   if (!payoutMethod) {
-    throw new Error('Select withdrawal method: crypto wallet or bank account');
+    throw new Error('Select withdrawal method: USDT (TRC20) crypto wallet');
   }
 
-  if (payoutMethod === 'bank') {
-    return createUsdtBankWithdrawalRequest(userId, body);
+  if (payoutMethod === 'bank' || String(body.network || '').toUpperCase() === 'BANK') {
+    const err = new Error('Local MMK payouts are no longer available. Withdraw USDT on TRON (TRC20) only.');
+    err.code = 'MMK_PAYOUT_RETIRED';
+    throw err;
   }
   return createUsdtCryptoWithdrawalRequest(userId, body);
+}
+
+async function assertUsdtCoversWithdrawal(userId, amountUsdt) {
+  const user = await User.findById(userId);
+  const available = Number(user?.balance_usdt ?? 0);
+  const required = Math.round(Number(amountUsdt) * 100) / 100;
+  if (!(available + 1e-9 >= required)) {
+    const err = new Error('Insufficient balance');
+    err.code = 'INSUFFICIENT_USDT_BALANCE';
+    err.required_usdt = required;
+    err.available_usdt = available;
+    throw err;
+  }
+}
+
+function assertFeeLeavesRemainder(breakdown) {
+  const amount = Math.round(Number(breakdown.amount_usdt) * 100) / 100;
+  const fee = Math.round(Number(breakdown.fee_usdt) * 100) / 100;
+  const net = Math.round(Number(breakdown.net_usdt) * 100) / 100;
+  if (!(fee >= 0) || !(net > 0) || Math.abs((fee + net) - amount) > 0.05) {
+    throw new Error('Withdrawal fee does not match the requested amount');
+  }
 }
 
 async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_address, amount_usdt }) {
   const normalizedNetwork = normalizeNetwork(network);
   if (!normalizedNetwork || normalizedNetwork === 'BANK') {
-    throw new Error('Select withdrawal network: TRC20 or BEP20');
+    throw new Error('USDT withdrawals use TRC20 (Tron) only');
   }
 
   const walletAddress = validateWalletAddress(normalizedNetwork, wallet_address);
@@ -169,6 +186,8 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
       `Amount too small — after ${formatUsdt(breakdown.fee_usdt)} service fee, nothing would be sent. Increase the amount.`
     );
   }
+  assertFeeLeavesRemainder(breakdown);
+  await assertUsdtCoversWithdrawal(userId, breakdown.amount_usdt);
 
   const refCode = await uniqueRefCode('usdt_withdrawal_requests', 'WD');
   const feeTypeForDb = ['percent', 'fixed'].includes(String(breakdown.fee_type))
@@ -213,6 +232,13 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
       status: 'cancelled',
       adminNote: `Debit failed: ${err.message}`,
     }).catch(() => {});
+    if (err?.code === 'INSUFFICIENT_USDT_BALANCE') {
+      const wrapped = new Error('Insufficient balance');
+      wrapped.code = 'INSUFFICIENT_USDT_BALANCE';
+      wrapped.required_usdt = err.required_usdt;
+      wrapped.available_usdt = err.available_usdt;
+      throw wrapped;
+    }
     throw err;
   }
 
@@ -240,8 +266,6 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     }
   }
 
-  // Withdrawals are queued for processing within 48 hours.
-  // Auto on-chain master-wallet send remains opt-in via AUTO_ONCHAIN_WITHDRAWALS.
   await UsdtWithdrawal.updateStatus(withdrawal.id, {
     status: 'pending',
     adminNote: `Payout queued — process within ${WITHDRAW_PROCESSING_HOURS} hours (${normalizedNetwork})`,
@@ -260,6 +284,31 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
         amountUsdt: breakdown.net_usdt,
       });
     } catch (err) {
+      if (err.code === 'MASTER_WALLET_TRANSFERS_PAUSED' || err.code === 'WITHDRAWALS_PAUSED') {
+        const queued = await UsdtWithdrawal.updateStatus(withdrawal.id, {
+          status: 'pending',
+          adminNote: 'Payout queued — master wallet transfers are paused',
+        }).catch(() => null);
+        const { notifyAdminWithdrawalForUser } = require('./telegram');
+        notifyAdminWithdrawalForUser(userId, {
+          kind: 'USDT',
+          network: normalizedNetwork,
+          amountUsdt: breakdown.amount_usdt,
+          feeUsdt: breakdown.fee_usdt,
+          netUsdt: breakdown.net_usdt,
+          destination: walletAddress,
+          refCode,
+          status: queued?.status || 'pending',
+          withdrawal: queued,
+        });
+        return {
+          withdrawal: queued || await UsdtWithdrawal.findById(withdrawal.id),
+          breakdown,
+          payout: null,
+          message: `Withdrawal ${refCode} submitted. On-chain sends are paused, so ${formatUsdt(breakdown.net_usdt)} USDT stays queued for the master wallet.`,
+        };
+      }
+
       await UsdtWithdrawal.updateStatus(withdrawal.id, {
         status: 'rejected',
         adminNote: `On-chain transfer failed: ${err.message}`,
@@ -294,6 +343,19 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
       adminNote: `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
     });
 
+    const { notifyAdminWithdrawalForUser } = require('./telegram');
+    notifyAdminWithdrawalForUser(userId, {
+      kind: 'USDT',
+      network: normalizedNetwork,
+      amountUsdt: breakdown.amount_usdt,
+      feeUsdt: breakdown.fee_usdt,
+      netUsdt: breakdown.net_usdt,
+      destination: walletAddress,
+      refCode,
+      status: completed.status || 'completed',
+      withdrawal: completed,
+    });
+
     return {
       withdrawal: completed,
       breakdown,
@@ -309,8 +371,20 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
     };
   }
 
-  // TRC20 / BEP20: payout queue — processed within 48 hours (no hot-wallet send unless AUTO_ONCHAIN).
+  // Bank payouts, and TRC20 when AUTO_ONCHAIN_WITHDRAWALS=false, stay in the payout queue.
   const refreshed = await UsdtWithdrawal.findById(withdrawal.id);
+  const { notifyAdminWithdrawalForUser } = require('./telegram');
+  notifyAdminWithdrawalForUser(userId, {
+    kind: 'USDT',
+    network: normalizedNetwork,
+    amountUsdt: breakdown.amount_usdt,
+    feeUsdt: breakdown.fee_usdt,
+    netUsdt: breakdown.net_usdt,
+    destination: walletAddress,
+    refCode,
+    status: refreshed?.status || 'pending',
+    withdrawal: refreshed,
+  });
   return {
     withdrawal: refreshed,
     breakdown,
@@ -321,7 +395,7 @@ async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_addre
 
 function payoutCurrencySupported(network) {
   const n = String(network || '').toUpperCase();
-  return n === 'TRC20' || n === 'BEP20';
+  return n === 'TRC20';
 }
 
 async function createUsdtBankWithdrawalRequest(userId, body = {}) {
@@ -340,6 +414,8 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
   if (breakdown.net_usdt <= 0 || !breakdown.amount_mmk || breakdown.amount_mmk <= 0) {
     throw new Error('Amount too small after fee — increase the USDT amount');
   }
+  assertFeeLeavesRemainder(breakdown);
+  await assertUsdtCoversWithdrawal(userId, breakdown.amount_usdt);
 
   const refCode = await uniqueRefCode('usdt_withdrawal_requests', 'WB');
   const feeTypeForDb = ['percent', 'fixed'].includes(String(breakdown.fee_type))
@@ -363,22 +439,37 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
     accountNumber: bank.accountNumber,
   });
 
-  await debitUsdt(userId, breakdown.amount_usdt, {
-    description: `USDT→Bank withdrawal ${refCode} — ${formatMmk(breakdown.amount_mmk)} to ${bank.bankName} (fee ${formatUsdt(breakdown.fee_usdt)})`,
-    referenceType: 'usdt_withdrawal',
-    referenceId: withdrawal.id,
-    createdBy: 'user',
-    metadata: {
-      purpose: 'usdt_bank_withdrawal',
-      payout_method: 'bank',
-      ref_code: refCode,
-      fee_usdt: breakdown.fee_usdt,
-      net_usdt: breakdown.net_usdt,
-      exchange_rate: breakdown.exchange_rate,
-      amount_mmk: breakdown.amount_mmk,
-      bank_name: bank.bankName,
-    },
-  });
+  try {
+    await debitUsdt(userId, breakdown.amount_usdt, {
+      description: `USDT→Bank withdrawal ${refCode} — ${formatMmk(breakdown.amount_mmk)} to ${bank.bankName} (fee ${formatUsdt(breakdown.fee_usdt)})`,
+      referenceType: 'usdt_withdrawal',
+      referenceId: withdrawal.id,
+      createdBy: 'user',
+      metadata: {
+        purpose: 'usdt_bank_withdrawal',
+        payout_method: 'bank',
+        ref_code: refCode,
+        fee_usdt: breakdown.fee_usdt,
+        net_usdt: breakdown.net_usdt,
+        exchange_rate: breakdown.exchange_rate,
+        amount_mmk: breakdown.amount_mmk,
+        bank_name: bank.bankName,
+      },
+    });
+  } catch (err) {
+    await UsdtWithdrawal.updateStatus(withdrawal.id, {
+      status: 'cancelled',
+      adminNote: `Debit failed: ${err.message}`,
+    }).catch(() => {});
+    if (err?.code === 'INSUFFICIENT_USDT_BALANCE') {
+      const wrapped = new Error('Insufficient balance');
+      wrapped.code = 'INSUFFICIENT_USDT_BALANCE';
+      wrapped.required_usdt = err.required_usdt;
+      wrapped.available_usdt = err.available_usdt;
+      throw wrapped;
+    }
+    throw err;
+  }
 
   if (breakdown.fee_usdt > 0) {
     try {
@@ -409,6 +500,19 @@ async function createUsdtBankWithdrawalRequest(userId, body = {}) {
   } catch (err) {
     console.warn('[withdrawal] supabase bank withdrawal sync unavailable:', err.message);
   }
+
+  const { notifyAdminWithdrawalForUser } = require('./telegram');
+  notifyAdminWithdrawalForUser(userId, {
+    kind: 'USDT bank',
+    currency: 'USDT',
+    amountUsdt: breakdown.amount_usdt,
+    feeUsdt: breakdown.fee_usdt,
+    netUsdt: breakdown.net_usdt,
+    destination: `${bank.bankName} ${bank.accountNumber}`,
+    refCode,
+    status: withdrawal.status || 'pending',
+    withdrawal,
+  });
 
   return {
     withdrawal,
@@ -464,6 +568,19 @@ async function createMmkBankWithdrawalRequest(userId, body = {}) {
       net_mmk: breakdown.net_mmk,
       bank_name: bank.bankName,
     },
+  });
+
+  const { notifyAdminWithdrawalForUser } = require('./telegram');
+  notifyAdminWithdrawalForUser(userId, {
+    kind: 'MMK',
+    currency: 'MMK',
+    amountMmk: breakdown.amount_mmk,
+    feeMmk: breakdown.fee_mmk,
+    netMmk: breakdown.net_mmk,
+    destination: `${bank.bankName} ${bank.accountNumber}`,
+    refCode,
+    status: withdrawal.status || 'pending',
+    withdrawal,
   });
 
   return {

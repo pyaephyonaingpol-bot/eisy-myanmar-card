@@ -7,16 +7,16 @@
   const LEGACY_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.storageKeys.ADMIN_KEY_LEGACY) || 'eisy_admin_key';
   const PIPELINE_STORAGE_KEY = 'eisy_last_admin_pipeline';
 
-  /** Instant admin pages (Master Wallet / TRON). */
-  const INSTANT_ADMIN_PAGES = new Set([
+  /** Core admin modules shown in the sidebar (Instant/Hub split removed). */
+  const CORE_ADMIN_PAGES = new Set([
     'overview',
+    'users',
     'deposits',
     'mmk-withdrawals',
-    'kyc-requests',
-    'users',
-    'transactions',
-    'revenue',
     'support',
+    'kyc-requests',
+    'cards',
+    'revenue',
     'settings',
     'admins',
   ]);
@@ -39,60 +39,74 @@
     kycDocsBySubmissionId: {},
     _pipeline: null,
     _pipelineIsolated: false,
-
-    /** Dedicated Instant (/admin/instant) pipeline, or hub (/admin). */
-    getPipeline() {
-      if (window.__EISY_ADMIN_PIPELINE__ === 'instant') return 'instant';
-      const path = String(location.pathname || '');
-      if (/\/admin\/instant\/?$/.test(path)) return 'instant';
-      return null;
+    /** In-flight GET dedupe — avoids duplicate parallel admin API calls. */
+    _apiInflight: {},
+    _fetchMeta: {},
+    ADMIN_FETCH_TTL_MS: {
+      users: 15000,
+      deposits: 12000,
+      settings: 60000,
+      support: 8000,
     },
 
-    pipelineHref(pipeline) {
-      if (pipeline === 'instant') return '/admin/instant';
+    userIdentityText(row) {
+      const id = row && row.user_id != null && row.user_id !== '' ? row.user_id : row && row.id;
+      const name = String((row && (row.user_name || row.name)) || '').trim();
+      const email = String((row && (row.user_email || row.email)) || '').trim();
+      const authId = String((row && row.auth_user_id) || '').trim();
+      const parts = [];
+      if (name) parts.push(name);
+      if (email && email.toLowerCase() !== name.toLowerCase()) parts.push(email);
+      if (id != null && id !== '') parts.push('#' + id);
+      if (authId && authId !== String(id || '')) parts.push(authId);
+      return parts.join(' · ') || 'User';
+    },
+
+    userIdentityHtml(row) {
+      return '<span class="user-identity">' + this.esc(this.userIdentityText(row)).replace(/ · /g, '<br>') + '</span>';
+    },
+
+    /** Unified admin portal — no Instant/Hub chooser. */
+    getPipeline() {
+      return 'instant';
+    },
+
+    pipelineHref(_pipeline) {
       return '/admin';
     },
 
-    rememberPipeline(pipeline) {
+    rememberPipeline(_pipeline) {
       try {
-        if (pipeline === 'instant') localStorage.setItem(PIPELINE_STORAGE_KEY, pipeline);
+        localStorage.setItem(PIPELINE_STORAGE_KEY, 'instant');
       } catch (_) { /* ignore */ }
     },
 
     lastPipeline() {
-      try {
-        return localStorage.getItem(PIPELINE_STORAGE_KEY) === 'instant' ? 'instant' : null;
-      } catch (_) {
-        return null;
+      return 'instant';
+    },
+
+    pagesForPipeline(_pipeline) {
+      return CORE_ADMIN_PAGES;
+    },
+
+    pipelineDefaultPage(_pipeline) {
+      if (this.hasPermission('master_wallet') && (!this.pages?.length || this.pages.includes('overview'))) {
+        return 'overview';
       }
-    },
-
-    pagesForPipeline(pipeline) {
-      if (pipeline === 'instant') return INSTANT_ADMIN_PAGES;
-      return null;
-    },
-
-    pipelineDefaultPage(pipeline) {
-      if (this.pages?.includes('overview')) return 'overview';
+      if (this.pages?.includes('users')) return 'users';
       if (this.pages?.includes('deposits')) return 'deposits';
-      return this.pages?.[0] || 'deposits';
+      if (this.pages?.includes('cards')) return 'cards';
+      return this.pages?.[0] || 'users';
     },
 
     /**
-     * Lock admin UI to Instant pipeline. Hub (/admin) shows Instant entry only.
+     * Single unified admin shell (no Instant/Hub pipeline chrome).
      */
     applyPipelineIsolation() {
       const pipeline = this.getPipeline();
       this._pipeline = pipeline;
-      document.documentElement.setAttribute('data-admin-pipeline', pipeline || 'hub');
-      if (pipeline) this.rememberPipeline(pipeline);
-
-      // Instant admin only — no secondary pipeline chrome.
-      if (!pipeline) {
-        this.renderPipelineHubChooser();
-        this.renderPipelineSwitcher();
-        return pipeline;
-      }
+      document.documentElement.setAttribute('data-admin-pipeline', 'instant');
+      this.rememberPipeline(pipeline);
 
       if (this._pipelineIsolated) {
         this.renderPipelineSwitcher();
@@ -104,10 +118,10 @@
       $('adminPipelineHub')?.remove();
 
       const loginTitle = $('adminLoginTitle');
-      if (loginTitle) loginTitle.textContent = 'Eisymyanmar';
+      if (loginTitle) loginTitle.textContent = 'Eisymyanmar Admin';
       const loginSub = $('adminLoginSubtitle');
       if (loginSub) {
-        loginSub.textContent = 'USDT wallets · TRC20 · P2P · MMK';
+        loginSub.textContent = 'Users · Deposits & KYC · Virtual Cards · Settings';
       }
 
       this.renderPipelineSwitcher();
@@ -116,11 +130,11 @@
       const brandTitle = document.querySelector('.sidebar-brand-title');
       if (brandTitle) brandTitle.textContent = 'Eisymyanmar';
       const brandSub = document.querySelector('.sidebar-brand-sub');
-      if (brandSub) brandSub.textContent = 'USDT · TRC20 · P2P · MMK';
-      document.title = 'Eisymyanmar';
+      if (brandSub) brandSub.textContent = 'Admin Control';
+      document.title = 'Eisymyanmar Admin';
 
       const userApp = $('adminUserAppLink');
-      if (userApp) userApp.setAttribute('href', '/instant');
+      if (userApp) userApp.setAttribute('href', '/');
 
       return pipeline;
     },
@@ -128,46 +142,37 @@
     applyPipelineCopy() {
       const usersHeading = $('adminUsersHeading');
       if (usersHeading) {
-        usersHeading.textContent = 'Users & Internal USDT Wallets';
+        usersHeading.textContent = 'Users';
       }
       const usersHint = $('adminUsersHint');
       if (usersHint) {
-        usersHint.textContent = 'Manage internal USDT wallet balances used for P2P and TRC20 flows.';
+        usersHint.textContent = 'All registered users and Supabase wallets, newest first. Change page size to scroll a shorter page or load everyone.';
+      }
+      const cardsHeading = $('adminCardsHeading');
+      if (cardsHeading) cardsHeading.textContent = 'Virtual Cards';
+      const cardsHint = $('adminCardsHint');
+      if (cardsHint) {
+        cardsHint.textContent = 'Review Pago virtual cards, pending requests, and reload approvals.';
       }
     },
 
     renderPipelineSwitcher() {
       const host = $('adminPipelineSwitcher');
       if (!host) return;
-      const pipeline = this._pipeline || this.getPipeline();
-      if (pipeline === 'instant') {
-        host.innerHTML = '<a class="btn btn-secondary btn-sm portal-switch-link" href="/admin">← Admin hub</a>';
-        return;
-      }
-      host.innerHTML = '<a class="btn btn-primary btn-sm portal-switch-link" href="/admin/instant">Open Instant Admin →</a>';
+      host.innerHTML = '';
+      host.classList.add('hidden');
     },
 
     renderPipelineHubChooser() {
       const box = $('adminPipelineHub');
       if (!box) return;
-      box.classList.remove('hidden');
-      box.innerHTML = `
-        <h2 style="margin:0 0 0.5rem">Eisymyanmar</h2>
-        <p class="hint" style="margin:0 0 1rem">Manage Master USDT wallets, TRC20 deposits, P2P, and MMK withdrawals.</p>
-        <div class="portal-hub-grid">
-          <a class="portal-hub-card" href="/admin/instant">
-            <strong>Open Instant Admin</strong>
-            <span>Internal USDT wallets, TRC20 deposits, P2P, MMK withdrawals, KYC</span>
-          </a>
-        </div>
-      `;
+      box.classList.add('hidden');
+      box.innerHTML = '';
     },
 
-    /** Filter RBAC pages to the active Instant pipeline. */
+    /** Keep RBAC pages scoped to the core admin modules. */
     filterPagesForPipeline(pages) {
-      const pipeline = this._pipeline || this.getPipeline();
-      const allowed = this.pagesForPipeline(pipeline);
-      if (!allowed) return Array.isArray(pages) ? pages.slice() : [];
+      const allowed = this.pagesForPipeline(this.getPipeline());
       return (pages || []).filter((p) => allowed.has(p));
     },
 
@@ -237,23 +242,7 @@
         app.classList.remove('hidden');
         app.style.display = '';
       }
-      // Hub (/admin): show Instant admin entry only.
-      const pipeline = this._pipeline || this.getPipeline();
-      if (!pipeline) {
-        this.renderPipelineHubChooser();
-        this.renderPipelineSwitcher();
-        document.querySelectorAll('.admin-sidebar-nav .nav-item[data-page]').forEach((el) => {
-          el.style.display = 'none';
-        });
-        document.querySelectorAll('.app-page[data-page]').forEach((el) => {
-          el.classList.remove('is-active');
-          el.style.display = 'none';
-        });
-        const heading = document.querySelector('.header .page-heading');
-        if (heading) heading.textContent = 'Eisymyanmar';
-        const subtitle = document.querySelector('.header .subtitle');
-        if (subtitle) subtitle.textContent = 'Open Instant Admin to manage wallets, cards, and KYC';
-      }
+      this.renderPipelineSwitcher();
     },
 
     ensureVisible() {
@@ -277,27 +266,68 @@
       return h;
     },
 
-    async api(method, path, body) {
-      const res = await fetch(path, {
-        method,
-        headers: this.headers(),
-        body: body != null ? JSON.stringify(body) : undefined,
-      });
-      let data = {};
-      try {
-        data = await res.json();
-      } catch (_) {
-        data = {};
+    _adminFetchKey(method, path) {
+      return `${String(method || 'GET').toUpperCase()} ${path}`;
+    },
+
+    _markAdminFetched(path) {
+      this._fetchMeta[path] = Date.now();
+    },
+
+    _isAdminFresh(path, ttlMs) {
+      const at = this._fetchMeta[path];
+      if (!at) return false;
+      return (Date.now() - at) < (ttlMs ?? 12000);
+    },
+
+    async api(method, path, body, opts = {}) {
+      const m = String(method || 'GET').toUpperCase();
+      const inflightKey = m === 'GET' && !opts.force ? this._adminFetchKey(m, path) : null;
+      if (inflightKey && this._apiInflight[inflightKey]) {
+        return this._apiInflight[inflightKey];
       }
-      if (res.status === 401) {
-        this.clearSession();
-        this.showLogin();
-        throw new Error(data.error || 'Admin session expired — please sign in again');
+
+      const run = (async () => {
+        const res = await fetch(path, {
+          method: m,
+          headers: this.headers(),
+          body: body != null ? JSON.stringify(body) : undefined,
+          signal: opts.signal,
+        });
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (_) {
+          data = {};
+        }
+        if (res.status === 401) {
+          this.clearSession();
+          this.showLogin();
+          throw new Error(data.error || 'Admin session expired — please sign in again');
+        }
+        if (!res.ok) {
+          throw new Error(data.error || res.statusText || ('HTTP ' + res.status));
+        }
+        if (m === 'GET') this._markAdminFetched(path);
+        return data;
+      })();
+
+      if (inflightKey) {
+        this._apiInflight[inflightKey] = run;
+        run.finally(() => {
+          if (this._apiInflight[inflightKey] === run) delete this._apiInflight[inflightKey];
+        });
       }
-      if (!res.ok) {
-        throw new Error(data.error || res.statusText || ('HTTP ' + res.status));
-      }
-      return data;
+      return run;
+    },
+
+    /** Warm non-visible tabs after idle — keeps login snappy. */
+    scheduleBackgroundAdminWarm() {
+      clearTimeout(this._adminWarmTimer);
+      this._adminWarmTimer = setTimeout(() => {
+        if (document.visibilityState !== 'visible') return;
+        this.loadAll().catch(() => {});
+      }, 15000);
     },
 
     async apiFormData(method, path, formData) {
@@ -366,19 +396,13 @@
 
     applyRoleVisibility() {
       const pipeline = this._pipeline || this.getPipeline();
-      // Hub has no tab chrome — chooser only.
-      if (!pipeline) {
-        document.querySelectorAll('.admin-sidebar-nav .nav-item[data-page]').forEach((el) => {
-          el.style.display = 'none';
-        });
-        return;
-      }
+      const corePages = this.pagesForPipeline(pipeline);
 
       document.querySelectorAll('[data-admin-perm]').forEach((el) => {
         const perm = el.getAttribute('data-admin-perm');
         const page = el.getAttribute('data-page');
-        const inPipeline = !page || !this.pagesForPipeline(pipeline) || this.pagesForPipeline(pipeline).has(page);
-        const allowed = this.hasPermission(perm) && inPipeline;
+        const inCore = !page || corePages.has(page);
+        const allowed = this.hasPermission(perm) && inCore;
         if (el.classList.contains('nav-item')) {
           el.style.display = allowed ? '' : 'none';
           if (!allowed) el.classList.remove('active');
@@ -423,7 +447,7 @@
         // Do not block splash/ready on every admin table — load the active tab only,
         // then warm the rest in the background.
         this.loadActiveTabData();
-        this.loadAll();
+        this.scheduleBackgroundAdminWarm();
       } catch (err) {
         console.warn('[Admin] session restore failed:', err.message);
         this.clearSession();
@@ -475,7 +499,18 @@
           errEl.classList.add('hidden');
           errEl.textContent = '';
         }
-        if (btn) btn.disabled = true;
+        const setBusy = (busy) => {
+          if (!btn) return;
+          if (window.EisyHooks?.submitBusy?.setSubmitBusy) {
+            window.EisyHooks.submitBusy.setSubmitBusy(btn, busy, {
+              loadingLabel: 'Signing in…',
+              idleLabel: 'Sign in',
+            });
+            return;
+          }
+          btn.disabled = busy;
+        };
+        setBusy(true);
         try {
           const email = ($('adminLoginEmail')?.value || '').trim();
           const password = $('adminLoginPassword')?.value || '';
@@ -489,7 +524,7 @@
           this.applySession(data);
           this.showApp();
           this.loadActiveTabData();
-          this.loadAll();
+          this.scheduleBackgroundAdminWarm();
           this.showAdminToast('Signed in as ' + (data.user?.role_label || data.user?.admin_role), 'ok');
         } catch (err) {
           if (errEl) {
@@ -497,7 +532,7 @@
             errEl.classList.remove('hidden');
           }
         } finally {
-          if (btn) btn.disabled = false;
+          setBusy(false);
         }
       });
 
@@ -529,7 +564,8 @@
           if (!res.ok) throw new Error(data.error || 'Bootstrap failed');
           this.applySession(data);
           this.showApp();
-          this.loadAll();
+          this.loadActiveTabData();
+          this.scheduleBackgroundAdminWarm();
           this.showAdminToast('Super Admin created', 'ok');
         } catch (err) {
           if (errEl) {
@@ -571,8 +607,12 @@
       const heading = document.querySelector('.header .page-heading');
       if (!heading) return;
       if (page === 'cards') {
-        const pipeline = this._pipeline || this.getPipeline();
-        heading.textContent = pipeline === 'instant' ? 'Instant Cards' : 'Cards';
+        heading.textContent = 'Virtual Cards';
+        heading.removeAttribute('data-i18n');
+        return;
+      }
+      if (page === 'deposits') {
+        heading.textContent = 'Deposits & KYC Approvals';
         heading.removeAttribute('data-i18n');
         return;
       }
@@ -584,8 +624,15 @@
 
     _showTabPanel(name) {
       if (name === 'withdrawal-rates') {
-        // Rates now live on Overview
-        this.switchTab(this.hasPermission('overview') ? 'overview' : 'deposits');
+        this.switchTab(this.hasPermission('settings_read') ? 'settings' : 'users');
+        return;
+      }
+      if (name === 'kyc-requests') {
+        this.switchTab('deposits');
+        return;
+      }
+      if (name === 'transactions') {
+        this.switchTab(this.pipelineDefaultPage());
         return;
       }
       if (name === 'overview') {
@@ -593,17 +640,15 @@
       }
       if (name === 'deposits') {
         this.loadDeposits();
-        this.loadP2pBuyOrders();
-        this.loadP2pDisputes();
-        this.loadP2pSellOrders();
+        if (this.hasPermission('kyc')) this.loadKycRequests();
+      }
+      if (name === 'mmk-withdrawals') {
         this.loadUsdtWithdrawals();
         if (this.hasPermission('master_wallet')) this.checkMasterWalletBalance();
       }
-      if (name === 'mmk-withdrawals') {
-        this.loadMmkWithdrawals();
-      }
       if (name === 'support') this.loadSupportThreads();
       if (name === 'cards') {
+        this.loadPagoAdminDashboard();
         this.loadPendingCards();
         this.loadIssuedCards();
         this.loadPendingReloads();
@@ -633,14 +678,12 @@
 
     /** Load only the visible admin tab so login/session restore feels instant. */
     loadActiveTabData() {
-      const pipeline = this._pipeline || this.getPipeline();
-      if (!pipeline) return;
       if (this.hasPermission('settings_read') || this.hasPermission('rates')) {
         this.loadPricingSettings();
       }
       const page = (typeof AppNav !== 'undefined' && AppNav.currentPage)
         || (location.hash || '').replace(/^#admin-/, '')
-        || this.pipelineDefaultPage(pipeline);
+        || this.pipelineDefaultPage(this.getPipeline());
       this._showTabPanel(page);
     },
 
@@ -662,6 +705,12 @@
       if (refreshBtn) refreshBtn.addEventListener('click', () => this.loadAll());
 
       $('btnRefreshRevenue')?.addEventListener('click', () => this.loadRevenueDashboard());
+      $('netRevenuePanel')?.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-net-period]');
+        if (!btn || !this._netRevenue) return;
+        this._netRevenuePeriod = btn.getAttribute('data-net-period') || 'all_time';
+        this.renderNetRevenue(this._netRevenue);
+      });
 
       $('adminCreateForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -694,6 +743,8 @@
       if (depositFilter) depositFilter.addEventListener('change', () => this.loadDeposits());
 
       $('usdtWithdrawalFilter')?.addEventListener('change', () => this.loadUsdtWithdrawals());
+      $('p2pTrackFilter')?.addEventListener('change', () => this.applyP2pTrackFilter());
+      $('p2pTrackRefreshBtn')?.addEventListener('click', () => this.applyP2pTrackFilter());
       $('mmkWithdrawalFilter')?.addEventListener('change', () => this.loadMmkWithdrawals());
       $('mmkWithdrawalRefreshBtn')?.addEventListener('click', () => this.loadMmkWithdrawals());
       document.querySelectorAll('[data-nav-page]').forEach((btn) => {
@@ -706,11 +757,22 @@
       document.querySelectorAll('[data-master-wallet-refresh]').forEach((btn) => {
         btn.addEventListener('click', () => this.checkMasterWalletBalance({ force: true }));
       });
-      document.querySelectorAll('[data-tron-deposit-sweep]').forEach((btn) => {
-        btn.addEventListener('click', () => this.runTronDepositSweep({ triggerBtn: btn }));
+      const bindAutoSweep = (selector, dryRun) => {
+        document.querySelectorAll(selector).forEach((btn) => {
+          btn.addEventListener('click', () => this.runTronAutoSweep({ dryRun, triggerBtn: btn }));
+        });
+      };
+      bindAutoSweep('[data-tron-auto-sweep]', false);
+      bindAutoSweep('[data-tron-auto-sweep-dry-run]', true);
+      document.querySelectorAll('.js-tron-auto-sweep-limit').forEach((input) => {
+        input.addEventListener('change', () => this.syncTronAutoSweepLimitInputs(input));
+        input.addEventListener('input', () => this.syncTronAutoSweepLimitInputs(input));
+      });
+      document.querySelectorAll('[data-tron-deposit-scan]').forEach((btn) => {
+        btn.addEventListener('click', () => this.runTronDepositScan({ triggerBtn: btn }));
       });
       if (this.hasPermission('master_wallet')) {
-        this.loadTronSweepConfig().catch(() => {});
+        this.loadTronAutoSweepStatus().catch(() => {});
       }
 
       const usdtWdTable = $('usdtWithdrawalsTable');
@@ -860,6 +922,13 @@
         }
       });
       $('usersStatusFilter')?.addEventListener('change', () => this.loadUsers({ reset: true }));
+      $('usersSort')?.addEventListener('change', () => this.loadUsers({ reset: true }));
+      $('usersPageSize')?.addEventListener('change', () => this.loadUsers({ reset: true }));
+      $('deleteUserModalClose')?.addEventListener('click', () => this.closeDeleteUserModal());
+      $('deleteUserCancel')?.addEventListener('click', () => this.closeDeleteUserModal());
+      $('deleteUserModal')?.querySelector('.delete-user-modal-backdrop')
+        ?.addEventListener('click', () => this.closeDeleteUserModal());
+      $('deleteUserConfirmBtn')?.addEventListener('click', () => this.submitDeleteUser());
       $('usersPrevBtn')?.addEventListener('click', () => this.usersGoPrevPage());
       $('usersNextBtn')?.addEventListener('click', () => this.usersGoNextPage());
       $('usersLoadMoreBtn')?.addEventListener('click', () => this.usersLoadMore());
@@ -905,6 +974,15 @@
           });
         });
       }
+
+      $('adminPagoRefreshBtn')?.addEventListener('click', () => this.loadPagoAdminDashboard({ force: true }));
+      $('adminPagoCardsSearchBtn')?.addEventListener('click', () => this.loadPagoAdminAllCards());
+      $('adminPagoEmailFilter')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.loadPagoAdminAllCards();
+        }
+      });
 
       const pendingCardsTable = $('pendingCardsTable');
       if (pendingCardsTable) {
@@ -1000,8 +1078,20 @@
       if (usersTable) {
         usersTable.addEventListener('click', (e) => {
           const btn = e.target.closest('.view-card-requests');
-          if (!btn) return;
-          this.switchTab('cards');
+          if (btn) {
+            this.switchTab('cards');
+            return;
+          }
+          if (e.target.closest('.actions-cell') || e.target.closest('button')) return;
+          const row = e.target.closest('tr.user-directory-row');
+          if (!row || !row.dataset.userId) return;
+          if (typeof this.openUserDetailModal === 'function') {
+            this.openUserDetailModal({
+              id: row.dataset.userId,
+              name: row.dataset.userName || '',
+              email: row.dataset.userEmail || '',
+            });
+          }
         });
       }
 
@@ -1010,9 +1100,11 @@
         supportReplyForm.addEventListener('submit', async (e) => {
           e.preventDefault();
           if (!this.activeThreadId) return;
+          const message = ($('supportReplyText')?.value || '').trim();
+          if (!message) return;
           try {
             await this.api('POST', '/api/admin/support/threads/' + this.activeThreadId + '/reply', {
-              message: $('supportReplyText').value.trim(),
+              message,
             });
             $('supportReplyText').value = '';
             this.openThread(this.activeThreadId);
@@ -1032,12 +1124,34 @@
             const replyForm = $('supportReplyForm');
             if (replyForm) replyForm.classList.add('hidden');
             $('supportTaskMeta')?.classList.add('hidden');
+            this.closeSupportTicketModal();
             this.loadSupportThreads();
           } catch (err) {
             alert(err.message);
           }
         });
       }
+
+      $('supportTicketModalClose')?.addEventListener('click', () => this.closeSupportTicketModal());
+      $('supportTicketModalBackdrop')?.addEventListener('click', () => this.closeSupportTicketModal());
+      document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const modal = $('supportTicketModal');
+        if (modal && !modal.classList.contains('hidden')) this.closeSupportTicketModal();
+      });
+      document.querySelectorAll('[data-support-status]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const value = btn.getAttribute('data-support-status') || 'pending';
+          if ($('supportTaskStatus')) $('supportTaskStatus').value = value;
+          this.syncSupportStatusButtons(value);
+          if (this.activeThreadId) this.saveSupportTaskMeta();
+        });
+      });
+      $('supportTaskStatus')?.addEventListener('change', () => {
+        const value = $('supportTaskStatus')?.value || 'pending';
+        this.syncSupportStatusButtons(value);
+        if (this.activeThreadId) this.saveSupportTaskMeta();
+      });
 
       ['supportCategoryFilter', 'supportPriorityFilter', 'supportStatusFilter'].forEach((id) => {
         $(id)?.addEventListener('change', () => {
@@ -1094,23 +1208,33 @@
           e.preventDefault();
           const out = $('adminSettingsOut');
           try {
+            const legacyRate = $('settingExchangeRate')?.value;
+            const legacyMinMmk = $('settingMinMmkWithdrawal')?.value;
+            const legacyEff = $('settingEffectiveDate')?.value;
             const data = await this.api('PUT', '/api/admin/settings', {
-              mmk_to_usd_rate: parseFloat($('settingExchangeRate').value),
-              effective_date: $('settingEffectiveDate').value,
+              mmk_to_usd_rate: parseFloat(
+                legacyRate || this.pricingSettings?.mmk_to_usd_rate || '4500'
+              ),
+              effective_date: legacyEff || this.pricingSettings?.rate_effective_date || this.todayDateInputValue(),
               card_issuance_fee_usd: parseFloat($('settingCardFee').value),
               card_funding_fee_percent: parseFloat($('settingFundingFeePercent')?.value || '0'),
               minimum_initial_deposit_usd: parseFloat($('settingMinDeposit').value),
+              card_reload_fee_usd: parseFloat($('settingCardReloadFixed')?.value || '0'),
               card_reload_fee_percent: parseFloat($('settingReloadFeePercent')?.value || '0'),
+              card_reload_fee_minimum_usd: parseFloat($('settingCardReloadMinFee')?.value || '0'),
               minimum_usdt_deposit: parseFloat($('settingMinUsdtDeposit')?.value || '5'),
               minimum_usdt_reload: parseFloat($('settingMinUsdtReload')?.value || '5'),
-              deposit_service_fee_mode: 'max_percent_or_min',
+              deposit_service_fee_mode: 'fixed_plus_percent',
+              deposit_service_fee_fixed_usdt: parseFloat($('settingDepositFeeFixed')?.value || '0'),
               deposit_service_fee_percent: parseFloat($('settingDepositFeePercent')?.value || '2'),
-              deposit_service_fee_minimum_usdt: parseFloat($('settingDepositFeeMinUsdt')?.value || '1'),
-              withdrawal_service_fee_mode: 'percent',
+              withdrawal_service_fee_mode: 'fixed_plus_percent',
+              withdrawal_service_fee_fixed_usdt: parseFloat($('settingWithdrawFeeFixed')?.value || '0'),
               withdrawal_service_fee_percent: parseFloat($('settingWithdrawFeePercent')?.value || '4'),
               withdrawal_service_fee_minimum_usdt: parseFloat($('settingWithdrawFeeMinUsdt')?.value || '0'),
               minimum_usdt_withdrawal: parseFloat($('settingMinUsdtWithdrawal')?.value || '10'),
-              minimum_mmk_withdrawal: parseFloat($('settingMinMmkWithdrawal')?.value || '10000'),
+              minimum_mmk_withdrawal: parseFloat(
+                legacyMinMmk || this.pricingSettings?.minimum_mmk_withdrawal || '10000'
+              ),
               updated_by: this.user?.email || this.user?.name || 'admin',
             });
             if (out) {
@@ -1198,6 +1322,24 @@
           if (reject) this.rejectP2pSellOrder(parseInt(reject.dataset.id, 10));
         });
       }
+
+      const p2pTrackerTable = $('p2pTrackerTable');
+      if (p2pTrackerTable) {
+        p2pTrackerTable.addEventListener('click', (e) => {
+          const release = e.target.closest('[data-action="resolve-p2p-dispute-release"]');
+          const refund = e.target.closest('[data-action="resolve-p2p-dispute-refund"]');
+          if (!release && !refund) return;
+          e.preventDefault();
+          const btn = release || refund;
+          if (btn.disabled) return;
+          this.resolveP2pDispute(
+            btn.dataset.orderType,
+            parseInt(btn.dataset.id, 10),
+            release ? 'force_release' : 'refund',
+            btn
+          );
+        });
+      }
     },
 
     bindI18n() {
@@ -1253,7 +1395,7 @@
       if (!el) return;
       const cat = this.supportCategoryLabel(row.category);
       const subject = row.subject || 'Support task';
-      const who = row.user_name || row.user_email || ('User #' + (row.user_id || '?'));
+      const who = this.userIdentityText(row);
       const verb = String(eventType).toUpperCase() === 'INSERT' ? 'New' : 'Updated';
       el.classList.remove('hidden');
       el.innerHTML =
@@ -1289,11 +1431,11 @@
       const map = {
         pending: 'Open',
         in_progress: 'In Progress',
-        completed: 'Resolved',
+        completed: 'Closed',
         failed: 'Failed',
         open: 'Open',
-        closed: 'Resolved',
-        resolved: 'Resolved',
+        closed: 'Closed',
+        resolved: 'Closed',
       };
       return map[value] || value || 'Open';
     },
@@ -1338,15 +1480,18 @@
         tasks.push(this.loadPricingSettings());
       }
       if (pageOk('deposits') && this.hasPermission('deposits')) {
-        tasks.push(this.loadDeposits(), this.loadP2pDisputes(), this.loadP2pBuyOrders(), this.loadP2pSellOrders());
+        tasks.push(this.loadDeposits());
       }
       if (pageOk('mmk-withdrawals') && this.hasPermission('withdrawals')) {
-        tasks.push(this.loadUsdtWithdrawals(), this.loadMmkWithdrawals());
-      } else if (pageOk('deposits') && this.hasPermission('withdrawals')) {
         tasks.push(this.loadUsdtWithdrawals());
       }
       if (pageOk('cards') && this.hasPermission('cards')) {
-        tasks.push(this.loadPendingCards(), this.loadIssuedCards(), this.loadPendingReloads());
+        tasks.push(
+          Promise.resolve(this.loadPagoAdminDashboard()),
+          this.loadPendingCards(),
+          this.loadIssuedCards(),
+          this.loadPendingReloads()
+        );
       }
       if (pageOk('users') && this.hasPermission('users')) tasks.push(this.loadUsers());
       if (pageOk('transactions') && this.hasPermission('transactions')) tasks.push(this.loadTransactions());
@@ -1379,19 +1524,9 @@
       el.className = 'sa-preview-grid';
       el.innerHTML =
         '<div class="sa-preview-item">' +
-          '<strong>USDT crypto · ' + (p.sample_usdt_amount || 100) + '</strong>' +
+          '<strong>USDT TRC20 · ' + (p.sample_usdt_amount || 100) + ' USDT</strong>' +
           '<span>Fee ' + this.esc(String(crypto.fee_usdt ?? '—')) +
-          ' → ' + this.esc(String(crypto.net_usdt ?? '—')) + ' USDT net</span>' +
-        '</div>' +
-        '<div class="sa-preview-item">' +
-          '<strong>USDT → MMK · ' + (p.sample_usdt_amount || 100) + '</strong>' +
-          '<span>Fee ' + this.esc(String(bank.fee_usdt ?? '—')) +
-          ' → ' + this.esc(String(bank.amount_mmk ?? '—')) + ' MMK</span>' +
-        '</div>' +
-        '<div class="sa-preview-item">' +
-          '<strong>MMK bank · ' + Number(p.sample_mmk_amount || 100000).toLocaleString() + '</strong>' +
-          '<span>Fee ' + this.esc(String(mmk.fee_mmk ?? '—')) +
-          ' → ' + this.esc(String(mmk.net_mmk ?? '—')) + ' MMK net</span>' +
+          ' → ' + this.esc(String(crypto.net_usdt ?? '—')) + ' USDT net to wallet</span>' +
         '</div>';
     },
 
@@ -1554,20 +1689,19 @@
       const badge = $('adminCurrentRateBadge');
       if (!badge) return;
 
-      const rate = currentRate || {};
-      const mmk = Number(rate.mmk_to_usd_rate || this.pricingSettings?.mmk_to_usd_rate || 0);
-      const effDate = rate.effective_date
-        || rate.effective_at?.slice(0, 10)
-        || this.pricingSettings?.rate_effective_date
-        || 'today';
-
-      if (!mmk) {
-        badge.textContent = typeof t === 'function' ? `${t('current_rate')}: not set` : 'Current Rate: not set';
+      const p = { ...(currentRate || {}), ...(this.pricingSettings || {}) };
+      const pct = Number(
+        p.withdrawal_service_fee_percent
+        ?? p.payment_service_fee_percent
+        ?? 0
+      );
+      const minFee = Number(p.withdrawal_service_fee_minimum_usdt ?? 0);
+      const prefix = typeof t === 'function' ? t('current_rate') : 'Withdraw fee';
+      if (!pct && !minFee) {
+        badge.textContent = `${prefix}: TRC20 (see Rates & Fees)`;
         return;
       }
-
-      const prefix = typeof t === 'function' ? t('current_rate') : 'Current Rate';
-      badge.textContent = `${prefix}: 1 USD = ${mmk.toLocaleString()} MMK (Effective: ${effDate})`;
+      badge.textContent = `${prefix}: ${pct}% TRC20 (min $${minFee.toFixed(2)} USDT)`;
     },
 
     todayDateInputValue() {
@@ -1584,6 +1718,30 @@
         REJECTED: 'err', FAILED: 'err', CANCELLED: 'err', EXPIRED: 'err', TERMINATED: 'err',
       }[s] || 'muted';
       return '<span class="badge badge-' + cls + '">' + this.esc(status) + '</span>';
+    },
+
+    /** Deposit and withdrawal tables: Pending / Approved / Rejected. */
+    financeStatusBadge(status) {
+      const s = String(status || '').toUpperCase();
+      const pending = ['SUBMITTED', 'UNDER_REVIEW', 'PENDING', 'PROCESSING', 'AWAITING_SCREENSHOT'];
+      const approved = ['VERIFIED', 'APPROVED', 'COMPLETED'];
+      const rejected = ['REJECTED', 'FAILED'];
+      let label = status || '—';
+      let cls = 'muted';
+      if (pending.indexOf(s) !== -1) {
+        label = 'Pending';
+        cls = 'warn';
+      } else if (approved.indexOf(s) !== -1) {
+        label = 'Approved';
+        cls = 'ok';
+      } else if (rejected.indexOf(s) !== -1) {
+        label = 'Rejected';
+        cls = 'err';
+      } else if (s === 'CANCELLED') {
+        label = 'Cancelled';
+        cls = 'err';
+      }
+      return '<span class="badge badge-' + cls + '">' + this.esc(label) + '</span>';
     },
 
     cardStatusBadge(status) {
@@ -1792,8 +1950,7 @@
         const usd = Number(deposit.amount_usd || 0).toFixed(2);
         const method = deposit.payment_method || 'KBZPay';
         metaEl.innerHTML =
-          '<div><dt>User ID</dt><dd>#' + this.esc(deposit.user_id) + '</dd></div>' +
-          '<div><dt>User</dt><dd>' + this.esc(deposit.name || deposit.email || '—') + '</dd></div>' +
+          '<div><dt>User</dt><dd>' + this.userIdentityHtml(deposit) + '</dd></div>' +
           '<div><dt>Amount (MMK)</dt><dd>' + mmk + ' MMK</dd></div>' +
           '<div><dt>Amount (USD)</dt><dd>$' + usd + '</dd></div>' +
           '<div><dt>Payment Method</dt><dd>' + this.esc(method) + '</dd></div>' +
@@ -2026,6 +2183,7 @@
     showAdminToast(message, type = 'ok') {
       const el = $('adminToast');
       if (!el) return;
+      window.EisyComponents?.toast?.syncToastViewportInsets?.();
       el.className = `auth-toast ${type === 'error' ? 'err' : 'ok'}`;
       el.textContent = message;
       el.classList.remove('hidden');
@@ -2294,7 +2452,6 @@
         this.closeWithdrawalProofModal();
         await Promise.all([
           this.loadUsdtWithdrawals(),
-          this.loadMmkWithdrawals(),
           this.loadUsers(),
           this.loadTransactions(),
         ]);
@@ -2509,7 +2666,7 @@
             reloads.map((r) =>
               '<tr>' +
                 '<td>' + r.id + '</td>' +
-                '<td>#' + r.user_id + '<br><small>' + this.esc(r.user_name || r.user_email || '') + '</small></td>' +
+                '<td>' + this.userIdentityHtml(r) + '</td>' +
                 '<td><code>**** ' + this.esc(r.card_last4 || '????') + '</code></td>' +
                 '<td><strong>$' + Number(r.top_up_amount_usd || r.net_usd_to_card || 0).toFixed(2) + '</strong></td>' +
                 '<td>$' + Number(r.fee_profit_usd || r.reload_fee_usd || 0).toFixed(2) + '</td>' +
@@ -2568,7 +2725,7 @@
               : '<small class="hint">' + this.esc(s.rejection_reason || s.reviewed_at || '—') + '</small>';
             return '<tr>' +
               '<td>' + s.id + '</td>' +
-              '<td>' + this.esc(s.user_name || '') + '<br><small class="hint">' + this.esc(s.user_email || '') + '</small></td>' +
+              '<td>' + this.userIdentityHtml(s) + '</td>' +
               '<td>' + this.esc(s.full_name) + '</td>' +
               '<td>' + this.esc(s.id_type) + '</td>' +
               '<td>' + this.esc(s.id_number) + '</td>' +
@@ -2584,7 +2741,7 @@
     },
 
     async approveKycRequest(id) {
-      if (!confirm('Approve this KYC submission? User will be able to trade P2P.')) return;
+      if (!confirm('Approve this KYC submission? Identity will be marked verified.')) return;
       try {
         const data = await this.api('POST', '/api/admin/kyc-requests/' + id + '/approve', {});
         alert(data.message || 'KYC approved');
@@ -2605,6 +2762,87 @@
         await this.loadKycRequests();
       } catch (err) {
         alert(err.message || 'Failed to reject KYC');
+      }
+    },
+
+    p2pOrderBucket(order) {
+      if (order && (order.is_disputed || String(order.dispute_status || '') === 'open')) return 'dispute';
+      const s = String(order && order.status || '').toLowerCase();
+      if (['released', 'completed', 'completed_by_admin'].indexOf(s) !== -1) return 'completed';
+      if (['rejected', 'cancelled', 'cancelled_by_admin', 'expired', 'auto_cancelled'].indexOf(s) !== -1) return 'closed';
+      return 'pending';
+    },
+
+    p2pBucketBadge(bucket) {
+      const map = {
+        dispute: ['err', 'Dispute'],
+        pending: ['warn', 'Pending'],
+        completed: ['ok', 'Completed'],
+        closed: ['muted', 'Closed'],
+      };
+      const pair = map[bucket] || ['muted', bucket || '—'];
+      return '<span class="badge badge-' + pair[0] + '">' + this.esc(pair[1]) + '</span>';
+    },
+
+    applyP2pTrackFilter() {
+      const bucket = ($('p2pTrackFilter') && $('p2pTrackFilter').value) || 'dispute';
+      const setShown = (id, on) => {
+        const el = $(id);
+        if (!el) return;
+        el.classList.toggle('hidden', !on);
+      };
+      setShown('p2pDisputesBlock', bucket === 'dispute' || bucket === 'all');
+      setShown('p2pPendingBlock', bucket === 'pending' || bucket === 'all');
+      setShown('p2pTrackerWrap', bucket === 'completed' || bucket === 'all');
+      const tasks = [];
+      if (bucket === 'dispute' || bucket === 'all') tasks.push(this.loadP2pDisputes());
+      if (bucket === 'pending' || bucket === 'all') {
+        tasks.push(this.loadP2pBuyOrders(), this.loadP2pSellOrders());
+      }
+      if (bucket === 'completed' || bucket === 'all') tasks.push(this.loadP2pTracker());
+      return Promise.all(tasks);
+    },
+
+    async loadP2pTracker() {
+      const table = $('p2pTrackerTable');
+      if (!table) return;
+      const bucket = ($('p2pTrackFilter') && $('p2pTrackFilter').value) || 'all';
+      try {
+        const [buy, sell] = await Promise.all([
+          this.api('GET', '/api/admin/p2p-buy-orders?status=all'),
+          this.api('GET', '/api/admin/p2p-sell-orders?status=all'),
+        ]);
+        let rows = []
+          .concat((buy.orders || []).map((o) => Object.assign({}, o, { order_type: 'buy' })))
+          .concat((sell.orders || []).map((o) => Object.assign({}, o, { order_type: 'sell' })));
+        rows = rows.map((o) => Object.assign({}, o, { bucket: this.p2pOrderBucket(o) }));
+        if (bucket === 'completed') rows = rows.filter((o) => o.bucket === 'completed');
+        if (!rows.length) {
+          table.innerHTML = '<p class="hint">No P2P transactions in this status.</p>';
+          return;
+        }
+        table.innerHTML =
+          '<table class="data-table"><thead><tr>' +
+            '<th>Ref</th><th>Type</th><th>User</th><th>Amount</th><th>Order status</th><th>Track</th><th>Actions</th>' +
+          '</tr></thead><tbody>' +
+          rows.map((o) => {
+            const actions = o.bucket === 'dispute'
+              ? ('<button type="button" class="btn btn-sm btn-approve" data-action="resolve-p2p-dispute-release" data-order-type="' + this.esc(o.order_type) + '" data-id="' + o.id + '">Release</button> ' +
+                '<button type="button" class="btn btn-sm btn-reject" data-action="resolve-p2p-dispute-refund" data-order-type="' + this.esc(o.order_type) + '" data-id="' + o.id + '">Refund</button>')
+              : '—';
+            return '<tr>' +
+              '<td><code>' + this.esc(o.ref_code || '') + '</code></td>' +
+              '<td>' + this.esc(o.order_type === 'sell' ? 'Sell USDT' : 'Buy USDT') + '</td>' +
+              '<td>' + this.userIdentityHtml(o) + '</td>' +
+              '<td>$' + Number(o.amount_usdt || 0).toFixed(2) + '</td>' +
+              '<td>' + this.esc(o.status || '—') + '</td>' +
+              '<td>' + this.p2pBucketBadge(o.bucket) + '</td>' +
+              '<td class="actions-cell">' + actions + '</td>' +
+            '</tr>';
+          }).join('') +
+          '</tbody></table>';
+      } catch (err) {
+        table.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
       }
     },
 
@@ -2634,13 +2872,13 @@
             return '<tr>' +
               '<td><code>' + this.esc(d.ref_code) + '</code></td>' +
               '<td>' + this.esc(d.order_type === 'sell' ? 'Sell USDT' : 'Buy USDT') + '</td>' +
-              '<td>' + this.esc(d.user_name || d.user_email || 'User #' + d.user_id) + '</td>' +
+              '<td>' + this.userIdentityHtml(d) + '</td>' +
               '<td>$' + Number(d.amount_usdt).toFixed(2) + ' / ' + Math.round(Number(d.amount_mmk)).toLocaleString() + ' MMK</td>' +
               '<td>' + this.esc(d.dispute_reason || '—') + '</td>' +
               '<td>' + proof + '</td>' +
               '<td class="actions-cell">' +
-                '<button type="button" class="btn btn-sm btn-approve" data-action="resolve-p2p-dispute-release" data-order-type="' + d.order_type + '" data-id="' + d.id + '">Force Release</button> ' +
-                '<button type="button" class="btn btn-sm btn-reject" data-action="resolve-p2p-dispute-refund" data-order-type="' + d.order_type + '" data-id="' + d.id + '">Refund / Reject</button>' +
+                '<button type="button" class="btn btn-sm btn-approve" data-action="resolve-p2p-dispute-release" data-order-type="' + d.order_type + '" data-id="' + d.id + '">Release</button> ' +
+                '<button type="button" class="btn btn-sm btn-reject" data-action="resolve-p2p-dispute-refund" data-order-type="' + d.order_type + '" data-id="' + d.id + '">Refund</button>' +
               '</td>' +
             '</tr>';
           }).join('') +
@@ -2668,7 +2906,7 @@
       if (!modal || !dispute) return;
       $('p2pDisputeReviewTitle').textContent = `Dispute Review — ${dispute.ref_code}`;
       $('p2pDisputeReviewMeta').textContent =
-        `${dispute.order_type === 'sell' ? 'Sell USDT' : 'Buy USDT'} · ${dispute.user_name || dispute.user_email || ('User #' + dispute.user_id)} · $${Number(dispute.amount_usdt).toFixed(2)} USDT / ${Math.round(Number(dispute.amount_mmk)).toLocaleString()} MMK · ${dispute.dispute_reason || 'No reason provided'}`;
+        `${dispute.order_type === 'sell' ? 'Sell USDT' : 'Buy USDT'} · ${this.userIdentityText(dispute)} · $${Number(dispute.amount_usdt).toFixed(2)} USDT / ${Math.round(Number(dispute.amount_mmk)).toLocaleString()} MMK · ${dispute.dispute_reason || 'No reason provided'}`;
 
       const sections = [];
       if (dispute.payment_proof_path || dispute.payment_tx_ref) {
@@ -2715,9 +2953,7 @@
           ? 'USDT Force Released to Buyer'
           : 'Dispute Rejected - Escrow Refunded to Seller'));
         await Promise.all([
-          this.loadP2pDisputes(),
-          this.loadP2pBuyOrders(),
-          this.loadP2pSellOrders(),
+          this.applyP2pTrackFilter(),
           this.loadUsers(),
           this.loadSettings(),
         ]);
@@ -2725,7 +2961,7 @@
         alert(err.message || 'Failed to resolve dispute');
         if (triggerBtn) {
           triggerBtn.disabled = false;
-          triggerBtn.textContent = prevLabel || (resolution === 'force_release' ? 'Force Release' : 'Refund / Reject');
+          triggerBtn.textContent = prevLabel || (resolution === 'force_release' ? 'Release' : 'Refund');
         }
       }
     },
@@ -2762,7 +2998,7 @@
             '<tr>' +
             '<td>' + o.id + '</td>' +
             '<td><code>' + this.esc(o.ref_code) + '</code></td>' +
-            '<td>' + this.esc(o.user_name || o.user_email || ('User #' + o.user_id)) + '</td>' +
+            '<td>' + this.userIdentityHtml(o) + '</td>' +
             '<td>' + this.esc(o.seller_name || ('#' + o.seller_id)) + '</td>' +
             '<td>$' + buyerReceives.toFixed(2) + '</td>' +
             '<td>$' + feeAmt.toFixed(2) + ' <small>(' + feePct + '%)</small></td>' +
@@ -2834,7 +3070,7 @@
             '<tr>' +
             '<td>' + o.id + '</td>' +
             '<td><code>' + this.esc(o.ref_code) + '</code></td>' +
-            '<td>' + this.esc(o.user_name || o.user_email || ('User #' + o.user_id)) + '</td>' +
+            '<td>' + this.userIdentityHtml(o) + '</td>' +
             '<td>' + this.esc(o.seller_name || ('#' + o.seller_id)) + '</td>' +
             '<td>$' + Number(o.amount_usdt).toFixed(2) + '</td>' +
             '<td>' + Math.round(Number(o.amount_mmk)).toLocaleString() + '</td>' +
@@ -3014,25 +3250,166 @@
       const targets = [$('masterWalletSweepStatus'), $('masterWalletSweepStatusPanel')].filter(Boolean);
       targets.forEach((el) => {
         el.textContent = message || '';
+        el.style.whiteSpace = 'pre-line';
         el.style.color = error ? '#f87171' : '';
       });
     },
 
-    async loadTronSweepConfig() {
+    setTronDepositScanStatus(message, { error = false } = {}) {
+      const targets = [
+        $('masterWalletDepositScanStatus'),
+        $('masterWalletDepositScanStatusPanel'),
+      ].filter(Boolean);
+      targets.forEach((el) => {
+        el.textContent = message || '';
+        el.style.whiteSpace = 'pre-line';
+        el.style.color = error ? '#f87171' : '';
+      });
+    },
+
+    formatTronDepositScanSummary(data) {
+      const scan = data.scan || data;
+      const hd = scan.hd_deposits || {};
+      const creditedTotal = Number(data.credited_total ?? scan.credited ?? 0);
+      const orderCompleted = Number(scan.completed || 0);
+      const hdCredited = Number(hd.credited || 0);
+      const hdAddresses = Number(hd.addresses || 0);
+      const orderChecked = Number(scan.checked || 0);
+      const already = Number(hd.already_verified || 0);
+      let line = 'Deposit credit scan finished';
+      if (creditedTotal > 0) {
+        line += ' — credited ' + creditedTotal + ' deposit(s)';
+      } else {
+        line += ' — no new credits';
+      }
+      const parts = [];
+      if (orderChecked > 0) parts.push('orders checked ' + orderChecked + ', completed ' + orderCompleted);
+      if (hdAddresses > 0) {
+        parts.push('HD addresses ' + hdAddresses + ', HD credits ' + hdCredited);
+      }
+      if (already > 0) parts.push('already verified ' + already);
+      if (parts.length) line += ' (' + parts.join('; ') + ')';
+      return line;
+    },
+
+    async runTronDepositScan(opts = {}) {
+      if (!this.hasPermission('master_wallet')) {
+        this.showAdminToast('Master wallet permission required', 'error');
+        return;
+      }
+      if (this._tronDepositScanInFlight) {
+        this.showAdminToast('A deposit credit scan is already running', 'error');
+        return;
+      }
+
+      let status = null;
+      try {
+        status = await this.api('GET', '/api/admin/scan-deposits');
+      } catch (_) {
+        status = null;
+      }
+      if (status?.in_flight) {
+        this.showAdminToast('A deposit credit scan is already in progress on the server', 'error');
+        return;
+      }
+
+      const confirmMsg = [
+        'Trigger deposit credit scan?',
+        '',
+        'This checks TronGrid for confirmed USDT on pending orders and custodial HD addresses,',
+        'then credits user wallet balances in the database.',
+        '',
+        'It does not move on-chain USDT (use Trigger Manual Sweep for that).',
+      ].join('\n');
+      if (!window.confirm(confirmMsg)) return;
+
+      const buttons = Array.from(document.querySelectorAll('[data-tron-deposit-scan]'));
+      const prevLabels = buttons.map((b) => b.textContent);
+      buttons.forEach((b) => {
+        b.disabled = true;
+        b.textContent = 'Scanning…';
+      });
+      this.setTronDepositScanStatus('Deposit credit scan in progress…');
+      this._tronDepositScanInFlight = true;
+
+      try {
+        const data = await this.api('POST', '/api/admin/scan-deposits', {});
+        const summaryText = this.formatTronDepositScanSummary(data);
+        const isError = data.success === false;
+        this.setTronDepositScanStatus(summaryText, { error: isError });
+        this.showAdminToast(summaryText, isError ? 'error' : 'ok');
+        return data;
+      } catch (err) {
+        const msg = err.message || 'Deposit scan failed';
+        this.setTronDepositScanStatus(msg, { error: true });
+        this.showAdminToast(msg, 'error');
+        throw err;
+      } finally {
+        this._tronDepositScanInFlight = false;
+        buttons.forEach((b, i) => {
+          b.disabled = false;
+          b.textContent = prevLabels[i] || 'Trigger Deposit Credit Scan';
+        });
+      }
+    },
+
+    renderTronAutoSweepReadiness(data) {
+      const el = $('masterWalletAutoSweepReadiness');
+      if (!el || !data) return;
+      const netts = data.netts || data.preflight?.netts || {};
+      const paused = Boolean(data.transfers_paused);
+      const ready = Boolean(data.ready);
+      const parts = [
+        'Netts: ' + (netts.configured ? 'configured' : 'missing API URL/key'),
+        netts.real_ip_valid || netts.real_ip_set ? 'whitelist IP set' : 'TRON_NETTS_REAL_IP missing',
+        paused ? 'transfers PAUSED' : 'transfers allowed',
+        ready ? 'ready to sweep' : 'not ready — fix blockers in preflight',
+      ];
+      el.textContent = parts.join(' · ');
+      el.classList.toggle('text-danger', !ready);
+    },
+
+    getTronAutoSweepLimit() {
+      const inputs = document.querySelectorAll('.js-tron-auto-sweep-limit');
+      for (const el of inputs) {
+        const n = Number(el.value);
+        if (Number.isFinite(n) && n >= 1) {
+          return Math.min(2000, Math.floor(n));
+        }
+      }
+      return 500;
+    },
+
+    syncTronAutoSweepLimitInputs(source) {
+      const limit = this.getTronAutoSweepLimit();
+      document.querySelectorAll('.js-tron-auto-sweep-limit').forEach((el) => {
+        if (el === source) return;
+        el.value = String(limit);
+      });
+    },
+
+    async loadTronAutoSweepStatus() {
       if (!this.hasPermission('master_wallet')) return null;
       try {
-        const data = await this.api('GET', '/api/admin/sweep-deposits');
+        const limit = this.getTronAutoSweepLimit();
+        const data = await this.api('GET', '/api/admin/tron/auto-sweep?verify=1&limit=' + encodeURIComponent(limit));
         const minUsdt = Number(data.min_usdt);
         if (Number.isFinite(minUsdt)) {
           this._tronSweepMinUsdt = minUsdt;
           const label = $('masterWalletSweepMinLabel');
           if (label) label.textContent = String(minUsdt);
         }
+        this.renderTronAutoSweepReadiness(data);
         return data;
       } catch (err) {
-        console.warn('[admin] sweep config', err.message);
+        console.warn('[admin] auto-sweep status', err.message);
         return null;
       }
+    },
+
+    /** @deprecated use loadTronAutoSweepStatus */
+    async loadTronSweepConfig() {
+      return this.loadTronAutoSweepStatus();
     },
 
     formatTronSweepSummary(data) {
@@ -3043,17 +3420,53 @@
       const skipped = Number(sweep.skipped || 0);
       const failed = Number(sweep.failed || 0);
       const dryRun = Boolean(data.dry_run ?? sweep.dryRun);
-      const prefix = dryRun ? 'Dry-run' : 'Sweep';
-      return (
+      const totalUsdt = Number(data.total_usdt ?? 0);
+      const transferCount = Number(data.transfer_count ?? 0);
+      const prefix = dryRun ? 'Dry-run' : 'Auto-sweep';
+      let line = (
         prefix + ' finished — checked ' + checked
         + ', swept ' + swept
         + ', skipped ' + skipped
         + ', failed ' + failed
         + ' (min ' + minUsdt + ' USDT)'
       );
+      if (totalUsdt > 0) {
+        line += dryRun
+          ? (' — would move ~' + totalUsdt.toFixed(2) + ' USDT')
+          : (' — ' + totalUsdt.toFixed(2) + ' USDT to master (' + transferCount + ' tx)');
+      }
+      return line;
     },
 
-    async runTronDepositSweep(opts = {}) {
+    formatTronSweepDetailLog(data) {
+      const transfers = Array.isArray(data?.transfers) ? data.transfers : [];
+      if (!transfers.length) return '';
+      const lines = transfers.slice(0, 8).map((t) => {
+        const amt = Number(t.amount_usdt || 0).toFixed(2);
+        const uid = t.user_id != null ? ('user #' + t.user_id) : 'address';
+        const tail = t.tx_id ? (' tx ' + String(t.tx_id).slice(0, 12) + '…') : (t.dry_run ? ' (dry-run)' : '');
+        return '• ' + uid + ': $' + amt + ' USDT' + tail;
+      });
+      if (transfers.length > 8) lines.push('• … +' + (transfers.length - 8) + ' more');
+      return lines.join('\n');
+    },
+
+    tronAutoSweepIsDryRunButton(btn) {
+      return Boolean(btn?.matches?.('[data-tron-auto-sweep-dry-run]'));
+    },
+
+    tronAutoSweepDefaultLabel(btn) {
+      const fromAttr = btn?.getAttribute?.('data-default-label');
+      if (fromAttr) return fromAttr.trim();
+      return this.tronAutoSweepIsDryRunButton(btn) ? 'Dry-run sweep' : 'Auto-sweep (Netts)';
+    },
+
+    tronAutoSweepBusyLabel(btn) {
+      return this.tronAutoSweepIsDryRunButton(btn) ? 'Dry-run…' : 'Sweeping…';
+    },
+
+    async runTronAutoSweep(opts = {}) {
+      const dryRun = Boolean(opts.dryRun);
       if (!this.hasPermission('master_wallet')) {
         this.showAdminToast('Master wallet permission required', 'error');
         return;
@@ -3065,62 +3478,105 @@
 
       let config = null;
       try {
-        config = await this.loadTronSweepConfig();
+        config = await this.loadTronAutoSweepStatus();
       } catch (_) {
         config = null;
       }
       const minUsdt = Number(
         config?.min_usdt ?? this._tronSweepMinUsdt ?? 25
       );
-      const addressCount = Number(config?.count ?? config?.addresses?.length ?? 0);
+      const addressCount = Number(config?.address_count ?? config?.count ?? 0);
       const inFlight = Boolean(config?.in_flight);
+      const preflight = config?.preflight || null;
+      const preflightBlockers = Array.isArray(preflight?.blockers) ? preflight.blockers : [];
+      const transfersPaused = Boolean(config?.transfers_paused);
+
+      if (!dryRun && transfersPaused) {
+        this.showAdminToast(
+          'Master wallet transfers are paused — use Dry-run sweep or clear WITHDRAWALS_PAUSED / MASTER_WALLET_TRANSFERS_PAUSED.',
+          'error'
+        );
+        return;
+      }
+
+      if (preflightBlockers.length && !dryRun) {
+        this.showAdminToast(
+          'Sweep preflight failed: ' + preflightBlockers.join(', '),
+          'error'
+        );
+        return;
+      }
 
       if (inFlight) {
         this.showAdminToast('A deposit sweep is already in progress on the server', 'error');
         return;
       }
 
+      const sweepLimit = this.getTronAutoSweepLimit();
       const confirmMsg = [
-        'Run a LIVE USDT sweep from HD deposit addresses → master wallet?',
+        dryRun ? 'Run dry-run auto-sweep?' : 'Run auto-sweep to master (Netts energy)?',
         '',
-        'Only addresses with at least ' + minUsdt + ' USDT will be swept.',
-        addressCount ? ('Known custodial addresses: ' + addressCount) : '',
+        'Scans custodial HD deposit addresses and moves USDT to the master wallet.',
+        'Up to ' + sweepLimit + ' custodial address(es) per run.',
+        'Only balances at or above ' + minUsdt + ' USDT are swept.',
+        addressCount ? ('Registered custodial addresses: ' + addressCount) : '',
+        preflight?.netts?.configured === false
+          ? 'Warning: TRON_ENERGY_API_URL / TRON_ENERGY_API_KEY not fully configured.'
+          : '',
+        preflight?.address_alignment?.mismatch_count > 0
+          ? ('Warning: ' + preflight.address_alignment.mismatch_count + ' deposit address(es) do not match HD seed — run HD resync before sweep.')
+          : '',
         '',
-        'This broadcasts on-chain TRX gas top-ups and USDT transfers.',
+        dryRun
+          ? 'No Netts orders or USDT transfers will be broadcast.'
+          : 'Each qualifying address: Netts /order1h energy rental, then USDT TRC-20 transfer to master.',
       ].filter(Boolean).join('\n');
 
       if (!window.confirm(confirmMsg)) return;
 
-      const buttons = Array.from(document.querySelectorAll('[data-tron-deposit-sweep]'));
-      const prevLabels = buttons.map((b) => b.textContent);
+      const buttonSelectors = '[data-tron-auto-sweep], [data-tron-auto-sweep-dry-run]';
+      const buttons = Array.from(document.querySelectorAll(buttonSelectors));
       buttons.forEach((b) => {
         b.disabled = true;
-        b.textContent = 'Sweeping…';
+        b.textContent = this.tronAutoSweepBusyLabel(b);
       });
-      this.setTronSweepStatus('Sweep in progress (min ' + minUsdt + ' USDT)…');
+      this.setTronSweepStatus(
+        (dryRun ? 'Dry-run auto-sweep' : 'Auto-sweep (Netts)') + ' in progress (min ' + minUsdt + ' USDT)…'
+      );
       this._tronSweepInFlight = true;
 
       try {
-        const data = await this.api('POST', '/api/admin/sweep-deposits', {
-          dry_run: false,
+        const data = await this.api('POST', '/api/admin/tron/auto-sweep', {
+          dry_run: dryRun,
+          limit: sweepLimit,
         });
         const summaryText = this.formatTronSweepSummary(data);
-        this.setTronSweepStatus(summaryText, { error: !data.success && Number(data.sweep?.failed || 0) > 0 });
-        this.showAdminToast(summaryText, data.success === false ? 'error' : 'ok');
+        const detailLog = this.formatTronSweepDetailLog(data);
+        const statusBlock = detailLog ? (summaryText + '\n' + detailLog) : summaryText;
+        const hasFailures = Number(data.sweep?.failed || 0) > 0;
+        this.setTronSweepStatus(statusBlock, { error: !data.success && hasFailures });
+        this.showAdminToast(summaryText, data.success === false || hasFailures ? 'error' : 'ok');
+        if (detailLog) console.info('[admin/auto-sweep]\n' + detailLog);
+        await this.loadTronAutoSweepStatus();
         await this.checkMasterWalletBalance({ force: true });
         return data;
       } catch (err) {
-        const msg = err.message || 'Sweep failed';
+        const msg = err.message || 'Auto-sweep failed';
         this.setTronSweepStatus(msg, { error: true });
         this.showAdminToast(msg, 'error');
         throw err;
       } finally {
         this._tronSweepInFlight = false;
-        buttons.forEach((b, i) => {
+        buttons.forEach((b) => {
           b.disabled = false;
-          b.textContent = prevLabels[i] || 'Sweep';
+          b.textContent = this.tronAutoSweepDefaultLabel(b);
         });
       }
+    },
+
+    /** @deprecated use runTronAutoSweep */
+    async runTronDepositSweep(opts = {}) {
+      return this.runTronAutoSweep({ ...opts, dryRun: false });
     },
 
 
@@ -3131,53 +3587,38 @@
       try {
         const qs = filter === 'all' ? '?status=all' : ('?status=' + encodeURIComponent(filter));
         const data = await this.api('GET', '/api/admin/withdrawals/usdt' + qs);
-        const rows = Array.isArray(data.withdrawals) ? data.withdrawals : [];
+        const rows = (Array.isArray(data.withdrawals) ? data.withdrawals : [])
+          .filter((w) => w.payout_method !== 'bank' && String(w.payout_method || '').toLowerCase() !== 'mmk');
         if (!rows.length) {
-          table.innerHTML = '<p class="hint">No USDT withdrawals found.</p>';
+          table.innerHTML = '<p class="hint">No TRC20 USDT withdrawals found.</p>';
           return;
         }
         table.innerHTML =
           '<table class="data-table"><thead><tr>' +
-            '<th>ID</th><th>User</th><th>Ref</th><th>Method</th><th>Destination</th>' +
-            '<th>USDT</th><th>Fee</th><th>Rate</th><th>MMK to Send</th><th>Status</th><th>Actions</th>' +
+            '<th>ID</th><th>User</th><th>Ref</th><th>Network</th><th>Destination</th>' +
+            '<th>USDT</th><th>Fee</th><th>Net</th><th>Status</th><th>Actions</th>' +
           '</tr></thead><tbody>' +
           rows.map((w) => {
             const status = String(w.status || '').toLowerCase();
             const actionable = status === 'pending' || status === 'processing';
-            const isBank = w.payout_method === 'bank';
-            const method = isBank ? 'Bank (USDT→MMK)' : (w.network || 'Crypto');
-            const dest = isBank
-              ? this.esc((w.bank_name || '') + ' · ' + (w.account_name || '') + ' · ' + (w.account_number || ''))
-              : this.esc((w.network || '') + ' · ' + (w.wallet_address || ''));
-            const rate = Number(w.exchange_rate || 0);
-            const mmkAmount = Math.round(Number(w.amount_mmk || 0));
-            const rateLabel = isBank && rate > 0
-              ? ('1 USDT = ' + rate.toLocaleString() + ' MMK')
-              : '—';
-            const mmkLabel = isBank
-              ? ('<strong>' + mmkAmount.toLocaleString() + ' MMK</strong>' +
-                '<br><small>Send via bank / KPay / WavePay</small>')
-              : ('$' + Number(w.net_usdt || 0).toFixed(2) + ' USDT');
-            const completeLabel = isBank ? 'Mark MMK Sent' : 'Complete';
+            const network = w.network || 'TRC20';
+            const dest = this.esc((w.wallet_address || ''));
             return '<tr>' +
               '<td>' + w.id + '</td>' +
-              '<td>' + this.esc(w.user_name || w.user_email || ('#' + w.user_id)) + '<br><small>#' + w.user_id + '</small></td>' +
+              '<td>' + this.userIdentityHtml(w) + '</td>' +
               '<td>' + this.esc(w.ref_code || '') + '</td>' +
-              '<td>' + this.esc(method) + '</td>' +
+              '<td>' + this.esc(network) + '</td>' +
               '<td style="max-width:220px;word-break:break-all">' + dest + '</td>' +
               '<td>$' + Number(w.amount_usdt || 0).toFixed(2) + '</td>' +
               '<td>$' + Number(w.fee_usdt || 0).toFixed(2) + '</td>' +
-              '<td>' + rateLabel + '</td>' +
-              '<td>' + mmkLabel + '</td>' +
-              '<td>' + this.statusBadge(w.status) + '</td>' +
+              '<td>$' + Number(w.net_usdt || 0).toFixed(2) + '</td>' +
+              '<td>' + this.financeStatusBadge(w.status) + '</td>' +
               '<td class="actions-cell">' +
                 (actionable
                   ? '<button type="button" class="btn btn-sm btn-approve" data-action="complete-usdt-wd" data-id="' + w.id + '"' +
-                    ' data-method="' + (isBank ? 'bank' : 'crypto') + '"' +
-                    ' data-mmk="' + mmkAmount + '"' +
-                    ' data-rate="' + rate + '"' +
+                    ' data-method="crypto"' +
                     ' data-usdt="' + Number(w.net_usdt || 0).toFixed(2) + '"' +
-                    '>' + completeLabel + '</button>' +
+                    '>Complete</button>' +
                     '<button type="button" class="btn btn-sm btn-reject" data-action="reject-usdt-wd" data-id="' + w.id + '">Reject</button>'
                   : '') +
               '</td></tr>';
@@ -3296,7 +3737,7 @@
               '<td>' + amountCell + '</td>' +
               '<td>' + feeCell + '</td>' +
               '<td><strong>' + Math.round(Number(w.net_mmk || 0)).toLocaleString() + '</strong></td>' +
-              '<td>' + this.statusBadge(w.status) + '</td>' +
+              '<td>' + this.financeStatusBadge(w.status) + '</td>' +
               '<td class="actions-cell">' + actions + '</td>' +
             '</tr>';
           }).join('') +
@@ -3371,7 +3812,6 @@
         alert(data.message || 'USDT withdrawal updated');
         await Promise.all([
           this.loadUsdtWithdrawals(),
-          this.loadMmkWithdrawals(),
           this.loadUsers(),
           this.loadTransactions(),
         ]);
@@ -3470,16 +3910,25 @@
           $('settingFundingFeePercent').value = p.card_funding_fee_percent ?? 0;
         }
         if ($('settingMinDeposit')) $('settingMinDeposit').value = p.minimum_initial_deposit_usd ?? 10;
+        if ($('settingCardReloadFixed')) {
+          $('settingCardReloadFixed').value = p.card_reload_fee_usd ?? 3.5;
+        }
         if ($('settingReloadFeePercent')) {
           $('settingReloadFeePercent').value = p.card_reload_fee_percent ?? 0;
         }
+        if ($('settingCardReloadMinFee')) {
+          $('settingCardReloadMinFee').value = p.card_reload_fee_minimum_usd ?? 0;
+        }
         if ($('settingMinUsdtDeposit')) $('settingMinUsdtDeposit').value = p.minimum_usdt_deposit ?? data.settings?.minimum_usdt_deposit ?? 5;
         if ($('settingMinUsdtReload')) $('settingMinUsdtReload').value = p.minimum_usdt_reload ?? data.settings?.minimum_usdt_reload ?? 5;
+        if ($('settingDepositFeeFixed')) {
+          $('settingDepositFeeFixed').value = p.deposit_service_fee_fixed_usdt ?? 0;
+        }
         if ($('settingDepositFeePercent')) {
           $('settingDepositFeePercent').value = p.deposit_service_fee_percent ?? p.payment_service_fee_percent ?? 2;
         }
-        if ($('settingDepositFeeMinUsdt')) {
-          $('settingDepositFeeMinUsdt').value = p.deposit_service_fee_minimum_usdt ?? p.payment_service_fee_minimum_usdt ?? 1;
+        if ($('settingWithdrawFeeFixed')) {
+          $('settingWithdrawFeeFixed').value = p.withdrawal_service_fee_fixed_usdt ?? 0;
         }
         if ($('settingWithdrawFeePercent')) {
           $('settingWithdrawFeePercent').value = p.withdrawal_service_fee_percent ?? p.payment_service_fee_percent ?? 4;
@@ -3514,8 +3963,13 @@
       if ($('ledgerTotalUsdt')) $('ledgerTotalUsdt').textContent = fmtUsdt(summary.total_usdt_ledger);
       if ($('ledgerUsdtBreakdown')) {
         const esc = summary.escrow_breakdown || {};
+        const legacyP2p = Number(esc.p2p_ads || 0) + Number(esc.p2p_sell_orders || 0);
+        const otherEscrow = Math.max(0, Number(summary.escrow_usdt || 0) - legacyP2p);
+        const escrowParts = [`Escrow ${fmtUsdt(summary.escrow_usdt)}`];
+        if (otherEscrow > 0.0001) escrowParts.push(`holds ${fmtUsdt(otherEscrow)}`);
+        if (legacyP2p > 0.0001) escrowParts.push(`legacy ${fmtUsdt(legacyP2p)}`);
         $('ledgerUsdtBreakdown').textContent =
-          `Available ${fmtUsdt(summary.available_usdt)} + Escrow ${fmtUsdt(summary.escrow_usdt)} (Ads ${fmtUsdt(esc.p2p_ads)}, Orders ${fmtUsdt(esc.p2p_sell_orders)})`;
+          `Available ${fmtUsdt(summary.available_usdt)} · ${escrowParts.join(' · ')}`;
       }
       if ($('ledgerTotalMmk')) $('ledgerTotalMmk').textContent = fmtMmk(summary.total_mmk);
       if ($('ledgerPlatformRevenue')) $('ledgerPlatformRevenue').textContent = fmtUsdt(summary.platform_revenue_usdt);
@@ -3614,14 +4068,14 @@
               const pending = ['SUBMITTED', 'UNDER_REVIEW', 'PENDING'].indexOf(String(d.status || '').toUpperCase()) !== -1;
               return '<tr>' +
                 '<td>' + d.id + '</td>' +
-                '<td>' + this.esc(d.name || d.email || ('User #' + d.user_id)) + '<br><small>#' + d.user_id + '</small></td>' +
+                '<td>' + this.userIdentityHtml(d) + '</td>' +
                 '<td>' + this.renderPurposeBadge(d) + '</td>' +
                 '<td>' + this.renderPricingBreakdown(d) + '</td>' +
                 '<td>' + this.renderDepositRefCell(d) + '</td>' +
                 '<td>' + Number(d.amount_mmk || 0).toLocaleString() + '</td>' +
                 '<td>$' + Number(d.amount_usd || 0).toFixed(2) + '</td>' +
                 '<td>' + this.esc(d.payment_method || 'KBZPay') + '</td>' +
-                '<td>' + this.statusBadge(d.status) + '</td>' +
+                '<td>' + this.financeStatusBadge(d.status) + '</td>' +
                 '<td class="actions-cell">' +
                   '<button type="button" class="btn btn-sm btn-secondary" data-action="view-deposit-receipt" data-id="' + d.id + '">View Receipt</button>' +
                   (pending
@@ -3765,6 +4219,180 @@
       }
     },
 
+    formatAdminPagoMoney(value, currency = 'USD') {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return '—';
+      const cur = String(currency || 'USD').toUpperCase();
+      return cur === 'USD' ? `$${n.toFixed(2)}` : `${n.toFixed(2)} ${cur}`;
+    },
+
+    readAdminPagoWalletSlice(balance, keys) {
+      if (!balance || typeof balance !== 'object') return null;
+      for (const key of keys) {
+        const raw = balance[key];
+        if (raw == null) continue;
+        if (typeof raw === 'number') return raw;
+        if (typeof raw === 'object') {
+          if (raw.display_amount != null) return Number(raw.display_amount);
+          if (raw.amount != null) return Number(raw.amount);
+          if (raw.balance != null) return Number(raw.balance);
+        }
+      }
+      return null;
+    },
+
+    renderAdminPagoBalanceTiles(balance) {
+      const tiles = [
+        {
+          label: 'Funding wallet',
+          value: this.readAdminPagoWalletSlice(balance, ['funding', 'funding_wallet', 'funding_balance', 'wallet_funding']),
+        },
+        {
+          label: 'Visa wallet',
+          value: this.readAdminPagoWalletSlice(balance, ['visa', 'visa_wallet', 'visa_balance', 'wallet_visa']),
+        },
+        {
+          label: 'Gift card wallet',
+          value: this.readAdminPagoWalletSlice(balance, ['giftcard', 'gift_card', 'giftcard_wallet', 'gift_card_wallet', 'giftcard_balance']),
+        },
+      ];
+      return tiles.map((tile) =>
+        '<div class="sa-balance">' +
+          '<span class="sa-balance-label">' + this.esc(tile.label) + '</span>' +
+          '<span class="sa-balance-value">' + this.esc(this.formatAdminPagoMoney(tile.value)) + '</span>' +
+        '</div>'
+      ).join('');
+    },
+
+    renderAdminPagoLogTable(rows, columns) {
+      const list = Array.isArray(rows) ? rows : [];
+      if (!list.length) return '<p class="hint" style="margin:0">No rows returned.</p>';
+      const head = columns.map((col) => '<th>' + this.esc(col.label) + '</th>').join('');
+      const body = list.slice(0, 40).map((row) => {
+        const cells = columns.map((col) => {
+          let val = typeof col.pick === 'function' ? col.pick(row) : row[col.key];
+          if (val == null || val === '') val = '—';
+          return '<td>' + this.esc(String(val)) + '</td>';
+        }).join('');
+        return '<tr>' + cells + '</tr>';
+      }).join('');
+      return (
+        '<table class="data-table">' +
+          '<thead><tr>' + head + '</tr></thead>' +
+          '<tbody>' + body + '</tbody>' +
+        '</table>'
+      );
+    },
+
+    async loadPagoAdminBalance() {
+      const row = $('adminPagoBalanceRow');
+      if (!row) return;
+      try {
+        const data = await this.api('GET', '/api/admin/pagocards/balance');
+        const balance = data.balance || data;
+        row.innerHTML = this.renderAdminPagoBalanceTiles(balance);
+      } catch (err) {
+        row.innerHTML = '<p class="hint" style="margin:0;color:#f87171;grid-column:1/-1">' + this.esc(err.message || 'Balance unavailable') + '</p>';
+      }
+    },
+
+    async loadPagoAdminAllCards() {
+      const table = $('adminPagoCardsTable');
+      const metaEl = $('adminPagoCardsMeta');
+      if (!table) return;
+      table.innerHTML = '<p class="hint">Loading Pagocards inventory…</p>';
+      if (metaEl) metaEl.textContent = '';
+      const brand = $('adminPagoBrandFilter')?.value || 'visa';
+      const email = $('adminPagoEmailFilter')?.value?.trim() || '';
+      const perPage = parseInt($('adminPagoPerPage')?.value, 10) || 20;
+      try {
+        const data = await this.api('POST', '/api/admin/pagocards/allcards', {
+          brand,
+          per_page: perPage,
+          page: 1,
+          email,
+        });
+        const cards = Array.isArray(data.cards) ? data.cards : [];
+        if (!cards.length) {
+          table.innerHTML = '<p class="hint">No Pagocards matched this filter.</p>';
+        } else {
+          table.innerHTML =
+            '<table class="data-table">' +
+              '<thead><tr>' +
+                '<th>User</th><th>Brand</th><th>Pago card ID</th><th>Status</th><th>Balance</th><th>Local ID</th>' +
+              '</tr></thead>' +
+              '<tbody>' +
+              cards.map((c) =>
+                '<tr>' +
+                  '<td>' + this.userIdentityHtml({
+                    id: c.local_user_id,
+                    email: c.user_email || c.email,
+                    name: c.user_name,
+                  }) + '</td>' +
+                  '<td>' + this.esc(c.brand || c.product_code || '—') + '</td>' +
+                  '<td><code>' + this.esc(c.pago_card_id || '—') + '</code></td>' +
+                  '<td>' + this.cardStatusBadge(c.status || c.pago_status) + '</td>' +
+                  '<td>' + this.esc(this.formatAdminPagoMoney(c.balance_usd)) + '</td>' +
+                  '<td>' + this.esc(c.local_card_id != null ? String(c.local_card_id) : '—') + '</td>' +
+                '</tr>'
+              ).join('') +
+              '</tbody>' +
+            '</table>';
+        }
+        if (metaEl && data.meta) {
+          const bits = [];
+          if (data.meta.total != null) bits.push('Total: ' + data.meta.total);
+          if (data.meta.page != null) bits.push('Page: ' + data.meta.page);
+          if (data.meta.per_page != null) bits.push('Per page: ' + data.meta.per_page);
+          metaEl.textContent = bits.join(' · ');
+        }
+      } catch (err) {
+        table.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+      }
+    },
+
+    async loadPagoAdminDeposits() {
+      const table = $('adminPagoDepositsTable');
+      if (!table) return;
+      try {
+        const data = await this.api('GET', '/api/admin/pagocards/deposits');
+        const rows = Array.isArray(data.deposits) ? data.deposits : [];
+        table.innerHTML = this.renderAdminPagoLogTable(rows, [
+          { label: 'When', pick: (r) => r.created_at || r.date || r.timestamp },
+          { label: 'Amount', pick: (r) => this.formatAdminPagoMoney(r.amount ?? r.display_amount ?? r.usd, r.currency) },
+          { label: 'Type', pick: (r) => r.type || r.kind || r.status },
+          { label: 'Ref', pick: (r) => r.reference || r.transaction_id || r.id },
+        ]);
+      } catch (err) {
+        table.innerHTML = '<p class="hint" style="margin:0;color:#f87171">' + this.esc(err.message) + '</p>';
+      }
+    },
+
+    async loadPagoAdminTransactions() {
+      const table = $('adminPagoTransactionsTable');
+      if (!table) return;
+      try {
+        const data = await this.api('GET', '/api/admin/pagocards/transactions');
+        const rows = Array.isArray(data.transactions) ? data.transactions : [];
+        table.innerHTML = this.renderAdminPagoLogTable(rows, [
+          { label: 'When', pick: (r) => r.created_at || r.date || r.timestamp },
+          { label: 'Amount', pick: (r) => this.formatAdminPagoMoney(r.amount ?? r.display_amount, r.currency) },
+          { label: 'Card', pick: (r) => r.card_id || r.pago_card_id || r.last_four },
+          { label: 'Detail', pick: (r) => r.description || r.type || r.status },
+        ]);
+      } catch (err) {
+        table.innerHTML = '<p class="hint" style="margin:0;color:#f87171">' + this.esc(err.message) + '</p>';
+      }
+    },
+
+    loadPagoAdminDashboard() {
+      if (!this.hasPermission('cards')) return;
+      this.loadPagoAdminBalance();
+      this.loadPagoAdminAllCards();
+      this.loadPagoAdminDeposits();
+      this.loadPagoAdminTransactions();
+    },
+
     async loadPendingCards() {
       const table = $('pendingCardsTable');
       if (!table) return;
@@ -3805,7 +4433,7 @@
 
               return '<tr>' +
                 '<td>' + c.id + '</td>' +
-                '<td>' + this.esc(c.name || c.email) + '<br><small>#' + c.user_id + '</small></td>' +
+                '<td>' + this.userIdentityHtml(c) + '</td>' +
                 '<td><span class="badge">' + this.esc(statusLabel) + '</span></td>' +
                 '<td>' + this.esc(c.card_holder_name || c.name || '—') + '</td>' +
                 '<td>' + this.renderPricingBreakdown({ purpose: 'card_issuance', pricing: c.pricing, pricing_breakdown: c.pricing, amount_usd: c.pricing?.total_usd_required, amount_mmk: c.pricing?.total_mmk, metadata: { card_request_id: c.id } }) + '</td>' +
@@ -3863,7 +4491,7 @@
             cards.map((c) =>
               '<tr>' +
                 '<td>' + c.id + '</td>' +
-                '<td>' + this.esc(c.user_name || c.user_email || '—') + '<br><small>#' + c.user_id + '</small></td>' +
+                '<td>' + this.userIdentityHtml(c) + '</td>' +
                 '<td><code>' + this.esc(c.label) + '</code><br><small>' + this.esc(c.card_holder_name || '—') + '</small></td>' +
                 '<td>' + this.cardStatusBadge(c.display_status || c.status) +
                   (c.status_reason ? '<br><small class="hint">' + this.esc(c.status_reason) + '</small>' : '') +
@@ -3915,6 +4543,70 @@
       return '<button type="button" class="btn btn-sm btn-secondary block-user-btn" data-uid="' + user.id + '" data-email="' + this.esc(user.email || '') + '">Block User</button>';
     },
 
+    _deleteUserTarget: null,
+
+    openDeleteUserModal(target) {
+      const id = target && target.id;
+      if (!id) return;
+      this._deleteUserTarget = {
+        id: String(id),
+        email: target.email || '',
+        name: target.name || '',
+      };
+      const meta = $('deleteUserMeta');
+      if (meta) {
+        const bits = ['#' + this._deleteUserTarget.id];
+        if (this._deleteUserTarget.name) bits.push(this._deleteUserTarget.name);
+        if (this._deleteUserTarget.email) bits.push(this._deleteUserTarget.email);
+        meta.textContent = bits.join(' · ');
+      }
+      const errEl = $('deleteUserError');
+      if (errEl) {
+        errEl.textContent = '';
+        errEl.classList.add('hidden');
+      }
+      const btn = $('deleteUserConfirmBtn');
+      if (btn) btn.disabled = false;
+      const modal = $('deleteUserModal');
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden', 'false');
+      }
+      if (btn) btn.focus();
+    },
+
+    closeDeleteUserModal() {
+      const modal = $('deleteUserModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+      this._deleteUserTarget = null;
+      const btn = $('deleteUserConfirmBtn');
+      if (btn) btn.disabled = false;
+    },
+
+    async submitDeleteUser() {
+      const target = this._deleteUserTarget;
+      const errEl = $('deleteUserError');
+      const btn = $('deleteUserConfirmBtn');
+      if (!target || !target.id) return;
+      if (btn) btn.disabled = true;
+      try {
+        await this.api('POST', '/api/admin/users/' + encodeURIComponent(target.id) + '/delete', {
+          confirm: 'DELETE',
+        });
+        this.closeDeleteUserModal();
+        await this.loadUsers();
+      } catch (err) {
+        if (errEl) {
+          errEl.textContent = (err && err.message) || 'Failed to delete user';
+          errEl.classList.remove('hidden');
+        }
+        if (btn) btn.disabled = false;
+      }
+    },
+
     async setUserBlocked(userId, status) {
       const label = status === 'blocked' ? 'block' : 'unblock';
       const reason = window.prompt(
@@ -3944,15 +4636,21 @@
       has_more: false,
       q: '',
       status: '',
+      sort: 'created_at_desc',
       loading: false,
     },
 
     getUsersListFiltersFromDom() {
       const qEl = $('usersSearchInput');
       const statusEl = $('usersStatusFilter');
+      const sortEl = $('usersSort');
+      const sizeEl = $('usersPageSize');
+      const size = sizeEl ? parseInt(sizeEl.value, 10) : 50;
       return {
         q: qEl ? String(qEl.value || '').trim() : (this.usersListState.q || ''),
         status: statusEl ? String(statusEl.value || '').trim() : (this.usersListState.status || ''),
+        sort: sortEl ? String(sortEl.value || 'created_at_desc') : (this.usersListState.sort || 'created_at_desc'),
+        limit: Number.isFinite(size) && size > 0 ? size : 50,
       };
     },
 
@@ -3971,7 +4669,7 @@
       const page = limit > 0 ? Math.floor(offset / limit) + 1 : 1;
       const pages = limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1;
 
-      if (pager) pager.style.display = total > limit || offset > 0 ? '' : 'none';
+      if (pager) pager.style.display = '';
       if (label) {
         label.textContent = total
           ? ('Page ' + page + ' / ' + pages + ' · ' + shownFrom + '–' + shownTo + ' of ' + total)
@@ -4030,20 +4728,41 @@
       table.querySelectorAll('.unblock-user-btn').forEach((btn) => {
         btn.addEventListener('click', () => this.setUserBlocked(btn.dataset.uid, 'active'));
       });
+      table.querySelectorAll('.delete-user-btn').forEach((btn) => {
+        btn.addEventListener('click', () => this.openDeleteUserModal({
+          id: btn.dataset.uid,
+          email: btn.dataset.email || '',
+          name: btn.dataset.name || '',
+        }));
+      });
+    },
+
+    formatUserCreated(value) {
+      if (!value) return '—';
+      const raw = String(value).trim();
+      const parsed = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z');
+      if (Number.isNaN(parsed.getTime())) return this.esc(raw);
+      return parsed.toLocaleString();
     },
 
     renderUsersRowsHtml(users) {
       return users.map((u) =>
-        '<tr>' +
-          '<td>' + u.id + '</td>' +
-          '<td>' + this.esc(u.name || '—') + '</td>' +
-          '<td>' + this.esc(u.email || '—') + '</td>' +
+        '<tr class="user-directory-row" data-user-id="' + this.esc(u.id) + '" data-user-email="' + this.esc(u.email || '') + '" data-user-name="' + this.esc(u.name || '') + '" title="Open user details">' +
+          '<td class="user-id-cell">' + this.esc(u.id) +
+            (u.auth_user_id ? '<span class="user-auth-id">' + this.esc(u.auth_user_id) + '</span>' : '') +
+          '</td>' +
+          '<td class="user-name-cell">' + this.esc(u.name || '—') +
+            (u.source === 'supabase' ? ' <span class="hint">Supabase</span>' : '') +
+          '</td>' +
+          '<td class="user-email-cell">' + this.esc(u.email || '—') + '</td>' +
           '<td><strong>$' + Number(u.balance_usdt || 0).toFixed(2) + ' USDT</strong></td>' +
           '<td>' + this.esc(this.formatUserAuthStatus(u.auth_status)) + '</td>' +
+          '<td>' + this.formatUserCreated(u.created_at) + '</td>' +
           '<td class="actions-cell">' +
             '<button type="button" class="btn btn-sm btn-secondary view-card-requests">Card Requests</button>' +
             '<button type="button" class="btn btn-sm btn-secondary adj-usdt-wallet" data-uid="' + u.id + '" data-usdt="' + Number(u.balance_usdt || 0) + '">Adjust USDT</button> ' +
             this.renderUserBlockButton(u) +
+            '<button type="button" class="btn btn-sm delete-user-btn" data-uid="' + this.esc(u.id) + '" data-email="' + this.esc(u.email || '') + '" data-name="' + this.esc(u.name || '') + '">Delete User</button>' +
           '</td>' +
         '</tr>'
       ).join('');
@@ -4057,13 +4776,15 @@
       const reset = opts.reset !== false && !append;
 
       if (!this.usersListState) {
-        this.usersListState = { limit: 50, offset: 0, total: 0, has_more: false, q: '', status: '', loading: false };
+        this.usersListState = { limit: 50, offset: 0, total: 0, has_more: false, q: '', status: '', sort: 'created_at_desc', loading: false };
       }
 
       if (reset) {
         const filters = this.getUsersListFiltersFromDom();
         this.usersListState.q = filters.q;
         this.usersListState.status = filters.status;
+        this.usersListState.sort = filters.sort;
+        this.usersListState.limit = Math.min(Math.max(filters.limit || 50, 1), 10000);
         this.usersListState.offset = 0;
       } else if (typeof opts.offset === 'number') {
         this.usersListState.offset = Math.max(0, opts.offset);
@@ -4071,7 +4792,8 @@
 
       if (opts.q != null) this.usersListState.q = String(opts.q || '').trim();
       if (opts.status != null) this.usersListState.status = String(opts.status || '').trim();
-      if (opts.limit != null) this.usersListState.limit = Math.min(Math.max(parseInt(opts.limit, 10) || 50, 1), 200);
+      if (opts.sort != null) this.usersListState.sort = String(opts.sort || 'created_at_desc');
+      if (opts.limit != null) this.usersListState.limit = Math.min(Math.max(parseInt(opts.limit, 10) || 50, 1), 10000);
 
       const st = this.usersListState;
       if (st.loading) return;
@@ -4082,6 +4804,7 @@
         const params = new URLSearchParams();
         params.set('limit', String(st.limit));
         params.set('offset', String(st.offset));
+        params.set('sort', st.sort || 'created_at_desc');
         if (st.q) params.set('q', st.q);
         if (st.status) params.set('status', st.status);
         // Keep list lean — mirror is loaded separately.
@@ -4121,7 +4844,7 @@
           if (!tbody) {
             table.innerHTML =
               '<table class="data-table">' +
-                '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>USDT Wallet</th><th>Status</th><th>Actions</th></tr></thead>' +
+                '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>USDT Wallet</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>' +
                 '<tbody></tbody></table>';
             tbody = table.querySelector('tbody');
           }
@@ -4130,7 +4853,7 @@
         } else {
           table.innerHTML =
             '<table class="data-table">' +
-              '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>USDT Wallet</th><th>Status</th><th>Actions</th></tr></thead>' +
+              '<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>USDT Wallet</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>' +
               '<tbody>' + rowsHtml + '</tbody></table>';
           this.bindUsersTableRowActions(table);
         }
@@ -4248,8 +4971,7 @@
                   '<td><code>' + this.esc(t.ref_code || ('DEP-' + t.id)) + '</code>' +
                     (t.tron_order_id ? '<br><small>order ' + this.esc(t.tron_order_id) + '</small>' : '') +
                   '</td>' +
-                  '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small>' +
-                    '<br><small>#' + this.esc(String(t.user_id || '')) + '</small></td>' +
+                  '<td>' + this.userIdentityHtml(t) + '</td>' +
                   '<td><strong>$' + Number(t.amount_usdt || 0).toFixed(2) + '</strong></td>' +
                   '<td>' + this.esc(t.network || 'TRC20') + '</td>' +
                   '<td style="max-width:220px">' + addrCell + '</td>' +
@@ -4289,8 +5011,7 @@
                 return '<tr>' +
                   '<td><small>' + this.esc(t.processed_at || t.created_at || '—') + '</small></td>' +
                   '<td><code>' + this.esc(t.ref_code || ('WD-' + t.id)) + '</code></td>' +
-                  '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small>' +
-                    '<br><small>#' + this.esc(String(t.user_id || '')) + '</small></td>' +
+                  '<td>' + this.userIdentityHtml(t) + '</td>' +
                   '<td>' + amounts + '</td>' +
                   '<td>' + this.esc(method) + '</td>' +
                   '<td style="max-width:220px">' + dest + '</td>' +
@@ -4317,7 +5038,7 @@
                   '<td><code>' + this.esc(t.ref_code) + '</code>' +
                     (t.card_last_four ? '<br><small>•••• ' + this.esc(t.card_last_four) + '</small>' : '') +
                   '</td>' +
-                  '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small></td>' +
+                  '<td>' + this.userIdentityHtml(t) + '</td>' +
                   '<td>$' + Number(t.provider_load_usd || 0).toFixed(2) + '</td>' +
                   '<td><strong>$' + Number(t.platform_markup_usd || 0).toFixed(2) + '</strong></td>' +
                   '<td>' + Number(t.total_charge_usdt || 0).toFixed(2) + ' USDT</td>' +
@@ -4347,7 +5068,7 @@
                 return '<tr>' +
                   '<td><small>' + this.esc(t.processed_at || t.created_at || '—') + '</small></td>' +
                   '<td><code>' + this.esc(t.ref_code) + '</code></td>' +
-                  '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small></td>' +
+                  '<td>' + this.userIdentityHtml(t) + '</td>' +
                   '<td>' + Math.round(Number(t.amount_mmk || 0)).toLocaleString() + ' MMK</td>' +
                   '<td>' + Math.round(Number(t.fee_mmk || 0)).toLocaleString() + ' MMK</td>' +
                   '<td><strong>' + Math.round(Number(t.net_mmk || 0)).toLocaleString() + ' MMK</strong></td>' +
@@ -4370,7 +5091,7 @@
               '<tr>' +
                 '<td><small>' + this.esc(t.reviewed_at || t.created_at || '—') + '</small></td>' +
                 '<td><code>' + this.esc(t.ref_code || ('RELOAD-' + t.id)) + '</code></td>' +
-                '<td><small>' + this.esc(t.user_name || t.user_email || t.user_id) + '</small></td>' +
+                '<td>' + this.userIdentityHtml(t) + '</td>' +
                 '<td>$' + Number(t.reload_amount_usd || 0).toFixed(2) + '</td>' +
                 '<td><strong>$' + Number(t.fee_profit_usd || 0).toFixed(2) + '</strong></td>' +
                 '<td>' + this.esc((t.wallet_type || '—').toUpperCase()) + '</td>' +
@@ -4489,6 +5210,8 @@
           return;
         }
 
+        this._fetchMeta['admin:supportThreads'] = Date.now();
+
         list.innerHTML = threads.map((t) => {
           const pri = String(t.priority || 'medium').toLowerCase();
           const st = String(t.status || 'pending').toLowerCase();
@@ -4501,7 +5224,7 @@
                 '<span class="support-badge priority-' + this.esc(pri) + '">' + this.esc(this.supportPriorityLabel(pri)) + '</span>' +
               '</div>' +
               '<small>' +
-                this.esc(t.name || t.email) +
+                this.esc(this.userIdentityText(t)) +
                 ' · <span class="support-badge category">' + this.esc(this.supportCategoryLabel(t.category)) + '</span>' +
                 ' · <span class="support-badge status-' + this.esc(st) + '">' + this.esc(this.supportStatusLabel(st)) + '</span>' +
               '</small>' +
@@ -4510,7 +5233,14 @@
         }).join('');
 
         list.querySelectorAll('.thread-item').forEach((el) => {
-          el.addEventListener('click', () => this.openThread(parseInt(el.dataset.id, 10)));
+          const open = () => this.openThread(parseInt(el.dataset.id, 10));
+          el.addEventListener('click', open);
+          el.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              open();
+            }
+          });
         });
       } catch (err) {
         list.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
@@ -4529,27 +5259,70 @@
 
         const title = $('supportThreadTitle');
         if (title) title.textContent = thread.subject || 'Task';
+        const subtitle = $('supportTicketSubtitle');
+        if (subtitle) {
+          const who = this.userIdentityText(thread);
+          subtitle.textContent = who + ' · ' + this.supportCategoryLabel(thread.category);
+        }
 
         const meta = $('supportTaskMeta');
+        const statusValue = thread.status === 'open'
+          ? 'pending'
+          : (thread.status === 'closed' ? 'completed' : (thread.status || 'pending'));
         if (meta) {
           meta.classList.remove('hidden');
           if ($('supportTaskCategory')) $('supportTaskCategory').value = thread.category || 'general';
           if ($('supportTaskPriority')) $('supportTaskPriority').value = (thread.priority === 'urgent' ? 'high' : thread.priority === 'normal' ? 'medium' : (thread.priority || 'medium'));
-          if ($('supportTaskStatus')) {
-            const st = thread.status === 'open' ? 'pending' : thread.status === 'closed' ? 'completed' : (thread.status || 'pending');
-            $('supportTaskStatus').value = st;
-          }
+          if ($('supportTaskStatus')) $('supportTaskStatus').value = statusValue;
         }
+        this.syncSupportStatusButtons(statusValue);
 
         const replyForm = $('supportReplyForm');
         if (replyForm) replyForm.classList.remove('hidden');
 
         this.renderSupportMessages(messages);
+        this.openSupportTicketModal();
         this.loadSupportThreads();
         this.startSupportMessagePolling(id);
       } catch (err) {
         alert(err.message);
       }
+    },
+
+    openSupportTicketModal() {
+      const modal = $('supportTicketModal');
+      if (!modal) return;
+      const wasHidden = modal.classList.contains('hidden');
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('sidebar-scroll-lock');
+      if (wasHidden) {
+        const resetScroll = () => {
+          modal.scrollTop = 0;
+          const box = modal.querySelector('.support-ticket-modal');
+          if (box) box.scrollTop = 0;
+        };
+        $('supportReplyText')?.focus({ preventScroll: true });
+        resetScroll();
+        requestAnimationFrame(resetScroll);
+      }
+    },
+
+    closeSupportTicketModal() {
+      const modal = $('supportTicketModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+      document.body.classList.remove('sidebar-scroll-lock');
+      this.stopSupportMessagePolling();
+    },
+
+    syncSupportStatusButtons(status) {
+      const value = status === 'open' ? 'pending' : (status === 'closed' ? 'completed' : (status || 'pending'));
+      document.querySelectorAll('[data-support-status]').forEach((btn) => {
+        btn.classList.toggle('is-active', btn.getAttribute('data-support-status') === value);
+      });
     },
 
     renderSupportMessages(messages) {
@@ -4569,21 +5342,23 @@
       this.stopSupportMessagePolling();
       this._supportPollTimer = setInterval(async () => {
         if (this.activeThreadId !== threadId) return;
+        if (document.visibilityState !== 'visible') return;
         try {
           const qs = this._supportLastMessageId
-            ? ('?after_id=' + this._supportLastMessageId)
+            ? ('?after_id=' + encodeURIComponent(this._supportLastMessageId))
             : '';
-          // Prefer after_id when backend supports it; fall back to full fetch.
-          const data = await this.api('GET', '/api/admin/support/threads/' + threadId + '/messages');
+          const data = await this.api('GET', '/api/admin/support/threads/' + threadId + '/messages' + qs);
           const messages = Array.isArray(data.messages) ? data.messages : [];
           const maxId = messages.reduce((max, m) => Math.max(max, Number(m.id) || 0), 0);
           if (maxId > (this._supportLastMessageId || 0)) {
             this._supportLastMessageId = maxId;
             this.renderSupportMessages(messages);
-            this.loadSupportThreads();
+            if (!this._isAdminFresh('admin:supportThreads', this.ADMIN_FETCH_TTL_MS.support)) {
+              this.loadSupportThreads();
+            }
           }
         } catch (_) { /* ignore poll errors */ }
-      }, 4000);
+      }, 5000);
     },
 
     stopSupportMessagePolling() {
@@ -4606,16 +5381,109 @@
       }
     },
 
+    moneyUsd(value) {
+      return '$' + Number(value || 0).toFixed(2);
+    },
+
+    renderNetRevenue(report) {
+      const panel = $('netRevenuePanel');
+      if (!panel) return;
+      this._netRevenue = report;
+      const periods = report?.periods || {};
+      const periodOrder = [
+        ['today', 'Today'],
+        ['this_month', 'This Month'],
+        ['all_time', 'All Time'],
+      ];
+      const selected = periodOrder.some(([key]) => key === this._netRevenuePeriod)
+        ? this._netRevenuePeriod
+        : 'all_time';
+      this._netRevenuePeriod = selected;
+      const colors = {
+        tron_deposit_fees_usd: '#38bdf8',
+        withdrawal_fees_usd: '#c4b5fd',
+        card_issue_profit_usd: '#4ade80',
+        card_topup_markup_usd: '#fbbf24',
+      };
+      const breakdown = Array.isArray(report?.breakdown) ? report.breakdown : [];
+      const selectedPeriod = periods[selected] || {};
+      const maxValue = breakdown.reduce((max, row) => Math.max(max, Number(selectedPeriod[row.key] || row[selected] || 0)), 0);
+      const total = Number(selectedPeriod.total_net_usd || 0);
+      const formula = report?.formula || {};
+
+      const periodCards = periodOrder.map(([key, label]) => {
+        const row = periods[key] || {};
+        return '<button type="button" class="net-revenue-period' + (key === selected ? ' is-active' : '') + '" data-net-period="' + key + '">' +
+          '<span class="net-revenue-kicker">' + label + '</span>' +
+          '<strong>' + this.moneyUsd(row.total_net_usd) + '</strong>' +
+          '<span class="net-revenue-sub">' + Number(row.transaction_count || 0) + ' revenue records</span>' +
+          '</button>';
+      }).join('');
+
+      const bars = breakdown.map((row) => {
+        const value = Number(selectedPeriod[row.key] || 0);
+        const width = maxValue > 0 ? Math.max(2, Math.round((value / maxValue) * 100)) : 0;
+        const share = total > 0 ? Math.round((value / total) * 100) : 0;
+        return '<div class="net-revenue-bar">' +
+          '<div class="net-revenue-bar-meta"><span><i class="net-revenue-swatch" style="background:' + colors[row.key] + '"></i>' + this.esc(row.label) + '</span><strong>' + this.moneyUsd(value) + '</strong></div>' +
+          '<div class="net-revenue-track"><span style="width:' + (value > 0 ? width : 0) + '%;background:' + colors[row.key] + '"></span></div>' +
+          '<small style="color:#64748b">' + share + '% of this period</small>' +
+          '</div>';
+      }).join('');
+
+      const stack = total > 0
+        ? breakdown.map((row) => {
+          const value = Number(selectedPeriod[row.key] || 0);
+          const width = (value / total) * 100;
+          return width > 0 ? '<span style="width:' + width + '%;background:' + colors[row.key] + '"></span>' : '';
+        }).join('')
+        : '';
+
+      const sources = breakdown.map((row) => (
+        '<div class="net-revenue-source">' +
+        '<div><b><i class="net-revenue-swatch" style="background:' + colors[row.key] + '"></i>' + this.esc(row.label) + '</b>' +
+        '<small>Today ' + this.moneyUsd(row.today) + ' · Month ' + this.moneyUsd(row.this_month) + '</small></div>' +
+        '<div style="text-align:right"><b>' + this.moneyUsd(row.all_time) + '</b><small>All time</small></div>' +
+        '</div>'
+      )).join('');
+
+      const selectedLabel = (periodOrder.find(([key]) => key === selected) || ['', 'All Time'])[1];
+      panel.innerHTML =
+        '<div class="net-revenue-periods">' + periodCards + '</div>' +
+        '<div class="net-revenue-layout">' +
+          '<div class="net-revenue-chart">' +
+            '<h3>Breakdown · ' + selectedLabel + '</h3>' +
+            '<div class="net-revenue-stack" aria-hidden="true">' + (stack || '<span style="width:100%;background:rgba(148,163,184,0.2)"></span>') + '</div>' +
+            (bars || '<p class="hint">No revenue recorded for this period.</p>') +
+            '<p class="net-revenue-note">Issuing profit = issuing fee − $' + Number(formula.card_issue_provider_cost_usd ?? 1.5).toFixed(2) +
+              ' provider cost. Top-up markup = reload fee − $' + Number(formula.card_reload_provider_cost_usd ?? 1.5).toFixed(2) + ' provider cost.</p>' +
+          '</div>' +
+          '<div class="net-revenue-sources">' +
+            '<h3>All-time sources</h3>' +
+            sources +
+          '</div>' +
+        '</div>';
+    },
+
     async loadRevenueDashboard() {
       const metricsEl = $('revenueMetricsGrid');
       const periodEl = $('revenuePeriodRow');
       const dailyEl = $('revenueDailyTable');
       const auditEl = $('revenueAuditTable');
-      if (!metricsEl) return;
+      const netEl = $('netRevenuePanel');
+      if (!metricsEl && !netEl) return;
 
-      metricsEl.innerHTML = '<p class="hint">Loading revenue metrics…</p>';
+      if (netEl) netEl.innerHTML = '<p class="hint">Loading total net revenue…</p>';
+      if (metricsEl) metricsEl.innerHTML = '<p class="hint">Loading revenue metrics…</p>';
       if (dailyEl) dailyEl.innerHTML = '<p class="hint">Loading…</p>';
       if (auditEl) auditEl.innerHTML = '<p class="hint">Loading…</p>';
+
+      try {
+        const report = await this.api('GET', '/api/admin/revenue');
+        this.renderNetRevenue(report);
+      } catch (err) {
+        if (netEl) netEl.innerHTML = '<p class="hint" style="color:#ef4444">' + this.esc(err.message) + '</p>';
+      }
 
       try {
         const data = await this.api('GET', '/api/admin/revenue/dashboard');
@@ -4624,14 +5492,9 @@
 
         metricsEl.innerHTML = `
           <div class="revenue-metric-card highlight">
-            <div class="revenue-metric-label">Total Net Admin Profit (Today)</div>
+            <div class="revenue-metric-label">Ledger sample (Today)</div>
             <div class="revenue-metric-value">$${Number(s.today_net_admin_profit_usd || s.today_profit_usd || 0).toFixed(2)}</div>
-            <div class="revenue-metric-sub">P2P + Card Reload + Withdrawal · ${Math.round(Number(s.today_net_admin_profit_mmk || s.today_profit_mmk || 0)).toLocaleString()} MMK</div>
-          </div>
-          <div class="revenue-metric-card">
-            <div class="revenue-metric-label">P2P Trading Profit</div>
-            <div class="revenue-metric-value">${Number(s.today_p2p_profit_usdt || s.today_p2p_fees_usdt || 0).toFixed(2)} USDT</div>
-            <div class="revenue-metric-sub">Today · All-time ${Number(s.all_time_p2p_profit_usdt || s.all_time_p2p_usdt || 0).toFixed(2)} USDT</div>
+            <div class="revenue-metric-sub">Card reload + deposit + withdrawal fees (USD equivalent)</div>
           </div>
           <div class="revenue-metric-card">
             <div class="revenue-metric-label">Card Reload Profit</div>
@@ -4649,9 +5512,9 @@
             <div class="revenue-metric-sub">Today · All-time ${Number(s.all_time_withdrawal_profit_usdt || 0).toFixed(2)} USDT · Platform balance ${Number(s.platform_usdt_revenue_balance || 0).toFixed(2)} USDT</div>
           </div>
           <div class="revenue-metric-card">
-            <div class="revenue-metric-label">All-Time Net Admin Profit</div>
+            <div class="revenue-metric-label">Ledger sample (All time)</div>
             <div class="revenue-metric-value">$${Number(s.all_time_net_admin_profit_usd || s.all_time_profit_usd || 0).toFixed(2)}</div>
-            <div class="revenue-metric-sub">${Math.round(Number(s.all_time_net_admin_profit_mmk || s.all_time_profit_mmk || 0)).toLocaleString()} MMK · ${Number(data.counts?.total_fee_events || 0)} fee events</div>
+            <div class="revenue-metric-sub">${Number(data.counts?.total_fee_events || 0)} fee events recorded</div>
           </div>
         `;
 
@@ -4674,18 +5537,16 @@
             dailyEl.innerHTML =
               '<table class="data-table">' +
               '<thead><tr>' +
-              '<th>Date</th><th>P2P Fees (USDT)</th><th>Deposit Fees ($)</th><th>Card Reload ($)</th><th>Withdrawal (USDT)</th><th>Card Issue ($)</th><th>Total ($)</th><th>Total (MMK)</th><th>Txns</th>' +
+              '<th>Date</th><th>Deposit Fees ($)</th><th>Card Reload ($)</th><th>Withdrawal (USDT)</th><th>Card Issue ($)</th><th>Total ($)</th><th>Txns</th>' +
               '</tr></thead><tbody>' +
               daily.map((row) =>
                 '<tr>' +
                 '<td><strong>' + this.esc(row.label || row.date) + '</strong><br><small>' + this.esc(row.date) + '</small></td>' +
-                '<td>' + Number(row.p2p_fees_usdt || 0).toFixed(2) + '</td>' +
                 '<td>$' + Number(row.deposit_fees_usd || row.deposit_fees_usdt || 0).toFixed(2) + '</td>' +
                 '<td>$' + Number(row.card_reload_fees_usd || 0).toFixed(2) + '</td>' +
                 '<td>' + Number(row.withdrawal_fees_usdt || 0).toFixed(2) + '</td>' +
                 '<td>$' + Number(row.card_issue_fees_usd || 0).toFixed(2) + '</td>' +
                 '<td><strong>$' + Number(row.total_usd_equivalent || 0).toFixed(2) + '</strong></td>' +
-                '<td>' + Math.round(Number(row.total_mmk_equivalent || 0)).toLocaleString() + '</td>' +
                 '<td>' + (row.transaction_count || 0) + '</td>' +
                 '</tr>'
               ).join('') +

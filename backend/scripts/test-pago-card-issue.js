@@ -76,6 +76,21 @@ async function run() {
   assert.ok(dash.includes('_cardsEpoch'), 'stale in-flight GET cannot overwrite newer cards');
   const userRoutes = fs.readFileSync(path.join(root, 'backend/src/routes/user.js'), 'utf8');
   assert.ok(userRoutes.includes('function setCardsNoStore'), 'cards API sets no-store headers');
+  assert.ok(userRoutes.includes('withCardApiTimeout'), 'card routes enforce a timeout');
+  assert.ok(userRoutes.includes('CARD_CREATE_ROUTE_TIMEOUT_MS'), 'card creation has a route timeout');
+  assert.ok(userRoutes.includes('CARD_FETCH_TIMEOUT_MS') || userRoutes.includes('CARD_SYNC_BUDGET_MS'), 'card fetch has a route timeout');
+  assert.ok(dash.includes('timeoutMs: 26000'), 'card create client timeout');
+  assert.ok(dash.includes('_pagoCardRequestGuard'), 'card request in-flight guard');
+  assert.ok(dash.includes('setSubmitBusy(btn, true'), 'card request submit shows busy state');
+  assert.ok(dash.includes('pago_request_creating'), 'creating label for card request button');
+  assert.ok(dash.includes('timeoutMs: 16000'), 'card list client timeout');
+  assert.ok(dash.includes('timeoutMs: 12000'), 'card detail client timeout');
+  assert.ok(dash.includes('cardTimeoutMessage'), 'timeout toast helper');
+  const { withCardApiTimeout } = require('../src/services/pagoCardService');
+  await assert.rejects(
+    () => withCardApiTimeout(new Promise(() => {}), 1000, 'Card fetch'),
+    (err) => err.code === 'CARD_REQUEST_TIMEOUT' && err.status === 504
+  );
 
   const { resetSupabaseClientForTests } = require('../src/lib/supabase');
   process.env.SUPABASE_URL = 'off';
@@ -162,8 +177,17 @@ async function run() {
   assert.strictEqual(issued.card.expiry_month, '12');
   assert.strictEqual(issued.card.expiry_year, '30');
   assert.strictEqual(Number(issued.card.balance_display_usd), 10);
-  assert.strictEqual(issued.debited_usdt, 10.12);
-  assert.strictEqual(await balanceOf(user.id), 89.88);
+  const { quoteCardIssuanceCheckout } = require('../src/constants/cardIssuanceFees');
+  const { getCardPricingSettings } = require('../src/services/settingsService');
+  const issueQuote = quoteCardIssuanceCheckout({
+    initialLoadUsd: 10.12,
+    settings: await getCardPricingSettings(),
+  });
+  assert.ok(issueQuote.card_issuance_fee_usd > 0, 'default issuing fee is charged');
+  assert.strictEqual(issued.debited_usdt, issueQuote.total_usd);
+  assert.strictEqual(issued.pricing.initial_load_usd, 10.12);
+  const afterIssue = Math.round((100 - issueQuote.total_usd) * 100) / 100;
+  assert.strictEqual(await balanceOf(user.id), afterIssue);
 
   const failing = {
     async createVirtualCard() {
@@ -184,7 +208,7 @@ async function run() {
     }, { client: failing }),
     (err) => err.code === 'PAGO_REQUEST_FAILED'
   );
-  assert.strictEqual(await balanceOf(user.id), 89.88, 'failed issue refunds the wallet');
+  assert.strictEqual(await balanceOf(user.id), afterIssue, 'failed issue refunds the wallet');
 
   await assert.rejects(
     () => issuePagoCardForUser({
@@ -197,7 +221,7 @@ async function run() {
     }, { client }),
     (err) => err.code === 'VALIDATION_ERROR'
   );
-  assert.strictEqual(await balanceOf(user.id), 89.88, 'rejected ATM load does not debit');
+  assert.strictEqual(await balanceOf(user.id), afterIssue, 'rejected ATM load does not debit');
 
   const topped = await topUpPagoCard({
     userId: user.id,
@@ -208,7 +232,69 @@ async function run() {
   assert.ok(topped.debited_usdt >= 10);
   assert.strictEqual(topped.transaction_id, 'txn_pago_1');
   assert.strictEqual(Number(topped.card.balance_display_usd), 15);
-  assert.strictEqual(await balanceOf(user.id), Math.round((89.88 - topped.debited_usdt) * 100) / 100);
+  assert.strictEqual(await balanceOf(user.id), Math.round((afterIssue - topped.debited_usdt) * 100) / 100);
+
+  // Missing Pago columns (prod Turso drift) must be repaired by the ensure patch.
+  const { ensurePagoCardColumns, PAGO_CARD_COLUMNS } = require('../migrations/patches/ensurePagoCardColumns');
+  const { columnExists, tableExists } = require('../migrations/runner');
+  await db.exec('DROP VIEW IF EXISTS active_cards');
+  await db.exec('DROP TABLE cards_v2');
+  await db.exec(`
+    CREATE TABLE cards_v2 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      card_number TEXT NOT NULL,
+      exp_date TEXT NOT NULL,
+      cvv TEXT NOT NULL,
+      card_holder_name TEXT NOT NULL,
+      card_type TEXT DEFAULT 'virtual',
+      currency TEXT DEFAULT 'USD',
+      status TEXT DEFAULT 'pending',
+      is_primary INTEGER DEFAULT 0,
+      issued_by_admin_id INTEGER,
+      admin_notes TEXT,
+      daily_limit_usd REAL,
+      metadata TEXT,
+      activated_at TEXT,
+      cancelled_at TEXT,
+      suspended_at TEXT,
+      status_reason TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+  assert.strictEqual(await columnExists(db, 'cards_v2', 'pago_card_id'), false);
+  await ensurePagoCardColumns(db, columnExists, tableExists);
+  for (const [name] of PAGO_CARD_COLUMNS) {
+    assert.ok(await columnExists(db, 'cards_v2', name), `ensure adds cards_v2.${name}`);
+  }
+
+  const repairedClient = {
+    async createVirtualCard() {
+      return sampleCard({
+        card_id: 'card_pago_repaired',
+        card_number: '4937241043245430',
+        cvv: '298',
+        status: 'normal',
+      });
+    },
+    async getCardDetails() {
+      throw new Error('should not be called when PAN/CVV already present');
+    },
+  };
+  const repaired = await issuePagoCardForUser({
+    userId: user.id,
+    productCode: 'us_404_visa_bin',
+    firstName: 'Pago',
+    lastName: 'Tester',
+    email: user.email,
+    initialLoad: 10,
+  }, { client: repairedClient });
+  assert.strictEqual(repaired.card.pago_card_id, 'card_pago_repaired');
+  assert.strictEqual(repaired.card.status, 'active', 'Pago status normal maps to active');
+  assert.strictEqual(repaired.card.card_number, '4937241043245430');
+  assert.strictEqual(repaired.card.cvv, '298');
+  assert.strictEqual(Number(repaired.card.balance_display_usd), 10);
 
   // Missing Pago columns (prod Turso drift) must be repaired by the ensure patch.
   const { ensurePagoCardColumns, PAGO_CARD_COLUMNS } = require('../migrations/patches/ensurePagoCardColumns');

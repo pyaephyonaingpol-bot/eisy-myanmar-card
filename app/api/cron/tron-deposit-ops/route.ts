@@ -13,16 +13,25 @@ export const maxDuration = 60;
 
 const require = createRequire(path.join(process.cwd(), 'package.json'));
 
-function authorizeCron(request: NextRequest): { ok: true } | { ok: false; status: number; code: string } {
-  const secret = String(process.env.CRON_SECRET || '').trim();
-  if (!secret) {
-    return { ok: false, status: 503, code: 'CRON_NOT_CONFIGURED' };
-  }
-  const header = request.headers.get('authorization') || '';
-  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
-  const token = match?.[1]?.trim() || '';
-  if (!token || token !== secret) {
-    return { ok: false, status: 401, code: 'CRON_UNAUTHORIZED' };
+function authorizeCron(
+  request: NextRequest,
+): { ok: true } | { ok: false; status: number; code: string } {
+  const { authorizeCronBearer } = require(
+    path.join(process.cwd(), 'backend/src/lib/cronAuth.js'),
+  ) as {
+    authorizeCronBearer: (h: string | null) => {
+      authorized: boolean;
+      code?: string;
+      status?: number;
+    };
+  };
+  const result = authorizeCronBearer(request.headers.get('authorization'));
+  if (!result.authorized) {
+    return {
+      ok: false,
+      status: result.status || 401,
+      code: result.code || 'CRON_UNAUTHORIZED',
+    };
   }
   return { ok: true };
 }

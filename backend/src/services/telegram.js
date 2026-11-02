@@ -14,65 +14,85 @@ function getBot() {
 }
 
 function getAdminChatId() {
-  return String(
-    process.env.TELEGRAM_ADMIN_CHAT_ID
-    || process.env.TELEGRAM_CHAT_ID
-    || process.env.TELEGRAM_SUPPORT_CHAT_ID
-    || ''
-  ).trim();
+  const placeholders = new Set(['your_admin_chat_id_here', 'your_admin_group_id_here']);
+  const candidates = [
+    process.env.ADMIN_GROUP_ID,
+    process.env.TELEGRAM_ADMIN_CHAT_ID,
+    process.env.TELEGRAM_CHAT_ID,
+    process.env.TELEGRAM_SUPPORT_CHAT_ID,
+  ];
+  for (const value of candidates) {
+    const chatId = String(value || '').trim();
+    if (!chatId || placeholders.has(chatId)) continue;
+    return chatId;
+  }
+  return '';
 }
 
 function isTelegramConfigured() {
+  const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
   const chatId = getAdminChatId();
-  return Boolean(getBot() && chatId && chatId !== 'your_admin_chat_id_here');
+  if (!token || token === 'your_telegram_bot_token_here') return false;
+  if (!chatId || chatId === 'your_admin_chat_id_here') return false;
+  return true;
 }
 
 /**
  * Send a message to the admin Telegram chat/group.
  * @returns {Promise<{ ok: boolean, message?: object, chatId?: string, skipped?: boolean, error?: string }>}
  */
+function queueAdminNotify(task) {
+  return Promise.resolve()
+    .then(task)
+    .catch((err) => {
+      console.warn('[Telegram] notify failed:', err.message);
+      return { ok: false, error: err.message };
+    });
+}
+
 async function sendAdminMessage(message, options = {}) {
-  const chatId = getAdminChatId();
-  if (!chatId || chatId === 'your_admin_chat_id_here') {
-    console.log('[Telegram] Admin chat not configured — skipping notification');
-    console.log('[Telegram]', String(message || '').replace(/\*/g, ''));
-    return { ok: false, skipped: true };
-  }
+  const { loadTelegramClient } = require('./loadTelegramClient');
+  return loadTelegramClient().sendAdminMessage(message, options);
+}
 
-  const telegramBot = getBot();
-  if (!telegramBot) {
-    console.log('[Telegram] Bot token not configured — skipping notification');
-    console.log('[Telegram]', String(message || '').replace(/\*/g, ''));
-    return { ok: false, skipped: true };
-  }
+function notifyAdminDepositRequest(payload) {
+  const { loadTelegramClient } = require('./loadTelegramClient');
+  return queueAdminNotify(() => loadTelegramClient().notifyAdminDepositRequest(payload));
+}
 
-  const opts = {
-    parse_mode: options.parseMode || 'Markdown',
-    disable_web_page_preview: true,
-  };
-  if (options.replyToMessageId) {
-    opts.reply_to_message_id = Number(options.replyToMessageId);
-  }
-  if (options.messageThreadId) {
-    opts.message_thread_id = Number(options.messageThreadId);
-  }
+function notifyAdminCardCreated(payload) {
+  const { loadTelegramClient } = require('./loadTelegramClient');
+  return queueAdminNotify(() => loadTelegramClient().notifyAdminCardCreated(payload));
+}
 
-  try {
-    const sent = await telegramBot.sendMessage(chatId, message, opts);
-    return { ok: true, message: sent, chatId: String(chatId) };
-  } catch (err) {
-    try {
-      const plain = await telegramBot.sendMessage(
-        chatId,
-        String(message || '').replace(/[*_`\[\]]/g, ''),
-        { ...opts, parse_mode: undefined }
-      );
-      return { ok: true, message: plain, chatId: String(chatId), plain: true };
-    } catch (err2) {
-      console.error('[Telegram] Failed to send notification:', err2.message);
-      return { ok: false, error: err2.message };
-    }
-  }
+function notifyAdminWithdrawalRequest(payload) {
+  const { loadTelegramClient } = require('./loadTelegramClient');
+  return queueAdminNotify(() => loadTelegramClient().notifyAdminWithdrawalRequest(payload));
+}
+
+function notifyAdminNewUser(payload) {
+  const { loadTelegramClient } = require('./loadTelegramClient');
+  return queueAdminNotify(() => loadTelegramClient().notifyAdminNewUser(payload));
+}
+
+function notifyAdminDepositForUser(userId, payload) {
+  const User = require('../models/User');
+  return User.findById(userId)
+    .then((user) => notifyAdminDepositRequest({ user, ...payload }))
+    .catch((err) => {
+      console.warn('[Telegram] deposit notify skipped:', err.message);
+      return { ok: false, error: err.message };
+    });
+}
+
+function notifyAdminWithdrawalForUser(userId, payload) {
+  const User = require('../models/User');
+  return User.findById(userId)
+    .then((user) => notifyAdminWithdrawalRequest({ user, ...payload }))
+    .catch((err) => {
+      console.warn('[Telegram] withdrawal notify skipped:', err.message);
+      return { ok: false, error: err.message };
+    });
 }
 
 async function notifyAdminDepositVerified({ user, deposit, txnId, senderPhone }) {
@@ -88,6 +108,20 @@ async function notifyAdminDepositVerified({ user, deposit, txnId, senderPhone })
 
   await sendAdminMessage(message);
   console.log('[Telegram] Admin notified for deposit', deposit.ref_code);
+  try {
+    const { notifyUserPush } = require('./webPushService');
+    const usd = Number(deposit?.amount_usd || 0);
+    notifyUserPush(user?.id, {
+      title: 'USDT deposit confirmed',
+      body: usd > 0
+        ? `$${usd.toFixed(2)} USDT was credited to your wallet.`
+        : 'Your deposit was credited to your wallet.',
+      url: '/#usdt-wallet',
+      tag: `eisy-deposit-${deposit?.ref_code || 'deposit'}`,
+    }).catch((err) => console.warn('[push] deposit:', err.message));
+  } catch (err) {
+    console.warn('[push] deposit skipped:', err.message);
+  }
 }
 
 async function notifyAdminP2pDepositPending({ user, deposit, seller, txHash }) {
@@ -165,6 +199,68 @@ async function notifyAdminP2pDisputeOpened({ order, orderType, reason, txRef }) 
   console.log('[Telegram] P2P dispute notification sent for', order.ref_code);
 }
 
+async function notifyAdminTronWalletMonitor(payload = {}) {
+  const kind = String(payload.kind || 'tron_monitor');
+  let message = '';
+
+  if (kind === 'master_trx_low') {
+    message = [
+      '⚠️ *TRON master wallet — low TRX (gas)*',
+      '',
+      `📍 Address: \`${payload.address || 'unknown'}\``,
+      `⛽ TRX: ${Number(payload.trxBalance || 0).toFixed(4)} (threshold ${Number(payload.threshold || 30).toFixed(2)})`,
+      `💵 USDT: $${Number(payload.usdtBalance || 0).toFixed(2)}`,
+      `🔧 ~${payload.estimatedSweepsLeft ?? '?'} sweeps left at ${Number(payload.gasPerSweep || 1.1).toFixed(2)} TRX gas each`,
+      '',
+      '_Fund master TRX before sweeps / withdrawals stall. See backend/docs/TRON_WALLET_MANAGEMENT.md_',
+    ].join('\n');
+  } else if (kind === 'master_address_mismatch') {
+    message = [
+      '🚨 *TRON master address mismatch*',
+      '',
+      `Configured: \`${payload.configured || 'n/a'}\``,
+      `From key: \`${payload.derived || 'n/a'}\``,
+      '',
+      '_Withdrawals and balance checks may disagree until env is fixed._',
+    ].join('\n');
+  } else if (kind === 'master_balance_unreachable') {
+    message = [
+      '⚠️ *TRON master balance check failed*',
+      '',
+      `Code: \`${payload.code || 'unknown'}\``,
+      payload.message || 'Could not read master wallet balances.',
+    ].join('\n');
+  } else if (kind === 'sweep_insufficient_trx' || kind === 'sweep_failures' || kind === 'sweep_single_error') {
+    const s = payload.summary || {};
+    const lines = [
+      kind === 'sweep_insufficient_trx'
+        ? '🚨 *TRON deposit sweep — insufficient master TRX*'
+        : '⚠️ *TRON deposit sweep failures*',
+      '',
+    ];
+    if (s.mode) {
+      lines.push(
+        `Mode: ${s.mode} | checked ${s.checked ?? '?'} | swept ${s.swept ?? '?'} | failed ${s.failed ?? '?'}`
+      );
+    }
+    if (payload.message) lines.push(payload.message);
+    if (payload.code) lines.push(`Code: \`${payload.code}\``);
+    const failures = Array.isArray(payload.failures) ? payload.failures : [];
+    for (const f of failures.slice(0, 5)) {
+      lines.push(`• user ${f.userId ?? '?'} ${f.depositAddress || ''}: ${f.error || f.code || 'failed'}`);
+    }
+    if (payload.context?.userId) {
+      lines.push(`Context user_id: ${payload.context.userId}`);
+    }
+    message = lines.join('\n');
+  } else {
+    message = `⚠️ TRON monitor: ${kind}\n${JSON.stringify(payload)}`;
+  }
+
+  await sendAdminMessage(message);
+  console.log('[Telegram] TRON wallet monitor alert:', kind);
+}
+
 async function notifyAdminP2pSellOrderReleased({ user, order, seller }) {
   const message = [
     '✅ *P2P Sell USDT — Escrow Released*',
@@ -187,10 +283,17 @@ module.exports = {
   getAdminChatId,
   isTelegramConfigured,
   sendAdminMessage,
+  notifyAdminDepositRequest,
+  notifyAdminDepositForUser,
+  notifyAdminCardCreated,
+  notifyAdminWithdrawalRequest,
+  notifyAdminWithdrawalForUser,
+  notifyAdminNewUser,
   notifyAdminDepositVerified,
   notifyAdminP2pDepositPending,
   notifyAdminP2pBuyOrderPending,
   notifyAdminP2pSellOrderPending,
   notifyAdminP2pSellOrderReleased,
   notifyAdminP2pDisputeOpened,
+  notifyAdminTronWalletMonitor,
 };

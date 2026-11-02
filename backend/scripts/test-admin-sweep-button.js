@@ -21,9 +21,31 @@ function section(title) {
 }
 
 section('admin.html exposes Sweep controls');
-assert.ok(html.includes('data-tron-deposit-sweep'), 'Sweep buttons use data-tron-deposit-sweep');
-assert.ok(html.includes('id="btnSweepDepositsOverview"'), 'Overview Sweep button present');
-assert.ok(html.includes('id="btnSweepDepositsPanel"'), 'Panel Sweep button present');
+assert.ok(html.includes('data-tron-auto-sweep'), 'Auto-sweep buttons in admin.html');
+assert.ok(html.includes('data-tron-auto-sweep-dry-run'), 'Dry-run sweep buttons in admin.html');
+assert.ok(html.includes('id="btnAutoSweepOverview"'), 'Overview auto-sweep button present');
+assert.ok(html.includes('id="btnAutoSweepPanel"'), 'Panel auto-sweep button present');
+assert.ok((html.match(/Auto-sweep \(Netts\)/g) || []).length >= 2, 'Overview and panel expose auto-sweep');
+assert.ok(html.includes('data-page="overview"'), 'Master Wallet page is in the admin shell');
+assert.ok(html.includes('>Master Wallet<'), 'sidebar links to Master Wallet');
+assert.ok(js.includes("'overview'"), 'overview is a core admin page');
+assert.ok(!js.includes("name === 'overview' || name === 'transactions'"), 'overview is not redirected away');
+assert.ok(js.includes('Auto-sweep (Netts)'), 'button label restores after sweep');
+assert.ok(js.includes('tronAutoSweepBusyLabel'), 'Per-button busy labels (live vs dry-run)');
+assert.ok(js.includes('tronAutoSweepDefaultLabel'), 'Restore canonical sweep button labels');
+assert.ok(html.includes('data-default-label="Auto-sweep (Netts)"'), 'Live sweep default label on button');
+assert.ok(html.includes('data-default-label="Dry-run sweep"'), 'Dry-run default label on button');
+assert.ok(js.includes('formatTronSweepDetailLog'), 'Sweep detail log formatter exists');
+assert.ok(js.includes('total_usdt'), 'UI reads total_usdt from API');
+assert.ok(
+  route.includes('total_usdt') || fs.readFileSync(path.join(ROOT, 'src/services/adminTronAutoSweepService.js'), 'utf8').includes('total_usdt'),
+  'API returns total_usdt swept'
+);
+assert.ok(service.includes('summarizeSweepTransferTotals'), 'Service aggregates sweep USDT totals');
+assert.ok(service.includes('sweepUsdtWithNettsEnergy'), 'Service uses Netts energy sweep helper');
+assert.ok(service.includes('buildSweepPreflightReport'), 'Service exposes sweep preflight');
+assert.ok(route.includes("'/sweep-preflight'"), 'Admin preflight route exists');
+assert.ok(js.includes('preflight'), 'Admin UI reads sweep preflight');
 assert.ok(html.includes('id="masterWalletSweepMinLabel"'), 'Min USDT label present');
 assert.ok(
   /id="masterWalletSweepMinLabel">\s*25\s*</.test(html),
@@ -33,12 +55,16 @@ assert.ok(html.includes('id="masterWalletSweepStatus"'), 'Overview sweep status 
 assert.ok(html.includes('id="masterWalletSweepStatusPanel"'), 'Panel sweep status present');
 console.log('ok');
 
-section('admin.js wires Sweep → POST /api/admin/sweep-deposits');
-assert.ok(js.includes("querySelectorAll('[data-tron-deposit-sweep]')"), 'Binds data-tron-deposit-sweep clicks');
-assert.ok(js.includes('runTronDepositSweep'), 'runTronDepositSweep helper exists');
-assert.ok(js.includes('loadTronSweepConfig'), 'loadTronSweepConfig helper exists');
-assert.ok(js.includes('/api/admin/sweep-deposits'), 'Calls admin sweep-deposits API');
-assert.ok(js.includes('dry_run: false'), 'Live sweep posts dry_run:false');
+section('admin.js wires Sweep → POST /api/admin/tron/auto-sweep');
+assert.ok(js.includes('data-tron-auto-sweep'), 'Binds auto-sweep clicks');
+assert.ok(js.includes('runTronAutoSweep'), 'runTronAutoSweep helper exists');
+assert.ok(js.includes('loadTronAutoSweepStatus'), 'loadTronAutoSweepStatus helper exists');
+assert.ok(js.includes('/api/admin/tron/auto-sweep'), 'Calls admin tron/auto-sweep API');
+assert.ok(js.includes('dry_run: dryRun'), 'Live vs dry-run sweep body');
+assert.ok(js.includes('getTronAutoSweepLimit'), 'Limit helper for sweep batch size');
+assert.ok(js.includes('limit: sweepLimit') || js.includes('limit: this.getTronAutoSweepLimit'), 'POST includes limit');
+assert.ok(html.includes('js-tron-auto-sweep-limit'), 'Limit input in admin shell');
+assert.ok(route.includes("'/tron/auto-sweep'"), 'tron/auto-sweep route exists');
 assert.ok(js.includes('masterWalletSweepMinLabel'), 'Updates min label from API');
 assert.ok(js.includes('?? 25'), 'Client falls back to 25 USDT min');
 console.log('ok');

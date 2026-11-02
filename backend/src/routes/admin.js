@@ -31,6 +31,7 @@ const SupportThread = require('../models/SupportThread');
 const SupportMessage = require('../models/SupportMessage');
 const User = require('../models/User');
 const { setUserBlockStatus } = require('../services/adminUserBlockService');
+const { deleteAdminUser } = require('../services/adminUserDeleteService');
 const { creditDepositAndVerify } = require('../services/depositService');
 const { enrichDeposit } = require('../services/depositEnrichment');
 const {
@@ -61,7 +62,7 @@ const {
   rejectP2pSellOrder,
   listP2pSellOrdersForAdmin,
 } = require('../services/p2pSellOrderService');
-const { getRevenueDashboard } = require('../services/revenueAnalyticsService');
+const { getRevenueDashboard, getNetRevenueReport } = require('../services/revenueAnalyticsService');
 const {
   listP2pAdminTransactions,
   listCardReloadAdminTransactions,
@@ -470,6 +471,9 @@ router.get('/settings', requirePermission('settings_read'), async (_req, res) =>
         minimum_initial_deposit_usd: pricing.minimum_initial_deposit_usd,
         card_reload_fee_usd: pricing.card_reload_fee_usd,
         card_reload_fee_percent: pricing.card_reload_fee_percent,
+        card_reload_fee_minimum_usd: pricing.card_reload_fee_minimum_usd,
+        minimum_usdt_deposit: pricing.minimum_usdt_deposit,
+        minimum_usdt_reload: pricing.minimum_usdt_reload,
         mmk_to_usd_rate: pricing.mmk_to_usd_rate,
         rate_effective_date: pricing.rate_effective_date,
         p2p_seller_fee_percent: pricing.p2p_seller_fee_percent,
@@ -487,9 +491,11 @@ router.get('/settings', requirePermission('settings_read'), async (_req, res) =>
         payment_service_fee_minimum_usdt: pricing.payment_service_fee_minimum_usdt,
         payment_service_fee_mode: pricing.payment_service_fee_mode,
         deposit_service_fee_percent: pricing.deposit_service_fee_percent,
+        deposit_service_fee_fixed_usdt: pricing.deposit_service_fee_fixed_usdt,
         deposit_service_fee_minimum_usdt: pricing.deposit_service_fee_minimum_usdt,
         deposit_service_fee_mode: pricing.deposit_service_fee_mode,
         withdrawal_service_fee_percent: pricing.withdrawal_service_fee_percent,
+        withdrawal_service_fee_fixed_usdt: pricing.withdrawal_service_fee_fixed_usdt,
         withdrawal_service_fee_minimum_usdt: pricing.withdrawal_service_fee_minimum_usdt,
         withdrawal_service_fee_mode: pricing.withdrawal_service_fee_mode,
       },
@@ -590,7 +596,9 @@ router.get('/exchange-rate-history', requirePermission('rates'), async (req, res
 
 router.get('/deposits', requirePermission('deposits'), async (req, res) => {
   try {
-    const status = req.query.status;
+    let status = req.query.status;
+    if (status === 'approved') status = 'VERIFIED';
+    if (status === 'rejected') status = 'REJECTED';
     const settings = await getCardPricingSettings();
     const deposits = status && status !== 'pending'
       ? await DepositRequest.listAll({ status: status === 'all' ? null : status, limit: 200 })
@@ -851,6 +859,85 @@ router.get('/cards/issued', requirePermission('cards'), async (_req, res) => {
   }
 });
 
+function sendPagoAdminError(res, err, fallbackMessage) {
+  const status = Number(err?.status) || 500;
+  const code = err?.code || 'PAGO_ADMIN_ERROR';
+  res.status(status >= 400 && status < 600 ? status : 502).json({
+    success: false,
+    error: err?.message || fallbackMessage,
+    code,
+  });
+}
+
+router.get('/pagocards/balance', requirePermission('cards'), async (_req, res) => {
+  try {
+    const { fetchPagoAdminBalance } = require('../services/pagoAdminService');
+    const balance = await fetchPagoAdminBalance();
+    res.json({ success: true, balance });
+  } catch (err) {
+    console.error('[admin/pagocards/balance]', err.code || err.message);
+    sendPagoAdminError(res, err, 'Failed to load Pagocards wallet balances');
+  }
+});
+
+router.post('/pagocards/allcards', requirePermission('cards'), async (req, res) => {
+  try {
+    const brand = req.body?.brand || 'visa';
+    const perPage = parseInt(req.body?.per_page, 10) || 20;
+    const page = parseInt(req.body?.page, 10) || 1;
+    const email = req.body?.email || req.query?.email || '';
+    const { fetchPagoAdminAllCards } = require('../services/pagoAdminService');
+    const result = await fetchPagoAdminAllCards({
+      brand,
+      perPage,
+      page,
+      email,
+    });
+    res.json({
+      success: true,
+      cards: result.cards,
+      meta: result.meta,
+    });
+  } catch (err) {
+    console.error('[admin/pagocards/allcards]', err.code || err.message);
+    sendPagoAdminError(res, err, 'Failed to load Pagocards cards');
+  }
+});
+
+router.get('/pagocards/transactions', requirePermission('cards'), async (req, res) => {
+  try {
+    const { fetchPagoAdminTransactions } = require('../services/pagoAdminService');
+    const result = await fetchPagoAdminTransactions({
+      page: req.query?.page,
+      per_page: req.query?.per_page,
+    });
+    res.json({
+      success: true,
+      transactions: result.transactions,
+    });
+  } catch (err) {
+    console.error('[admin/pagocards/transactions]', err.code || err.message);
+    sendPagoAdminError(res, err, 'Failed to load Pagocards transactions');
+  }
+});
+
+router.get('/pagocards/deposits', requirePermission('cards'), async (req, res) => {
+  try {
+    const { fetchPagoAdminDeposits } = require('../services/pagoAdminService');
+    const result = await fetchPagoAdminDeposits({
+      page: req.query?.page,
+      per_page: req.query?.per_page,
+    });
+    res.json({
+      success: true,
+      deposits: result.deposits,
+    });
+  } catch (err) {
+    console.error('[admin/pagocards/deposits]', err.code || err.message);
+    sendPagoAdminError(res, err, 'Failed to load Pagocards deposits');
+  }
+});
+
 router.post('/cards/:id/status', requirePermission('cards'), async (req, res) => {
   try {
     const cardId = parseInt(req.params.id, 10);
@@ -939,6 +1026,116 @@ router.post('/reloads/:id/reject', requirePermission('cards'), async (req, res) 
     console.error('[admin/reloads/reject]', err);
     const status = err.message.includes('not pending') || err.message.includes('not found') ? 400 : 500;
     res.status(status).json({ error: err.message || 'Reload rejection failed' });
+  }
+});
+
+router.get('/users/:userId/detail', requirePermission('users'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+    const { getAdminUserProfile } = require('../services/adminUserDetailService');
+    const user = await getAdminUserProfile(userId);
+    res.json({ success: true, user });
+  } catch (err) {
+    const status = err.status || (err.message === 'User not found' ? 404 : 500);
+    console.error('[admin/users/detail]', err.message);
+    res.status(status).json({ error: err.message || 'Internal server error', code: err.code });
+  }
+});
+
+router.get('/users/:userId/detail/finance', requirePermission('users'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+    const kind = String(req.query.kind || 'deposits').toLowerCase();
+    const { limit, offset } = req.query;
+    const {
+      listUserFinanceDeposits,
+      listUserFinanceWithdrawals,
+    } = require('../services/adminUserDetailService');
+    const payload = kind === 'deposits'
+      ? await listUserFinanceDeposits(userId, { limit, offset })
+      : await listUserFinanceWithdrawals(userId, {
+        limit,
+        offset,
+        currency: kind === 'mmk_withdrawals' ? 'mmk' : 'usdt',
+      });
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('[admin/users/detail/finance]', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+router.get('/users/:userId/detail/cards', requirePermission('cards'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+    const { listUserDetailCards } = require('../services/adminUserDetailService');
+    const cards = await listUserDetailCards(userId);
+    res.json({ success: true, cards });
+  } catch (err) {
+    const status = err.status || 500;
+    console.error('[admin/users/detail/cards]', err.message);
+    res.status(status).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+router.get('/users/:userId/detail/card-transactions', requirePermission('cards'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+    const { listUserCardSpendTransactions } = require('../services/adminUserDetailService');
+    const payload = await listUserCardSpendTransactions(userId, {
+      limit: req.query.limit,
+      offset: req.query.offset,
+    });
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('[admin/users/detail/card-transactions]', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+router.get('/users/:userId/detail/support', requirePermission('support'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+    const threadId = req.query.thread_id ? parseInt(req.query.thread_id, 10) : null;
+    const {
+      listUserSupportThreads,
+      getUserSupportThreadMessages,
+    } = require('../services/adminUserDetailService');
+    const threads = await listUserSupportThreads(userId);
+    let active = null;
+    if (threadId) {
+      active = await getUserSupportThreadMessages(threadId, userId);
+    } else if (threads.length) {
+      active = await getUserSupportThreadMessages(threads[0].id, userId);
+    }
+    res.json({ success: true, threads, active });
+  } catch (err) {
+    const status = err.status || 500;
+    console.error('[admin/users/detail/support]', err.message);
+    res.status(status).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+router.post('/users/:userId/detail/support/reply', requirePermission('support'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id' });
+    const { replyToUserSupport } = require('../services/adminUserDetailService');
+    const result = await replyToUserSupport(userId, {
+      message: req.body?.message,
+      threadId: req.body?.thread_id ? parseInt(req.body.thread_id, 10) : null,
+      subject: req.body?.subject,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    const status = err.status || 500;
+    console.error('[admin/users/detail/support/reply]', err.message);
+    res.status(status).json({ error: err.message || 'Internal server error' });
   }
 });
 
@@ -1314,13 +1511,15 @@ router.post('/balance/adjust', requirePermission('balance_adjust'), async (req, 
 
 router.get('/users', requirePermission('users'), async (req, res) => {
   try {
-    // Lean paginated list from Turso only — no joins, no mirror/backfill on the
-    // hot path. Full catalog remains reachable via total + limit/offset pages.
-    const page = await User.listForAdmin({
+    // Union of Turso users and every Supabase wallet, paged in this API.
+    // A PostgREST max-rows cap (for example 15) must not hide the rest.
+    const { listAdminUserDirectory } = require('../services/adminUserDirectory');
+    const page = await listAdminUserDirectory({
       limit: req.query.limit,
       offset: req.query.offset,
       q: req.query.q,
       status: req.query.status,
+      sort: req.query.sort,
     });
 
     const wantMirror = String(req.query.mirror || '').trim() === '1'
@@ -1354,6 +1553,7 @@ router.get('/users', requirePermission('users'), async (req, res) => {
       truncated: page.has_more,
       q: String(req.query.q || '').trim() || null,
       status: String(req.query.status || '').trim() || null,
+      sort: page.sort || 'created_at_desc',
       mirror,
       backfill,
     });
@@ -1388,6 +1588,35 @@ router.post('/users/backfill-wallets', requirePermission('users'), async (_req, 
   }
 });
 
+
+router.post('/users/:userId/delete', requirePermission('users'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ error: 'Invalid user id', code: 'INVALID_USER_ID' });
+
+    const result = await deleteAdminUser(userId, {
+      confirm: req.body?.confirm,
+      adminId: req.user?.id || null,
+      adminEmail: req.user?.email || null,
+    });
+
+    return res.json({
+      success: true,
+      removed: true,
+      message: 'User deleted',
+      source: result.source,
+      user: result.user,
+      supabase_wallet: result.supabase_wallet || null,
+    });
+  } catch (err) {
+    console.error('[admin/users/delete]', err.message, err.code || '');
+    const code = err.status || 400;
+    return res.status(code >= 400 && code < 600 ? code : 500).json({
+      error: err.message || 'Failed to delete user',
+      code: err.code || 'USER_DELETE_FAILED',
+    });
+  }
+});
 
 router.post('/users/:userId/status', requirePermission('users'), async (req, res) => {
   try {
@@ -1746,6 +1975,16 @@ router.post('/p2p-orders/:orderType/:id/messages', requirePermission('p2p'), upl
   }
 });
 
+router.get('/revenue', requirePermission('revenue'), async (_req, res) => {
+  try {
+    const report = await getNetRevenueReport();
+    res.json({ success: true, ...report });
+  } catch (err) {
+    console.error('[admin/revenue]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.get('/revenue/dashboard', requirePermission('revenue'), async (_req, res) => {
   try {
     const dashboard = await getRevenueDashboard();
@@ -1811,8 +2050,12 @@ const {
   runManualSweep,
   listSweepableDepositAddresses,
   getSweepGasTrx,
+  getNettsEnergyPerSweep,
   getMinSweepUsdt,
   isSweepInFlight,
+  buildSweepPreflightReport,
+  assertSweepPreflightOrThrow,
+  assertSweepBodyHasNoPrivateKey,
 } = require('../services/tronSweepService');
 const {
   resyncHdDepositAddresses,
@@ -1863,91 +2106,169 @@ router.get('/master-wallet-balance', requirePermission('master_wallet'), async (
 });
 
 /**
- * POST /api/admin/sweep-deposits
- * Manual-only TRON HD deposit sweep (no cron).
- * Body: { dry_run?: boolean, user_id?: number, force_gas?: boolean, limit?: number }
- *
- * 1) Master sends small TRX gas → user deposit address
- * 2) Deposit address sends all USDT → master wallet
+ * GET /api/admin/scan-deposits — manual TRON deposit credit scan status (no chain sweep).
  */
-router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, res) => {
+router.get('/scan-deposits', requirePermission('master_wallet'), async (_req, res) => {
   try {
-    const { areMasterWalletTransfersPaused } = require('../services/securityFlags');
-    const body = req.body || {};
-    const dryRun = Boolean(body.dry_run ?? body.dryRun);
+    const { isTronOrderPollInFlight } = require('../services/tronOrderService');
+    const { getHdScanBatchSize, getHdScanMaxAddresses } = require('../services/hdDepositCreditService');
+    res.json({
+      success: true,
+      manual: true,
+      scheduled: false,
+      in_flight: isTronOrderPollInFlight(),
+      hd_scan_batch_size: getHdScanBatchSize(),
+      hd_scan_max_addresses: getHdScanMaxAddresses(),
+    });
+  } catch (err) {
+    console.error('[admin/scan-deposits GET]', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to read deposit scan status',
+    });
+  }
+});
 
-    if (!dryRun && areMasterWalletTransfersPaused()) {
-      return res.status(503).json({
-        success: false,
-        error:
-          'Master wallet transfers are paused after the security incident. '
-          + 'Set MASTER_WALLET_TRANSFERS_PAUSED=false and WITHDRAWALS_PAUSED=false after key rotation.',
-        code: 'MASTER_WALLET_TRANSFERS_PAUSED',
-      });
-    }
-
-    if (isSweepInFlight()) {
+/**
+ * POST /api/admin/scan-deposits
+ * Manual-only: verify pending TRON orders + scan HD addresses → credit user wallets.
+ * Does not sweep USDT on-chain (use POST /api/admin/sweep-deposits).
+ */
+router.post('/scan-deposits', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    const { isTronOrderPollInFlight, runTronOrderPollSafely } = require('../services/tronOrderService');
+    if (isTronOrderPollInFlight()) {
       return res.status(409).json({
         success: false,
-        error: 'A TRON deposit sweep is already in progress',
-        code: 'SWEEP_IN_PROGRESS',
+        error: 'A TRON deposit scan is already in progress',
+        code: 'DEPOSIT_SCAN_IN_PROGRESS',
       });
     }
 
-    const forceGas = Boolean(body.force_gas ?? body.forceGas);
-    const userId = body.user_id ?? body.userId ?? null;
-    const limit = body.limit != null ? Number(body.limit) : 500;
+    const result = await runTronOrderPollSafely();
+    if (result?.skipped && result.reason === 'poll_in_flight') {
+      return res.status(409).json({
+        success: false,
+        error: 'A TRON deposit scan is already in progress',
+        code: 'DEPOSIT_SCAN_IN_PROGRESS',
+      });
+    }
 
-    const summary = await runManualSweep({
-      userId,
-      dryRun,
-      forceGas,
-      limit,
-    });
+    const hd = result.hd_deposits || {};
+    const creditedTotal = Number(result.credited || 0);
+    const orderCredited = Number(result.credited || 0) - Number(hd.credited || 0);
 
     TransactionLog.create({
       userId: req.user?.id || null,
       type: 'other',
       direction: 'neutral',
-      description: dryRun
-        ? `Admin dry-run TRON deposit sweep (${summary.mode})`
-        : `Admin manual TRON deposit sweep (${summary.mode})`,
+      description: `Admin manual TRON deposit credit scan — ${creditedTotal} credited`,
       createdBy: 'admin',
       metadata: {
-        action: 'sweep_deposits',
-        dry_run: dryRun,
-        mode: summary.mode,
-        checked: summary.checked,
-        swept: summary.swept,
-        skipped: summary.skipped,
-        failed: summary.failed,
-        user_id: userId,
+        action: 'scan_deposits',
+        manual: true,
+        credited_total: creditedTotal,
+        order_credited: orderCredited,
+        hd_credited: Number(hd.credited || 0),
+        completed_orders: Number(result.completed || 0),
+        hd_addresses: Number(hd.addresses || 0),
       },
     }).catch((err) => {
-      console.warn('[admin/sweep-deposits] audit log skipped:', err.message);
+      console.warn('[admin/scan-deposits] audit log skipped:', err.message);
     });
 
-    const status = summary.failed > 0 ? 207 : 200;
-    res.status(status).json({
-      success: summary.ok,
-      message: dryRun
-        ? 'Dry-run complete — no on-chain transfers were broadcast'
-        : 'Manual TRON deposit sweep finished',
+    const ok = result.ok !== false && !result.skipped;
+    res.status(ok ? 200 : 207).json({
+      success: ok,
+      message: creditedTotal > 0
+        ? `Credited ${creditedTotal} deposit(s) to user wallets`
+        : 'Deposit scan finished — no new credits',
       manual: true,
       scheduled: false,
-      gas_trx: summary.gasTrx ?? getSweepGasTrx(),
-      min_usdt: summary.minUsdt ?? getMinSweepUsdt(),
-      sweep: summary,
+      credited_total: creditedTotal,
+      scan: result,
     });
   } catch (err) {
+    console.error('[admin/scan-deposits]', err.code || '', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Deposit scan failed',
+      code: err.code || 'DEPOSIT_SCAN_FAILED',
+    });
+  }
+});
+
+/**
+ * GET /api/admin/tron/auto-sweep — Admin UI: Netts env readiness + preflight.
+ * POST /api/admin/tron/auto-sweep — Trigger HD deposit sweep (Netts order1h + USDT → master).
+ * Body: { dry_run?: boolean, user_id?: number, limit?: number, force_gas?: boolean }
+ */
+router.get('/tron/auto-sweep', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    const limit = req.query.limit != null ? Number(req.query.limit) : 500;
+    const verify = ['1', 'true', 'yes'].includes(String(req.query.verify || 'true').toLowerCase());
+    const { buildAutoSweepStatus } = require('../services/adminTronAutoSweepService');
+    const status = await buildAutoSweepStatus({ limit, verifyAddresses: verify });
+    res.json({ success: true, ...status });
+  } catch (err) {
+    console.error('[admin/tron/auto-sweep GET]', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Auto-sweep status failed',
+      code: err.code || 'SWEEP_STATUS_FAILED',
+    });
+  }
+});
+
+router.post('/tron/auto-sweep', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    const { executeAdminAutoSweep } = require('../services/adminTronAutoSweepService');
+    const { payload, httpStatus } = await executeAdminAutoSweep(req.body || {}, {
+      adminUserId: req.user?.id || null,
+      source: 'admin_ui',
+    });
+    res.status(httpStatus).json(payload);
+  } catch (err) {
+    console.error('[admin/tron/auto-sweep]', err.code || '', err.message);
+    const status = err.status
+      || (err.code === 'SWEEP_IN_PROGRESS' ? 409 : null)
+      || (err.code === 'MASTER_WALLET_TRANSFERS_PAUSED' ? 503 : null)
+      || (err.code === 'SWEEP_ENV_NOT_READY' ? 503 : null)
+      || (err.code === 'SWEEP_PREFLIGHT_FAILED' ? 503 : null)
+      || 500;
+    res.status(status).json({
+      success: false,
+      error: err.message || 'Auto-sweep failed',
+      code: err.code || 'SWEEP_FAILED',
+      envReport: err.envReport || undefined,
+      preflight: err.preflight || undefined,
+    });
+  }
+});
+
+/**
+ * POST /api/admin/sweep-deposits — legacy alias for POST /api/admin/tron/auto-sweep
+ */
+router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    const { executeAdminAutoSweep } = require('../services/adminTronAutoSweepService');
+    const { payload, httpStatus } = await executeAdminAutoSweep(req.body || {}, {
+      adminUserId: req.user?.id || null,
+      source: 'admin_sweep_deposits_legacy',
+    });
+    res.status(httpStatus).json(payload);
+  } catch (err) {
     console.error('[admin/sweep-deposits]', err.code || '', err.message);
-    const status = (() => {
+    const status = err.status || (() => {
       if (err.code === 'SWEEP_IN_PROGRESS') return 409;
       if (err.code === 'SWEEP_INVALID_USER') return 400;
+      if (err.code === 'MASTER_WALLET_TRANSFERS_PAUSED') return 503;
+      if (err.code === 'SWEEP_ENV_NOT_READY') return 503;
       if (['MASTER_KEY_MISSING', 'MASTER_KEY_INVALID', 'MASTER_ADDRESS_INVALID', 'TRON_HD_NOT_CONFIGURED'].includes(err.code)) {
         return 503;
       }
       if (err.code === 'SWEEP_INSUFFICIENT_MASTER_TRX') return 422;
+      if (err.code === 'SWEEP_PREFLIGHT_FAILED') return 503;
       return 500;
     })();
     res.status(status).json({
@@ -1955,6 +2276,29 @@ router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, r
       error: err.message || 'Sweep failed',
       code: err.code || 'SWEEP_FAILED',
       details: err.details || undefined,
+      preflight: err.preflight || undefined,
+    });
+  }
+});
+
+/** GET /api/admin/sweep-preflight — env + HD alignment checks before manual sweep. */
+router.get('/sweep-preflight', requirePermission('master_wallet'), async (req, res) => {
+  try {
+    const limit = req.query.limit != null ? Number(req.query.limit) : 500;
+    const verify = ['1', 'true', 'yes'].includes(String(req.query.verify || 'true').toLowerCase());
+    const preflight = await buildSweepPreflightReport({
+      verifyAddresses: verify,
+      limit,
+    });
+    res.json({
+      success: true,
+      preflight,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Preflight failed',
+      code: err.code || 'SWEEP_PREFLIGHT_FAILED',
     });
   }
 });
@@ -1963,12 +2307,17 @@ router.post('/sweep-deposits', requirePermission('master_wallet'), async (req, r
 router.get('/sweep-deposits', requirePermission('master_wallet'), async (req, res) => {
   try {
     const limit = req.query.limit != null ? Number(req.query.limit) : 500;
+    const includePreflight = ['1', 'true', 'yes'].includes(
+      String(req.query.preflight || '1').toLowerCase()
+    );
+    const verify = ['1', 'true', 'yes'].includes(String(req.query.verify || '').toLowerCase());
     const addresses = await listSweepableDepositAddresses({ limit });
-    res.json({
+    const payload = {
       success: true,
       manual: true,
       scheduled: false,
       gas_trx: getSweepGasTrx(),
+      netts_energy: getNettsEnergyPerSweep(),
       min_usdt: getMinSweepUsdt(),
       in_flight: isSweepInFlight(),
       count: addresses.length,
@@ -1979,7 +2328,14 @@ router.get('/sweep-deposits', requirePermission('master_wallet'), async (req, re
         derivation_path: row.derivation_path,
         updated_at: row.updated_at,
       })),
-    });
+    };
+    if (includePreflight) {
+      payload.preflight = await buildSweepPreflightReport({
+        verifyAddresses: verify,
+        limit,
+      });
+    }
+    res.json(payload);
   } catch (err) {
     console.error('[admin/sweep-deposits GET]', err.message);
     res.status(500).json({

@@ -27,7 +27,17 @@ async function main() {
   assert.ok(emailSvc.includes('postResendEmail'), 'direct Resend HTTP helper');
   assert.ok(emailSvc.includes('AbortController'), 'Resend timeout via AbortController');
   assert.ok(emailSvc.includes('api.resend.com/emails'), 'Resend REST endpoint');
+  assert.ok(emailSvc.includes('Idempotency-Key'), 'OTP retries reuse one Resend send');
+  assert.ok(emailSvc.includes('OTP_PAYLOAD_KEYS'), 'OTP payload is an explicit field list');
   assert.ok(!emailSvc.includes("require('resend')"), 'OTP path must not use blocking Resend SDK');
+
+  const indexHtml = read('public/index.html');
+  const dashboardJs = read('public/dashboard.js');
+  assert.ok(indexHtml.includes('id="loginOtpResendStatus"'), 'login resend status');
+  assert.ok(indexHtml.includes('id="registerOtpResendStatus"'), 'register resend status');
+  assert.ok(dashboardJs.includes('startOtpResendCountdown'), 'countdown helper');
+  assert.ok(dashboardJs.includes('Resend OTP in'), 'countdown label');
+  assert.ok(dashboardJs.includes('Sending…'), 'OTP loading label');
 
   assert.ok(authSvc.includes('dispatchOtpEmail'), 'auth uses dispatchOtpEmail');
   assert.ok(!/await sendOtpEmail\(/.test(authSvc), 'auth must not await sendOtpEmail');
@@ -47,10 +57,14 @@ async function main() {
 
   // Slow Resend: hang until aborted / resolved late.
   let fetchCalls = 0;
+  let lastPayload = null;
+  let lastHeaders = null;
   const originalFetch = global.fetch;
   global.fetch = async (url, opts = {}) => {
     fetchCalls += 1;
     assert.ok(String(url).includes('api.resend.com'), `unexpected fetch url: ${url}`);
+    lastPayload = opts.body ? JSON.parse(opts.body) : null;
+    lastHeaders = opts.headers || null;
     await new Promise((resolve) => setTimeout(resolve, 1500));
     if (opts.signal?.aborted) {
       const err = new Error('Aborted');
@@ -92,6 +106,21 @@ async function main() {
   assert.strictEqual(loginOtp.email_queued, true);
   assert.ok(loginElapsed < 400, `Login OTP handler blocked on Resend (${loginElapsed}ms)`);
   console.log(`Login OTP returned in ${loginElapsed}ms (queued)`);
+
+  const callsBeforeRepeat = fetchCalls;
+  await assert.rejects(
+    () => authService.sendLoginOtp(email, '127.0.0.1'),
+    (err) => err && err.code === 'OTP_RESEND_COOLDOWN' && err.retry_after_seconds > 0
+  );
+  assert.strictEqual(fetchCalls, callsBeforeRepeat, 'cooldown must not dispatch another email');
+
+  const { OTP_PAYLOAD_KEYS } = require('../src/services/emailService');
+  assert.ok(lastPayload, 'Resend body captured');
+  assert.deepStrictEqual(Object.keys(lastPayload).sort(), [...OTP_PAYLOAD_KEYS].sort());
+  assert.strictEqual(typeof lastPayload.to, 'string');
+  assert.ok(!lastPayload.html.includes('\n'), 'OTP html is a single compact line');
+  assert.ok(!lastPayload.attachments && !lastPayload.cc && !lastPayload.bcc && !lastPayload.scheduled_at);
+  assert.ok(lastHeaders && lastHeaders['Idempotency-Key'], 'Idempotency-Key header set');
 
   const results = await awaitPendingOtpEmails();
   assert.ok(fetchCalls >= 2, `expected Resend fetches, got ${fetchCalls}`);

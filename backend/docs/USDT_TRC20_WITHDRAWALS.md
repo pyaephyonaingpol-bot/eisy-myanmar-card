@@ -25,9 +25,9 @@ Also available as `POST /api/withdraw` with body
 | `TRONGRID_API_KEY` | no | recommended for rate limits |
 | `TRON_USDT_FEE_LIMIT_SUN` | no | default `100000000` (100 TRX) |
 
-## Crypto BEP20
+## Networks
 
-BEP20 withdrawals stay **pending** for admin manual completion (no auto on-chain send).
+USDT crypto deposits and withdrawals use **TRC20 (Tron) only**. New BEP20 and ERC20 requests are rejected. Bank (USDT → MMK) payouts stay on the manual bank rail.
 
 ## Admin complete
 

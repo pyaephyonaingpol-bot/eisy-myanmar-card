@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta name="eisy-admin-assets" content="20261023nettsSweep" />
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>Eisymyanmar</title>
@@ -37,7 +38,7 @@
       -webkit-overflow-scrolling: touch !important;
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20260909pinKb" />
+  <link rel="stylesheet" href="/styles.css?v=20261011userDetailUx" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -146,6 +147,24 @@
       align-items: center;
       gap: 0.5rem;
       flex-wrap: wrap;
+      max-width: 100%;
+    }
+    .tron-auto-sweep-limit-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-left: 0.65rem;
+      font-size: inherit;
+      white-space: nowrap;
+    }
+    .js-tron-auto-sweep-limit {
+      width: 4.75rem;
+      padding: 0.2rem 0.35rem;
+      font-size: 0.85rem;
+      border-radius: 6px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(15, 23, 42, 0.65);
+      color: #e2e8f0;
     }
     .sa-card-eyebrow {
       margin: 0 0 0.25rem;
@@ -173,9 +192,249 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 0.85rem;
     }
+    .sa-balance-row.is-triple {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
     @media (max-width: 560px) {
       .sa-balance-row { grid-template-columns: 1fr; }
+      .sa-balance-row.is-triple { grid-template-columns: 1fr; }
     }
+    .admin-pago-section { margin-bottom: 2rem; }
+    .admin-pago-logs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    @media (max-width: 900px) {
+      .admin-pago-logs { grid-template-columns: 1fr; }
+    }
+    .admin-pago-log-card {
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      background: rgba(8, 14, 26, 0.45);
+      padding: 0.85rem 0.95rem 1rem;
+      min-height: 8rem;
+    }
+    .admin-pago-log-card h4 {
+      margin: 0 0 0.65rem;
+      font-size: 0.92rem;
+      font-weight: 650;
+      color: #e2e8f0;
+    }
+
+    /* User detail modal */
+    #userDetailModal.proof-lightbox {
+      padding: clamp(0.5rem, 2vw, 1.25rem);
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+    #userDetailModal .user-detail-modal-inner {
+      align-items: stretch;
+      width: min(920px, 100%);
+      max-width: 100%;
+      height: min(90vh, 900px);
+      max-height: min(90dvh, 900px);
+      display: flex;
+      flex-direction: column;
+      padding: 1rem 1rem 1.1rem;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    #userDetailModal .proof-lightbox-close {
+      top: 0.35rem;
+      right: 0.35rem;
+    }
+    .user-detail-chrome {
+      flex-shrink: 0;
+      min-width: 0;
+    }
+    .user-detail-scroll-body {
+      flex: 1;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      touch-action: pan-y;
+      padding-right: 0.15rem;
+    }
+    .user-detail-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 0.65rem;
+      padding-right: 2.25rem;
+    }
+    .user-detail-title {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 650;
+      color: #f8fafc;
+    }
+    .user-detail-sub {
+      margin: 0.25rem 0 0;
+      font-size: 0.88rem;
+      color: #94a3b8;
+    }
+    .user-detail-tabs-scroll,
+    .user-detail-finance-tabs-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+      margin: 0 -0.15rem 0.75rem;
+      padding: 0 0.15rem 0.55rem;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+      scrollbar-width: none;
+    }
+    .user-detail-tabs-scroll::-webkit-scrollbar,
+    .user-detail-finance-tabs-scroll::-webkit-scrollbar {
+      display: none;
+    }
+    .user-detail-tabs,
+    .user-detail-finance-tabs {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 0.35rem;
+      width: max-content;
+      min-width: 100%;
+    }
+    .user-detail-tab,
+    .user-detail-finance-tab {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .user-detail-tab {
+      appearance: none;
+      border: 1px solid transparent;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .user-detail-tab-label--short { display: none; }
+    @media (max-width: 520px) {
+      .user-detail-tab-label--long { display: none; }
+      .user-detail-tab-label--short { display: inline; }
+    }
+    .user-detail-tab.is-active {
+      color: #f8fafc;
+      background: rgba(59, 130, 246, 0.18);
+      border-color: rgba(96, 165, 250, 0.35);
+    }
+    .user-detail-panel {
+      min-width: 0;
+      max-width: 100%;
+    }
+    .user-detail-panel.hidden { display: none; }
+    .user-detail-table-scroll {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+      margin: 0 0 0.5rem;
+      padding-bottom: 0.15rem;
+    }
+    .user-detail-table-scroll .data-table {
+      width: max-content;
+      min-width: 100%;
+      font-size: 0.82rem;
+    }
+    .user-detail-table-scroll .data-table th,
+    .user-detail-table-scroll .data-table td {
+      padding: 0.45rem 0.55rem;
+    }
+    @media (max-width: 640px) {
+      #userDetailModal.proof-lightbox {
+        padding: 0;
+        align-items: stretch;
+      }
+      #userDetailModal .user-detail-modal-inner {
+        width: 100%;
+        max-width: 100%;
+        height: 100%;
+        max-height: none;
+        min-height: 100dvh;
+        border-radius: 0;
+        padding: max(0.85rem, env(safe-area-inset-top)) max(0.85rem, env(safe-area-inset-right)) max(0.85rem, env(safe-area-inset-bottom)) max(0.85rem, env(safe-area-inset-left));
+      }
+    }
+    .user-detail-kv {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.65rem 1rem;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 640px) {
+      .user-detail-kv { grid-template-columns: 1fr; }
+    }
+    .user-detail-kv dt {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      margin: 0 0 0.15rem;
+    }
+    .user-detail-kv dd {
+      margin: 0;
+      font-size: 0.92rem;
+      color: #e2e8f0;
+      font-variant-numeric: tabular-nums;
+    }
+    .user-detail-finance-tab {
+      appearance: none;
+      border-radius: 0.5rem;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(15, 23, 42, 0.55);
+      color: #cbd5e1;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.3rem 0.65rem;
+      cursor: pointer;
+    }
+    .user-detail-finance-tab.is-active {
+      border-color: rgba(45, 212, 191, 0.45);
+      color: #99f6e4;
+    }
+    .user-detail-support-thread {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      max-height: 12rem;
+      overflow: auto;
+      margin-bottom: 0.75rem;
+      padding: 0.65rem;
+      border-radius: 0.65rem;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: rgba(8, 14, 26, 0.45);
+    }
+    .user-detail-msg {
+      font-size: 0.85rem;
+      line-height: 1.45;
+      padding: 0.45rem 0.6rem;
+      border-radius: 0.55rem;
+      max-width: 92%;
+    }
+    .user-detail-msg.is-admin {
+      align-self: flex-end;
+      background: rgba(59, 130, 246, 0.22);
+      color: #dbeafe;
+    }
+    .user-detail-msg.is-user {
+      align-self: flex-start;
+      background: rgba(51, 65, 85, 0.55);
+      color: #e2e8f0;
+    }
+    .user-directory-row { cursor: pointer; }
+    .user-directory-row:hover td { background: rgba(59, 130, 246, 0.06); }
+    tr.user-directory-row td.actions-cell { cursor: default; }
     .sa-balance {
       padding: 1rem 1.05rem;
       border-radius: 12px;
@@ -461,6 +720,123 @@
       font-size: 0.85rem;
     }
     .revenue-period-chip strong { color: #4ade80; }
+    .net-revenue-panel {
+      margin-bottom: 1.5rem;
+    }
+    .net-revenue-periods {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.85rem;
+      margin: 0 0 0.9rem;
+    }
+    .net-revenue-period {
+      text-align: left;
+      cursor: pointer;
+      padding: 1rem 1.05rem 0.95rem;
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(15, 23, 42, 0.4));
+      color: inherit;
+      font: inherit;
+    }
+    .net-revenue-period.is-active {
+      border-color: rgba(74, 222, 128, 0.55);
+      box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.25);
+      background: linear-gradient(180deg, rgba(22, 101, 52, 0.28), rgba(15, 23, 42, 0.55));
+    }
+    .net-revenue-kicker {
+      display: block;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 0.35rem;
+    }
+    .net-revenue-period strong {
+      display: block;
+      font-size: 1.7rem;
+      line-height: 1.1;
+      color: #f8fafc;
+    }
+    .net-revenue-sub {
+      display: block;
+      margin-top: 0.35rem;
+      color: #94a3b8;
+      font-size: 0.8rem;
+    }
+    .net-revenue-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.85fr);
+      gap: 0.85rem;
+    }
+    .net-revenue-chart,
+    .net-revenue-sources {
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      background: rgba(8, 14, 26, 0.45);
+      padding: 1rem 1.05rem;
+    }
+    .net-revenue-chart h3,
+    .net-revenue-sources h3 {
+      margin: 0 0 0.75rem;
+      font-size: 0.95rem;
+    }
+    .net-revenue-stack {
+      display: flex;
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(148, 163, 184, 0.15);
+      margin-bottom: 0.9rem;
+    }
+    .net-revenue-stack span { display: block; height: 100%; }
+    .net-revenue-bar { margin-bottom: 0.75rem; }
+    .net-revenue-bar-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      font-size: 0.84rem;
+      margin-bottom: 0.3rem;
+      color: #e2e8f0;
+    }
+    .net-revenue-track {
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.14);
+      overflow: hidden;
+    }
+    .net-revenue-track span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+    }
+    .net-revenue-source {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.65rem 0;
+      border-top: 1px solid rgba(148, 163, 184, 0.12);
+    }
+    .net-revenue-source:first-of-type { border-top: 0; padding-top: 0; }
+    .net-revenue-source b { color: #f8fafc; }
+    .net-revenue-source small { display: block; color: #94a3b8; margin-top: 0.15rem; }
+    .net-revenue-swatch {
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 99px;
+      display: inline-block;
+      margin-right: 0.4rem;
+    }
+    .net-revenue-note {
+      margin: 0.85rem 0 0;
+      color: #94a3b8;
+      font-size: 0.78rem;
+    }
+    @media (max-width: 800px) {
+      .net-revenue-periods,
+      .net-revenue-layout { grid-template-columns: 1fr; }
+      .net-revenue-period strong { font-size: 1.45rem; }
+    }
     .deposit-receipt-meta {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -484,6 +860,55 @@
       width: 100%;
     }
     .actions-cell { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+    .users-directory-shell {
+      width: 100%;
+      max-width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: rgba(8, 14, 26, 0.35);
+    }
+    #usersTable.users-directory-scroll {
+      max-height: min(70vh, 720px);
+      overflow: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-x pan-y;
+    }
+    .user-identity { display: inline-block; white-space: nowrap; line-height: 1.4; max-width: 100%; }
+    #usersTable .data-table {
+      width: max-content;
+      min-width: 100%;
+      table-layout: auto;
+    }
+    #usersTable .user-id-cell,
+    #usersTable .user-name-cell,
+    #usersTable .user-email-cell { vertical-align: top; }
+    #usersTable .user-id-cell,
+    #usersTable .user-name-cell { white-space: nowrap; }
+    #usersTable .user-email-cell {
+      white-space: normal;
+      word-break: break-word;
+      max-width: 14rem;
+    }
+    #usersTable .actions-cell {
+      min-width: 11.5rem;
+      align-content: flex-start;
+    }
+    @media (max-width: 900px) {
+      #usersTable .user-email-cell { max-width: 10rem; font-size: 0.82rem; }
+      #usersTable .actions-cell .btn { font-size: 0.72rem; padding: 0.28rem 0.45rem; }
+    }
+    #usersTable .user-auth-id {
+      display: block;
+      margin-top: 0.2rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.68rem;
+      line-height: 1.35;
+      color: #94a3b8;
+      font-weight: 500;
+    }
+    #usersPageLabel { align-self: center; }
   </style>
 </head>
 <body>
@@ -566,48 +991,44 @@
       <aside class="app-sidebar" id="adminSidebar" aria-label="Admin navigation">
         <div class="sidebar-brand">
           <div class="sidebar-brand-title">Eisymyanmar</div>
-          <div class="sidebar-brand-sub">Control · Payouts · Support</div>
-          <div id="adminPipelineSwitcher" class="admin-pipeline-switcher" aria-label="Admin pipeline"></div>
+          <div class="sidebar-brand-sub">Admin Control</div>
+          <div id="adminPipelineSwitcher" class="admin-pipeline-switcher hidden" aria-hidden="true"></div>
         </div>
 
         <nav class="sidebar-nav admin-sidebar-nav" aria-label="Admin sections">
-          <button type="button" class="nav-item" data-page="overview" data-admin-perm="overview" data-admin-pipeline="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-            <span>Overview</span>
+          <button type="button" class="nav-item" data-page="overview" data-admin-perm="master_wallet">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+            <span>Master Wallet</span>
           </button>
-          <button type="button" class="nav-item active" data-page="deposits" data-admin-perm="deposits" data-admin-pipeline="instant" aria-current="page">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            <span data-i18n="nav_admin_deposits">Deposits</span>
-          </button>
-          <button type="button" class="nav-item" data-page="mmk-withdrawals" data-admin-perm="withdrawals" data-admin-pipeline="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 10h18M7 15h1M12 15h1M17 15h1"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
-            <span>MMK Withdrawals</span>
-          </button>
-          <button type="button" class="nav-item" data-page="users" data-admin-perm="users" data-admin-pipeline="shared">
+          <button type="button" class="nav-item active" data-page="users" data-admin-perm="users" aria-current="page">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             <span data-i18n="nav_admin_users">Users</span>
           </button>
-          <button type="button" class="nav-item" data-page="transactions" data-admin-perm="transactions" data-admin-pipeline="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
-            <span data-i18n="nav_admin_transactions">Transactions</span>
+          <button type="button" class="nav-item" data-page="deposits" data-admin-perm="deposits">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span>Deposits &amp; KYC</span>
           </button>
-          <button type="button" class="nav-item" data-page="revenue" data-admin-perm="revenue" data-admin-pipeline="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-6 6"/><path d="M14 9h4v4"/></svg>
-            <span data-i18n="nav_admin_revenue">Revenue &amp; Profit</span>
+          <button type="button" class="nav-item" data-page="mmk-withdrawals" data-admin-perm="withdrawals">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            <span>Withdrawals</span>
           </button>
-          <button type="button" class="nav-item" data-page="support" data-admin-perm="support" data-admin-pipeline="shared">
+          <button type="button" class="nav-item" data-page="support" data-admin-perm="support">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <span data-i18n="nav_admin_support">Support</span>
+            <span>Support</span>
           </button>
-          <button type="button" class="nav-item" data-page="kyc-requests" data-admin-perm="kyc" data-admin-pipeline="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            <span data-i18n="nav_admin_kyc">KYC Requests</span>
+          <button type="button" class="nav-item" data-page="revenue" data-admin-perm="revenue">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+            <span data-i18n="nav_admin_revenue">Revenue</span>
           </button>
-          <button type="button" class="nav-item" data-page="settings" data-admin-perm="settings_read" data-admin-pipeline="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 5 5-9"/></svg>
-            <span data-i18n="nav_admin_settings">Rates &amp; Fees</span>
+          <button type="button" class="nav-item" data-page="cards" data-admin-perm="cards">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+            <span>Virtual Cards</span>
           </button>
-          <button type="button" class="nav-item" data-page="admins" data-admin-perm="manage_admins" data-admin-pipeline="shared">
+          <button type="button" class="nav-item" data-page="settings" data-admin-perm="settings_read">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+            <span data-i18n="nav_admin_settings">Settings</span>
+          </button>
+          <button type="button" class="nav-item" data-page="admins" data-admin-perm="manage_admins">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
             <span>Admins</span>
           </button>
@@ -632,8 +1053,8 @@
             <div style="display:flex;align-items:center;gap:0.75rem">
               <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Open menu" aria-expanded="false" aria-controls="adminSidebar">☰</button>
               <div>
-                <h1 class="page-heading">Admin</h1>
-                <p class="subtitle" data-i18n="header_admin_panel">Admin control panel</p>
+                <h1 class="page-heading">Users</h1>
+                <p class="subtitle">Users · Deposits · USDT Withdrawals · Support · Virtual Cards</p>
               </div>
             </div>
             <div class="header-actions">
@@ -651,18 +1072,17 @@
         </header>
 
         <main class="app-content">
-          <div id="adminPipelineHub" class="panel portal-hub-chooser hidden" data-admin-pipeline="hub"></div>
-          <span class="hidden" data-page-title="overview" data-admin-pipeline="instant">Overview</span>
-          <span class="hidden" data-page-title="deposits" data-admin-pipeline="instant" data-i18n="nav_admin_deposits">Deposits</span>
-          <span class="hidden" data-page-title="mmk-withdrawals" data-admin-pipeline="instant">MMK Bank Withdrawals</span>
-          <span class="hidden" data-page-title="cards" data-admin-pipeline="shared" data-i18n="nav_admin_cards">Cards</span>
-          <span class="hidden" data-page-title="users" data-admin-pipeline="shared" data-i18n="nav_admin_users">Users</span>
-          <span class="hidden" data-page-title="transactions" data-admin-pipeline="instant" data-i18n="nav_admin_transactions">Transactions</span>
-          <span class="hidden" data-page-title="revenue" data-admin-pipeline="instant" data-i18n="nav_admin_revenue">Revenue &amp; Profit</span>
-          <span class="hidden" data-page-title="support" data-admin-pipeline="shared" data-i18n="nav_admin_support">Support</span>
-          <span class="hidden" data-page-title="kyc-requests" data-admin-pipeline="instant" data-i18n="nav_admin_kyc">KYC Requests</span>
-          <span class="hidden" data-page-title="settings" data-admin-pipeline="instant" data-i18n="nav_admin_settings">Rates &amp; Fees</span>
-          <span class="hidden" data-page-title="admins" data-admin-pipeline="shared">Admins</span>
+          <div id="adminPipelineHub" class="panel portal-hub-chooser hidden" aria-hidden="true"></div>
+          <span class="hidden" data-page-title="users">Users</span>
+          <span class="hidden" data-page-title="deposits">Deposits &amp; KYC Approvals</span>
+          <span class="hidden" data-page-title="mmk-withdrawals">USDT Withdrawals</span>
+          <span class="hidden" data-page-title="support">Support</span>
+          <span class="hidden" data-page-title="cards">Virtual Cards</span>
+          <span class="hidden" data-page-title="settings">Settings</span>
+          <span class="hidden" data-page-title="admins">Admins</span>
+          <span class="hidden" data-page-title="overview">Master Wallet</span>
+          <span class="hidden" data-page-title="revenue">Revenue</span>
+          <span class="hidden" data-page-title="kyc-requests">KYC Requests</span>
 
       <section id="tabOverview" class="panel app-page" data-page="overview" data-admin-pipeline="instant">
         <div class="sa-overview">
@@ -682,8 +1102,14 @@
                 <button type="button" id="btnRefreshMasterWalletStatus" class="btn btn-secondary btn-sm" data-master-wallet-refresh>
                   Refresh
                 </button>
-                <button type="button" id="btnSweepDepositsOverview" class="btn btn-primary btn-sm" data-tron-deposit-sweep title="Sweep HD deposit USDT to master (min threshold applies)">
-                  Sweep
+                <button type="button" id="btnScanDepositsOverview" class="btn btn-secondary btn-sm" data-tron-deposit-scan title="Scan TronGrid and credit confirmed USDT deposits to user wallets (manual)">
+                  Trigger Deposit Credit Scan
+                </button>
+                <button type="button" id="btnAutoSweepOverview" class="btn btn-primary btn-sm" data-tron-auto-sweep data-default-label="Auto-sweep (Netts)" title="Rent Netts energy and sweep USDT from HD deposit addresses to the master wallet">
+                  Auto-sweep (Netts)
+                </button>
+                <button type="button" id="btnAutoSweepDryRunOverview" class="btn btn-secondary btn-sm" data-tron-auto-sweep-dry-run data-default-label="Dry-run sweep" title="Simulate sweep — no on-chain transactions">
+                  Dry-run sweep
                 </button>
               </div>
             </div>
@@ -691,9 +1117,18 @@
             <div id="masterWalletStatusBalance" aria-live="polite">
               <p class="hint" style="margin:0">Loading balances…</p>
             </div>
-            <p class="hint" id="masterWalletSweepHint" style="margin:0.85rem 0 0">
-              Manual sweep moves USDT from user HD deposit addresses to the master wallet when balance ≥ <strong id="masterWalletSweepMinLabel">25</strong> USDT.
+            <p class="hint" id="masterWalletDepositHint" style="margin:0.85rem 0 0">
+              <strong>Trigger Deposit Credit Scan</strong> checks pending TRON orders and all custodial HD addresses on TronGrid, then credits user <code>balance_usdt</code> when transfers are confirmed (no on-chain sweep).
             </p>
+            <div id="masterWalletDepositScanStatus" class="hint" style="margin:0.35rem 0 0" aria-live="polite"></div>
+            <p class="hint" id="masterWalletSweepHint" style="margin:0.85rem 0 0">
+              <strong>Auto-sweep (Netts)</strong> rents energy via Netts, then moves on-chain USDT from HD deposit addresses into this master wallet when each address holds at least <strong id="masterWalletSweepMinLabel">25</strong> USDT. Use <strong>Dry-run sweep</strong> to test without broadcasting.
+              <label class="tron-auto-sweep-limit-label" for="tronAutoSweepLimitOverview">
+                Max addresses per run
+                <input type="number" id="tronAutoSweepLimitOverview" class="js-tron-auto-sweep-limit" min="1" max="2000" step="1" value="500" title="Maximum custodial HD deposit addresses to scan in one sweep run (server default 500)" />
+              </label>
+            </p>
+            <div id="masterWalletAutoSweepReadiness" class="hint" style="margin:0.45rem 0 0" aria-live="polite"></div>
             <div id="masterWalletSweepStatus" class="hint" style="margin:0.5rem 0 0" aria-live="polite"></div>
           </div>
 
@@ -702,7 +1137,7 @@
               <div>
                 <p class="sa-card-eyebrow">Payout pricing</p>
                 <h2 class="sa-card-title">Withdrawal rates &amp; fees</h2>
-                <p class="sa-card-sub">Configured under Rates &amp; Fees — Withdraw MMK Rate and USDT Withdrawal Fee</p>
+                <p class="sa-card-sub">Configured under Rates &amp; Fees — card fees and USDT withdrawal fee</p>
               </div>
             </div>
             <div class="sa-preview" style="margin-top:0;padding-top:0;border-top:0">
@@ -718,124 +1153,181 @@
         </div>
       </section>
 
-      <section id="tabDeposits" class="panel app-page is-active" data-page="deposits" data-admin-pipeline="instant">
-        <h2 data-i18n="wallet_deposit_requests">Wallet Deposit Requests</h2>
+      <section id="tabDeposits" class="panel app-page" data-page="deposits">
+        <h2>Deposits &amp; KYC Approvals</h2>
+        <p class="hint" style="margin-bottom:0.85rem">Approve wallet deposits and review KYC identity documents in one place.</p>
+
+        <h3 style="margin-top:0.35rem;font-size:1rem">KYC Verification Requests</h3>
+        <p class="hint" style="margin-bottom:0.75rem">Review NRC and Passport photos for identity verification. Approve or reject with a reason. Virtual card issuance does not require this queue.</p>
+        <div class="p2p-market-toolbar" style="margin-bottom:1rem">
+          <label for="kycStatusFilter">Status</label>
+          <select id="kycStatusFilter" class="p2p-network-select">
+            <option value="PENDING_REVIEW">Pending Review</option>
+            <option value="VERIFIED">Verified</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="all">All</option>
+          </select>
+          <button type="button" id="btnRefreshKycRequests" class="btn btn-secondary btn-sm">Refresh</button>
+        </div>
+        <div id="kycRequestsTable" class="data-table-wrap"><p class="hint">Loading KYC requests…</p></div>
+
+        <h3 style="margin-top:1.75rem;font-size:1rem" data-i18n="wallet_deposit_requests">Wallet Deposit Requests</h3>
         <div class="admin-toolbar">
-          <select id="depositFilter">
-            <option value="all" selected data-i18n="all_statuses">All statuses</option>
-            <option value="pending" data-i18n="pending_review">Pending review</option>
-            <option value="VERIFIED" data-i18n="verified">Verified</option>
-            <option value="REJECTED" data-i18n="rejected">Rejected</option>
+          <select id="depositFilter" aria-label="Filter deposits by status">
+            <option value="all" selected>All</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
           </select>
         </div>
         <div id="depositsTable" class="data-table-wrap"><p class="hint" data-i18n="loading_deposits">Loading deposits…</p></div>
 
-        <h2 style="margin-top:2rem" data-i18n="p2p_disputes">P2P Disputes — Needs Review</h2>
-        <p class="hint" style="margin-bottom:0.75rem" data-i18n="p2p_disputes_hint">Users flagged orders with payment proof. Force-release USDT or refund escrow after review.</p>
-        <div id="p2pDisputesTable" class="data-table-wrap"><p class="hint" data-i18n="loading_disputes">Loading disputes…</p></div>
+      </section>
 
-        <h2 style="margin-top:2rem">P2P Buy Orders — Pending Seller Release</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Buyers paid MMK to sellers externally. Admin can force-release USDT to the buyer or reject the order.</p>
-        <div id="p2pBuyOrdersTable" class="data-table-wrap"><p class="hint">Loading P2P buy orders…</p></div>
+      <section id="tabMmkWithdrawals" class="panel app-page" data-page="mmk-withdrawals" data-admin-perm="withdrawals" data-admin-pipeline="instant">
+        <h2>USDT Withdrawals</h2>
+        <p class="hint" style="margin-bottom:1rem">Review TRC20 payout requests as <strong>Pending</strong>, <strong>Approved</strong>, or <strong>Rejected</strong>. On-chain sends run automatically when withdrawals are unpaused and master wallet security checks pass.</p>
 
-        <h2 style="margin-top:2rem">P2P Sell Orders — USDT Escrowed</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Sellers escrowed USDT. Buyer sends MMK externally. Seller confirms MMK receipt and releases escrow — admin can reject and refund escrow.</p>
-        <div id="p2pSellOrdersTable" class="data-table-wrap"><p class="hint">Loading P2P sell orders…</p></div>
-
-        <h2 style="margin-top:2rem">USDT Withdrawals — Crypto &amp; Bank (USDT→MMK)</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Crypto payouts send USDT on-chain. <strong>Bank (USDT→MMK)</strong> rows show the MMK amount at the locked daily rate — send that MMK via the user's bank / KPay / WavePay account, then Complete. Reject refunds USDT to the user. TRC20 crypto auto-sends from the master wallet; BEP20 remains manual.</p>
+        <h3 style="margin-top:0.35rem;font-size:1rem">TRC20 queue</h3>
+        <p class="hint" style="margin-bottom:0.75rem">Payouts send USDT on TRON (TRC20). Refresh master wallet balances before approving large batches.</p>
         <div class="master-wallet-panel" id="masterWalletPanel" data-admin-perm="master_wallet">
           <div class="master-wallet-panel-header">
             <div>
               <strong>Master wallet</strong>
-              <p class="hint" style="margin:0.25rem 0 0">Full balances live on <strong>Overview</strong>. Refresh here before approving TRC20 payouts. Sweep pulls HD deposit USDT ≥ min threshold into master.</p>
+              <p class="hint" style="margin:0.25rem 0 0">Full balances live on <strong>Overview</strong>. Run <strong>Deposit Credit Scan</strong> to credit confirmed HD deposits, then <strong>Auto-sweep (Netts)</strong> to collect on-chain USDT to master.</p>
             </div>
             <div class="sa-card-actions">
               <button type="button" id="btnCheckMasterWallet" class="btn btn-secondary btn-sm" data-master-wallet-refresh>Refresh</button>
-              <button type="button" id="btnSweepDepositsPanel" class="btn btn-primary btn-sm" data-tron-deposit-sweep title="Sweep HD deposit USDT to master (min threshold applies)">Sweep</button>
+              <button type="button" id="btnScanDepositsPanel" class="btn btn-secondary btn-sm" data-tron-deposit-scan title="Scan TronGrid and credit confirmed USDT deposits to user wallets (manual)">Trigger Deposit Credit Scan</button>
+              <button type="button" id="btnAutoSweepPanel" class="btn btn-primary btn-sm" data-tron-auto-sweep data-default-label="Auto-sweep (Netts)" title="Rent Netts energy and sweep USDT to master">Auto-sweep (Netts)</button>
+              <button type="button" id="btnAutoSweepDryRunPanel" class="btn btn-secondary btn-sm" data-tron-auto-sweep-dry-run data-default-label="Dry-run sweep" title="Simulate sweep without broadcasting">Dry-run sweep</button>
             </div>
           </div>
           <div id="masterWalletBalance" class="master-wallet-balance" aria-live="polite">
             <p class="hint" style="margin:0">Loading…</p>
           </div>
+          <div id="masterWalletDepositScanStatusPanel" class="hint" style="margin:0.45rem 0 0" aria-live="polite"></div>
+          <p class="hint" style="margin:0.55rem 0 0">
+            <label class="tron-auto-sweep-limit-label" for="tronAutoSweepLimitPanel">
+              Max addresses per auto-sweep
+              <input type="number" id="tronAutoSweepLimitPanel" class="js-tron-auto-sweep-limit" min="1" max="2000" step="1" value="500" title="Maximum custodial HD addresses scanned per sweep (matches Overview control)" />
+            </label>
+          </p>
           <div id="masterWalletSweepStatusPanel" class="hint" style="margin:0.65rem 0 0" aria-live="polite"></div>
         </div>
 
         <div class="admin-toolbar">
-          <select id="usdtWithdrawalFilter">
-            <option value="all" selected>All statuses</option>
-            <option value="pending">Open</option>
-            <option value="processing">Processing</option>
-            <option value="completed">Resolved</option>
+          <label for="usdtWithdrawalFilter" class="hint" style="margin:0">Status</label>
+          <select id="usdtWithdrawalFilter" aria-label="Filter USDT withdrawals by status">
+            <option value="pending" selected>Pending</option>
+            <option value="completed">Approved</option>
             <option value="rejected">Rejected</option>
-            <option value="cancelled">Cancelled</option>
+            <option value="processing">Processing</option>
             <option value="open">Pending + Processing</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="all">All</option>
           </select>
         </div>
         <div id="usdtWithdrawalsTable" class="data-table-wrap"><p class="hint">Loading USDT withdrawals…</p></div>
-
-        <p class="hint" style="margin-top:1.5rem">
-          Manual <strong>MMK bank withdrawals</strong> are managed in the
-          <button type="button" class="btn btn-sm btn-secondary" data-nav-page="mmk-withdrawals">MMK Withdrawals</button>
-          tab — review pending requests, user/bank details, then approve or reject.
-        </p>
       </section>
 
-      <section id="tabMmkWithdrawals" class="panel app-page" data-page="mmk-withdrawals" data-admin-perm="withdrawals" data-admin-pipeline="instant">
-        <h2>MMK Bank Withdrawals</h2>
-        <p class="hint" style="margin-bottom:1rem">
-          Manual payout queue for all MMK bank transfers:
-          <strong>MMK wallet → bank</strong> (WM-*) and
-          <strong>USDT → MMK bank</strong> (WB-* from Sell USDT / Convert to MMK).
-          Review user and bank details, send the net MMK transfer offline, then
-          <strong>Approve</strong> (optionally attach a payment proof slip) or <strong>Reject</strong> to refund the user’s wallet.
-          MMK→USDT conversion is disabled platform-wide.
-        </p>
+      <section id="tabCards" class="panel app-page" data-page="cards">
+        <h2 id="adminCardsHeading">Virtual Cards</h2>
+        <p class="hint" id="adminCardsHint" style="margin-bottom:1rem">Review Pago virtual cards, pending requests, and reload approvals.</p>
 
-        <div id="mmkWithdrawalSummary" class="mmk-wd-summary" aria-live="polite">
-          <div class="mmk-wd-summary-item">
-            <span class="label">Pending</span>
-            <span class="value" id="mmkWdPendingCount">—</span>
+        <div class="admin-pago-section sa-card" id="adminPagoDashboard" data-admin-perm="cards">
+          <div class="sa-card-header">
+            <div>
+              <p class="sa-card-eyebrow">Pagocards Admin API</p>
+              <h3 class="sa-card-title" style="font-size:1.05rem">Platform wallets &amp; all issued cards</h3>
+              <p class="sa-card-sub">Live funding, Visa, and gift card balances plus cross-user card inventory from Pagocards.</p>
+            </div>
+            <div class="sa-card-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="adminPagoRefreshBtn">Refresh all</button>
+            </div>
           </div>
-          <div class="mmk-wd-summary-item">
-            <span class="label">Processing</span>
-            <span class="value" id="mmkWdProcessingCount">—</span>
+          <div id="adminPagoBalanceRow" class="sa-balance-row is-triple" aria-live="polite">
+            <p class="hint" style="margin:0;grid-column:1/-1">Loading Pagocards wallet balances…</p>
           </div>
-          <div class="mmk-wd-summary-item">
-            <span class="label">Open net payout</span>
-            <span class="value" id="mmkWdOpenNet">—</span>
+          <div class="admin-toolbar" style="margin:1.15rem 0 0.75rem">
+            <select id="adminPagoBrandFilter" aria-label="Filter by brand">
+              <option value="visa" selected>Visa</option>
+              <option value="mastercard">Mastercard</option>
+              <option value="all">All brands</option>
+            </select>
+            <input id="adminPagoEmailFilter" type="search" placeholder="Filter by user email" autocomplete="off" />
+            <select id="adminPagoPerPage" aria-label="Cards per page">
+              <option value="20" selected>20 per page</option>
+              <option value="50">50 per page</option>
+              <option value="100">100 per page</option>
+            </select>
+            <button type="button" class="btn btn-primary btn-sm" id="adminPagoCardsSearchBtn">Load cards</button>
           </div>
-          <div class="mmk-wd-summary-item">
-            <span class="label">Showing</span>
-            <span class="value" id="mmkWdShowingCount">—</span>
+          <div id="adminPagoCardsTable" class="data-table-wrap"><p class="hint">Load cards to view the Pagocards inventory.</p></div>
+          <p class="hint" id="adminPagoCardsMeta" style="margin:0.5rem 0 0"></p>
+          <div class="admin-pago-logs">
+            <div class="admin-pago-log-card">
+              <h4>Recent Pagocards deposits</h4>
+              <div id="adminPagoDepositsTable" class="data-table-wrap" style="max-height:16rem;overflow:auto"><p class="hint">Loading…</p></div>
+            </div>
+            <div class="admin-pago-log-card">
+              <h4>Recent Pagocards transactions</h4>
+              <div id="adminPagoTransactionsTable" class="data-table-wrap" style="max-height:16rem;overflow:auto"><p class="hint">Loading…</p></div>
+            </div>
           </div>
         </div>
 
-        <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:0.85rem">
-          <label for="mmkWithdrawalFilter" class="hint" style="margin:0">Status</label>
-          <select id="mmkWithdrawalFilter" aria-label="Filter MMK withdrawals by status">
-            <option value="open" selected>Pending + Processing (open)</option>
-            <option value="pending">Pending only</option>
-            <option value="processing">Processing only</option>
-            <option value="completed">Resolved</option>
-            <option value="rejected">Rejected</option>
-            <option value="cancelled">Cancelled</option>
-            <option value="all">All statuses</option>
-          </select>
-          <button type="button" id="mmkWithdrawalRefreshBtn" class="btn btn-secondary btn-sm">Refresh</button>
+        <h3 style="margin-top:0.5rem;font-size:1rem">Card Requests</h3>
+        <p class="hint" style="margin-bottom:0.65rem">Pending applications awaiting admin review.</p>
+        <div id="pendingCardsTable" class="data-table-wrap"><p class="hint">Loading card requests…</p></div>
+
+        <div id="adminInstantCardIssueBlock">
+          <h3 style="margin-top:1.5rem;font-size:1rem" id="issueCardFormTitle">Issue / Update Card</h3>
+          <p class="hint" style="margin-bottom:0.65rem">Manual card issue or update — click <strong>Edit</strong> in the issued table to pre-fill.</p>
+          <form id="issueCardAdminForm" class="form grid-admin-form">
+            <div class="field"><label for="acUserId">User ID</label><input id="acUserId" type="number" required /></div>
+            <div class="field"><label for="acCardId">Card ID</label><input id="acCardId" type="number" placeholder="Leave empty to issue new" /></div>
+            <div class="field"><label for="acCardNumber">Card Number</label><input id="acCardNumber" placeholder="4532 8765 4321 0987" required /></div>
+            <div class="field"><label for="acExp">Expiry (MM/YY)</label><input id="acExp" placeholder="12/28" required /></div>
+            <div class="field"><label for="acCvv">CVV</label><input id="acCvv" placeholder="456" required /></div>
+            <div class="field"><label for="acHolder">Holder Name</label><input id="acHolder" /></div>
+            <div class="field"><label for="acNotes">Admin Notes</label><input id="acNotes" placeholder="Optional internal note" /></div>
+            <div class="field" style="grid-column:1/-1;display:flex;gap:0.5rem;flex-wrap:wrap">
+              <button type="submit" class="btn btn-primary" id="issueCardAdminSubmit">Issue Card</button>
+              <button type="button" class="btn btn-secondary" id="issueCardAdminReset">Clear Form</button>
+            </div>
+          </form>
+          <pre class="output hidden" id="issueCardAdminOut" aria-hidden="true"></pre>
         </div>
-        <div id="mmkWithdrawalsTable" class="data-table-wrap"><p class="hint">Loading MMK bank withdrawals…</p></div>
+
+        <h3 style="margin-top:1.5rem;font-size:1rem">Issued Cards — Status Control</h3>
+        <p class="hint" style="margin-bottom:0.65rem">Update lifecycle status for issued virtual cards. Optional reason is shown to the user when suspended or frozen.</p>
+        <div id="issuedCardsTable" class="data-table-wrap"><p class="hint">Loading issued cards…</p></div>
+
+        <h3 style="margin-top:1.5rem;font-size:1rem">Card Reload Requests</h3>
+        <p class="hint" style="margin-bottom:0.65rem">Wallet funds were deducted when the user submitted — approve to credit the card or reject to refund.</p>
+        <div id="pendingReloadsTable" class="data-table-wrap"><p class="hint">Loading reload requests…</p></div>
       </section>
 
-      <section id="tabUsers" class="panel app-page" data-page="users" data-admin-pipeline="shared">
-        <h2 id="adminUsersHeading">Users &amp; Wallet Adjustments</h2>
-        <p class="hint" id="adminUsersHint" style="margin-bottom:0.75rem">Users hold a USDT wallet balance only. Use Adjust USDT for manual corrections.</p>
+      <section id="tabUsers" class="panel app-page is-active" data-page="users">
+        <h2 id="adminUsersHeading">Users</h2>
+        <p class="hint" id="adminUsersHint" style="margin-bottom:0.75rem">All registered users and Supabase wallets, newest first. Use the page size to scroll a shorter page or load everyone.</p>
         <div class="admin-toolbar" id="usersToolbar" style="margin-bottom:0.65rem">
           <input id="usersSearchInput" type="search" placeholder="Search name, email, or ID" autocomplete="off" />
           <select id="usersStatusFilter" aria-label="Filter by status">
             <option value="">All statuses</option>
             <option value="active">Active</option>
             <option value="blocked">Blocked</option>
+          </select>
+          <select id="usersSort" aria-label="Sort users">
+            <option value="created_at_desc" selected>Newest first</option>
+            <option value="created_at_asc">Oldest first</option>
+          </select>
+          <select id="usersPageSize" aria-label="Users per page">
+            <option value="25">25 / page</option>
+            <option value="50" selected>50 / page</option>
+            <option value="100">100 / page</option>
+            <option value="10000">All</option>
           </select>
           <button type="button" id="usersSearchBtn" class="btn btn-secondary btn-sm">Search</button>
           <button type="button" id="usersRefreshBtn" class="btn btn-secondary btn-sm">Refresh</button>
@@ -845,7 +1337,9 @@
         <p style="margin-bottom:0.75rem">
           <button type="button" id="usersBackfillWalletsBtn" class="btn btn-sm btn-secondary">Sync Supabase wallet mirrors</button>
         </p>
-        <div id="usersTable" class="data-table-wrap"><p class="hint">Loading users…</p></div>
+        <div class="users-directory-shell">
+          <div id="usersTable" class="data-table-wrap users-directory-scroll"><p class="hint">Loading users…</p></div>
+        </div>
         <div class="admin-toolbar" id="usersPager" style="margin-top:0.75rem;display:none">
           <button type="button" id="usersPrevBtn" class="btn btn-secondary btn-sm">Previous</button>
           <span id="usersPageLabel" class="hint"></span>
@@ -854,15 +1348,6 @@
         </div>
         <details style="margin-top:1rem">
           <summary class="hint">Legacy wallet adjustments (deprecated)</summary>
-          <form id="balanceAdjustForm" class="form" style="margin-top:0.75rem">
-            <h3 style="margin:0 0 0.75rem;font-size:0.95rem">Manual MMK Wallet Adjustment</h3>
-            <div class="field-row">
-              <div class="field"><label for="adjUserId">User ID</label><input id="adjUserId" type="number" /></div>
-              <div class="field"><label for="adjAmountMmk">Amount MMK (+/-)</label><input id="adjAmountMmk" type="number" step="1" placeholder="50000" /></div>
-            </div>
-            <div class="field"><label for="adjReason">Reason / Note</label><input id="adjReason" placeholder="Legacy MMK correction" /></div>
-            <button type="submit" class="btn btn-secondary">Adjust MMK Wallet</button>
-          </form>
           <form id="balanceAdjustUsdForm" class="form" style="margin-top:0.75rem">
             <div class="field-row">
               <div class="field"><label for="adjUsdUserId">User ID</label><input id="adjUsdUserId" type="number" /></div>
@@ -876,13 +1361,12 @@
 
       <section id="tabTransactions" class="panel app-page" data-page="transactions" data-admin-pipeline="instant">
         <h2>Transaction History</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Transaction history for USDT deposits &amp; withdrawals (on-chain), automated USDT card issuance, card reloads, and MMK bank withdrawals. Use Daily CSV Export to download accounting reports.</p>
+        <p class="hint" style="margin-bottom:0.75rem">Transaction history for USDT deposits &amp; withdrawals (on-chain), automated USDT card issuance, and card reloads. Use Daily CSV Export to download accounting reports.</p>
         <div class="admin-tabs" id="txCategoryTabs" role="tablist">
           <button type="button" class="tab active" data-tx-category="usdt_deposit">USDT Deposits</button>
           <button type="button" class="tab" data-tx-category="usdt_withdrawal">USDT Withdrawals</button>
           <button type="button" class="tab" data-tx-category="card_issuance">Card Issuance</button>
           <button type="button" class="tab" data-tx-category="card_reload">Card Reloads</button>
-          <button type="button" class="tab" data-tx-category="mmk_withdrawal">MMK Withdrawals</button>
         </div>
         <div class="admin-toolbar" style="flex-wrap:wrap;gap:0.5rem;align-items:center">
           <input id="txUserFilter" type="number" placeholder="Filter by user ID" />
@@ -895,7 +1379,6 @@
             <option value="usdt_withdrawal">USDT Withdrawals</option>
             <option value="card_issuance">Card Issuance</option>
             <option value="card_reload">Card Reloads</option>
-            <option value="mmk_withdrawal">MMK Withdrawals</option>
           </select>
           <button type="button" id="txExportCsvBtn" class="btn btn-primary btn-sm">Download CSV</button>
         </div>
@@ -906,12 +1389,17 @@
       <section id="tabRevenue" class="panel app-page" data-page="revenue" data-admin-pipeline="instant">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem">
           <div>
-            <h2 style="margin:0">Revenue &amp; Profit Analytics</h2>
-            <p class="hint" style="margin:0.35rem 0 0">Separate profit tracking for P2P trading fees, card reload markup, and withdrawal fees.</p>
+            <h2 style="margin:0">Total Net Revenue</h2>
+            <p class="hint" style="margin:0.35rem 0 0">Tron deposit fees, withdrawal fees, card issuing profit, and card top-up markup from transaction records.</p>
           </div>
           <button type="button" id="btnRefreshRevenue" class="btn btn-secondary btn-sm">Refresh</button>
         </div>
 
+        <div id="netRevenuePanel" class="net-revenue-panel">
+          <p class="hint">Loading total net revenue…</p>
+        </div>
+
+        <h3 style="margin:0.25rem 0 0.75rem;font-size:1rem">Fee ledger</h3>
         <div id="revenueMetricsGrid" class="revenue-metrics-grid">
           <p class="hint">Loading revenue metrics…</p>
         </div>
@@ -933,14 +1421,13 @@
       <section id="tabSupport" class="panel app-page" data-page="support" data-admin-pipeline="shared">
         <h2>Support Task Management</h2>
         <p class="hint" style="margin-bottom:0.75rem">
-          Focus queues for <strong>MMK Payouts</strong> and <strong>Card Issuing Issues</strong>.
-          High-priority tasks also alert live via Supabase Realtime.
+          Click a ticket in the queue to open the chat. Reply in the popup and set the status to Open, In Progress, or Closed.
+          Focus queues for <strong>Card Issuing Issues</strong>, deposits, and account help.
         </p>
         <div class="p2p-market-toolbar support-task-toolbar" style="margin-bottom:1rem">
           <label for="supportCategoryFilter">Category</label>
           <select id="supportCategoryFilter" class="p2p-network-select">
             <option value="all">All</option>
-            <option value="mmk_payouts">MMK Payouts</option>
             <option value="card_issuing">Card Issuing Issues</option>
             <option value="general">General</option>
             <option value="deposit">Deposit</option>
@@ -959,89 +1446,85 @@
             <option value="all">All</option>
             <option value="pending">Open</option>
             <option value="in_progress">In Progress</option>
-            <option value="completed">Resolved</option>
+            <option value="completed">Closed</option>
             <option value="failed">Failed</option>
           </select>
           <button type="button" id="btnRefreshSupportTasks" class="btn btn-secondary btn-sm">Refresh</button>
         </div>
         <div id="supportUrgentToast" class="support-urgent-toast hidden" role="status" aria-live="assertive"></div>
-        <div class="grid-2">
-          <div>
-            <h3 style="font-size:1rem;margin-bottom:0.65rem">Task Queue</h3>
-            <div id="supportThreadsList" class="thread-list"><p class="hint">Loading…</p></div>
+        <div class="support-queue">
+          <h3 style="font-size:1rem;margin-bottom:0.65rem">Task Queue</h3>
+          <div id="supportThreadsList" class="thread-list"><p class="hint">Loading…</p></div>
+        </div>
+      </section>
+
+      <div id="supportTicketModal" class="proof-lightbox hidden" role="dialog" aria-modal="true" aria-labelledby="supportThreadTitle" aria-hidden="true">
+        <div class="proof-lightbox-backdrop" id="supportTicketModalBackdrop"></div>
+        <div class="proof-lightbox-inner kyc-doc-viewer-inner support-ticket-modal">
+          <button type="button" id="supportTicketModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+          <p class="support-ticket-kicker">Support ticket</p>
+          <h3 id="supportThreadTitle" class="kyc-doc-viewer-title">Select a task</h3>
+          <p id="supportTicketSubtitle" class="hint support-ticket-subtitle"></p>
+          <div class="support-status-actions" role="group" aria-label="Ticket status">
+            <button type="button" class="support-status-btn" data-support-status="pending">Open</button>
+            <button type="button" class="support-status-btn" data-support-status="in_progress">In Progress</button>
+            <button type="button" class="support-status-btn" data-support-status="completed">Closed</button>
           </div>
-          <div>
-            <h3 id="supportThreadTitle" style="font-size:1rem;margin-bottom:0.65rem">Select a task</h3>
-            <div id="supportTaskMeta" class="support-task-meta hidden">
-              <div class="field">
-                <label for="supportTaskCategory">Category</label>
-                <select id="supportTaskCategory">
-                  <option value="mmk_payouts">MMK Payouts</option>
-                  <option value="card_issuing">Card Issuing Issues</option>
-                  <option value="general">General</option>
-                  <option value="deposit">Deposit</option>
-                  <option value="account">Account</option>
-                  <option value="technical">Technical</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="supportTaskPriority">Priority</label>
-                <select id="supportTaskPriority">
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="supportTaskStatus">Status</label>
-                <select id="supportTaskStatus">
-                  <option value="pending">Open</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Resolved</option>
-                  <option value="failed">Failed</option>
-                </select>
-              </div>
-              <button type="button" id="supportSaveTaskMetaBtn" class="btn btn-secondary btn-sm">Save Task</button>
+          <div id="supportTaskMeta" class="support-task-meta hidden">
+            <div class="field">
+              <label for="supportTaskCategory">Category</label>
+              <select id="supportTaskCategory">
+                <option value="card_issuing">Card Issuing Issues</option>
+                <option value="general">General</option>
+                <option value="deposit">Deposit</option>
+                <option value="account">Account</option>
+                <option value="technical">Technical</option>
+              </select>
             </div>
-            <div id="supportMessages" class="support-messages"></div>
-            <form id="supportReplyForm" class="form hidden">
-              <div class="field"><label for="supportReplyText">Reply</label><textarea id="supportReplyText" rows="3"></textarea></div>
-              <button type="submit" class="btn btn-primary">Send Reply</button>
-              <button type="button" id="supportCloseBtn" class="btn btn-secondary">Mark Resolved</button>
-            </form>
+            <div class="field">
+              <label for="supportTaskPriority">Priority</label>
+              <select id="supportTaskPriority">
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="supportTaskStatus">Status</label>
+              <select id="supportTaskStatus">
+                <option value="pending">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Closed</option>
+                <option value="failed">Failed</option>
+              </select>
+            </div>
+            <button type="button" id="supportSaveTaskMetaBtn" class="btn btn-secondary btn-sm">Save Task</button>
           </div>
+          <div id="supportMessages" class="support-messages" aria-live="polite"></div>
+          <form id="supportReplyForm" class="form support-compose hidden">
+            <div class="field"><label for="supportReplyText">Reply</label><textarea id="supportReplyText" rows="3" placeholder="Write a reply to the user"></textarea></div>
+            <div class="support-reply-actions">
+              <button type="submit" class="btn btn-primary">Send Reply</button>
+              <button type="button" id="supportCloseBtn" class="btn btn-secondary">Mark Closed</button>
+            </div>
+          </form>
         </div>
+      </div>
+
+      <section id="tabKycRequests" class="panel app-page hidden" data-page="kyc-requests" aria-hidden="true" hidden>
+        <p class="hint">KYC approvals live under Deposits &amp; KYC.</p>
       </section>
 
-      <section id="tabKycRequests" class="panel app-page" data-page="kyc-requests" data-admin-pipeline="instant">
-        <h2>KYC Verification Requests</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Review user identity documents for P2P trading and verified banking features.</p>
-        <div class="p2p-market-toolbar" style="margin-bottom:1rem">
-          <label for="kycStatusFilter">Status</label>
-          <select id="kycStatusFilter" class="p2p-network-select">
-            <option value="PENDING_REVIEW">Pending Review</option>
-            <option value="VERIFIED">Verified</option>
-            <option value="REJECTED">Rejected</option>
-            <option value="all">All</option>
-          </select>
-          <button type="button" id="btnRefreshKycRequests" class="btn btn-secondary btn-sm">Refresh</button>
-        </div>
-        <div id="kycRequestsTable" class="data-table-wrap"><p class="hint">Loading KYC requests…</p></div>
-      </section>
-
-      <section id="tabSettings" class="panel app-page" data-page="settings" data-admin-pipeline="instant">
-        <h2>System Ledger Summary</h2>
-        <p class="hint" style="margin-bottom:0.75rem">Aggregate balances across all user wallets and P2P escrow.</p>
+      <section id="tabSettings" class="panel app-page" data-page="settings">
+        <h2>Settings</h2>
+        <p class="hint" style="margin-bottom:0.75rem">Rates, fees, and system ledger controls.</p>
+        <h3 style="margin-top:0.5rem;font-size:1rem">System Ledger Summary</h3>
+        <p class="hint" style="margin-bottom:0.75rem">Aggregate USDT across user wallets, platform revenue, and escrow holds (card top-ups and security locks).</p>
         <div id="adminLedgerSummary" class="ledger-summary-grid">
           <div class="ledger-summary-card usdt">
             <div class="ledger-summary-label">Total USDT Ledger</div>
             <div class="ledger-summary-value" id="ledgerTotalUsdt">—</div>
             <p class="ledger-summary-sub" id="ledgerUsdtBreakdown">Available + escrow</p>
-          </div>
-          <div class="ledger-summary-card mmk">
-            <div class="ledger-summary-label">Total System MMK</div>
-            <div class="ledger-summary-value" id="ledgerTotalMmk">—</div>
-            <p class="ledger-summary-sub">Sum of all user MMK wallets</p>
           </div>
           <div class="ledger-summary-card revenue">
             <div class="ledger-summary-label">Platform USDT Revenue</div>
@@ -1052,39 +1535,18 @@
 
         <h2 style="margin-top:2rem">Rate &amp; Pricing</h2>
         <p class="hint" style="margin-bottom:1rem">
-          Five dedicated fee blocks for withdrawals, card issuance, card reloads, USDT deposits, and USDT withdrawals.
+          Fee blocks for virtual card issuance, card reloads, USDT deposits, and TRC20 withdrawals.
           Saves are logged to Exchange Rate History.
         </p>
         <form id="adminSettingsForm" class="form" style="max-width:min(920px,100%)">
+          <input type="hidden" id="settingExchangeRate" />
+          <input type="hidden" id="settingMinMmkWithdrawal" />
+          <input type="hidden" id="settingEffectiveDate" />
           <div class="pricing-blocks">
-            <section class="pricing-block" aria-labelledby="pricingBlockWithdrawMmkTitle">
-              <div class="pricing-block-header">
-                <h3 id="pricingBlockWithdrawMmkTitle" class="pricing-block-title">
-                  <span class="pricing-block-num">1</span>Withdraw MMK Rate
-                </h3>
-                <p class="pricing-block-desc">Daily exchange rate for USDT-to-MMK local bank withdrawals (1 USD = X MMK).</p>
-              </div>
-              <div class="sa-rates-form">
-                <div class="field">
-                  <label for="settingExchangeRate">1 USD = MMK</label>
-                  <input id="settingExchangeRate" type="number" step="1" min="1" required placeholder="4500" />
-                  <small class="hint">MMK paid per 1 USDT after withdrawal fee</small>
-                </div>
-                <div class="field">
-                  <label for="settingEffectiveDate">Effective date</label>
-                  <input id="settingEffectiveDate" type="date" required />
-                </div>
-                <div class="field">
-                  <label for="settingMinMmkWithdrawal">Min MMK withdrawal</label>
-                  <input id="settingMinMmkWithdrawal" type="number" step="1" min="1" required />
-                </div>
-              </div>
-            </section>
-
             <section class="pricing-block" aria-labelledby="pricingBlockCardIssueTitle">
               <div class="pricing-block-header">
                 <h3 id="pricingBlockCardIssueTitle" class="pricing-block-title">
-                  <span class="pricing-block-num">2</span>Card Issue Fee / Rate
+                  <span class="pricing-block-num">1</span>Card Issue Fee / Rate
                 </h3>
                 <p class="pricing-block-desc">Platform markup fee charged when issuing a new virtual card (kept as platform earnings).</p>
               </div>
@@ -1109,15 +1571,24 @@
             <section class="pricing-block" aria-labelledby="pricingBlockCardReloadTitle">
               <div class="pricing-block-header">
                 <h3 id="pricingBlockCardReloadTitle" class="pricing-block-title">
-                  <span class="pricing-block-num">3</span>Card Reload Fee (%)
+                  <span class="pricing-block-num">2</span>Card Reload Fee (%)
                 </h3>
-                <p class="pricing-block-desc">Percentage fee applied on top of each card reload amount.</p>
+                <p class="pricing-block-desc">Card reload fee = max(fixed + percent of top-up, minimum fee). Min USDT reload is the smallest top-up amount.</p>
               </div>
               <div class="sa-rates-form">
                 <div class="field">
+                  <label for="settingCardReloadFixed">Fixed fee (USD)</label>
+                  <input id="settingCardReloadFixed" type="number" step="0.01" min="0" required />
+                  <small class="hint">Added to the percentage. Use 0 for percent only.</small>
+                </div>
+                <div class="field">
                   <label for="settingReloadFeePercent">Reload fee (%)</label>
                   <input id="settingReloadFeePercent" type="number" step="0.01" min="0" max="50" required />
-                  <small class="hint">Charged as a percent of the top-up amount</small>
+                </div>
+                <div class="field">
+                  <label for="settingCardReloadMinFee">Minimum fee (USD)</label>
+                  <input id="settingCardReloadMinFee" type="number" step="0.01" min="0" required />
+                  <small class="hint">Fee = max(fixed + amount × %, this minimum)</small>
                 </div>
                 <div class="field">
                   <label for="settingMinUsdtReload">Min USDT reload</label>
@@ -1129,19 +1600,18 @@
             <section class="pricing-block" aria-labelledby="pricingBlockUsdtDepositTitle">
               <div class="pricing-block-header">
                 <h3 id="pricingBlockUsdtDepositTitle" class="pricing-block-title">
-                  <span class="pricing-block-num">4</span>USDT Deposit Fee / Rate
+                  <span class="pricing-block-num">3</span>USDT Deposit Fee / Rate
                 </h3>
-                <p class="pricing-block-desc">Service fee taken from user USDT deposits before net balance is credited.</p>
+                <p class="pricing-block-desc">Service fee taken from user USDT deposits before net balance is credited. Fee = fixed fee + (deposit × percent / 100).</p>
               </div>
               <div class="sa-rates-form">
                 <div class="field">
-                  <label for="settingDepositFeePercent">Deposit fee (%)</label>
-                  <input id="settingDepositFeePercent" type="number" step="0.01" min="0" max="20" required />
+                  <label for="settingDepositFeeFixed">Fixed fee (USDT)</label>
+                  <input id="settingDepositFeeFixed" type="number" step="0.01" min="0" required />
                 </div>
                 <div class="field">
-                  <label for="settingDepositFeeMinUsdt">Minimum fee (USDT)</label>
-                  <input id="settingDepositFeeMinUsdt" type="number" step="0.01" min="0" required />
-                  <small class="hint">Fee charged = max(percent of deposit, this minimum)</small>
+                  <label for="settingDepositFeePercent">Deposit fee (%)</label>
+                  <input id="settingDepositFeePercent" type="number" step="0.01" min="0" max="20" required />
                 </div>
                 <div class="field">
                   <label for="settingMinUsdtDeposit">Min USDT deposit</label>
@@ -1153,11 +1623,15 @@
             <section class="pricing-block" aria-labelledby="pricingBlockUsdtWithdrawTitle">
               <div class="pricing-block-header">
                 <h3 id="pricingBlockUsdtWithdrawTitle" class="pricing-block-title">
-                  <span class="pricing-block-num">5</span>USDT Withdrawal Fee
+                  <span class="pricing-block-num">4</span>USDT Withdrawal Fee
                 </h3>
-                <p class="pricing-block-desc">Withdrawal markup: 4% (3% network fee + 1% platform). Processed within 48 hours.</p>
+                <p class="pricing-block-desc">Withdrawal fee = max(fixed + percent of amount, minimum fee). Payouts are processed within 48 hours.</p>
               </div>
               <div class="sa-rates-form">
+                <div class="field">
+                  <label for="settingWithdrawFeeFixed">Fixed fee (USDT)</label>
+                  <input id="settingWithdrawFeeFixed" type="number" step="0.01" min="0" required />
+                </div>
                 <div class="field">
                   <label for="settingWithdrawFeePercent">Withdrawal fee (%)</label>
                   <input id="settingWithdrawFeePercent" type="number" step="0.01" min="0" max="20" required />
@@ -1165,7 +1639,7 @@
                 <div class="field">
                   <label for="settingWithdrawFeeMinUsdt">Minimum fee (USDT)</label>
                   <input id="settingWithdrawFeeMinUsdt" type="number" step="0.01" min="0" required />
-                  <small class="hint">Use 0 with percent mode for a flat 4% markup (3% network + 1% platform)</small>
+                  <small class="hint">Fee charged = max(fixed + percent of withdrawal, this minimum)</small>
                 </div>
                 <div class="field">
                   <label for="settingMinUsdtWithdrawal">Min USDT withdrawal</label>
@@ -1224,16 +1698,6 @@
     </div>
   </div>
 
-  <div id="p2pDisputeReviewModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="p2pDisputeReviewTitle" aria-modal="true">
-    <div class="proof-lightbox-backdrop p2p-dispute-review-backdrop"></div>
-    <div class="proof-lightbox-inner kyc-doc-viewer-inner" style="max-width:min(720px,100%)">
-      <button type="button" id="p2pDisputeReviewClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
-      <h3 id="p2pDisputeReviewTitle" class="kyc-doc-viewer-title">P2P Dispute Review</h3>
-      <div id="p2pDisputeReviewMeta" class="hint" style="margin-bottom:0.75rem"></div>
-      <div id="p2pDisputeReviewProofSections"></div>
-    </div>
-  </div>
-
   <div id="kycDocumentViewerModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="kycDocumentViewerTitle" aria-modal="true">
     <div class="proof-lightbox-backdrop kyc-doc-viewer-backdrop"></div>
     <div class="proof-lightbox-inner kyc-doc-viewer-inner">
@@ -1270,6 +1734,96 @@
         </div>
       </form>
       <pre class="output" id="balanceAdjustOut" style="width:100%;margin-top:0.85rem;text-align:left"></pre>
+    </div>
+  </div>
+
+  <div id="userDetailModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="userDetailModalTitle" aria-modal="true" aria-hidden="true">
+    <div class="proof-lightbox-backdrop user-detail-modal-backdrop"></div>
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner user-detail-modal-inner">
+      <button type="button" id="userDetailModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+      <div class="user-detail-chrome">
+        <div class="user-detail-head">
+          <div>
+            <h3 id="userDetailModalTitle" class="user-detail-title">User details</h3>
+            <p id="userDetailModalSubtitle" class="user-detail-sub">—</p>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="userDetailRefreshBtn">Refresh</button>
+        </div>
+        <div class="user-detail-tabs-scroll">
+          <div class="user-detail-tabs" role="tablist" aria-label="User detail sections">
+            <button type="button" class="user-detail-tab is-active" data-user-detail-tab="profile" role="tab" aria-selected="true">Profile</button>
+            <button type="button" class="user-detail-tab" data-user-detail-tab="finance" role="tab">
+              <span class="user-detail-tab-label user-detail-tab-label--long">Deposits &amp; withdrawals</span>
+              <span class="user-detail-tab-label user-detail-tab-label--short">Finance</span>
+            </button>
+            <button type="button" class="user-detail-tab" data-user-detail-tab="cards" role="tab">Cards</button>
+            <button type="button" class="user-detail-tab" data-user-detail-tab="transactions" role="tab">
+              <span class="user-detail-tab-label user-detail-tab-label--long">Card transactions</span>
+              <span class="user-detail-tab-label user-detail-tab-label--short">Transactions</span>
+            </button>
+            <button type="button" class="user-detail-tab" data-user-detail-tab="support" role="tab">Support</button>
+          </div>
+        </div>
+      </div>
+      <div class="user-detail-scroll-body">
+      <div class="user-detail-panel" id="userDetailPanelProfile" data-user-detail-panel="profile" role="tabpanel">
+        <dl class="user-detail-kv" id="userDetailProfileKv"></dl>
+      </div>
+      <div class="user-detail-panel hidden" id="userDetailPanelFinance" data-user-detail-panel="finance" role="tabpanel">
+        <div class="user-detail-finance-tabs-scroll">
+          <div class="user-detail-finance-tabs">
+            <button type="button" class="user-detail-finance-tab is-active" data-user-finance-kind="deposits">Deposits</button>
+            <button type="button" class="user-detail-finance-tab" data-user-finance-kind="usdt_withdrawals">USDT withdrawals</button>
+            <button type="button" class="user-detail-finance-tab" data-user-finance-kind="mmk_withdrawals">MMK withdrawals</button>
+          </div>
+        </div>
+        <div id="userDetailFinanceTable" class="data-table-wrap user-detail-table-scroll"><p class="hint">Loading…</p></div>
+        <div class="admin-toolbar" style="margin-top:0.65rem">
+          <button type="button" class="btn btn-secondary btn-sm" id="userDetailFinancePrev" disabled>Previous</button>
+          <span id="userDetailFinanceMeta" class="hint"></span>
+          <button type="button" class="btn btn-secondary btn-sm" id="userDetailFinanceNext" disabled>Next</button>
+        </div>
+      </div>
+      <div class="user-detail-panel hidden" id="userDetailPanelCards" data-user-detail-panel="cards" role="tabpanel">
+        <div id="userDetailCardsTable" class="data-table-wrap user-detail-table-scroll"><p class="hint">Loading…</p></div>
+      </div>
+      <div class="user-detail-panel hidden" id="userDetailPanelTransactions" data-user-detail-panel="transactions" role="tabpanel">
+        <div id="userDetailTxTable" class="data-table-wrap user-detail-table-scroll"><p class="hint">Loading…</p></div>
+        <div class="admin-toolbar" style="margin-top:0.65rem">
+          <button type="button" class="btn btn-secondary btn-sm" id="userDetailTxPrev" disabled>Previous</button>
+          <span id="userDetailTxMeta" class="hint"></span>
+          <button type="button" class="btn btn-secondary btn-sm" id="userDetailTxNext" disabled>Next</button>
+        </div>
+      </div>
+      <div class="user-detail-panel hidden" id="userDetailPanelSupport" data-user-detail-panel="support" role="tabpanel">
+        <label class="hint" for="userDetailSupportThreadSelect" style="display:block;margin-bottom:0.35rem">Conversation</label>
+        <select id="userDetailSupportThreadSelect" class="field" style="width:100%;margin-bottom:0.65rem"></select>
+        <div id="userDetailSupportMessages" class="user-detail-support-thread" aria-live="polite"></div>
+        <form id="userDetailSupportReplyForm" class="form">
+          <div class="field">
+            <label for="userDetailSupportReplyText">Reply to user</label>
+            <textarea id="userDetailSupportReplyText" rows="3" placeholder="Type your message…" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm" id="userDetailSupportSendBtn">Send reply</button>
+        </form>
+        <p id="userDetailSupportError" class="hint hidden" role="alert" style="color:#f87171"></p>
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="deleteUserModal" class="proof-lightbox hidden" role="dialog" aria-labelledby="deleteUserModalTitle" aria-modal="true" aria-hidden="true">
+    <div class="proof-lightbox-backdrop delete-user-modal-backdrop"></div>
+    <div class="proof-lightbox-inner kyc-doc-viewer-inner admin-form-modal-inner" style="max-width:min(440px,100%);width:96vw">
+      <button type="button" id="deleteUserModalClose" class="proof-lightbox-close" aria-label="Close">&times;</button>
+      <h3 id="deleteUserModalTitle" class="kyc-doc-viewer-title">Delete user</h3>
+      <p id="deleteUserPrompt" style="margin-bottom:0.75rem;text-align:left">Are you sure you want to delete this user?</p>
+      <p id="deleteUserMeta" class="hint" style="margin-bottom:1rem;text-align:left"></p>
+      <p id="deleteUserError" class="hint hidden" style="color:#fca5a5;margin-bottom:0.75rem;text-align:left"></p>
+      <div class="deposit-receipt-actions">
+        <button type="button" class="btn btn-sm delete-user-btn" id="deleteUserConfirmBtn">Yes</button>
+        <button type="button" id="deleteUserCancel" class="btn btn-secondary">No</button>
+      </div>
     </div>
   </div>
 
@@ -1371,8 +1925,10 @@
   <script src="/src/components/toast.js?v=20260817m2"></script>
   <script src="/src/components/index.js?v=20260817m2"></script>
   <script src="/viewport.js?v=20260909pinKb"></script>
-  <script src="/i18n.js?v=20260817m2"></script>
+  <script src="/i18n.js?v=20261008adminCleanup"></script>
   <script src="/nav.js?v=20260908sidebarOverlay"></script>
-  <script src="/admin.js?v=20261007eisymyanmar" defer></script>
+  <script defer src="/src/hooks/submitBusy.js?v=20260817m2"></script>
+  <script src="/admin.js?v=20261023nettsSweep-ce2160905f" defer></script>
+  <script src="/adminUserDetail.js?v=20261023nettsSweep-cdd07fec69" defer></script>
 </body>
 </html>

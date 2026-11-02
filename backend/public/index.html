@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta name="eisy-portal-assets" content="20261011p2pRoute" />
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>Eisymyanmar</title>
@@ -14,13 +15,14 @@
   <meta name="application-name" content="Eisy Myanmar" />
   <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/brand/logo-icon.png?v=20260907favicon" type="image/png" sizes="any" />
   <link rel="icon" href="/brand/logo-icon.png?v=20260907favicon" type="image/png" sizes="32x32" />
   <link rel="shortcut icon" href="/brand/logo-icon.png?v=20260907favicon" type="image/png" />
-  <link rel="apple-touch-icon" href="/brand/logo-icon.png?v=20260907favicon" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/brand/logo-icon.png?v=20260907favicon" />
-  <link rel="apple-touch-icon" sizes="192x192" href="/brand/logo-icon.png?v=20260907favicon" />
-  <link rel="apple-touch-icon" sizes="512x512" href="/brand/logo-icon.png?v=20260907favicon" />
+  <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/Icon-192.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="/icons/Icon-192.png" />
+  <link rel="apple-touch-icon" sizes="512x512" href="/icons/Icon-512.png" />
   <style id="eisy-mobile-scroll-critical">
     /* Strict critical unlock — Android Chrome / WebView / iOS first paint */
     html {
@@ -48,9 +50,24 @@
       -webkit-overflow-scrolling: touch !important;
       touch-action: pan-y !important;
     }
+    /* Pay + other modals must not flash as in-page blocks before styles.css loads */
+    .modal.hidden,
+    .modal[hidden],
+    #userPayModal:not(.is-open) {
+      display: none !important;
+    }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20260930hubSmmPlatforms" />
-  <link rel="stylesheet" href="/android-scroll-fix.css?v=20260909scrollSmooth" />
+  <style id="user-identity-display">
+    #pageProfile .summary-grid {
+      grid-template-columns: minmax(8.5rem, 0.9fr) minmax(15rem, 1.6fr) minmax(5.5rem, 0.55fr) minmax(8rem, 0.8fr);
+    }
+    #sumEmail { font-size: 1rem; line-height: 1.35; overflow-wrap: anywhere; }
+    @media (max-width: 900px) {
+      #pageProfile .summary-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+  <link rel="stylesheet" href="/styles.css?v=20261011p2pRoute-4b8560dfd2" />
+  <link rel="stylesheet" href="/android-scroll-fix.css?v=20261011supportMobile" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
     /* Always unlock document scroll on Android / touch / narrow viewports. */
@@ -71,7 +88,7 @@
           root.style.setProperty('position', 'static', 'important');
           document.addEventListener('DOMContentLoaded', function () {
             var b = document.body;
-            if (!b) return;
+            if (!b || root.classList.contains('support-chat-scroll-lock')) return;
             b.style.setProperty('height', 'auto', 'important');
             b.style.setProperty('min-height', '100%', 'important');
             b.style.setProperty('overflow-y', 'auto', 'important');
@@ -91,7 +108,18 @@
     (function () {
       try {
         var keys = (window.Eisy && window.Eisy.storageKeys) || {};
-        var raw = localStorage.getItem(keys.AUTH || 'eisy_auth');
+        var authKey = keys.AUTH || 'eisy_auth';
+        var raw = null;
+        try { raw = sessionStorage.getItem(authKey); } catch (_) {}
+        if (!raw) {
+          try {
+            raw = localStorage.getItem(authKey);
+            if (raw) {
+              sessionStorage.setItem(authKey, raw);
+              localStorage.removeItem(authKey);
+            }
+          } catch (_) {}
+        }
         if (!raw) return;
         var data = JSON.parse(raw);
         if (data && data.sessionToken) {
@@ -124,6 +152,26 @@
   <div id="authToast" class="auth-toast hidden" role="alert"></div>
   <div id="copyToast" class="copy-toast hidden" role="status" data-i18n="copied">Copied to clipboard!</div>
 
+  <div id="pwaIosInstallModal" class="modal hidden" role="dialog" aria-labelledby="pwaIosInstallModalTitle" aria-modal="true">
+    <div class="modal-box pwa-ios-install-modal">
+      <div class="modal-header-row pwa-ios-install-header">
+        <h3 id="pwaIosInstallModalTitle" data-i18n="pwa_install_ios_modal_title">Install Eisy on iPhone or iPad</h3>
+        <button type="button" id="pwaIosInstallModalClose" class="pwa-ios-install-close" data-i18n-aria="btn_close" aria-label="Close">×</button>
+      </div>
+      <div class="pwa-ios-install-body">
+        <p class="hint pwa-ios-install-lead" data-i18n="pwa_install_ios_modal_lead">Safari cannot show a one-tap install button. Add Eisy to your Home Screen like this:</p>
+        <ol class="pwa-ios-install-steps">
+          <li data-i18n="pwa_install_ios_step1">Tap the Share button at the bottom of Safari (square with an arrow pointing up).</li>
+          <li data-i18n="pwa_install_ios_step2">Scroll the menu and tap “Add to Home Screen”.</li>
+          <li data-i18n="pwa_install_ios_step3">Tap “Add” in the top-right corner.</li>
+          <li data-i18n="pwa_install_ios_step4">Open Eisy from your Home Screen — it works like a native app.</li>
+        </ol>
+        <p class="hint pwa-ios-install-note" data-i18n="pwa_install_ios_modal_note">Use Safari if you opened this page in another browser on iOS.</p>
+        <button type="button" class="btn btn-primary pwa-ios-install-ok" id="pwaIosInstallModalOk" data-i18n="btn_got_it">Got it</button>
+      </div>
+    </div>
+  </div>
+
   <div id="proofLightbox" class="proof-lightbox hidden" role="dialog" aria-label="Payment proof preview">
     <div class="proof-lightbox-backdrop"></div>
     <div class="proof-lightbox-inner">
@@ -135,6 +183,116 @@
   </div>
 
   <!-- ═══ RELOAD / TOP-UP CARD MODAL ═══ -->
+  <div id="pagoWalletModal" class="modal hidden" role="dialog" aria-labelledby="pagoWalletModalTitle" aria-modal="true">
+    <div class="modal-box pago-wallet-modal-box">
+      <div class="modal-header-row">
+        <h3 id="pagoWalletModalTitle">Add to Wallet</h3>
+        <button type="button" id="pagoWalletModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p id="pagoWalletModalLead" class="hint pago-wallet-modal-lead"></p>
+      <ol id="pagoWalletModalSteps" class="pago-wallet-steps"></ol>
+      <div id="pagoWalletFields" class="pago-wallet-fields">
+        <div class="pago-wallet-field">
+          <span class="pago-wallet-field-label" data-i18n="pago_reveal_number">Card number</span>
+          <code id="pagoWalletNumberValue" class="pago-wallet-field-value">—</code>
+          <button type="button" class="btn btn-secondary btn-sm" id="pagoWalletCopyNumberBtn" data-i18n="btn_copy">Copy</button>
+        </div>
+        <div class="pago-wallet-field">
+          <span class="pago-wallet-field-label" data-i18n="card_expiry">Expiry</span>
+          <code id="pagoWalletExpiryValue" class="pago-wallet-field-value">—</code>
+          <button type="button" class="btn btn-secondary btn-sm" id="pagoWalletCopyExpiryBtn" data-i18n="btn_copy">Copy</button>
+        </div>
+        <div class="pago-wallet-field">
+          <span class="pago-wallet-field-label" data-i18n="pago_reveal_cvv">CVV</span>
+          <code id="pagoWalletCvvValue" class="pago-wallet-field-value">—</code>
+          <button type="button" class="btn btn-secondary btn-sm" id="pagoWalletCopyCvvBtn" data-i18n="btn_copy">Copy</button>
+        </div>
+      </div>
+      <div class="pago-wallet-modal-actions">
+        <button type="button" class="btn btn-primary" id="pagoWalletCopyAllBtn" data-i18n="copy_all_details">Copy All Details</button>
+        <button type="button" class="btn btn-secondary" id="pagoWalletOpenAppBtn" data-i18n="pago_wallet_open_app">Open wallet app</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="pagoTopupModal" class="modal hidden" role="dialog" aria-labelledby="pagoTopupModalTitle" aria-modal="true">
+    <div class="modal-box pago-topup-modal-box">
+      <div class="modal-header-row">
+        <h3 id="pagoTopupModalTitle" data-i18n="pago_topup_heading">Top up this card</h3>
+        <button type="button" id="pagoTopupModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p class="hint pago-topup-lead" data-i18n="pago_topup_hint">Minimum $5. Your USDT wallet is charged the amount plus the card reload fee.</p>
+      <p id="pagoTopupCardLine" class="pago-topup-card-line">—</p>
+      <form id="pagoCardTopupForm" class="form pago-topup-form">
+        <div class="field">
+          <label for="pagoTopupAmount" data-i18n="topup_amount_usdt">Top-Up Amount (USDT)</label>
+          <input id="pagoTopupAmount" type="number" inputmode="decimal" min="5" step="0.01" placeholder="20.00" required />
+        </div>
+        <div class="pago-topup-quick" role="group" aria-label="Quick amounts">
+          <button type="button" data-pago-topup-quick="10">$10</button>
+          <button type="button" data-pago-topup-quick="20">$20</button>
+          <button type="button" data-pago-topup-quick="50">$50</button>
+          <button type="button" data-pago-topup-quick="100">$100</button>
+        </div>
+        <div class="reload-preview-box" id="pagoTopupPreview">
+          <div class="reload-preview-row"><span data-i18n="pago_topup_wallet">Wallet balance</span><strong id="pagoTopupWallet">—</strong></div>
+          <div class="reload-preview-row"><span data-i18n="pago_topup_to_card">Added to card</span><strong id="pagoTopupToCard">—</strong></div>
+          <div class="reload-preview-row"><span data-i18n="pago_topup_fee">Service fee</span><strong id="pagoTopupFee">—</strong></div>
+          <div class="reload-preview-row reload-preview-highlight"><span data-i18n="pago_topup_total">Deducted from wallet</span><strong id="pagoTopupTotal">—</strong></div>
+        </div>
+        <p id="pagoTopupError" class="hint hidden" role="alert"></p>
+        <div class="pago-wallet-modal-actions">
+          <button type="submit" class="btn btn-primary" id="pagoCardTopupSubmit" data-i18n="pago_topup_confirm">Confirm</button>
+          <button type="button" class="btn btn-secondary" id="pagoTopupCancel" data-i18n="btn_cancel">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="pagoWithdrawModal" class="modal hidden" role="dialog" aria-labelledby="pagoWithdrawModalTitle" aria-modal="true">
+    <div class="modal-box pago-topup-modal-box">
+      <div class="modal-header-row">
+        <h3 id="pagoWithdrawModalTitle" data-i18n="pago_withdraw_heading">Withdraw to wallet</h3>
+        <button type="button" id="pagoWithdrawModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p class="hint pago-topup-lead" data-i18n="pago_withdraw_hint">Move USD from this card back to your USDT wallet. At least $5 must stay on the card.</p>
+      <p id="pagoWithdrawCardLine" class="pago-topup-card-line">—</p>
+      <form id="pagoCardWithdrawForm" class="form pago-topup-form">
+        <div class="field">
+          <label for="pagoWithdrawAmount" data-i18n="pago_withdraw_amount">Withdraw amount (USD)</label>
+          <input id="pagoWithdrawAmount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="10.00" required />
+        </div>
+        <p id="pagoWithdrawMaxHint" class="hint">—</p>
+        <div class="reload-preview-box" id="pagoWithdrawPreview">
+          <div class="reload-preview-row"><span data-i18n="pago_withdraw_from_card">From card</span><strong id="pagoWithdrawFromCard">—</strong></div>
+          <div class="reload-preview-row reload-preview-highlight"><span data-i18n="pago_withdraw_to_wallet">Credited to wallet</span><strong id="pagoWithdrawToWallet">—</strong></div>
+          <div class="reload-preview-row"><span data-i18n="pago_withdraw_remaining">Remaining on card</span><strong id="pagoWithdrawRemaining">—</strong></div>
+        </div>
+        <p id="pagoWithdrawError" class="hint hidden" role="alert"></p>
+        <div class="pago-wallet-modal-actions">
+          <button type="submit" class="btn btn-primary" id="pagoCardWithdrawSubmit" data-i18n="pago_withdraw_confirm">Confirm withdraw</button>
+          <button type="button" class="btn btn-secondary" id="pagoWithdrawCancel" data-i18n="btn_cancel">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="pagoTerminateModal" class="modal hidden" role="dialog" aria-labelledby="pagoTerminateModalTitle" aria-modal="true">
+    <div class="modal-box pago-topup-modal-box">
+      <div class="modal-header-row">
+        <h3 id="pagoTerminateModalTitle" data-i18n="pago_terminate_heading">Terminate this card?</h3>
+        <button type="button" id="pagoTerminateModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p class="hint pago-topup-lead" data-i18n="pago_terminate_lead">This permanently closes the virtual card. You cannot undo this action.</p>
+      <p id="pagoTerminateBalanceWarn" class="pago-terminate-warn hidden" role="alert" data-i18n="pago_terminate_balance_warn">Withdraw your balance first. Any funds left on the card may take several days to refund after termination.</p>
+      <p id="pagoTerminateError" class="hint hidden" role="alert"></p>
+      <div class="pago-wallet-modal-actions">
+        <button type="button" class="btn btn-danger" id="pagoTerminateConfirm" data-i18n="pago_terminate_confirm">Yes, terminate card</button>
+        <button type="button" class="btn btn-secondary" id="pagoTerminateCancel" data-i18n="btn_cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <div id="reloadCardModal" class="modal hidden" role="dialog" aria-labelledby="reloadCardModalTitle" aria-modal="true">
     <div class="modal-box modal-box-wide">
       <div class="modal-header-row">
@@ -187,7 +345,33 @@
         <h3 id="usdtTopUpModalTitle" data-i18n="top_up_wallet">Top Up Wallet</h3>
         <button type="button" id="usdtTopUpModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="deposit_usdt_hint">Send USDT on TRON (TRC20) to your personal HD deposit address. Your wallet is credited after the transfer confirms.</p>
+      <p class="hint" style="margin-bottom:1rem" data-i18n="deposit_usdt_hint">Send USDT on TRON (TRC20) to your personal HD deposit address. The fee is deducted from the amount you send, and the rest is credited after the transfer confirms.</p>
+
+      <form id="usdtDepositForm" class="form usdt-deposit-preview-form">
+        <div class="field">
+          <label for="usdtAmount" data-i18n="deposit_usdt_amount_label">Amount you will send (USDT)</label>
+          <input id="usdtAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="100.00" />
+          <small class="hint" id="usdtDepositMinHint"></small>
+        </div>
+        <div id="usdtDepositFeePreview" class="reload-preview-box" aria-live="polite">
+          <h4 data-i18n="deposit_fee_preview">Before you transfer</h4>
+          <div class="reload-preview-row">
+            <span data-i18n="deposit_preview_gross">Deposit amount</span>
+            <strong id="usdtDepositPreviewGross">—</strong>
+          </div>
+          <div class="reload-preview-row">
+            <span data-i18n="deposit_preview_fee">Fee deducted</span>
+            <strong id="usdtDepositPreviewFee">—</strong>
+          </div>
+          <p id="usdtDepositPreviewFeeLabel" class="hint usdt-deposit-fee-label"></p>
+          <div class="reload-preview-row reload-preview-highlight">
+            <span data-i18n="deposit_preview_net">Credited to wallet</span>
+            <strong id="usdtDepositPreviewNet">—</strong>
+          </div>
+          <p id="usdtDepositPreviewSummary" class="reload-preview-receive" data-i18n="deposit_preview_empty">Enter the amount you plan to send to see the fee and wallet credit.</p>
+        </div>
+        <button type="submit" id="btnCreateTronDeposit" class="hidden" hidden>Show TRON address</button>
+      </form>
 
       <div id="depositUsdtPanel" class="deposit-tab-panel">
         <div id="usdtAddressBox" class="usdt-address-box" aria-live="polite" data-tron-hd-paybox="1">
@@ -207,71 +391,6 @@
     </div>
   </div>
 
-  <!-- ═══ SELL USDT / CONVERT TO MMK MODAL ═══ -->
-  <div id="sellUsdtMmkModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="sellUsdtMmkModalTitle" aria-modal="true">
-    <div class="modal-box modal-box-wide sell-usdt-mmk-modal-box">
-      <div class="modal-header-row">
-        <h3 id="sellUsdtMmkModalTitle" data-i18n="sell_usdt_mmk_title">Sell USDT / Convert to MMK</h3>
-        <button type="button" id="sellUsdtMmkModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
-      </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="sell_usdt_mmk_hint">Convert USDT from your wallet to MMK at today's admin rate and receive payout to your bank or mobile wallet after review.</p>
-
-      <div class="sell-usdt-notice" role="note">
-        <strong data-i18n="sell_usdt_mmk_notice_title">Processing notice</strong>
-        <p data-i18n="sell_usdt_mmk_notice">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
-      </div>
-
-      <form id="sellUsdtMmkForm" class="form">
-        <div class="field">
-          <label for="sellUsdtBankMethod" data-i18n="sell_usdt_bank_wallet">Bank / Wallet</label>
-          <select id="sellUsdtBankMethod" required>
-            <option value="" data-i18n="sell_usdt_bank_placeholder">— Select bank or wallet —</option>
-            <option value="KPay">KPay</option>
-            <option value="KBZ Bank">KBZ Bank</option>
-            <option value="CB Pay">CB Pay</option>
-            <option value="CB Bank">CB Bank</option>
-            <option value="AYA Pay">AYA Pay</option>
-            <option value="AYA Bank">AYA Bank</option>
-            <option value="WavePay">WavePay</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="sellUsdtAccountName" data-i18n="withdraw_account_name">Account Holder Name</label>
-          <input id="sellUsdtAccountName" type="text" required placeholder="Name on account" autocomplete="name" />
-        </div>
-        <div class="field">
-          <label for="sellUsdtAccountNumber" data-i18n="sell_usdt_account_number_phone">Account Number / Phone Number</label>
-          <input id="sellUsdtAccountNumber" type="text" required placeholder="09… or bank account number" inputmode="tel" autocomplete="off" />
-        </div>
-        <div class="field">
-          <label for="sellUsdtAmount" data-i18n="withdraw_amount_usdt">Withdrawal Amount (USDT)</label>
-          <input id="sellUsdtAmount" type="number" step="0.01" min="0.01" placeholder="50.00" required />
-          <small id="sellUsdtMinHint" class="hint">Minimum withdrawal: —</small>
-          <small id="sellUsdtBalanceHint" class="hint">Available: —</small>
-        </div>
-
-        <div id="sellUsdtPreviewBox" class="reload-preview-box">
-          <h4 data-i18n="sell_usdt_preview">Conversion Preview</h4>
-          <div class="reload-preview-row"><span data-i18n="sell_usdt_preview_rate">Daily Rate</span><strong id="sellUsdtPreviewRate">—</strong></div>
-          <div class="reload-preview-row"><span data-i18n="withdraw_preview_fee">Fee</span><strong id="sellUsdtPreviewFee">—</strong></div>
-          <div class="reload-preview-row"><span data-i18n="withdraw_preview_net_usdt">Net USDT</span><strong id="sellUsdtPreviewNet">—</strong></div>
-          <div class="reload-preview-row reload-preview-highlight">
-            <span data-i18n="withdraw_preview_mmk_payout">MMK to Bank</span>
-            <strong id="sellUsdtPreviewMmk">—</strong>
-          </div>
-          <p id="sellUsdtPreviewSummary" class="reload-preview-receive">Enter an amount to preview the MMK payout.</p>
-        </div>
-
-        <button type="submit" class="btn btn-primary" id="btnSubmitSellUsdtMmk" data-i18n="btn_submit_sell_usdt">Submit Conversion Request</button>
-      </form>
-
-      <div id="sellUsdtSuccessBox" class="ref-box hidden">
-        <div class="ref-code" id="sellUsdtRefCode">WB-0000</div>
-        <p class="status-line" id="sellUsdtSuccessMessage">Conversion request submitted for admin review.</p>
-      </div>
-      <pre class="output hidden" id="sellUsdtOutput" aria-hidden="true"></pre>
-    </div>
-  </div>
 
 
   <!-- Scan Pay modal -->
@@ -361,15 +480,7 @@
       <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_usdt_hint">USDT withdrawals are sent on TRON (TRC20) after review.</p>
 
       <form id="withdrawUsdtForm" class="form" data-withdraw-provider="tron">
-        <div class="field">
-          <label for="withdrawPayoutMethod" data-i18n="withdraw_payout_method">Payout Method</label>
-          <select id="withdrawPayoutMethod" required>
-            <option value="crypto" data-i18n="withdraw_method_crypto" selected>USDT (TRC20)</option>
-            <option value="bank" data-i18n="withdraw_method_bank">Bank Account (USDT → MMK)</option>
-          </select>
-          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Send USDT on TRON (TRC20) to your destination address.</small>
-        </div>
-
+        <input type="hidden" id="withdrawPayoutMethod" name="payout_method" value="crypto" />
         <div id="withdrawCryptoFields">
           <div class="field" id="withdrawNetworkField">
             <label for="withdrawNetwork" data-i18n="withdraw_network">Network</label>
@@ -379,35 +490,9 @@
           </div>
           <div class="field">
             <label for="withdrawWalletAddress" data-i18n="withdraw_wallet_address">Destination Wallet Address</label>
-            <input id="withdrawWalletAddress" type="text" placeholder="T…" autocomplete="off" />
+            <input id="withdrawWalletAddress" type="text" placeholder="T…" autocomplete="off" required />
           </div>
-        </div>
-
-        <div id="withdrawBankFields" class="hidden">
-          <div class="field">
-            <label for="withdrawUsdtBankName" data-i18n="sell_usdt_bank_wallet">Bank / Wallet</label>
-            <select id="withdrawUsdtBankName">
-              <option value="" data-i18n="sell_usdt_bank_placeholder">— Select bank or wallet —</option>
-              <option value="KPay">KPay</option>
-              <option value="KBZ Bank">KBZ Bank</option>
-              <option value="CB Pay">CB Pay</option>
-              <option value="CB Bank">CB Bank</option>
-              <option value="AYA Pay">AYA Pay</option>
-              <option value="AYA Bank">AYA Bank</option>
-              <option value="WavePay">WavePay</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="withdrawUsdtAccountName" data-i18n="withdraw_account_name">Account Holder Name</label>
-            <input id="withdrawUsdtAccountName" type="text" placeholder="Name on bank account" autocomplete="name" />
-          </div>
-          <div class="field">
-            <label for="withdrawUsdtAccountNumber" data-i18n="sell_usdt_account_number_phone">Account Number / Phone Number</label>
-            <input id="withdrawUsdtAccountNumber" type="text" placeholder="09… or bank account number" inputmode="tel" autocomplete="off" />
-          </div>
-          <div class="sell-usdt-notice sell-usdt-notice-compact" role="note">
-            <p data-i18n="sell_usdt_mmk_notice">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
-          </div>
+          <small id="withdrawMethodHint" class="hint" data-i18n="withdraw_method_crypto_hint">Send USDT on TRON (TRC20) to your destination address.</small>
         </div>
 
         <div class="field">
@@ -422,10 +507,6 @@
           <div class="reload-preview-row"><span data-i18n="withdraw_preview_method">Method</span><strong id="withdrawPreviewNetwork">—</strong></div>
           <div class="reload-preview-row"><span data-i18n="withdraw_preview_fee">Fee</span><strong id="withdrawPreviewFee">—</strong></div>
           <div class="reload-preview-row"><span data-i18n="withdraw_preview_net_usdt">Net USDT</span><strong id="withdrawPreviewNet">—</strong></div>
-          <div class="reload-preview-row reload-preview-highlight hidden" id="withdrawPreviewMmkRow">
-            <span data-i18n="withdraw_preview_mmk_payout">MMK to Bank</span>
-            <strong id="withdrawPreviewMmk">—</strong>
-          </div>
           <p id="withdrawPreviewSummary" class="reload-preview-receive">Fee is deducted from your requested amount.</p>
         </div>
 
@@ -440,65 +521,9 @@
     </div>
   </div>
 
-  <div id="withdrawMmkModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="withdrawMmkModalTitle" aria-modal="true">
-    <div class="modal-box modal-box-wide">
-      <div class="modal-header-row">
-        <h3 id="withdrawMmkModalTitle" data-i18n="withdraw_mmk_title">Withdraw MMK to Bank</h3>
-        <button type="button" id="withdrawMmkModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
-      </div>
-      <p class="hint" style="margin-bottom:1rem" data-i18n="withdraw_mmk_hint">Transfer your MMK wallet balance directly to your bank account. MMK cannot be converted to USDT inside the app.</p>
 
-      <form id="withdrawMmkForm" class="form">
-        <div class="field">
-          <label for="withdrawMmkBankName" data-i18n="sell_usdt_bank_wallet">Bank / Wallet</label>
-          <select id="withdrawMmkBankName" required>
-            <option value="" data-i18n="sell_usdt_bank_placeholder">— Select bank or wallet —</option>
-            <option value="KPay">KPay</option>
-            <option value="KBZ Bank">KBZ Bank</option>
-            <option value="CB Pay">CB Pay</option>
-            <option value="CB Bank">CB Bank</option>
-            <option value="AYA Pay">AYA Pay</option>
-            <option value="AYA Bank">AYA Bank</option>
-            <option value="WavePay">WavePay</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="withdrawMmkAccountName" data-i18n="withdraw_account_name">Account Holder Name</label>
-          <input id="withdrawMmkAccountName" type="text" required placeholder="Name on bank account" autocomplete="name" />
-        </div>
-        <div class="field">
-          <label for="withdrawMmkAccountNumber" data-i18n="sell_usdt_account_number_phone">Account Number / Phone Number</label>
-          <input id="withdrawMmkAccountNumber" type="text" required placeholder="09… or bank account number" inputmode="tel" autocomplete="off" />
-        </div>
-        <div class="sell-usdt-notice sell-usdt-notice-compact" role="note">
-          <p data-i18n="sell_usdt_mmk_notice">USDT withdrawals are reviewed and sent on TRON (TRC20).</p>
-        </div>
-        <div class="field">
-          <label for="withdrawAmountMmk" data-i18n="withdraw_amount_mmk">Withdrawal Amount (MMK)</label>
-          <input id="withdrawAmountMmk" type="number" step="1" min="10000" placeholder="50000" required />
-          <small id="withdrawMmkMinHint" class="hint">Minimum withdrawal: 10,000 MMK</small>
-          <small id="withdrawMmkBalanceHint" class="hint">Available: —</small>
-        </div>
 
-        <div id="withdrawMmkPreviewBox" class="reload-preview-box">
-          <h4 data-i18n="withdraw_preview">Withdrawal Preview</h4>
-          <div class="reload-preview-row"><span data-i18n="withdraw_preview_fee">Fee</span><strong id="withdrawMmkPreviewFee">—</strong></div>
-          <div class="reload-preview-row reload-preview-highlight">
-            <span data-i18n="withdraw_preview_net_mmk">Net to Bank</span>
-            <strong id="withdrawMmkPreviewNet">—</strong>
-          </div>
-          <p id="withdrawMmkPreviewSummary" class="reload-preview-receive">MMK is sent to your bank after admin processing.</p>
-        </div>
 
-        <button type="submit" class="btn btn-primary" id="btnSubmitWithdrawMmk" data-i18n="btn_submit_withdraw">Submit Withdrawal Request</button>
-      </form>
-
-      <div id="withdrawMmkSuccessBox" class="ref-box hidden">
-        <div class="ref-code" id="withdrawMmkRefCode">WM-0000</div>
-        <p class="status-line" id="withdrawMmkSuccessMessage">Withdrawal submitted.</p>
-      </div>
-    </div>
-  </div>
 
   <!-- ═══ P2P Buy USDT Modal (Instant only) ═══ -->
   <div id="p2pBuyModal" class="modal hidden" data-instant-only role="dialog" aria-labelledby="p2pBuyModalTitle" aria-modal="true">
@@ -506,6 +531,11 @@
       <div class="modal-header-row">
         <h3 id="p2pBuyModalTitle">Buy USDT</h3>
         <button type="button" id="p2pBuyModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
+      </div>
+
+      <div id="p2pBuyEscrowPanel" class="p2p-escrow-panel hidden" aria-live="polite">
+        <p class="hint p2p-escrow-oneway-note">One-way USDT escrow: seller funds are locked on-platform. Pay MMK externally, then the seller releases USDT to your wallet.</p>
+        <div id="p2pBuyEscrowStepper" class="p2p-escrow-stepper-host"></div>
       </div>
 
       <div id="p2pBuyStepAmount">
@@ -605,6 +635,7 @@
       </div>
 
       <div id="p2pBuyStepDone" class="hidden" style="text-align:center">
+        <div id="p2pBuyEscrowStepperDone" class="p2p-escrow-stepper-host" style="margin-bottom:1rem"></div>
         <div class="p2p-buy-done-icon" aria-hidden="true">✓</div>
         <h4 style="margin:0.5rem 0">Order Submitted</h4>
         <p id="p2pBuyDoneMessage" class="hint" style="margin-bottom:1rem">Pending seller release.</p>
@@ -657,6 +688,11 @@
       <div class="modal-header-row">
         <h3 id="p2pSellModalTitle">Sell USDT</h3>
         <button type="button" id="p2pSellModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
+      </div>
+
+      <div id="p2pSellEscrowPanel" class="p2p-escrow-panel hidden" aria-live="polite">
+        <p class="hint p2p-escrow-oneway-note">One-way USDT escrow: your USDT locks immediately. Release to the buyer only after MMK arrives in your external account.</p>
+        <div id="p2pSellEscrowStepper" class="p2p-escrow-stepper-host"></div>
       </div>
 
       <div id="p2pSellStepAmount">
@@ -759,18 +795,18 @@
         <h3 id="p2pPostAdModalTitle">Post P2P Ad</h3>
         <button type="button" id="p2pPostAdModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" style="margin-bottom:1rem">Verified users can post buy or sell ads. Sell ads lock USDT from your wallet as escrow until filled or cancelled.</p>
+      <p class="hint" style="margin-bottom:1rem">Verified users can post a sell ad. The USDT amount is locked from your wallet as escrow until the ad is filled or cancelled.</p>
       <form id="p2pPostAdForm" class="form">
         <div class="field">
-          <label for="p2pAdSide">Trade Type</label>
-          <select id="p2pAdSide" required>
-            <option value="sell">Sell USDT (I have USDT, want MMK)</option>
-            <option value="buy">Buy USDT (I want USDT, will pay MMK)</option>
+          <label for="p2pAdSideDisplay">Trade Type</label>
+          <select id="p2pAdSideDisplay" disabled aria-disabled="true">
+            <option value="sell" selected>Sell USDT (I have USDT, want MMK)</option>
           </select>
+          <input type="hidden" id="p2pAdSide" name="side" value="sell" />
         </div>
         <div class="field">
           <label for="p2pAdNetwork">Network</label>
-          <select id="p2pAdNetwork"><option value="TRC20">TRC20</option><option value="BEP20">BEP20</option></select>
+          <select id="p2pAdNetwork"><option value="TRC20">TRC20 (Tron)</option></select>
         </div>
         <div class="field">
           <label for="p2pAdRate">Exchange Rate (MMK per USDT)</label>
@@ -779,7 +815,7 @@
         <div class="field">
           <label for="p2pAdVolume">Total USDT Volume</label>
           <input id="p2pAdVolume" type="number" step="0.01" min="5" required placeholder="100.00" />
-          <small class="hint" id="p2pAdEscrowHint">Sell ads: this amount is escrowed from your USDT wallet immediately.</small>
+          <small class="hint" id="p2pAdEscrowHint">This amount is escrowed from your USDT wallet as soon as the ad is posted.</small>
         </div>
         <div class="field">
           <label for="p2pAdMin">Min Order (USDT)</label>
@@ -797,7 +833,7 @@
             <label><input type="checkbox" name="p2pAdPayMethod" value="KBZ Bank" /> KBZ Bank</label>
           </div>
         </div>
-        <div class="field" style="grid-column:1/-1"><strong style="font-size:0.85rem;color:var(--text-secondary)">Your MMK Payment Accounts (for receiving/sending)</strong></div>
+        <div class="field" style="grid-column:1/-1"><strong style="font-size:0.85rem;color:var(--text-secondary)">Your payment accounts (where buyers send MMK)</strong></div>
         <div class="field"><label for="p2pAdKpayName">KPay Account Name</label><input id="p2pAdKpayName" type="text" placeholder="Your Name" /></div>
         <div class="field"><label for="p2pAdKpayNumber">KPay Number</label><input id="p2pAdKpayNumber" type="text" placeholder="09..." /></div>
         <div class="field"><label for="p2pAdWaveName">WavePay Account Name</label><input id="p2pAdWaveName" type="text" placeholder="Your Name" /></div>
@@ -817,7 +853,7 @@
         <h3 id="kycModalTitle">KYC Verification</h3>
         <button type="button" id="kycModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
       </div>
-      <p class="hint" id="kycModalIntro" style="margin-bottom:1rem">Submit your identity documents to unlock P2P trading and verified banking features.</p>
+      <p class="hint" id="kycModalIntro" style="margin-bottom:1rem">Optional identity verification for compliance. Virtual Visa cards do not require KYC.</p>
       <form id="kycForm" class="form">
         <div class="field"><label for="kycFullName">Full Name (as on ID)</label><input id="kycFullName" required placeholder="Legal full name" autocomplete="name" /></div>
         <div class="field"><label for="kycIdType">ID Type</label>
@@ -826,7 +862,7 @@
         <div class="field"><label for="kycIdNumber">ID Number</label><input id="kycIdNumber" required placeholder="NRC or Passport number" autocomplete="off" /></div>
         <div class="field"><label for="kycDateOfBirth">Date of Birth</label>
           <input id="kycDateOfBirth" type="date" required autocomplete="bday" />
-          <small class="hint">Required for identity verification and P2P trading</small>
+          <small class="hint">Used for optional identity verification</small>
         </div>
         <div class="field"><label for="kycAddressLine1">Street Address</label>
           <input id="kycAddressLine1" required placeholder="House / street" autocomplete="address-line1" />
@@ -878,8 +914,8 @@
   <div id="kycGateModal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modal-box" style="max-width:min(420px,100%);text-align:center">
       <div style="font-size:2.5rem;margin-bottom:0.5rem" aria-hidden="true">🛡️</div>
-      <h3 style="margin:0 0 0.5rem">KYC Verification Required to Trade P2P</h3>
-      <p class="hint" id="kycGateMessage" style="margin-bottom:1.25rem">Complete identity verification before posting ads or placing P2P orders.</p>
+      <h3 style="margin:0 0 0.5rem">Identity verification</h3>
+      <p class="hint" id="kycGateMessage" style="margin-bottom:1.25rem">Complete verification when requested for compliance.</p>
       <button type="button" id="kycGateCompleteBtn" class="btn btn-primary" style="width:100%;margin-bottom:0.5rem">Complete KYC Now</button>
       <button type="button" id="kycGateCloseBtn" class="btn btn-secondary" style="width:100%">Cancel</button>
     </div>
@@ -898,8 +934,15 @@
           alt="Eisymyanmar"
         />
         <h1 class="auth-brand-title">Eisymyanmar</h1>
-        <p class="subtitle auth-brand-sub">USDT wallet on TRON</p>
+        <p class="subtitle auth-brand-sub">Global USDT wallet &amp; virtual Visa cards</p>
       </div>
+      <button
+        type="button"
+        class="btn btn-primary pwa-install-app-btn js-pwa-install-app"
+        id="pwaInstallAppAuth"
+        data-i18n="pwa_install_app_btn"
+      >Install App</button>
+      <p id="authSessionNotice" class="auth-session-notice hidden" role="status"></p>
 
       <div id="devOtpBanner" class="dev-otp-banner hidden" role="alert">
         <strong>Dev OTP</strong>
@@ -907,12 +950,12 @@
         <span id="devOtpHint" class="dev-otp-hint">Auto-filled for testing</span>
       </div>
 
-      <div id="authTabs" class="tabs">
-        <button class="tab active" data-tab="login">Login</button>
-        <button class="tab" data-tab="register">Register</button>
+      <div id="authTabs" class="tabs auth-tabs" role="tablist" aria-label="Account">
+        <button type="button" class="tab active" role="tab" id="authTabLogin" data-tab="login" aria-selected="true" aria-controls="panelLogin">Login</button>
+        <button type="button" class="tab" role="tab" id="authTabRegister" data-tab="register" aria-selected="false" aria-controls="panelRegister">Register</button>
       </div>
 
-      <div id="panelLogin">
+      <div id="panelLogin" role="tabpanel" aria-labelledby="authTabLogin">
         <button type="button" id="googleLoginBtn" class="btn btn-google" data-google-auth>
           <span class="btn-google-icon" aria-hidden="true">
             <svg viewBox="0 0 48 48" width="18" height="18" focusable="false">
@@ -930,23 +973,29 @@
           <div class="field"><label for="loginPin">6-digit Security PIN</label><input id="loginPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="current-password" required /></div>
           <button type="submit" id="loginPinBtn" class="btn btn-primary">Login with PIN</button>
         </form>
-        <button type="button" id="bioLoginBtn" class="btn btn-secondary" style="margin-top:0.75rem">Login with Biometrics</button>
-        <button type="button" id="showOtpLoginBtn" class="btn btn-secondary btn-sm" style="margin-top:0.75rem">Use email OTP instead</button>
-        <button type="button" id="showPinResetBtn" class="btn btn-secondary btn-sm" style="margin-top:0.5rem">Forgot PIN — email reset</button>
-        <div id="loginOtpSection" class="hidden" style="margin-top:1rem">
+        <button type="button" id="bioLoginBtn" class="auth-text-link auth-bio-link hidden">Login with Biometrics</button>
+        <div class="auth-quiet-links">
+          <button type="button" id="showOtpLoginBtn" class="auth-text-link" aria-expanded="false" aria-controls="loginOtpSection">Use email OTP instead</button>
+          <span class="auth-quiet-sep" aria-hidden="true">·</span>
+          <button type="button" id="showPinResetBtn" class="auth-text-link" aria-expanded="false" aria-controls="authPinResetSection">Forgot PIN</button>
+        </div>
+        <div id="loginOtpSection" class="auth-extra hidden">
+          <p class="hint">First time on this device? Use a one-time email code, then PIN or biometrics next time.</p>
           <form id="loginSendOtpForm">
-            <button type="submit" id="loginSendOtp" class="btn btn-secondary">Send Login OTP</button>
+            <button type="submit" id="loginSendOtp" class="btn btn-secondary" data-otp-idle="Send Login OTP" data-otp-status="loginOtpResendStatus">Send Login OTP</button>
+            <p id="loginOtpResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
           </form>
           <form id="loginVerifyForm" class="hidden" style="margin-top:1rem">
             <div class="field"><label for="loginOtp">6-digit OTP</label><input id="loginOtp" name="otp" maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" required /></div>
             <button type="submit" id="loginVerify" class="btn btn-primary">Verify &amp; Login with OTP</button>
           </form>
         </div>
-        <div id="authPinResetSection" class="hidden" style="margin-top:1rem">
+        <div id="authPinResetSection" class="auth-extra hidden">
           <p class="hint">Reset your 6-digit security PIN with a one-time code emailed to you.</p>
           <form id="authPinResetSendForm">
             <div class="field"><label for="authPinResetEmail">Email</label><input id="authPinResetEmail" type="email" autocomplete="email" required /></div>
-            <button type="submit" class="btn btn-secondary" style="width:100%">Send PIN reset code</button>
+            <button type="submit" id="authPinResetSendBtn" class="btn btn-secondary" style="width:100%" data-otp-idle="Send PIN reset code" data-otp-status="authPinResetResendStatus">Send PIN reset code</button>
+            <p id="authPinResetResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
           </form>
           <form id="authPinResetConfirmForm" class="hidden" style="margin-top:0.75rem">
             <div class="field"><label for="authPinResetOtp">Email code</label><input id="authPinResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
@@ -956,10 +1005,9 @@
             <button type="submit" class="btn btn-primary" style="width:100%">Reset PIN via email</button>
           </form>
         </div>
-        <p class="hint">Returning users: enter your PIN. First time on this device? Use email OTP once, then PIN or biometrics next time.</p>
       </div>
 
-      <div id="panelRegister" class="hidden">
+      <div id="panelRegister" class="hidden" role="tabpanel" aria-labelledby="authTabRegister">
         <button type="button" id="googleRegisterBtn" class="btn btn-google" data-google-auth>
           <span class="btn-google-icon" aria-hidden="true">
             <svg viewBox="0 0 48 48" width="18" height="18" focusable="false">
@@ -978,27 +1026,14 @@
           <div class="field"><label for="regPhone">Phone (optional)</label><input id="regPhone" name="phone" placeholder="+959..." /></div>
           <div class="field"><label for="regPin">6-digit Security PIN <span class="hint">(optional — set after signup)</span></label><input id="regPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="new-password" /></div>
           <p id="regAuthError" class="auth-inline-error hidden"></p>
-          <button type="submit" id="registerSendOtp" class="btn btn-primary">Send Registration OTP</button>
+          <button type="submit" id="registerSendOtp" class="btn btn-primary" data-otp-idle="Send Registration OTP" data-otp-status="registerOtpResendStatus">Send Registration OTP</button>
+          <p id="registerOtpResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
         </form>
         <p class="hint">Use a <strong>new email</strong> (not <code>demo@eisy.myanmar</code> — that account exists; use Login tab).</p>
         <form id="registerCompleteForm" class="hidden" style="margin-top:1rem">
           <div class="field"><label for="regOtp">Email OTP</label><input id="regOtp" name="otp" maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" required /></div>
           <button type="submit" id="registerComplete" class="btn btn-primary">Create Account</button>
         </form>
-      </div>
-
-      <div class="auth-apk-download">
-        <a
-          class="apk-download-btn"
-          href="/downloads/eisy-myanmar.apk"
-          download="eisy-myanmar.apk"
-          aria-label="Download Eisy Myanmar Android app APK"
-        >
-          <svg class="apk-download-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
-            <path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v8.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42L11 12.59V4a1 1 0 0 1 1-1Zm-7 14a1 1 0 0 1 1 1v1h12v-1a1 1 0 1 1 2 0v2a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1Z"/>
-          </svg>
-          <span>Download App (APK)</span>
-        </a>
       </div>
 
       <nav class="auth-legal-links" aria-label="Legal">
@@ -1010,6 +1045,7 @@
         <span aria-hidden="true">·</span>
         <a href="/refund" target="_blank" rel="noopener noreferrer">Refunds</a>
       </nav>
+      <div id="authOfficialSupport" class="auth-official-support" aria-live="polite"></div>
       <p class="legal-footer-copyright auth-legal-copyright">© 2026 Eisy Myanmar. All rights reserved.</p>
     </div>
   </div>
@@ -1045,7 +1081,8 @@
       <div id="pinResetEmailSection" class="hidden" style="margin-top:1rem">
         <p class="hint">We will email a one-time code to reset your PIN. No default PIN is issued.</p>
         <div class="field"><label for="pinResetEmail">Email</label><input id="pinResetEmail" type="email" autocomplete="email" placeholder="you@email.com" /></div>
-        <button type="button" id="pinResetSendOtpBtn" class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:0.5rem">Send reset code</button>
+        <button type="button" id="pinResetSendOtpBtn" class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:0.5rem" data-otp-idle="Send reset code" data-otp-status="pinResetResendStatus">Send reset code</button>
+        <p id="pinResetResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
         <form id="pinResetConfirmForm" class="hidden">
           <div class="field"><label for="pinResetOtp">Email code</label><input id="pinResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
           <div class="field"><label for="pinResetNew">New 6-digit PIN</label><input id="pinResetNew" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
@@ -1089,9 +1126,9 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"/></svg>
             <span data-i18n="nav_dashboard">Dashboard</span>
           </button>
-          <button type="button" class="nav-item" data-page="instant-card" data-mode-nav="instant">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            <span data-i18n="nav_instant_card">TRON Wallet</span>
+          <button type="button" class="nav-item nav-item-pay" id="btnNavOpenUserPay" data-instant-only aria-expanded="false" aria-controls="userPayModal">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z"/><path d="M4 11h16"/><circle cx="16.5" cy="14.5" r="1.5" fill="currentColor" stroke="none"/></svg>
+            <span data-i18n="nav_pay">Pay</span>
           </button>
           <button type="button" class="nav-item" data-page="cards">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
@@ -1116,6 +1153,14 @@
         </nav>
 
         <div class="sidebar-footer">
+          <button type="button" class="nav-item js-pwa-install-app" id="pwaInstallAppSidebar">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+            <span data-i18n="pwa_install_app_btn">Install App</span>
+          </button>
+          <button type="button" class="nav-item sidebar-contact-trigger" data-contact-modal-open>
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            <span>Contact Us</span>
+          </button>
           <nav class="legal-footer-links" aria-label="Legal">
             <a href="/about">About</a>
             <a href="/terms">Terms</a>
@@ -1150,6 +1195,12 @@
               </div>
             </div>
             <div class="header-actions">
+              <button
+                type="button"
+                class="pwa-install-app-btn pwa-install-app-btn--header js-pwa-install-app"
+                id="pwaInstallAppHeader"
+                data-i18n="pwa_install_app_btn"
+              >Install App</button>
               <div id="portalNavHeader" class="portal-nav-header" aria-label="Portal navigation"></div>
               <div id="langSwitcher">
                 <div class="lang-switcher" role="group" aria-label="Language">
@@ -1189,6 +1240,20 @@
           </div>
         </header>
 
+        <div id="pwaInstallBanner" class="pwa-install-banner hidden" role="region" aria-labelledby="pwaInstallTitle" hidden>
+          <div class="pwa-install-banner-inner">
+            <img class="pwa-install-banner-icon" src="/icons/Icon-192.png" alt="" width="40" height="40" decoding="async" />
+            <div class="pwa-install-banner-copy">
+              <strong id="pwaInstallTitle" data-i18n="pwa_install_title">Install Eisy on your phone</strong>
+              <p class="hint pwa-install-banner-hint" data-i18n="pwa_install_hint">Open from your home screen like a native app — fast and secure.</p>
+            </div>
+            <div class="pwa-install-banner-actions">
+              <button type="button" class="btn btn-primary btn-sm" id="pwaInstallBtn" data-i18n="pwa_install_app_btn">Install App</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="pwaInstallDismiss" data-i18n="pwa_install_dismiss">Not now</button>
+            </div>
+          </div>
+        </div>
+
         <main class="app-content">
           <!-- Hidden titles for page heading sync -->
           <span class="hidden" data-page-title="home" data-i18n="nav_dashboard">Dashboard</span>
@@ -1217,7 +1282,6 @@
                       <button type="button" class="btn btn-secondary btn-sm" data-goto="usdt-wallet" data-i18n="btn_manage_usdt_wallet">Manage Wallet</button>
                       <button type="button" class="btn btn-secondary btn-sm" data-goto="cards" data-i18n="nav_my_cards">My Cards</button>
                       <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="btn_top_up_usdt">Top Up USDT</button>
-                      <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdt" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
                       <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawUsdt" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
                       <button type="button" class="btn btn-primary btn-sm hidden" id="btnOpenScanPay" data-i18n="btn_scan_pay" hidden aria-hidden="true" tabindex="-1" data-feature="scan_pay" data-feature-disabled="true">Scan Pay</button>
                     </div>
@@ -1261,50 +1325,192 @@
             <div class="page-header">
               <div>
                 <h2 class="page-heading" data-i18n="nav_my_cards">My Cards</h2>
-                <p class="page-desc" data-i18n="cards_page_desc">View card status, reveal details when needed, and reload your virtual cards.</p>
+                <p class="page-desc" data-i18n="cards_page_desc">Issue a global virtual Visa card, top up with USDT (TRC20), and reveal number, expiry, and CVV securely when you need them.</p>
               </div>
             </div>
 
-            <section class="panel">
-              <h2 data-i18n="pago_cards_heading">Your virtual cards</h2>
-              <div id="pagoCardList" class="pago-card-list"></div>
-              <p id="pagoCardEmpty" class="hint" data-i18n="pago_cards_empty">No virtual cards yet. Request one below.</p>
-            </section>
-
-            <section class="panel hidden" id="pagoCardDetailPanel">
-              <h2 data-i18n="pago_detail_heading">Card details</h2>
-              <p id="pagoCardDetailSummary" class="hint"></p>
-              <dl class="pago-card-details">
-                <div><dt data-i18n="pago_status">Status</dt><dd id="pagoCardDetailStatus">—</dd></div>
-                <div><dt data-i18n="pago_balance">Balance</dt><dd id="pagoCardDetailBalance">—</dd></div>
-                <div><dt data-i18n="pago_reveal_number">Card number</dt><dd id="pagoCardDetailNumber">—</dd></div>
-                <div><dt data-i18n="card_expiry">Expiry</dt><dd id="pagoCardDetailExpiry">—</dd></div>
-                <div><dt data-i18n="pago_reveal_cvv">CVV</dt><dd id="pagoCardDetailCvv">—</dd></div>
-              </dl>
-              <form id="pagoCardTopupForm" class="form">
-                <h3 data-i18n="pago_topup_heading">Top up this card</h3>
-                <p class="hint" data-i18n="pago_topup_hint">Minimum $5. Your USDT wallet is charged the amount plus the card reload fee.</p>
-                <div class="field">
-                  <label for="pagoTopupAmount" data-i18n="topup_amount_usdt">Top-Up Amount (USDT)</label>
-                  <input id="pagoTopupAmount" type="number" min="5" step="0.01" placeholder="20.00" required />
+            <section class="panel pago-card-stage" id="pagoCardStage">
+              <div class="pago-card-stage-head">
+                <h2 data-i18n="pago_cards_heading">Your virtual card</h2>
+                <p id="pagoCardDetailSummary" class="hint"></p>
+              </div>
+              <div id="pagoCardCarousel" class="pago-card-carousel hidden">
+                <button type="button" class="pago-card-carousel-nav" id="pagoCardPrev" data-pago-step="-1" aria-label="Previous card">‹</button>
+                <div id="pagoCardList" class="pago-card-switcher" role="tablist" aria-label="Your cards"></div>
+                <button type="button" class="pago-card-carousel-nav" id="pagoCardNext" data-pago-step="1" aria-label="Next card">›</button>
+              </div>
+              <p id="pagoCardCarouselMeta" class="pago-card-carousel-meta hidden"></p>
+              <div id="pagoCardSkeleton" class="pago-card-skeleton hidden" aria-hidden="true">
+                <div class="pago-card-skeleton-face"></div>
+                <div class="pago-card-skeleton-line"></div>
+                <div class="pago-card-skeleton-line short"></div>
+              </div>
+              <div id="pagoCardEmpty" class="pago-card-empty-state">
+                <div class="pago-card-empty-visual">
+                  <article class="pago-plastic-card pago-plastic-reference pago-plastic-sample" aria-hidden="true">
+                    <span class="pago-sample-watermark" data-i18n="pago_card_sample_watermark">Sample</span>
+                    <div class="pago-plastic-sheen" aria-hidden="true"></div>
+                    <div class="pago-plastic-body">
+                      <div class="pago-plastic-chip-col"><span class="pago-plastic-chip" aria-hidden="true"></span></div>
+                      <div class="pago-plastic-center-col">
+                        <img class="pago-plastic-emblem" src="/brand/logo-card-mark.png?v=20261011refCard" alt="" width="381" height="479" aria-hidden="true" />
+                        <div class="pago-plastic-product-lines">
+                          <span data-i18n="pago_card_product_line1">VIRTUAL VISA DEBIT</span>
+                          <span data-i18n="pago_card_product_line2">GLOBAL ACCESS</span>
+                        </div>
+                      </div>
+                    </div>
+                    <footer class="pago-plastic-foot">
+                      <div class="pago-plastic-foot-main">
+                        <p class="pago-plastic-number pago-sample-number">•••• •••• •••• 0000</p>
+                        <div class="pago-plastic-details-row">
+                          <div class="pago-plastic-detail-field">
+                            <small data-i18n="card_holder">Card holder</small>
+                            <strong data-i18n="pago_card_sample_holder">YOUR NAME</strong>
+                          </div>
+                          <div class="pago-plastic-detail-field">
+                            <small data-i18n="card_expiry">Expiry</small>
+                            <strong>10/28</strong>
+                          </div>
+                          <div class="pago-plastic-detail-field">
+                            <small data-i18n="pago_reveal_cvv">CVV</small>
+                            <strong>•••</strong>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="pago-plastic-foot-aside">
+                        <span class="pago-plastic-visa-corner visa-wordmark is-visa">VISA</span>
+                      </div>
+                    </footer>
+                  </article>
                 </div>
-                <button type="submit" class="btn btn-primary" id="pagoCardTopupSubmit" data-i18n="pago_topup_submit">Top up</button>
-              </form>
+                <p class="pago-card-empty-copy hint" data-i18n="pago_cards_empty">No virtual cards yet. Request one in the form below.</p>
+              </div>
+
+              <div class="pago-card-component hidden" id="pagoCardDetailPanel">
+              <article class="pago-plastic-card pago-plastic-reference" id="pagoPlasticCard" aria-label="Virtual card">
+                <div class="pago-plastic-sheen" aria-hidden="true"></div>
+                <div class="pago-plastic-body">
+                  <div class="pago-plastic-chip-col"><span class="pago-plastic-chip" aria-hidden="true"></span></div>
+                  <div class="pago-plastic-center-col">
+                    <img class="pago-plastic-emblem" src="/brand/logo-card-mark.png?v=20261011refCard" alt="" width="381" height="479" aria-hidden="true" />
+                    <div class="pago-plastic-product-lines">
+                      <span data-i18n="pago_card_product_line1">VIRTUAL VISA DEBIT</span>
+                      <span data-i18n="pago_card_product_line2">GLOBAL ACCESS</span>
+                    </div>
+                  </div>
+                </div>
+                <footer class="pago-plastic-foot">
+                  <div class="pago-plastic-foot-main">
+                    <p class="pago-plastic-number" id="pagoCardDetailNumber">•••• •••• •••• ••••</p>
+                    <div class="pago-plastic-details-row">
+                      <div class="pago-plastic-detail-field">
+                        <small data-i18n="card_holder">Card holder</small>
+                        <strong id="pagoPlasticHolder">—</strong>
+                      </div>
+                      <div class="pago-plastic-detail-field">
+                        <small data-i18n="card_expiry">Expiry</small>
+                        <strong id="pagoCardDetailExpiry">••/••</strong>
+                      </div>
+                      <div class="pago-plastic-detail-field">
+                        <small data-i18n="pago_reveal_cvv">CVV</small>
+                        <strong id="pagoCardDetailCvv" aria-live="polite">•••</strong>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="pago-plastic-foot-aside">
+                    <div class="pago-plastic-number-tools">
+                      <button type="button" class="pago-plastic-icon-btn pago-plastic-eye" id="pagoCardRevealBtn" aria-pressed="false" aria-label="Show number &amp; CVV">
+                        <svg class="pago-eye-open" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                          <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <svg class="pago-eye-off" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                          <path d="M3 3l18 18"/>
+                          <path d="M10.6 6.1A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a18.5 18.5 0 0 1-3.2 3.8"/>
+                          <path d="M6.1 6.7C3.7 8.3 2 12 2 12s3.5 6 10 6c1.5 0 2.9-.3 4.1-.8"/>
+                          <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>
+                        </svg>
+                      </button>
+                      <button type="button" class="pago-plastic-icon-btn pago-plastic-copy" id="pagoCardCopyNumberBtn" data-i18n-aria="pago_copy_card" aria-label="Copy Card">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                          <rect x="8" y="8" width="12" height="12" rx="2"/>
+                          <path d="M4 16V6a2 2 0 0 1 2-2h10"/>
+                        </svg>
+                      </button>
+                    </div>
+                    <span class="pago-plastic-visa-corner visa-wordmark is-visa" id="pagoPlasticNetwork">VISA</span>
+                  </div>
+                </footer>
+              </article>
+
+              <div class="pago-detail-toolbar">
+                <div class="pago-detail-meta">
+                  <span class="pago-status-pill" id="pagoCardDetailStatus">—</span>
+                  <span class="pago-balance-chip"><small data-i18n="pago_balance">Balance</small> <strong id="pagoCardDetailBalance">—</strong></span>
+                </div>
+              </div>
+
+              <div class="pago-card-actions" role="group" aria-label="Card actions">
+                <button type="button" class="pago-action-wallet pago-action-apple" id="pagoAddAppleWalletBtn" data-wallet-target="apple">
+                  <span data-i18n="pago_wallet_apple_label">Apple Wallet</span>
+                </button>
+                <button type="button" class="pago-action-wallet pago-action-google" id="pagoAddGooglePayBtn" data-wallet-target="google">
+                  <span data-i18n="pago_wallet_google_label">Google Pay</span>
+                </button>
+                <button type="button" class="pago-action-wallet pago-action-topup" id="pagoCardTopupOpenBtn">
+                  <span data-i18n="pago_topup_open">Top Up</span>
+                </button>
+                <button type="button" class="pago-action-wallet pago-action-withdraw" id="pagoCardWithdrawOpenBtn">
+                  <span data-i18n="pago_withdraw_open">Withdraw</span>
+                </button>
+                <button type="button" class="pago-action-wallet pago-action-block hidden" id="pagoCardBlockBtn">
+                  <span data-i18n="pago_block_open">Block card</span>
+                </button>
+                <button type="button" class="pago-action-wallet pago-action-unblock hidden" id="pagoCardUnblockBtn">
+                  <span data-i18n="pago_unblock_open">Unblock card</span>
+                </button>
+                <button type="button" class="pago-action-wallet pago-action-terminate" id="pagoCardTerminateOpenBtn">
+                  <span data-i18n="pago_terminate_open">Terminate</span>
+                </button>
+              </div>
+              <p id="pagoWalletAtmHint" class="pago-wallet-atm-hint hidden" data-i18n="pago_wallet_atm_hint">Visa ATM cards support contactless spend in Google Pay after you add the card.</p>
+
+              <section class="pago-3ds-panel pago-3ds-strip" id="pago3dsPanel" aria-labelledby="pago3dsHeading">
+                <div class="pago-3ds-strip-label">
+                  <h3 id="pago3dsHeading" data-i18n="pago_3ds_heading">3DS Secure code</h3>
+                  <p class="pago-3ds-meta" id="pago3dsMeta" data-i18n="pago_3ds_empty">No active verification codes for this card.</p>
+                </div>
+                <div class="pago-3ds-code-row" id="pago3dsCodeRow">
+                  <p class="pago-3ds-code" id="pago3dsCode" aria-live="polite">————</p>
+                  <div class="pago-3ds-actions">
+                    <button type="button" class="btn btn-primary btn-sm" id="pago3dsRefreshBtn" data-i18n="pago_3ds_refresh">Refresh Code</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="pago3dsCopyBtn" data-i18n="pago_3ds_copy" disabled>Copy code</button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="pago-tx-panel" id="pagoTxPanel" aria-labelledby="pagoTxHeading">
+                <div class="pago-tx-head">
+                  <h3 id="pagoTxHeading" data-i18n="pago_tx_heading">Transaction history</h3>
+                  <button type="button" class="btn btn-secondary btn-sm" id="pagoTxRefreshBtn" data-i18n="pago_tx_refresh">Refresh</button>
+                </div>
+                <p class="pago-tx-meta hint" id="pagoTxMeta" data-i18n="pago_tx_loading">Loading transactions…</p>
+                <div class="pago-tx-columns" aria-hidden="true">
+                  <span data-i18n="pago_tx_merchant">Merchant</span>
+                  <span data-i18n="pago_tx_date">Date</span>
+                  <span data-i18n="pago_tx_amount">Amount</span>
+                  <span data-i18n="pago_tx_status">Status</span>
+                </div>
+                <ul class="pago-tx-list" id="pagoTxList"></ul>
+              </section>
+              </div>
             </section>
 
-            <section class="panel">
+            <section class="panel pago-card-request-panel">
               <h2 data-i18n="pago_request_heading">Request a virtual card</h2>
-              <p class="hint" data-i18n="pago_request_hint">Cards are issued by Pago Card. An optional starting balance (USD 10–2500) is taken from your USDT wallet. Visa ATM cards do not take a starting balance.</p>
+              <p class="hint" data-i18n="pago_request_hint">A Visa card is issued on BIN 404. An optional starting balance (USD 10–2500) is taken from your USDT wallet.</p>
               <form id="pagoCardRequestForm" class="form">
-                <div class="field">
-                  <label for="pagoCardProduct" data-i18n="pago_product_label">Card product</label>
-                  <select id="pagoCardProduct" required>
-                    <option value="us_493_visa_bin_v2">Visa (493)</option>
-                    <option value="us_404_visa_bin">Visa (404)</option>
-                    <option value="536_master">Mastercard</option>
-                    <option value="us_493_visa_atm">Visa ATM</option>
-                  </select>
-                </div>
                 <div class="field">
                   <label for="pagoCardFirstName" data-i18n="pago_first_name">First name</label>
                   <input id="pagoCardFirstName" type="text" autocomplete="given-name" required />
@@ -1321,6 +1527,34 @@
                   <label for="pagoCardInitialLoad" data-i18n="pago_initial_load">Starting balance (USD, optional)</label>
                   <input id="pagoCardInitialLoad" type="number" min="10" max="2500" step="0.01" placeholder="10.00" />
                 </div>
+                <section class="pricing-receipt pago-issue-summary" id="pagoIssueSummary" aria-labelledby="pagoIssueSummaryTitle">
+                  <h3 id="pagoIssueSummaryTitle" data-i18n="pago_issue_summary">Price summary</h3>
+                  <div class="pricing-row">
+                    <span data-i18n="pago_issue_fee">Card issuing fee</span>
+                    <strong id="pagoIssueFee">$5.00</strong>
+                  </div>
+                  <div class="pricing-row">
+                    <span data-i18n="pago_issue_processing">Processing fee</span>
+                    <strong id="pagoIssueProcessing">$1.50</strong>
+                  </div>
+                  <div class="pricing-row hidden" id="pagoIssueFundingRow">
+                    <span data-i18n="pago_issue_funding">Funding fee</span>
+                    <strong id="pagoIssueFunding">$0.00</strong>
+                  </div>
+                  <div class="pricing-row">
+                    <span data-i18n="pago_issue_load">Starting balance</span>
+                    <strong id="pagoIssueLoad">$0.00</strong>
+                  </div>
+                  <div class="pricing-row">
+                    <span data-i18n="pago_issue_wallet">Wallet balance</span>
+                    <strong id="pagoIssueWallet">—</strong>
+                  </div>
+                  <div class="pricing-row pricing-total">
+                    <span data-i18n="pago_issue_total">Total from wallet</span>
+                    <strong id="pagoIssueTotal">$6.50</strong>
+                  </div>
+                  <p class="pago-issue-warning hidden" id="pagoIssueBalanceWarning" role="alert" data-i18n="pago_issue_insufficient">Insufficient balance</p>
+                </section>
                 <button type="submit" class="btn btn-primary" id="pagoCardRequestSubmit" data-i18n="pago_request_submit">Request card</button>
               </form>
             </section>
@@ -1335,7 +1569,7 @@
               </div>
               <div class="action-row">
                 <button type="button" class="btn btn-secondary btn-sm" data-open-usdt-topup data-i18n="btn_top_up_usdt">Top Up USDT</button>
-                <button type="button" class="btn btn-primary btn-sm" id="btnSellConvertUsdtPage" data-i18n="btn_sell_convert_usdt">Sell USDT / Convert to MMK</button>
+                <button type="button" class="btn btn-primary btn-sm" data-goto="cards" data-i18n="nav_my_cards">Virtual Cards</button>
                 <button type="button" class="btn btn-secondary btn-sm" id="btnOpenWithdrawUsdtPage" data-i18n="btn_withdraw_usdt">Withdraw USDT</button>
                 <button type="button" class="btn btn-primary btn-sm hidden" id="btnOpenScanPayPage" data-i18n="btn_scan_pay" hidden aria-hidden="true" tabindex="-1" data-feature="scan_pay" data-feature-disabled="true">Scan Pay</button>
               </div>
@@ -1348,8 +1582,8 @@
                   <div class="wallet-hero-label" data-i18n="usdt_available_balance">Available</div>
                   <div class="wallet-hero-value" id="usdtWalletAvailableBalance">—</div>
                 </div>
-                <div class="wallet-hero-card usdt locked">
-                  <div class="wallet-hero-label" data-i18n="usdt_locked_balance">Locked (Escrow)</div>
+                <div class="wallet-hero-card usdt locked hidden" id="usdtWalletLockedCard" aria-hidden="true">
+                  <div class="wallet-hero-label" data-i18n="usdt_locked_balance">Locked</div>
                   <div class="wallet-hero-value" id="usdtWalletLockedBalance">—</div>
                 </div>
                 <div class="wallet-hero-card usdt total">
@@ -1360,9 +1594,9 @@
               <p class="wallet-hero-hint" id="usdtWalletMinDepositHint" data-i18n="usdt_wallet_hint">Send USDT (TRC20) to your TRON HD deposit address.</p>
             </section>
 
-            <section class="panel" id="usdtEscrowPanel">
-              <h2 data-i18n="usdt_escrow_holds">Active Escrow Holds</h2>
-              <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_escrow_holds_hint">USDT locked during active P2P trades. Released to the buyer when the trade completes, or returned to you if cancelled.</p>
+            <section class="panel hidden" id="usdtEscrowPanel" aria-hidden="true">
+              <h2 data-i18n="usdt_escrow_holds">Reserved balance</h2>
+              <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_escrow_holds_hint">Funds temporarily held for pending card or wallet operations.</p>
               <div id="usdtEscrowHoldsList" class="usdt-escrow-list"><p class="hint" data-i18n="loading">Loading…</p></div>
             </section>
 
@@ -1401,23 +1635,21 @@
 
               <section class="panel">
                 <h2 data-i18n="usdt_link_external_wallet">Link External Wallet</h2>
-                <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_link_external_hint">Save a personal TRC20, BEP20, or ERC20 address for withdrawals and optional on-chain balance checks.</p>
+                <p class="hint" style="margin-bottom:0.85rem" data-i18n="usdt_link_external_hint">Save a personal TRC20 address for withdrawals and optional on-chain balance checks.</p>
                 <form id="usdtLinkWalletForm" class="form">
                   <div class="field">
                     <label for="usdtLinkNetwork" data-i18n="network">Network</label>
                     <select id="usdtLinkNetwork">
                       <option value="TRC20">TRC20 (Tron)</option>
-                      <option value="BEP20">BEP20 (BSC)</option>
-                      <option value="ERC20">ERC20 (Ethereum)</option>
                     </select>
                   </div>
                   <div class="field">
                     <label for="usdtLinkAddress" data-i18n="wallet_address">Wallet Address</label>
-                    <input id="usdtLinkAddress" type="text" autocomplete="off" spellcheck="false" placeholder="T… or 0x…" required />
+                    <input id="usdtLinkAddress" type="text" autocomplete="off" spellcheck="false" placeholder="T…" required />
                   </div>
                   <div class="field">
                     <label for="usdtLinkLabel" data-i18n="label_optional">Label (optional)</label>
-                    <input id="usdtLinkLabel" type="text" maxlength="64" placeholder="My Binance USDT" />
+                    <input id="usdtLinkLabel" type="text" maxlength="64" placeholder="My TRC20 wallet" />
                   </div>
                   <button type="submit" class="btn btn-primary" data-i18n="link_wallet">Link Wallet</button>
                 </form>
@@ -1473,6 +1705,15 @@
               <div>
                 <h2 class="page-heading">P2P Marketplace</h2>
                 <p class="page-desc">Buy or sell USDT peer-to-peer with verified users. Post your own ad or trade from the market. Payments via KPay, WavePay, or Bank — not from your internal MMK wallet.</p>
+                <div class="p2p-escrow-flow-banner" role="note">
+                  <strong>One-way USDT escrow</strong>
+                  <span>Seller locks USDT on-platform → Buyer pays fiat externally → Seller releases USDT.</span>
+                  <ol class="p2p-escrow-flow-steps-inline">
+                    <li>Pending Payment</li>
+                    <li>Payment Sent</li>
+                    <li>USDT Released</li>
+                  </ol>
+                </div>
                 <span id="p2pBuyerFeeBadge" class="p2p-fee-badge p2p-fee-badge-buyer">0% Fee for Buyers. Seller pays platform fee upon release.</span>
               </div>
               <div class="action-row">
@@ -1507,9 +1748,7 @@
             <div class="p2p-market-toolbar">
               <label class="p2p-filter-label" for="p2pNetworkFilter">Network</label>
               <select id="p2pNetworkFilter" class="p2p-network-select">
-                <option value="">All networks</option>
-                <option value="TRC20">TRC20 (Tron)</option>
-                <option value="BEP20">BEP20 (BSC)</option>
+                <option value="TRC20" selected>TRC20 (Tron)</option>
               </select>
             </div>
 
@@ -1525,7 +1764,7 @@
             <div class="page-header">
               <div>
                 <h2 class="page-heading">Exchange Rates &amp; Fees</h2>
-                <p class="page-desc">Current USD/MMK rate and card pricing applied to your transactions.</p>
+                <p class="page-desc">USDT (TRC20) deposit and withdrawal fees plus virtual card issuing and reload pricing.</p>
               </div>
             </div>
 
@@ -1545,15 +1784,11 @@
               </div>
               <div class="rates-card">
                 <div class="rates-label">Card Reload Service Fee</div>
-                <div class="rates-value" id="ratesReloadFee">$3.50 fixed</div>
+                <div class="rates-value" id="ratesReloadFee">—</div>
               </div>
               <div class="rates-card" data-instant-only>
                 <div class="rates-label">TRC20 Withdrawal Fee</div>
                 <div class="rates-value" id="ratesWithdrawFeeTrc20">—</div>
-              </div>
-              <div class="rates-card" data-instant-only>
-                <div class="rates-label">BEP20 Withdrawal Fee</div>
-                <div class="rates-value" id="ratesWithdrawFeeBep20">—</div>
               </div>
               <div class="rates-card" data-instant-only>
                 <div class="rates-label">Min USDT Withdrawal</div>
@@ -1577,6 +1812,7 @@
               <div class="summary-grid">
                 <div class="summary-item"><span class="label" data-i18n="name">Name</span><span class="value" id="sumName">—</span></div>
                 <div class="summary-item"><span class="label" data-i18n="email">Email</span><span class="value" id="sumEmail">—</span></div>
+                <div class="summary-item"><span class="label">User ID</span><span class="value" id="sumUserId">—</span></div>
                 <div class="summary-item"><span class="label" data-i18n="phone">Phone</span><span class="value" id="sumPhone">—</span></div>
               </div>
               <div class="action-row" style="margin-top:1rem">
@@ -1617,6 +1853,12 @@
             </div>
 
             <div class="settings-grid">
+              <div class="settings-card settings-card-wide" id="pushNotifyPanel">
+                <h3 data-i18n="push_heading">Phone notifications</h3>
+                <p class="hint" data-i18n="push_hint">Alerts show on your phone screen, including when Eisy is in the background. On iPhone, add Eisy to the Home Screen first.</p>
+                <button type="button" class="btn btn-primary btn-sm" id="pushEnableBtn" data-i18n="push_enable">Enable phone notifications</button>
+                <p id="pushStatus" class="hint" style="margin-top:0.65rem"></p>
+              </div>
               <div class="settings-card">
                 <h3 data-i18n="profile_heading">Profile</h3>
                 <p class="hint" data-i18n="settings_profile_link_hint">Name, email, phone, and card status are on your Profile page.</p>
@@ -1628,7 +1870,8 @@
                 <button type="button" id="unlockBtnSettings" class="btn btn-secondary btn-sm">Unlock / Change PIN</button>
                 <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border-subtle)" />
                 <p class="hint" style="margin-bottom:0.5rem">Forgot your PIN? Reset it with an email code.</p>
-                <button type="button" id="settingsPinResetBtn" class="btn btn-secondary btn-sm">Email me a PIN reset code</button>
+                <button type="button" id="settingsPinResetBtn" class="btn btn-secondary btn-sm" data-otp-idle="Email me a PIN reset code" data-otp-status="settingsPinResetResendStatus">Email me a PIN reset code</button>
+                <p id="settingsPinResetResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
                 <form id="settingsPinResetForm" class="form form-compact hidden" style="margin-top:0.75rem">
                   <div class="field"><label for="settingsPinResetOtp">Email code</label><input id="settingsPinResetOtp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required /></div>
                   <div class="field"><label for="settingsPinResetNew">New 6-digit PIN</label><input id="settingsPinResetNew" maxlength="6" type="password" inputmode="numeric" autocomplete="new-password" required /></div>
@@ -1656,7 +1899,7 @@
               <div class="settings-card">
                 <h3>KYC Verification</h3>
                 <p id="settingsKycStatus">Identity status: —</p>
-                <p class="hint" id="settingsKycHint" style="margin-top:0.35rem" data-i18n="kyc_hint">Required for P2P trading and verified banking features.</p>
+                <p class="hint" id="settingsKycHint" style="margin-top:0.35rem" data-i18n="kyc_hint">Optional for compliance. Virtual Visa cards do not require KYC.</p>
                 <button id="btnOpenKycModal" class="btn btn-primary btn-sm" style="margin-top:0.5rem">Complete KYC</button>
               </div>
               <div class="settings-card">
@@ -1668,6 +1911,8 @@
 
             <section class="panel">
               <h2>Support</h2>
+              <div data-official-contact="default"></div>
+              <p class="hint" style="margin-bottom:0.85rem">Prefer live chat? Use the <strong>Support</strong> button on the bottom-right, or open a ticket below.</p>
               <form id="supportForm" class="form">
                 <div class="field">
                   <label for="supportCategory">Category</label>
@@ -1696,6 +1941,95 @@
     </div>
   </div>
 
+  <!-- User Pay (QR scan + receive — internal USDT transfer; end of body so it never sits above dashboard markup) -->
+  <div id="userPayModal" class="modal hidden" hidden data-instant-only role="dialog" aria-labelledby="userPayModalTitle" aria-modal="true" aria-hidden="true">
+    <div class="modal-box modal-box-wide scan-pay-modal user-pay-modal">
+      <div class="modal-header-row">
+        <h3 id="userPayModalTitle" data-i18n="user_pay_title">Pay</h3>
+        <button type="button" id="userPayModalClose" class="proof-lightbox-close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <div class="user-pay-tabs" role="tablist">
+        <button type="button" class="user-pay-tab is-active" id="btnUserPayTabScan" role="tab" aria-selected="true" data-i18n="user_pay_tab_scan">Scan to pay</button>
+        <button type="button" class="user-pay-tab" id="btnUserPayTabReceive" role="tab" aria-selected="false" data-i18n="user_pay_tab_receive">My QR</button>
+      </div>
+
+      <div id="userPayPanelReceive" class="user-pay-panel hidden" role="tabpanel">
+        <p class="hint" data-i18n="user_pay_receive_hint">Show this QR so others can pay you from their Eisy USDT wallet.</p>
+        <div class="user-pay-receive-qr-wrap">
+          <img id="userPayReceiveQr" class="usdt-qr" alt="" width="240" height="240" decoding="async" />
+        </div>
+        <p class="hint" id="userPayReceiveEmail">—</p>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnUserPayCopyPayload" data-i18n="user_pay_copy_link">Copy Pay link</button>
+      </div>
+
+      <div id="userPayPanelFlow" class="user-pay-panel" role="tabpanel">
+        <div id="userPayStepScan" class="scan-pay-step">
+          <div id="userPayChooser" class="scan-pay-chooser">
+            <button type="button" class="scan-pay-option" id="btnUserPayChooseCamera">
+              <strong data-i18n="scan_pay_option_camera_title">Camera Scan</strong>
+              <span data-i18n="user_pay_scan_camera_desc">Scan another user&apos;s Eisy Pay QR.</span>
+            </button>
+            <label class="scan-pay-option" for="userPayImageInput" id="btnUserPayChooseUpload">
+              <strong data-i18n="scan_pay_option_upload_title">Upload QR Image</strong>
+              <span data-i18n="scan_pay_option_upload_desc">Pick a saved QR code photo from your gallery or computer.</span>
+            </label>
+            <input type="file" id="userPayImageInput" accept="image/*" class="hidden" />
+          </div>
+          <div id="userPayCameraPanel" class="scan-pay-camera-panel hidden">
+            <div class="scan-pay-video-wrap">
+              <video id="userPayVideo" class="scan-pay-video" playsinline muted></video>
+              <canvas id="userPayCanvas" class="hidden"></canvas>
+            </div>
+            <p id="userPayCameraStatus" class="hint">Camera ready</p>
+            <div class="action-row" style="margin-top:0.75rem;flex-wrap:wrap;gap:0.5rem">
+              <button type="button" class="btn btn-secondary btn-sm" id="btnUserPayStartCamera" data-i18n="scan_pay_start_camera">Start Camera</button>
+              <label class="btn btn-secondary btn-sm" for="userPayImageInput" style="cursor:pointer;margin:0" data-i18n="scan_pay_upload_image">Upload QR Image</label>
+              <button type="button" class="btn btn-secondary btn-sm" id="btnUserPayBackToChooser" data-i18n="scan_pay_back_options">Back to options</button>
+            </div>
+          </div>
+          <div class="field" style="margin-top:1rem">
+            <label for="userPayManualEmail" data-i18n="user_pay_manual_email">Or enter recipient email</label>
+            <input id="userPayManualEmail" type="email" autocomplete="off" placeholder="user@example.com" />
+            <button type="button" class="btn btn-secondary btn-sm" id="btnUserPayManualContinue" style="margin-top:0.5rem" data-i18n="user_pay_continue">Continue</button>
+          </div>
+          <p id="userPayUploadStatus" class="hint hidden" style="margin-top:0.75rem"></p>
+        </div>
+
+        <div id="userPayStepConfirm" class="scan-pay-step hidden">
+          <div class="scan-pay-confirm-card">
+            <div class="pricing-row"><span data-i18n="recipient_email">Recipient</span><strong id="userPayRecipientDisplay">—</strong></div>
+            <div class="field" style="margin-top:0.85rem">
+              <label for="userPayAmountInput" data-i18n="amount_usdt">Amount (USDT)</label>
+              <input id="userPayAmountInput" type="number" step="0.01" min="0.01" placeholder="0.00" required />
+            </div>
+            <div class="field">
+              <label for="userPayNoteInput" data-i18n="note_optional">Note (optional)</label>
+              <input id="userPayNoteInput" type="text" maxlength="120" placeholder="Payment note" />
+            </div>
+            <p class="hint" id="userPayBalanceHint"></p>
+          </div>
+          <div class="action-row" style="margin-top:1rem;gap:0.5rem;flex-wrap:wrap">
+            <button type="button" class="btn btn-secondary" id="btnUserPayRescan" data-i18n="scan_pay_rescan">Scan Again</button>
+            <button type="button" class="btn btn-primary" id="btnUserPayConfirm" data-i18n="user_pay_send">Send USDT</button>
+          </div>
+        </div>
+
+        <div id="userPayStepResult" class="scan-pay-step hidden">
+          <div id="userPayResultBox" class="scan-pay-result ok">
+            <h4 id="userPayResultTitle" data-i18n="user_pay_success_title">Payment sent</h4>
+            <p id="userPayResultMessage" class="hint"></p>
+          </div>
+          <div class="action-row" style="margin-top:1rem;gap:0.5rem;flex-wrap:wrap">
+            <button type="button" class="btn btn-secondary" id="btnUserPayViewWallet" data-i18n="nav_usdt_wallet">USDT Wallet</button>
+            <button type="button" class="btn btn-primary" id="btnUserPayDone" data-i18n="btn_done">Done</button>
+          </div>
+        </div>
+
+        <p id="userPayError" class="wallet-pay-hint err hidden" style="margin-top:0.75rem"></p>
+      </div>
+    </div>
+  </div>
+
   <script defer src="/src/lib/config.js?v=20260817m2"></script>
   <script defer src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script defer src="/src/lib/constants.js?v=20260817m2"></script>
@@ -1706,30 +2040,34 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261005googleCallback"></script>
-  <script defer src="/i18n.js?v=20261007pagoCards"></script>
-  <script defer src="/auth.js?v=20261005googleCallback"></script>
+  <script defer src="/i18n.js?v=20261029pwaInstall"></script>
+  <script defer src="/auth.js?v=20261009authTabs"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
   <script defer src="/src/services/usdtWalletApi.js?v=20260909walletPerf"></script>
   <script defer src="/src/services/withdrawalApi.js?v=20260817m2"></script>
   <script defer src="/src/services/accountApi.js?v=20260823profile"></script>
-  <script defer src="/src/services/p2pApi.js?v=20260819p2p"></script>
   <script defer src="/src/services/index.js?v=20260817m2"></script>
   <script defer src="/src/hooks/submitBusy.js?v=20260817m2"></script>
-  <script defer src="/src/hooks/depositFees.js?v=20260821fee"></script>
+  <script defer src="/src/hooks/depositFees.js?v=20261009depositNoMin"></script>
   <script defer src="/src/hooks/depositPolling.js?v=20260909scrollSmooth"></script>
   <script defer src="/src/hooks/index.js?v=20260817m2"></script>
   <script defer src="/src/components/toast.js?v=20260817m2"></script>
-  <script defer src="/src/components/depositFeePreview.js?v=20260817m2"></script>
+  <script defer src="/src/components/depositFeePreview.js?v=20261009depositFee"></script>
   <script defer src="/src/components/usdtAddressBox.js?v=20260817m2"></script>
   <script defer src="/src/components/activityLog.js?v=20260817m2"></script>
   <script defer src="/src/components/instantAppView.js?v=20261006removeCards"></script>
   <script defer src="/src/components/index.js?v=20260928appModes"></script>
-  <script defer src="/nav.js?v=20260908sidebarPerf"></script>
-  <script defer src="/viewport.js?v=20260909pinKb"></script>
+  <script defer src="/nav.js?v=20261011p2pRoute-db8412df6a"></script>
+  <script defer src="/viewport.js?v=20261011p2pRoute-ecd7a6ebb9"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script defer src="/dashboard.js?v=20261007pagoCards"></script>
-  <script defer src="/supportChat.js?v=20260911supportChat"></script>
+  <script defer src="/pwa.js?v=20261029pwaInstall"></script>
+  <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
+  <script defer src="/src/services/p2pApi.js?v=20261011p2pRoute-ac84cfff67"></script>
+  <script defer src="/src/lib/p2pEscrowFlow.js?v=20261011p2pRoute-9d2f027157"></script>
+  <script defer src="/dashboard.js?v=20261011p2pRoute-d003061f85"></script>
+  <script defer src="/contactInfo.js?v=20261013noPhone"></script>
+  <script defer src="/supportChat.js?v=20261011p2pRoute-c3c6aa7af1"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
 </body>
 </html>

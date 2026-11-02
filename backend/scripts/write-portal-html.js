@@ -1,6 +1,7 @@
 /**
  * Generate dedicated Instant portal HTML shell from index.html.
  * Keeps a single source of truth while serving isolated /instant pages.
+ * Run scripts/stamp-portal-cache.js first so ?v= hashes match dashboard/nav.
  */
 'use strict';
 

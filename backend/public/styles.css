@@ -64,6 +64,12 @@
      insets via fitsSystemWindows — a 3rem floor caused banner overlap). */
   --sidebar-safe-top: max(0.85rem, calc(var(--safe-top) + 0.5rem));
   --sidebar-safe-bottom: calc(var(--safe-bottom) + 0.5rem);
+  /* Toasts sit below the status bar + app header (never over email / nav chrome). */
+  --toast-inset-x: max(0.75rem, var(--safe-left));
+  --toast-top-fallback: max(4.75rem, calc(var(--safe-top) + var(--header-min-height) + 0.4rem));
+  --toast-top-auth: max(1rem, calc(var(--safe-top) + 0.75rem));
+  --toast-top: var(--toast-top-measured, var(--toast-top-fallback));
+  --toast-bottom: max(1.35rem, calc(var(--safe-bottom) + 1rem));
 }
 
 @supports (height: 100svh) {
@@ -290,10 +296,32 @@ html.doc-scroll .sidebar-toggle-fab.is-visible {
 }
 
 /* Sidebar open: keep document scroll on Android. */
-html.doc-scroll body.sidebar-scroll-lock {
+html.doc-scroll body.sidebar-scroll-lock:not(.user-detail-modal-open) {
   overflow-x: hidden !important;
   overflow-y: auto !important;
   position: relative !important;
+}
+
+/* User detail modal: lock page scroll even on doc-scroll / mobile admin layouts */
+html.user-detail-modal-open {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+  height: 100%;
+}
+html.user-detail-modal-open body {
+  position: fixed !important;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+  width: 100% !important;
+  max-width: 100% !important;
+  left: 0;
+  right: 0;
+  touch-action: none;
+}
+html.user-detail-modal-open #userDetailModal,
+html.user-detail-modal-open #userDetailModal .user-detail-scroll-body,
+html.user-detail-modal-open #userDetailModal .user-detail-table-scroll {
+  touch-action: pan-y;
 }
 
 /* While the soft keyboard is open, avoid viewport-tied height thrashing (mobile). */
@@ -520,51 +548,73 @@ small.hint {
   margin: 0 0 0.35rem;
 }
 
-/* Landing APK download — bottom of auth card, above legal links */
-.auth-apk-download {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  margin: 1.15rem 0 0;
-}
-
-/* Landing APK download — slate + emerald, compact */
-.apk-download-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  margin: 0;
-  padding: 0.5rem 0.9rem;
-  border-radius: 0.5rem;
-  border: 1px solid rgba(52, 211, 153, 0.28);
-  background: #1e293b; /* slate-800 */
-  color: #34d399; /* emerald-400 */
-  font-size: 0.8125rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  line-height: 1.2;
-  text-decoration: none;
-  box-shadow: 0 1px 2px rgba(2, 6, 23, 0.35);
-  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
-}
-.apk-download-btn:hover {
-  background: #334155; /* slate-700 */
-  border-color: rgba(52, 211, 153, 0.5);
-  color: #6ee7b7; /* emerald-300 */
-}
-.apk-download-btn:active {
-  transform: translateY(1px);
-}
-.apk-download-btn:focus-visible {
-  outline: 2px solid #34d399;
-  outline-offset: 2px;
-}
-.apk-download-icon {
-  flex-shrink: 0;
-  display: block;
-}
 .tabs { display: flex; gap: 0.65rem; margin-bottom: 1rem; }
+#authTabs.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem;
+  margin: 0.85rem 0 1.15rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.45);
+}
+#authTabs .tab {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 2.55rem;
+}
+#authTabs .tab.active {
+  background: linear-gradient(135deg, var(--accent), #6366f1);
+  color: #fff;
+  box-shadow: 0 4px 14px var(--accent-glow);
+}
+.auth-quiet-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.2rem 0.45rem;
+  margin-top: 0.85rem;
+}
+.auth-text-link {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0.25rem 0.15rem;
+  color: #93c5fd;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+.auth-text-link:hover { color: #dbeafe; }
+.auth-text-link:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.auth-bio-link {
+  display: block;
+  width: 100%;
+  margin-top: 0.7rem;
+  text-align: center;
+  text-decoration: none;
+}
+.auth-quiet-sep {
+  color: var(--text-muted, #94a3b8);
+  user-select: none;
+}
+.auth-extra {
+  margin-top: 0.9rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-subtle);
+}
 .tab {
   flex: 1; padding: 0.65rem 0.85rem; border: 1px solid var(--border-subtle);
   background: var(--bg-surface); color: var(--text-secondary); border-radius: var(--radius-sm);
@@ -1053,6 +1103,12 @@ select {
 .form .btn-primary, .auth-card .btn-primary { width: 100%; }
 .btn-secondary { background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); }
 .btn-secondary:hover { background: var(--bg-elevated); border-color: rgba(148, 163, 184, 0.45); }
+.btn.is-cooldown:disabled { cursor: not-allowed; opacity: 0.9; }
+.otp-resend-status {
+  margin: 0.45rem 0 0;
+  min-height: 1.15em;
+  font-variant-numeric: tabular-nums;
+}
 
 .btn-google {
   display: inline-flex;
@@ -1102,6 +1158,9 @@ a.btn { text-decoration: none; }
 .btn-approve:hover { background: rgba(34, 197, 94, 0.22); color: #bbf7d0; }
 .btn-reject { background: var(--danger-bg); color: #fca5a5; border: 1px solid var(--danger-border); min-width: 5.25rem; }
 .btn-reject:hover { background: rgba(239, 68, 68, 0.22); color: #fecaca; }
+.delete-user-btn { background: rgba(239, 68, 68, 0.16); color: #fecaca; border: 1px solid rgba(248, 113, 113, 0.45); }
+.delete-user-btn:hover { background: rgba(239, 68, 68, 0.28); color: #fff; }
+#deleteUserConfirmBtn:disabled { cursor: not-allowed; opacity: 0.55; }
 
 .output { margin-top: 1rem; padding: 1rem; background: rgba(15, 23, 42, 0.65); border-radius: var(--radius-md); font-size: 0.75rem; max-height: 160px; overflow: auto; border: 1px solid var(--border-subtle); white-space: pre-wrap; color: var(--text-muted); font-family: var(--font-mono); }
 .output:empty { display: none; }
@@ -1122,9 +1181,30 @@ a.btn { text-decoration: none; }
 .btn-copy-icon { width: 1.75rem; height: 1.75rem; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.28); background: rgba(255,255,255,0.1); color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .btn-copy-all { margin-top: 1rem; width: 100%; font-size: 0.85rem; }
 
-.copy-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 10000; padding: 0.75rem 1.35rem; border-radius: var(--radius-pill); background: rgba(20,83,45,0.95); border: 1px solid var(--success); color: #bbf7d0; font-weight: 600; box-shadow: var(--shadow-lg); animation: fadeInSoft 0.18s ease-out; pointer-events: none; }
+.copy-toast {
+  position: fixed;
+  left: 50%;
+  right: auto;
+  bottom: var(--toast-bottom);
+  transform: translateX(-50%);
+  z-index: 10020;
+  max-width: min(420px, calc(100vw - 2 * var(--toast-inset-x) - var(--safe-right)));
+  padding: 0.75rem 1.35rem;
+  border-radius: var(--radius-pill);
+  background: rgba(20,83,45,0.95);
+  border: 1px solid var(--success);
+  color: #bbf7d0;
+  font-weight: 600;
+  box-shadow: var(--shadow-lg);
+  animation: toastSlideIn 0.22s ease-out;
+  pointer-events: none;
+}
 .copy-toast.hidden { display: none; }
 @keyframes fadeInSoft { from { opacity: 0; } to { opacity: 1; } }
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translate(-50%, -0.35rem); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
 
 .card-selector-section { margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); }
 .card-selector-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.65rem; }
@@ -1500,7 +1580,29 @@ a.btn { text-decoration: none; }
 
 .auth-inline-error { color: #fca5a5; background: var(--danger-bg); border: 1px solid var(--danger-border); border-radius: var(--radius-sm); padding: 0.65rem 0.85rem; font-size: 0.85rem; margin-top: 0.35rem; }
 .auth-inline-error.hidden { display: none; }
-.auth-toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 9999; min-width: min(420px, 92vw); padding: 1rem 1.5rem; border-radius: var(--radius-md); font-weight: 600; text-align: center; box-shadow: var(--shadow-lg); animation: fadeInSoft 0.18s ease-out; }
+.auth-toast {
+  position: fixed;
+  top: var(--toast-top);
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  z-index: 10020;
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 2 * var(--toast-inset-x) - var(--safe-right)));
+  max-width: min(420px, calc(100vw - 2 * var(--toast-inset-x) - var(--safe-right)));
+  padding: 0.85rem 1.15rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+  animation: toastSlideIn 0.22s ease-out;
+  pointer-events: none;
+}
+html.auth-screen-active {
+  --toast-top: var(--toast-top-measured, var(--toast-top-auth));
+}
 .auth-toast.hidden { display: none; }
 .auth-toast.ok { background: rgba(20,83,45,0.95); border: 1px solid var(--success); color: #bbf7d0; }
 .auth-toast.err { background: rgba(69,10,10,0.95); border: 1px solid var(--danger); color: #fecaca; }
@@ -1611,6 +1713,7 @@ a.btn { text-decoration: none; }
 .badge-rate { background: rgba(59,130,246,0.12); color: #93c5fd; border: 1px solid rgba(59,130,246,0.3); max-width: 300px; white-space: normal; line-height: 1.35; text-transform: none; font-size: 0.72rem; letter-spacing: 0; padding: 0.45rem 0.75rem; }
 
 .thread-list { display: flex; flex-direction: column; gap: 0.65rem; max-height: 340px; overflow-y: auto; }
+.support-queue .thread-list { max-height: min(70vh, 720px); }
 .thread-item { padding: 0.85rem; background: rgba(15,23,42,0.45); border-radius: var(--radius-sm); cursor: pointer; border: 1px solid var(--border-subtle); transition: border-color 0.15s, background 0.15s; }
 .thread-item:hover { border-color: var(--border); background: rgba(148,163,184,0.06); }
 .thread-item.active { border-color: var(--accent); background: rgba(59,130,246,0.08); }
@@ -1675,6 +1778,106 @@ a.btn { text-decoration: none; }
   flex-direction: column;
   gap: 0.65rem;
   -webkit-overflow-scrolling: touch;
+}
+#supportTicketModal.proof-lightbox {
+  align-items: flex-start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: max(0.75rem, env(safe-area-inset-top, 0px)) 0.75rem 1rem;
+}
+.support-ticket-modal {
+  align-items: stretch;
+  width: min(720px, 96vw);
+  max-width: 100%;
+  max-height: min(92vh, 860px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  text-align: left;
+  padding: 1.35rem 1.25rem 1.15rem;
+  background: var(--bg-elevated, #0f172a);
+  border: 1px solid var(--border, rgba(148,163,184,0.35));
+  border-radius: var(--radius-lg, 16px);
+  box-shadow: var(--shadow-lg);
+  box-sizing: border-box;
+}
+.support-ticket-modal .proof-lightbox-close {
+  top: 0.7rem;
+  right: 0.7rem;
+}
+.support-ticket-kicker {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #93c5fd;
+}
+.support-ticket-modal .kyc-doc-viewer-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.2rem;
+  text-align: left;
+}
+.support-ticket-subtitle { margin: 0 0 0.85rem; text-align: left; }
+.support-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0 0 0.9rem;
+}
+.support-status-btn {
+  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.45);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.support-status-btn.is-active[data-support-status="pending"] {
+  background: rgba(59,130,246,0.2);
+  color: #bfdbfe;
+  border-color: rgba(59,130,246,0.55);
+}
+.support-status-btn.is-active[data-support-status="in_progress"] {
+  background: rgba(168,85,247,0.2);
+  color: #e9d5ff;
+  border-color: rgba(168,85,247,0.55);
+}
+.support-status-btn.is-active[data-support-status="completed"] {
+  background: rgba(34,197,94,0.18);
+  color: #bbf7d0;
+  border-color: rgba(34,197,94,0.5);
+}
+.support-ticket-modal .support-messages {
+  width: 100%;
+  max-width: 100%;
+  max-height: min(42vh, 380px);
+  min-height: 200px;
+  margin-bottom: 0.85rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md, 12px);
+  background: rgba(2, 6, 23, 0.35);
+  box-sizing: border-box;
+}
+.support-ticket-modal .support-task-meta,
+.support-ticket-modal .support-compose,
+.support-ticket-modal .support-status-actions {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.support-reply-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+@media (max-width: 520px) {
+  .support-ticket-modal .support-task-meta {
+    grid-template-columns: 1fr;
+  }
+}
+.support-ticket-modal .support-compose {
+  position: static;
+  background: transparent;
+  padding-bottom: 0;
 }
 .support-compose {
   flex-shrink: 0;
@@ -1929,6 +2132,14 @@ a.btn { text-decoration: none; }
   font-size: 0.9rem;
   text-align: center;
 }
+.reload-preview-receive.is-warn {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: #fde68a;
+}
+.usdt-deposit-fee-label {
+  margin: -0.2rem 0 0;
+}
 .deposit-purpose-badge.reload { background: rgba(34, 197, 94, 0.12); color: #86efac; border-color: rgba(34, 197, 94, 0.28); }
 .deposit-purpose-badge.usdt { background: rgba(16, 185, 129, 0.12); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.28); }
 
@@ -2032,6 +2243,116 @@ a.btn { text-decoration: none; }
   background: rgba(96, 165, 250, 0.15);
   color: #60a5fa;
   border-color: rgba(96, 165, 250, 0.35);
+}
+.p2p-active-order-status.is-pending-payment {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.35);
+}
+.p2p-active-order-status.is-payment-sent {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.35);
+}
+.p2p-active-order-status.is-released {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.35);
+}
+.p2p-escrow-flow-banner {
+  margin: 0.75rem 0 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  background: rgba(96, 165, 250, 0.08);
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  max-width: 42rem;
+}
+.p2p-escrow-flow-banner strong {
+  display: block;
+  color: #93c5fd;
+  margin-bottom: 0.25rem;
+}
+.p2p-escrow-flow-steps-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.p2p-escrow-flow-steps-inline li {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+.p2p-escrow-panel {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  background: rgba(30, 41, 59, 0.55);
+}
+.p2p-escrow-oneway-note {
+  margin: 0 0 0.65rem !important;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.p2p-escrow-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.p2p-escrow-step {
+  flex: 1 1 7rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.35);
+  opacity: 0.55;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.p2p-escrow-step.is-current {
+  opacity: 1;
+  border-color: rgba(96, 165, 250, 0.55);
+  background: rgba(96, 165, 250, 0.12);
+  color: #bfdbfe;
+}
+.p2p-escrow-step.is-done {
+  opacity: 1;
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(52, 211, 153, 0.1);
+  color: #6ee7b7;
+}
+.p2p-escrow-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: rgba(148, 163, 184, 0.2);
+}
+.p2p-escrow-step.is-current .p2p-escrow-step-num {
+  background: rgba(96, 165, 250, 0.35);
+  color: #fff;
+}
+.p2p-escrow-step.is-done .p2p-escrow-step-num {
+  background: rgba(52, 211, 153, 0.35);
+  color: #fff;
 }
 .p2p-market-tabs {
   display: flex;
@@ -3012,6 +3333,187 @@ pre.output.hidden { display: none !important; }
   color: var(--muted, #94a3b8);
 }
 
+/* Official contact (footer, support, legal) */
+.official-contact {
+  margin: 0 0.55rem 0.85rem;
+  padding: 0.75rem 0.65rem;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+.official-contact--compact {
+  margin: 0 0.55rem 0.75rem;
+  padding: 0.65rem 0.55rem;
+}
+.official-contact--default {
+  margin: 0 0 1rem;
+  max-width: 520px;
+}
+.official-contact--legal {
+  margin: 1rem 0 0;
+  padding: 1rem 1.05rem;
+}
+.official-contact-title,
+.official-contact-eyebrow {
+  margin: 0 0 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text, #e2e8f0);
+}
+.official-contact-eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--muted, #94a3b8);
+}
+.official-contact-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.official-contact-item {
+  margin: 0;
+}
+.official-contact-link,
+.official-contact-static {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  text-decoration: none;
+  color: var(--text, #e2e8f0);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.official-contact-link:hover {
+  color: #f8fafc;
+}
+.official-contact-link strong,
+.official-contact-static strong {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted, #94a3b8);
+  margin-bottom: 0.1rem;
+}
+.official-contact-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  color: #2dd4bf;
+}
+.support-chat-scroll-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.support-chat-contact {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+  padding: 0.55rem 0.65rem max(0.65rem, env(safe-area-inset-bottom));
+  max-height: min(11rem, 38vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #0b1220;
+  z-index: 1;
+}
+.support-chat-contact .official-contact {
+  margin: 0;
+  padding: 0.55rem 0.45rem;
+  background: transparent;
+  border: none;
+}
+.support-chat-contact .official-contact-list {
+  gap: 0.35rem;
+}
+.support-chat-contact .official-contact-link,
+.support-chat-contact .official-contact-static {
+  font-size: 0.72rem;
+}
+.sidebar-contact-trigger {
+  width: 100%;
+  margin-bottom: 0.35rem;
+  text-align: left;
+}
+.auth-official-support {
+  margin: 0.65rem auto 0;
+  text-align: center;
+}
+.auth-support-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem 0.5rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.auth-support-link {
+  color: var(--accent, #2dd4bf);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+.auth-support-link:hover {
+  color: #5eead4;
+}
+.auth-support-sep {
+  color: rgba(148, 163, 184, 0.65);
+  user-select: none;
+}
+
+.contact-us-modal {
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+.contact-us-modal.is-visible {
+  opacity: 1;
+}
+.contact-us-modal-inner {
+  align-items: stretch;
+  width: min(420px, 96vw);
+  padding: 1.25rem 1.15rem 1.15rem;
+  background: var(--bg-elevated, #111827);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 1rem;
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.55);
+  transform: translateY(8px) scale(0.98);
+  transition: transform 0.22s ease;
+}
+.contact-us-modal.is-visible .contact-us-modal-inner {
+  transform: translateY(0) scale(1);
+}
+.contact-us-modal-title {
+  margin: 0 2rem 0.25rem 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.contact-us-modal-lead {
+  margin: 0 0 0.85rem;
+  font-size: 0.82rem;
+  color: var(--muted, #94a3b8);
+}
+.contact-us-modal .official-contact {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+.contact-us-modal .official-contact-link,
+.contact-us-modal .official-contact-static {
+  font-size: 0.88rem;
+}
+html.contact-modal-open,
+html.contact-modal-open body {
+  overflow: hidden;
+}
+
 .auth-legal-copyright {
   margin: 0.55rem auto 0;
   text-align: center;
@@ -3837,6 +4339,61 @@ html.app-hydrating .wallet-hero-actions-row {
   pointer-events: none;
 }
 
+html.balance-loading #sumBalanceUsdt {
+  color: transparent !important;
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+}
+html.balance-loading #sumBalanceUsdt::after {
+  content: '';
+  position: absolute;
+  inset: 0.15em 0;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.14) 0%,
+    rgba(226, 232, 240, 0.45) 50%,
+    rgba(148, 163, 184, 0.14) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeletonPulse 1.1s ease-in-out infinite;
+}
+
+.auth-session-notice {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.38);
+  color: #e0f2fe;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.auth-session-notice.hidden { display: none; }
+
+.pago-card-skeleton { display: grid; gap: 0.7rem; margin-top: 0.35rem; }
+.pago-card-skeleton.hidden { display: none; }
+.pago-card-skeleton-face,
+.pago-card-skeleton-line {
+  border-radius: var(--radius-xl);
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.12) 0%,
+    rgba(226, 232, 240, 0.28) 50%,
+    rgba(148, 163, 184, 0.12) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeletonPulse 1.1s ease-in-out infinite;
+}
+.pago-card-skeleton-face {
+  min-height: 11.5rem;
+  aspect-ratio: 1.68 / 1;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+.pago-card-skeleton-line { height: 2.4rem; border-radius: 12px; }
+.pago-card-skeleton-line.short { width: 42%; height: 1.1rem; }
+
 /* Prevent iOS input-focus zoom (font < 16px) which looks like layout shake */
 @media (max-width: 900px) {
   input,
@@ -3927,9 +4484,9 @@ html.app-hydrating .wallet-hero-actions-row {
     box-sizing: border-box;
   }
 
-  .hint,
-  .field small.hint,
-  small.hint,
+  .hint:not(.hidden),
+  .field small.hint:not(.hidden),
+  small.hint:not(.hidden),
   .page-desc,
   .wallet-hero-hint,
   .wallet-balance-subtext,
@@ -4475,8 +5032,9 @@ html.doc-scroll .auth-screen {
   right: max(1rem, env(safe-area-inset-right));
   bottom: max(4.5rem, calc(env(safe-area-inset-bottom) + 4rem));
   width: min(380px, calc(100vw - 1.5rem));
-  height: min(560px, calc(100vh - 6rem));
-  z-index: 1201;
+  height: min(560px, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 6rem));
+  max-height: min(560px, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 6rem));
+  z-index: 10050;
   display: flex;
   flex-direction: column;
   background: #0b1220;
@@ -4485,6 +5043,11 @@ html.doc-scroll .auth-screen {
   border-radius: 1rem;
   box-shadow: 0 18px 50px rgba(2, 6, 23, 0.55);
   overflow: hidden;
+}
+.support-chat-fab.is-panel-open {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(0.35rem);
 }
 .support-chat-panel.hidden { display: none !important; }
 .support-chat-header {
@@ -4543,13 +5106,6 @@ html.doc-scroll .auth-screen {
   background: #0f172a; color: #e2e8f0; padding: 0.55rem 0.7rem;
 }
 .support-chat-closed { padding: 0.75rem 1rem; }
-@media (max-width: 640px) {
-  .support-chat-panel {
-    right: 0.5rem; left: 0.5rem; width: auto;
-    bottom: max(4.25rem, calc(env(safe-area-inset-bottom) + 3.75rem));
-    height: min(70vh, calc(100vh - 5.5rem));
-  }
-}
 
 /* Live support chat widget (unified tickets + chat) */
 .support-chat-fab {
@@ -4581,8 +5137,9 @@ html.doc-scroll .auth-screen {
   right: max(1rem, env(safe-area-inset-right));
   bottom: max(4.5rem, calc(env(safe-area-inset-bottom) + 4rem));
   width: min(380px, calc(100vw - 1.5rem));
-  height: min(560px, calc(100vh - 6rem));
-  z-index: 1201;
+  height: min(560px, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 6rem));
+  max-height: min(560px, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 6rem));
+  z-index: 10050;
   display: flex; flex-direction: column;
   background: #0b1220; color: #e2e8f0;
   border: 1px solid rgba(148,163,184,0.25);
@@ -4647,15 +5204,339 @@ html.doc-scroll .auth-screen {
 .error-text.hidden { display: none; }
 @media (max-width: 640px) {
   .support-chat-panel {
-    right: 0.5rem; left: 0.5rem; width: auto;
-    bottom: max(4.25rem, calc(env(safe-area-inset-bottom) + 3.75rem));
-    height: min(70vh, calc(100vh - 5.5rem));
+    top: max(0.65rem, env(safe-area-inset-top));
+    right: max(0.65rem, env(safe-area-inset-right));
+    left: max(0.65rem, env(safe-area-inset-left));
+    bottom: max(0.65rem, env(safe-area-inset-bottom));
+    width: auto;
+    height: auto;
+    max-height: none;
+    z-index: 10050;
+  }
+  .support-chat-header {
+    flex-shrink: 0;
+    padding-top: max(0.85rem, calc(0.35rem + env(safe-area-inset-top, 0px)));
+  }
+  .support-chat-scroll-region {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+  }
+  .support-chat-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .support-chat-list,
+  .support-chat-messages,
+  .support-chat-compose {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    max-height: none;
+  }
+  .support-chat-contact {
+    flex: 0 0 auto;
+    max-height: min(10.5rem, 34vh);
+    overflow-y: auto;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   }
 }
 
+/* Chat drawer scrolls inside itself. The page behind stays fixed while it is open. */
+.support-chat-panel {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  touch-action: manipulation;
+}
+.support-chat-body {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+.support-chat-list,
+.support-chat-messages,
+.support-chat-compose {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  min-height: 0;
+}
+.support-chat-list,
+.support-chat-messages {
+  flex: 1 1 auto;
+}
+html.support-chat-scroll-lock,
+html.doc-scroll.support-chat-scroll-lock {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+html.support-chat-scroll-lock body,
+html.doc-scroll.support-chat-scroll-lock body {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+  top: var(--support-chat-lock-top, 0px) !important;
+}
+html.support-chat-scroll-lock .app-content {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+html.support-chat-scroll-lock .support-chat-scroll-region,
+html.support-chat-scroll-lock .support-chat-list,
+html.support-chat-scroll-lock .support-chat-messages,
+html.support-chat-scroll-lock .support-chat-compose {
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+}
+
+/* —— PWA install (persistent button + optional banner) —— */
+.pwa-install-app-btn {
+  width: 100%;
+  margin: 0 0 1rem;
+  font-weight: 600;
+}
+.pwa-install-app-btn--header {
+  width: auto;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.22), rgba(79, 70, 229, 0.28));
+  color: #e0f2fe;
+  border-radius: 999px;
+  padding: 0.42rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.pwa-install-app-btn--header:hover {
+  border-color: rgba(125, 211, 252, 0.75);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.32), rgba(79, 70, 229, 0.38));
+}
+.pwa-install-app-btn--header:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+.pwa-install-app-btn--header.hidden {
+  display: none !important;
+}
+#authScreen .pwa-install-app-btn:not(.hidden) {
+  box-shadow: 0 8px 24px rgba(14, 165, 233, 0.25);
+}
+#pwaIosInstallModal .pwa-ios-install-modal {
+  max-width: min(22.5rem, calc(100vw - 2rem));
+  width: 100%;
+  min-width: 0;
+  padding: 1.15rem 1.1rem 1.2rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: min(88dvh, 32rem);
+  box-sizing: border-box;
+}
+#pwaIosInstallModal .pwa-ios-install-header {
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+#pwaIosInstallModal .pwa-ios-install-header h3 {
+  margin: 0;
+  padding: 0.1rem 0 0;
+  font-size: 1rem;
+  line-height: 1.35;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+#pwaIosInstallModal .pwa-ios-install-close {
+  position: static;
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  margin: 0;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+#pwaIosInstallModal .pwa-ios-install-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+  max-width: 100%;
+  padding-top: 0.75rem;
+  box-sizing: border-box;
+}
+#pwaIosInstallModal .pwa-ios-install-lead,
+#pwaIosInstallModal .pwa-ios-install-note {
+  margin: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.45;
+}
+#pwaIosInstallModal .pwa-ios-install-lead {
+  font-size: 0.8125rem;
+}
+#pwaIosInstallModal .pwa-ios-install-note {
+  font-size: 0.78rem;
+}
+#pwaIosInstallModal .pwa-ios-install-steps {
+  margin: 0;
+  padding: 0 0 0 1.1rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+#pwaIosInstallModal .pwa-ios-install-steps li {
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+#pwaIosInstallModal .pwa-ios-install-ok {
+  width: 100%;
+  margin: 0.15rem 0 0;
+  box-sizing: border-box;
+}
+.pwa-install-banner {
+  margin: 0;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(79, 70, 229, 0.14));
+}
+.pwa-install-banner.hidden {
+  display: none !important;
+}
+.pwa-install-banner-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  max-width: 72rem;
+  margin: 0 auto;
+}
+.pwa-install-banner-icon {
+  border-radius: 0.65rem;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(2, 8, 23, 0.35);
+}
+.pwa-install-banner-copy {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.pwa-install-banner-copy strong {
+  display: block;
+  font-size: 0.95rem;
+  margin-bottom: 0.15rem;
+}
+.pwa-install-banner-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+.pwa-install-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+@media (max-width: 520px) {
+  .pwa-install-banner-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+  .pwa-install-banner-actions .btn {
+    flex: 1 1 auto;
+  }
+}
 
 /* —— Scan Pay —— */
 .scan-pay-modal { max-width: 520px; }
+
+.nav-item-pay {
+  font-weight: 600;
+}
+.nav-item-pay .nav-icon {
+  color: inherit;
+}
+.nav-item-pay:hover,
+.nav-item-pay:focus-visible,
+.nav-item-pay.is-active {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(79, 70, 229, 0.26));
+  border-color: rgba(56, 189, 248, 0.35);
+}
+.nav-item-pay.is-active .nav-icon {
+  color: #7dd3fc;
+}
+#userPayModal:not(.is-open) {
+  display: none !important;
+}
+
+.user-pay-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-sm);
+  background: rgba(15, 23, 42, 0.45);
+}
+.user-pay-tab {
+  flex: 1;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  padding: 0.45rem 0.65rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary, #94a3b8);
+}
+.user-pay-tab.is-active {
+  background: rgba(56, 189, 248, 0.2);
+  color: #e0f2fe;
+}
+.user-pay-receive-qr-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 0.75rem 0;
+}
 
 .scan-pay-chooser {
   display: grid;
@@ -5047,45 +5928,1475 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   letter-spacing: 0.01em;
 }
 
-.pago-card-list {
+/* ── Pago virtual cards — one plastic card + actions ── */
+.pago-cards-panel,
+.pago-detail-panel,
+.pago-card-stage,
+.pago-card-component {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.9rem;
 }
 
-.pago-card-row {
+.pago-card-component {
+  max-width: min(26.5rem, 100%);
+  gap: 0.7rem;
+}
+
+.pago-card-stage-head {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.pago-card-stage-head h2 {
+  margin: 0;
+}
+
+.pago-card-carousel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.pago-card-carousel.hidden,
+.pago-card-carousel-meta.hidden,
+#pagoCardEmpty.hidden {
+  display: none !important;
+}
+
+.pago-card-empty-state {
+  display: grid;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: min(26.5rem, 100%);
+}
+
+.pago-card-empty-visual {
+  width: 100%;
+}
+
+.pago-plastic-card.pago-plastic-sample {
+  border: 1px dashed rgba(216, 180, 254, 0.38);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 14px 32px rgba(46, 16, 101, 0.38);
+  pointer-events: none;
+  user-select: none;
+}
+
+.pago-plastic-card.pago-plastic-sample .pago-plastic-sheen {
+  animation: none;
+  opacity: 0.35;
+  transform: none;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.1) 50%, transparent 60%);
+}
+
+.pago-sample-watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(0.95rem, 4.5vw, 1.45rem);
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;
+  text-transform: uppercase;
+  color: rgba(237, 233, 254, 0.16);
+  transform: rotate(-16deg);
+  pointer-events: none;
+}
+
+.pago-sample-number {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: clamp(0.95rem, 3.8vw, 1.15rem);
+  letter-spacing: 0.14em;
+}
+
+.pago-card-empty-copy {
+  margin: 0;
+  max-width: 26.5rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.pago-card-request-panel {
+  margin-top: 0.15rem;
+}
+
+.pago-card-stage:has(.pago-card-empty-state:not(.hidden)) {
+  padding-bottom: 0.35rem;
+}
+
+.pago-card-carousel-nav {
+  appearance: none;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.45);
+  color: #e2e8f0;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pago-card-carousel-nav:focus-visible,
+.pago-card-slide:focus-visible {
+  outline: 2px solid var(--accent, #38bdf8);
+  outline-offset: 2px;
+}
+
+.pago-card-carousel-meta {
+  margin: 0;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.78rem;
+}
+
+.pago-card-switcher {
+  display: flex;
+  gap: 0.55rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 0.1rem 0.05rem 0.35rem;
+  scrollbar-width: thin;
+}
+
+.pago-card-chip {
+  appearance: none;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.35);
+  color: var(--text-secondary, #cbd5e1);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.pago-card-chip.is-active {
+  color: #e0f2fe;
+  border-color: rgba(56, 189, 248, 0.7);
+  background: rgba(14, 165, 233, 0.18);
+}
+
+.pago-card-chip.pago-card-slide {
+  flex: 0 0 9.6rem;
+  scroll-snap-align: start;
+  display: grid;
+  gap: 0.12rem;
+  justify-items: start;
+  text-align: left;
+  border-radius: 0.9rem;
+  padding: 0.7rem 0.75rem;
+  min-height: 5.5rem;
+}
+
+.pago-card-slide-brand {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.pago-card-slide-number {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.92rem;
+}
+
+.pago-card-slide-balance {
+  font-weight: 750;
+  font-size: 0.95rem;
+}
+
+.pago-card-slide-status {
+  font-size: 0.68rem;
+  opacity: 0.8;
+}
+
+.pago-card-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  align-items: stretch;
+  width: 100%;
+}
+
+.pago-card-actions .btn,
+.pago-card-actions .pago-action-wallet {
+  width: 100%;
+  min-height: 2.65rem;
+  white-space: normal;
+  line-height: 1.25;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.pago-action-wallet {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  min-height: 2.65rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.pago-action-wallet:active {
+  transform: scale(0.98);
+}
+
+.pago-action-apple {
+  color: #f8fafc;
+  background: #0b0f14;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.pago-action-google {
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+}
+
+.pago-action-topup {
+  color: #042f2e;
+  background: linear-gradient(180deg, #99f6e4 0%, #2dd4bf 100%);
+  border: 1px solid rgba(15, 118, 110, 0.35);
+  box-shadow: 0 8px 18px rgba(13, 148, 136, 0.22);
+}
+
+.pago-action-withdraw {
+  color: #1e3a8a;
+  background: linear-gradient(180deg, #dbeafe 0%, #93c5fd 100%);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  box-shadow: 0 8px 18px rgba(59, 130, 246, 0.18);
+}
+
+.pago-action-block,
+.pago-action-unblock {
+  color: #422006;
+  background: linear-gradient(180deg, #fde68a 0%, #fbbf24 100%);
+  border: 1px solid rgba(180, 83, 9, 0.35);
+}
+
+.pago-action-terminate {
+  grid-column: 1 / -1;
+  color: #fef2f2;
+  background: linear-gradient(180deg, #f87171 0%, #dc2626 100%);
+  border: 1px solid rgba(185, 28, 28, 0.45);
+  box-shadow: 0 8px 18px rgba(220, 38, 38, 0.22);
+}
+
+.pago-terminate-warn {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.75rem;
+  background: rgba(220, 38, 38, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fecaca;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.pago-topup-modal-box {
+  max-width: min(440px, 100%);
+}
+
+.pago-topup-lead {
+  margin: 0 0 0.75rem;
+}
+
+.pago-topup-card-line {
+  margin: 0 0 0.9rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.pago-topup-quick {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin: 0.15rem 0 0.85rem;
+}
+
+.pago-topup-quick button {
+  appearance: none;
+  min-height: 2.2rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  background: rgba(45, 212, 191, 0.08);
+  color: #ccfbf1;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pago-topup-quick button.is-selected {
+  background: #14b8a6;
+  color: #042f2e;
+  border-color: #5eead4;
+}
+
+#pagoTopupModal .pago-topup-form {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+#pagoTopupError {
+  color: #fca5a5;
+  margin: 0 0 0.75rem;
+}
+
+.pago-issue-summary h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  color: #93c5fd;
+}
+
+.pago-issue-warning {
+  color: #fca5a5;
+  font-weight: 700;
+  margin: 0.65rem 0 0;
+}
+
+.pago-3ds-strip {
+  margin: 0;
+}
+
+.pago-3ds-strip-label {
+  min-width: 0;
+}
+
+.pago-3ds-strip-label h3 {
+  margin: 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.pago-3ds-strip .pago-3ds-code-row {
+  margin: 0;
+  justify-content: flex-end;
+}
+
+.pago-3ds-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
-  border-radius: 12px;
+  gap: 0.35rem;
 }
 
-.pago-card-row strong {
-  margin-right: 0.5rem;
+.pago-3ds-strip .pago-3ds-meta {
+  margin: 0.12rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
 }
 
-.pago-card-details {
+.pago-detail-header {
   display: grid;
-  gap: 0.5rem;
-  margin: 0 0 1rem;
+  gap: 0.35rem;
 }
 
-.pago-card-details div {
-  display: flex;
-  justify-content: space-between;
+.pago-card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1rem;
 }
 
-.pago-card-details dt {
-  color: var(--muted, #8b93a7);
+.pago-card-tile {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  border-radius: var(--radius-xl);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
 }
 
-.pago-card-details dd {
+.pago-card-tile:hover,
+.pago-card-tile:focus-visible {
+  transform: translateY(-3px);
+  outline: none;
+}
+
+.pago-card-tile:focus-visible .pago-plastic-card {
+  box-shadow:
+    0 0 0 2px rgba(59, 130, 246, 0.55),
+    0 22px 48px rgba(2, 12, 27, 0.55);
+}
+
+.pago-plastic-card {
+  --pago-card-purple-deep: #2e1065;
+  --pago-card-purple-mid: #5b21b6;
+  --pago-card-purple-plum: #4c1d95;
+  --pago-card-purple-violet: #3b0764;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: grid;
+  gap: 0.75rem;
+  min-height: 0;
+  padding: 1.15rem 1.25rem 1.05rem;
+  border-radius: var(--radius-xl);
+  color: #f8fafc;
+  background:
+    radial-gradient(ellipse 95% 75% at 12% 0%, rgba(233, 213, 255, 0.34), transparent 58%),
+    radial-gradient(ellipse 85% 70% at 100% 100%, rgba(76, 29, 149, 0.55), transparent 52%),
+    linear-gradient(
+      128deg,
+      var(--pago-card-purple-deep) 0%,
+      var(--pago-card-purple-plum) 26%,
+      var(--pago-card-purple-mid) 48%,
+      var(--pago-card-purple-violet) 74%,
+      #1e1b4b 100%
+    );
+  border: 1px solid rgba(216, 180, 254, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.35),
+    0 18px 40px rgba(46, 16, 101, 0.48);
+  aspect-ratio: 1.68 / 1;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.pago-plastic-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.28;
+  background:
+    repeating-linear-gradient(
+      118deg,
+      transparent 0 3px,
+      rgba(255, 255, 255, 0.035) 3px 4px
+    ),
+    repeating-linear-gradient(
+      28deg,
+      transparent 0 4px,
+      rgba(0, 0, 0, 0.05) 4px 5px
+    );
+}
+
+.pago-plastic-card.pago-plastic-reference {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0.95rem 0.8rem 0.72rem 1rem;
+  background:
+    radial-gradient(ellipse 115% 85% at 100% 42%, rgba(192, 132, 252, 0.32), transparent 58%),
+    radial-gradient(ellipse 95% 75% at 0% 52%, rgba(46, 16, 101, 0.85), transparent 62%),
+    linear-gradient(90deg, #16062e 0%, #321061 34%, #6320a8 58%, #4a1a82 100%);
+}
+
+.pago-plastic-card.pago-plastic-reference::before {
+  opacity: 0.42;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 2px,
+      rgba(255, 255, 255, 0.04) 2px 3px,
+      transparent 3px 5px,
+      rgba(0, 0, 0, 0.065) 5px 6px
+    );
+}
+
+.pago-plastic-body {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.pago-plastic-chip-col {
+  align-self: center;
+  padding-right: 0.4rem;
+}
+
+.pago-plastic-center-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.32rem;
+  min-width: 0;
+  text-align: center;
+}
+
+.pago-plastic-emblem {
+  width: min(46%, 7.35rem);
+  max-height: 4.6rem;
+  height: auto;
+  object-fit: contain;
+  filter: grayscale(1) brightness(1.45) contrast(1.1) drop-shadow(0 8px 16px rgba(0, 0, 0, 0.42));
+}
+
+.pago-plastic-product-lines {
+  display: grid;
+  gap: 0.08rem;
+  font-size: clamp(0.46rem, 1.85vw, 0.58rem);
+  letter-spacing: 0.2em;
+  font-weight: 650;
+  line-height: 1.35;
+  color: rgba(248, 250, 252, 0.92);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.visa-wordmark {
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: 0.08em;
+  color: #f8fafc;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.72),
+    0 2px 10px rgba(15, 23, 42, 0.35);
+}
+
+.pago-plastic-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.55rem 0.85rem;
+  margin-top: 0.35rem;
+  z-index: 2;
+}
+
+.pago-plastic-foot-main {
+  min-width: 0;
+}
+
+.pago-plastic-foot-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding-left: 0.15rem;
+}
+
+.pago-plastic-details-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 1.15rem;
+  margin-top: 0.38rem;
+}
+
+.pago-plastic-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pago-plastic-reference .pago-plastic-detail-field small {
+  font-size: clamp(0.44rem, 1.55vw, 0.52rem);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.78);
+  line-height: 1.2;
+}
+
+.pago-plastic-reference .pago-plastic-detail-field strong {
+  font-size: clamp(0.58rem, 2.05vw, 0.74rem);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f1f5f9;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(11rem, 42vw);
+}
+
+.pago-plastic-visa-corner {
+  font-size: clamp(1.15rem, 3.9vw, 1.7rem);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.pago-plastic-visa-corner.is-mastercard {
+  display: inline-flex;
+  gap: 0.15rem;
+  font-size: 0;
+}
+
+.pago-plastic-visa-corner.is-mastercard::before,
+.pago-plastic-visa-corner.is-mastercard::after {
+  content: '';
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.pago-plastic-visa-corner.is-mastercard::before {
+  background: #eb001b;
+}
+
+.pago-plastic-visa-corner.is-mastercard::after {
+  background: #f79e1b;
+  margin-left: -0.4rem;
+}
+
+.pago-plastic-number-tools {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.pago-plastic-reference .pago-plastic-number {
   margin: 0;
+  font-size: clamp(0.82rem, 2.65vw, 1.02rem);
+  letter-spacing: 0.12em;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.pago-plastic-card.is-mastercard,
+.pago-plastic-card.is-atm {
+  background:
+    radial-gradient(ellipse 95% 75% at 12% 0%, rgba(233, 213, 255, 0.3), transparent 58%),
+    radial-gradient(ellipse 85% 70% at 100% 100%, rgba(88, 28, 135, 0.5), transparent 52%),
+    linear-gradient(128deg, #2e1065 0%, #4c1d95 30%, #6d28d9 52%, #3b0764 78%, #1e1b4b 100%);
+}
+
+.pago-plastic-sheen {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.12) 48%,
+    transparent 62%
+  );
+  transform: translateX(-120%);
+  animation: pagoSheen 7s ease-in-out infinite;
+  z-index: 0;
+}
+
+@keyframes pagoSheen {
+  0%, 55% { transform: translateX(-120%); }
+  75%, 100% { transform: translateX(120%); }
+}
+
+.pago-plastic-card > *:not(.pago-plastic-sheen):not(.pago-plastic-mark):not(.pago-sample-watermark) {
+  position: relative;
+  z-index: 2;
+}
+
+.pago-plastic-footer small {
+  color: rgba(226, 232, 240, 0.78);
+  letter-spacing: 0.05em;
+}
+
+.pago-plastic-footer strong {
+  color: #f8fafc;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.pago-plastic-number {
+  color: #f8fafc;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.pago-plastic-mark {
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: 44%;
+  right: auto;
+  height: min(58%, 9.5rem);
+  width: auto;
+  max-width: 72%;
+  transform: translate(-50%, -50%);
+  opacity: 0.52;
+  user-select: none;
+  filter: drop-shadow(0 10px 22px rgba(15, 23, 42, 0.45)) contrast(1.08) saturate(1.05);
+}
+
+.pago-plastic-top,
+.pago-plastic-chip-row,
+.pago-plastic-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.pago-plastic-brand {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.92);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.pago-plastic-network {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  font-style: italic;
+  opacity: 0.95;
+}
+
+.pago-plastic-network.is-visa::after {
+  content: 'VISA';
+  color: #f8fafc;
+  letter-spacing: 0.14em;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.75),
+    0 2px 10px rgba(15, 23, 42, 0.45);
+}
+
+.pago-plastic-network.is-mastercard {
+  gap: 0.15rem;
+}
+
+.pago-plastic-network.is-mastercard::before,
+.pago-plastic-network.is-mastercard::after {
+  content: '';
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.pago-plastic-network.is-mastercard::before {
+  background: #eb001b;
+}
+
+.pago-plastic-network.is-mastercard::after {
+  background: #f79e1b;
+  margin-left: -0.4rem;
+  opacity: 0.92;
+}
+
+.pago-plastic-chip {
+  width: 2.55rem;
+  height: 1.85rem;
+  border-radius: 0.4rem;
+  background:
+    linear-gradient(145deg, #ffffff 0%, #e2e8f0 28%, #cbd5e1 58%, #94a3b8 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(71, 85, 105, 0.35),
+    0 2px 8px rgba(15, 23, 42, 0.35);
+  position: relative;
+}
+
+.pago-plastic-chip::before {
+  content: '';
+  position: absolute;
+  inset: 18% 10%;
+  border: 1px solid rgba(100, 116, 139, 0.45);
+  border-radius: 0.2rem;
+  background:
+    linear-gradient(90deg, transparent 33%, rgba(100, 116, 139, 0.28) 33%, rgba(100, 116, 139, 0.28) 34%, transparent 34%),
+    linear-gradient(0deg, transparent 48%, rgba(100, 116, 139, 0.28) 48%, rgba(100, 116, 139, 0.28) 52%, transparent 52%);
+}
+
+.pago-plastic-contactless {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: rgba(255, 255, 255, 0.75);
+  border-right-color: rgba(255, 255, 255, 0.45);
+  transform: rotate(45deg);
+  opacity: 0.85;
+}
+
+.pago-plastic-chip-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-left: auto;
+}
+
+.pago-plastic-number-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.pago-plastic-icon-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  background: rgba(15, 23, 42, 0.28);
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.pago-plastic-icon-btn:hover,
+.pago-plastic-icon-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.pago-plastic-eye .pago-eye-off { display: none; }
+.pago-plastic-eye[aria-pressed="true"] .pago-eye-open { display: none; }
+.pago-plastic-eye[aria-pressed="true"] .pago-eye-off { display: block; }
+
+.pago-plastic-number {
+  margin: 0.15rem 0 0;
+  font-family: var(--font-mono);
+  font-size: clamp(1.05rem, 3.4vw, 1.35rem);
+  letter-spacing: 0.16em;
   font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.pago-plastic-footer {
+  align-items: flex-end;
+  margin-top: auto;
+}
+
+.pago-plastic-footer > div,
+.pago-plastic-balance {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.pago-plastic-footer small,
+.pago-plastic-balance small {
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.pago-plastic-footer strong,
+.pago-plastic-balance strong {
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pago-card-tile .pago-plastic-card {
+  min-height: 10.25rem;
+  padding: 1.05rem 1.1rem 1rem;
+}
+
+.pago-card-tile .pago-plastic-number {
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+}
+
+.pago-detail-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.1rem 0 0;
+}
+
+.pago-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.pago-balance-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-height: 1.65rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: var(--radius-pill);
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #e0f2fe;
+  font-variant-numeric: tabular-nums;
+}
+
+.pago-balance-chip small {
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(186, 230, 253, 0.8);
+}
+
+.pago-balance-chip strong {
+  font-size: 0.92rem;
+}
+
+.pago-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pago-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.65rem;
+  padding: 0.18rem 0.6rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: var(--text-secondary);
+}
+
+.pago-status-pill.is-active {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+  color: #86efac;
+}
+
+.pago-status-pill.is-pending {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: #fcd34d;
+}
+
+.pago-status-pill.is-frozen,
+.pago-status-pill.is-suspended {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+}
+
+.pago-topup-form {
+  margin-top: 0.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ── Add to Apple Wallet / Google Pay ── */
+.pago-wallet-add {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem 0 0.15rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.pago-wallet-add-copy {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.pago-wallet-add-copy h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+}
+
+.pago-wallet-add-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.pago-wallet-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 3.1rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.85rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.pago-wallet-btn:hover,
+.pago-wallet-btn:focus-visible {
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.pago-wallet-btn:focus-visible {
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.45);
+}
+
+.pago-wallet-btn-apple {
+  color: #f8fafc;
+  background: linear-gradient(160deg, #111827 0%, #000 70%);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.pago-wallet-btn-google {
+  color: #0f172a;
+  background: linear-gradient(160deg, #ffffff 0%, #f1f5f9 100%);
+  border-color: rgba(148, 163, 184, 0.55);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+}
+
+.pago-wallet-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pago-wallet-btn-text {
+  display: grid;
+  gap: 0.05rem;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.pago-wallet-btn-text small {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.pago-wallet-btn-text strong {
+  font-size: 0.92rem;
+  font-weight: 750;
+}
+
+.pago-wallet-atm-hint {
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.55rem;
+  background: rgba(14, 165, 233, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  color: #bae6fd;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 520px) {
+  .pago-card-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .pago-card-actions .pago-action-wallet {
+    min-height: 2.55rem;
+    padding: 0.45rem 0.5rem;
+    font-size: 0.74rem;
+  }
+
+  .pago-3ds-panel.pago-3ds-strip .pago-3ds-code-row {
+    justify-content: space-between;
+    width: 100%;
+  }
+}
+
+.pago-wallet-modal-box {
+  max-width: min(440px, 100%);
+}
+
+.pago-wallet-modal-lead {
+  margin: 0 0 0.85rem;
+}
+
+.pago-wallet-steps {
+  margin: 0 0 0.85rem;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.45rem;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.pago-wallet-steps li::marker {
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.pago-wallet-fields {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0 0 0.9rem;
+}
+
+.pago-wallet-field {
+  display: grid;
+  grid-template-columns: 5.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  padding: 0.4rem 0.45rem 0.4rem 0.65rem;
+  border-radius: var(--radius-md, 0.65rem);
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.pago-wallet-field-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.pago-wallet-field-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92rem;
+  letter-spacing: 0.03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pago-wallet-field .btn {
+  min-height: 2.25rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .pago-wallet-field {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .pago-wallet-field-label {
+    grid-column: 1 / -1;
+  }
+}
+
+.pago-wallet-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.pago-wallet-modal-actions .btn {
+  flex: 1 1 9rem;
+}
+
+.pago-3ds-panel {
+  margin: 1rem 0 1.25rem;
+  padding: 1rem 1.05rem;
+  border-radius: var(--radius-md, 0.65rem);
+  border: 1px solid rgba(14, 165, 233, 0.28);
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.1), rgba(56, 189, 248, 0.04));
+}
+
+.pago-3ds-panel.pago-3ds-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.28rem;
+  align-content: start;
+  align-items: start;
+  margin: 0.35rem 0 0;
+  padding: 0.4rem 0.5rem 0.42rem;
+  border-radius: 0.6rem;
+  min-height: 0;
+  height: auto;
+}
+
+.pago-3ds-panel.pago-3ds-strip .pago-3ds-strip-label {
+  margin: 0;
+}
+
+.pago-3ds-panel.pago-3ds-strip .pago-3ds-code-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0;
+  gap: 0.3rem 0.45rem;
+  width: 100%;
+  min-height: 0;
+}
+
+.pago-3ds-panel.pago-3ds-strip .pago-3ds-code {
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.pago-3ds-panel.pago-3ds-strip .pago-3ds-actions {
+  margin-left: auto;
+}
+
+.pago-3ds-panel.pago-3ds-strip .pago-3ds-actions .btn {
+  min-height: 0;
+  height: auto;
+  padding: 0.28rem 0.5rem;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  border-radius: 0.5rem;
+}
+
+@media (min-width: 521px) {
+  .pago-3ds-panel.pago-3ds-strip {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0.65rem;
+  }
+
+  .pago-3ds-panel.pago-3ds-strip .pago-3ds-code-row {
+    width: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+  }
+}
+
+.pago-3ds-panel[hidden] {
+  display: none !important;
+}
+
+.pago-3ds-panel.has-code {
+  border-color: rgba(34, 197, 94, 0.35);
+  background:
+    linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(14, 165, 233, 0.06));
+  animation: pago3dsPulse 1.2s ease-out 1;
+}
+
+@keyframes pago3dsPulse {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.35); }
+  100% { box-shadow: 0 0 0 12px rgba(34, 197, 94, 0); }
+}
+
+.pago-3ds-copy h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.pago-3ds-code-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.75rem 0 0.35rem;
+}
+
+.pago-3ds-code {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: clamp(1.6rem, 4vw, 2.1rem);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  line-height: 1.1;
+}
+
+.pago-3ds-meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted, #64748b);
+}
+
+.pago-3ds-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.pago-3ds-list:empty {
+  display: none;
+}
+
+.pago-3ds-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem 0.75rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.45rem;
+  background: rgba(15, 23, 42, 0.04);
+  font-size: 0.88rem;
+}
+
+.pago-3ds-item strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.pago-tx-panel {
+  margin: 0 0 1.1rem;
+  padding: 1rem 1.05rem 0.35rem;
+  border-radius: var(--radius-md, 0.65rem);
+  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.pago-tx-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.pago-tx-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.pago-tx-meta {
+  margin: 0.45rem 0 0;
+}
+
+.pago-tx-columns {
+  display: none;
+}
+
+.pago-tx-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "merchant amount"
+    "date status";
+  gap: 0.2rem 0.85rem;
+  align-items: center;
+}
+
+.pago-tx-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pago-tx-list:empty {
+  display: none;
+}
+
+.pago-tx-item {
+  padding: 0.72rem 0.1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.pago-tx-merchant {
+  grid-area: merchant;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pago-tx-date {
+  grid-area: date;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.pago-tx-amount {
+  grid-area: amount;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pago-tx-amount.is-credit {
+  color: #86efac;
+}
+
+.pago-tx-status {
+  grid-area: status;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.45rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: var(--text-secondary);
+}
+
+.pago-tx-status.is-completed {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+  color: #86efac;
+}
+
+.pago-tx-status.is-pending {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: #fcd34d;
+}
+
+.pago-tx-status.is-declined {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+}
+
+.pago-tx-status.is-refunded {
+  background: rgba(14, 165, 233, 0.14);
+  border-color: rgba(56, 189, 248, 0.35);
+  color: #7dd3fc;
+}
+
+@media (max-width: 640px) {
+  .pago-card-list {
+    grid-template-columns: 1fr;
+  }
+
+  .pago-plastic-card {
+    aspect-ratio: auto;
+    min-height: 11rem;
+  }
+
+  .pago-wallet-add-actions {
+    grid-template-columns: 1fr;
+  }
+
 }
 
 

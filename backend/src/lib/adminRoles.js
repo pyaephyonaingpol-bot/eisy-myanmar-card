@@ -2,6 +2,7 @@
 
 const ROLES = {
   SUPER_ADMIN: 'super_admin',
+  ADMIN: 'ADMIN',
   FINANCE_ADMIN: 'finance_admin',
   SUPPORT_ADMIN: 'support_admin',
 };
@@ -10,9 +11,16 @@ const ALL_ADMIN_ROLES = Object.values(ROLES);
 
 const ROLE_LABELS = {
   [ROLES.SUPER_ADMIN]: 'Super Admin',
+  [ROLES.ADMIN]: 'Admin',
   [ROLES.FINANCE_ADMIN]: 'Finance Admin',
   [ROLES.SUPPORT_ADMIN]: 'Support Admin',
 };
+
+/** ADMIN is the owner operator role and has every super_admin permission. */
+function effectiveRole(role) {
+  if (role === ROLES.ADMIN) return ROLES.SUPER_ADMIN;
+  return role;
+}
 
 /**
  * Permission → roles that may perform the action.
@@ -48,6 +56,7 @@ const PAGE_PERMISSIONS = {
   overview: 'overview',
   deposits: 'deposits',
   'mmk-withdrawals': 'withdrawals',
+  p2p: 'p2p',
   cards: 'cards',
   users: 'users',
   transactions: 'transactions',
@@ -67,7 +76,7 @@ function roleHasPermission(role, permission) {
   if (!role || !permission) return false;
   const allowed = PERMISSIONS[permission];
   if (!allowed) return false;
-  return allowed.includes(role);
+  return allowed.includes(effectiveRole(role));
 }
 
 function permissionsForRole(role) {
@@ -88,6 +97,7 @@ module.exports = {
   PERMISSIONS,
   PAGE_PERMISSIONS,
   isValidRole,
+  effectiveRole,
   roleHasPermission,
   permissionsForRole,
   pagesForRole,

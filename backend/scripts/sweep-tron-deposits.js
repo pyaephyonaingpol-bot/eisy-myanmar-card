@@ -1,20 +1,15 @@
 #!/usr/bin/env node
 /**
- * Sweep USDT from per-user HD deposit addresses → master wallet.
+ * Sweep USDT from per-user HD deposit addresses → master wallet (Netts energy + TRC-20 transfer).
  *
- * MANUAL ONLY (no cron / no auto job). Prefer the admin API:
- *   POST /api/admin/sweep-deposits
- *   Body: { "dry_run": true } | { "user_id": 42 } | {}
+ * Admin API equivalent: POST /api/admin/sweep-deposits
  *
- * CLI alternative:
- *   node backend/scripts/sweep-tron-deposits.js --dry-run --all
- *   node backend/scripts/sweep-tron-deposits.js --user-id=42
- *   node backend/scripts/sweep-tron-deposits.js --all
+ * CLI:
+ *   node scripts/sweep-tron-deposits.js --dry-run --all --limit=1
+ *   node scripts/sweep-tron-deposits.js --all
+ *   node scripts/sweep-tron-deposits.js --user-id=42
  *
- * Flow per address:
- *   1. Master wallet sends a small TRX top-up (gas) to the deposit address
- *   2. Wait briefly
- *   3. Deposit address sends all USDT TRC-20 back to the master wallet
+ * Droplet automation: TRON_SWEEP_SCHEDULER_ENABLED=true in backend/.env (see setup-droplet-sweep-automation.js)
  */
 'use strict';
 
@@ -28,6 +23,7 @@ function parseArgs(argv) {
     dryRun: false,
     all: false,
     forceGas: false,
+    scheduled: false,
     userId: null,
     limit: 500,
   };
@@ -35,6 +31,7 @@ function parseArgs(argv) {
     if (arg === '--dry-run' || arg === '-n') opts.dryRun = true;
     else if (arg === '--all') opts.all = true;
     else if (arg === '--force-gas') opts.forceGas = true;
+    else if (arg === '--scheduled') opts.scheduled = true;
     else if (arg.startsWith('--user-id=')) opts.userId = Number(arg.slice('--user-id='.length));
     else if (arg.startsWith('--limit=')) opts.limit = Number(arg.slice('--limit='.length));
     else if (arg === '--help' || arg === '-h') opts.help = true;
@@ -42,24 +39,58 @@ function parseArgs(argv) {
   return opts;
 }
 
+function printUsage() {
+  console.log(`Usage:
+  node scripts/sweep-tron-deposits.js --dry-run --all [--limit=N]
+  node scripts/sweep-tron-deposits.js --all [--scheduled]
+  node scripts/sweep-tron-deposits.js --user-id=<id>
+
+Required env (Droplet — see scripts/verify-droplet-sweep-env.js):
+  TRON_ENERGY_API_URL, TRON_ENERGY_API_KEY, TRON_NETTS_REAL_IP
+  TRON_FULL_HOST, CENTRAL_WALLET_ADDRESS or MASTER_WALLET_ADDRESS
+  MASTER_PRIVATE_KEY, DATABASE_URL (+ token for Turso), TRON HD seed
+
+Verify: node scripts/verify-droplet-sweep-env.js`);
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help || (!opts.all && !opts.userId)) {
-    console.log(`Usage:
-  node scripts/sweep-tron-deposits.js --dry-run --all
-  node scripts/sweep-tron-deposits.js --user-id=<id>
-  node scripts/sweep-tron-deposits.js --all [--force-gas]
-
-Env: MASTER_PRIVATE_KEY, TRON_HD_MNEMONIC, TRON_SWEEP_GAS_TRX (default 1.1)`);
+    printUsage();
     process.exit(opts.help ? 0 : 1);
+  }
+
+  if (!opts.dryRun) {
+    const { assertMasterWalletTransfersAllowed } = require('../src/services/securityFlags');
+    try {
+      assertMasterWalletTransfersAllowed('USDT deposit sweep');
+    } catch (err) {
+      console.error(`[sweep] ${err.message}`);
+      console.error('[sweep] Use --dry-run to test env and balances without broadcasting.');
+      process.exit(1);
+    }
+  }
+
+  const { evaluateSweepEnv } = require('../src/services/tronSweepEnvCheck');
+  const envReport = await evaluateSweepEnv({ verifyAddresses: false, preflightLimit: 1 });
+  if (!envReport.ok) {
+    const missing = envReport.checks.failed.map((f) => f.id).join(', ')
+      || envReport.preflight?.blockers?.join(', ');
+    console.error('[sweep] Environment not ready:', missing);
+    process.exit(1);
   }
 
   const { initDb, closeDb } = require('../src/db');
   await initDb();
 
   const sweep = require('../src/services/tronSweepService');
-  console.log('[sweep] MANUAL run — gas TRX=', sweep.getSweepGasTrx(), 'min USDT=', sweep.getMinSweepUsdt(),
-    'dryRun=', opts.dryRun);
+  const modeLabel = opts.scheduled ? 'scheduled' : 'manual';
+  console.log(
+    `[sweep] ${modeLabel} run — min USDT=`, sweep.getMinSweepUsdt(),
+    'netts energy=', sweep.getNettsEnergyPerSweep(),
+    'dryRun=', opts.dryRun,
+    'limit=', opts.limit,
+  );
 
   try {
     const summary = await sweep.runManualSweep({
@@ -67,6 +98,7 @@ Env: MASTER_PRIVATE_KEY, TRON_HD_MNEMONIC, TRON_SWEEP_GAS_TRX (default 1.1)`);
       dryRun: opts.dryRun,
       forceGas: opts.forceGas,
       limit: opts.limit,
+      scheduled: opts.scheduled,
     });
 
     if (opts.userId) {
@@ -80,8 +112,7 @@ Env: MASTER_PRIVATE_KEY, TRON_HD_MNEMONIC, TRON_SWEEP_GAS_TRX (default 1.1)`);
         } else {
           console.log(
             `OK user=${r.userId} usdt=${r.usdt?.amountUsdt ?? r.usdtBalance}`
-            + ` gasTx=${r.gas?.txId || (r.gas?.skipped ? 'skipped' : 'dry')} `
-            + `usdtTx=${r.usdt?.txId || 'dry'}`
+            + ` usdtTx=${r.usdt?.txId || (opts.dryRun ? 'dry' : 'pending')}`
           );
         }
       }
@@ -94,8 +125,8 @@ Env: MASTER_PRIVATE_KEY, TRON_HD_MNEMONIC, TRON_SWEEP_GAS_TRX (default 1.1)`);
         swept: summary.swept,
         skipped: summary.skipped,
         failed: summary.failed,
-        gasTrx: summary.gasTrx,
         minUsdt: summary.minUsdt,
+        nettsEnergy: summary.nettsEnergy,
       }, null, 2));
     }
 
