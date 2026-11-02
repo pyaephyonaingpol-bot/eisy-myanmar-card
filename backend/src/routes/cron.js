@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * GET|POST /api/cron/tron-deposit-ops — external cron e.g. DigitalOcean (Bearer CRON_SECRET).
- * Production traffic: vercel.json rewrites /api/* → Express (api/index.js).
+ * GET|POST /api/cron/tron-deposit-ops — external scheduler (e.g. DigitalOcean crontab; not Vercel platform crons).
+ * Bearer CRON_SECRET. Production traffic: vercel.json rewrites /api/* → Express (api/index.js).
  */
 const express = require('express');
 const { authorizeCronBearer } = require('../lib/cronAuth');
