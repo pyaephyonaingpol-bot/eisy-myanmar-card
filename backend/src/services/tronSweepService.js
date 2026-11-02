@@ -15,9 +15,7 @@
  */
 const crypto = require('crypto');
 const path = require('path');
-const {
-  TronWeb,
-} = require('tronweb');
+const { TronWeb } = require('../lib/tronWeb');
 const { getDb } = require('../db');
 const tronMaster = require('./tronMasterWalletService');
 const {

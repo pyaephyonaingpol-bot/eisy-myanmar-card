@@ -19,6 +19,12 @@ function stripTypeScriptSource(source) {
     return Module.stripTypeScriptTypes(text);
   }
 
+  try {
+    return stripViaTypescriptCompiler(text);
+  } catch (_) {
+    /* fall through to Node CLI attempt */
+  }
+
   const tmpDir = os.tmpdir();
   const id = crypto.randomBytes(8).toString('hex');
   const tmpFile = path.join(tmpDir, `eisy-strip-${id}.ts`);
@@ -28,12 +34,11 @@ function stripTypeScriptSource(source) {
       const fs = require('fs');
       const Module = require('module');
       const src = fs.readFileSync(process.argv[1], 'utf8');
-      const strip = Module.stripTypeScriptTypes || Module.stripTypes;
-      if (typeof strip !== 'function') {
+      if (typeof Module.stripTypeScriptTypes !== 'function') {
         console.error('NO_STRIP_API');
         process.exit(2);
       }
-      process.stdout.write(strip.call(Module, src));
+      process.stdout.write(Module.stripTypeScriptTypes(src));
     `;
     return execFileSync(
       process.execPath,

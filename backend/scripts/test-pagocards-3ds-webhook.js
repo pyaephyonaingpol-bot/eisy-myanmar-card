@@ -253,21 +253,13 @@ assert.ok(unknownStatus);
 assert.strictEqual(unknownStatus.localStatus, null);
 assert.strictEqual(normalizePagocardsWebhook({ cardId: 'card_drop', status: 'weird' }), null);
 
-const { execFileSync } = require('child_process');
-execFileSync(process.execPath, ['--experimental-strip-types', '-e', `
-  const lib = require(${JSON.stringify(path.join(root, 'lib/pagocardsWebhook.ts'))});
-  if (typeof lib.normalizePagocardsWebhook !== 'function') {
-    throw new Error('ts export missing normalizePagocardsWebhook');
-  }
-  const event = lib.normalizePagocardsWebhook({
-    eventType: 'card.frozen',
-    cardId: 'c1',
-    status: 'frozen',
-  });
-  if (!event || event.localStatus !== 'frozen') {
-    throw new Error('ts normalize failed ' + JSON.stringify(event));
-  }
-`], { stdio: 'inherit' });
+const cjsLib = require(path.join(root, 'lib/pagocardsWebhook.cjs'));
+const tsNormalizeEvent = cjsLib.normalizePagocardsWebhook({
+  eventType: 'card.frozen',
+  cardId: 'c1',
+  status: 'frozen',
+});
+assert.ok(tsNormalizeEvent && tsNormalizeEvent.localStatus === 'frozen', 'cjs normalize frozen');
 
 async function assertStatusPersists() {
   const os = require('os');

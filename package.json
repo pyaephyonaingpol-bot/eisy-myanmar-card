@@ -14,7 +14,7 @@
     "test:admin-pipelines": "node backend/scripts/test-admin-pipelines.js",
     "test:tron-hd-deposit-ui": "node backend/scripts/test-tron-hd-deposit-ui.js",
     "test:withdraw-markup": "node backend/scripts/test-withdraw-markup.js",
-    "test:pagocard": "node --experimental-strip-types backend/scripts/test-pagocard-client.js",
+    "test:pagocard": "node backend/scripts/test-pagocard-client.js",
     "test:pago-card-issue": "node backend/scripts/test-pago-card-issue.js",
     "test:user-pay-qr": "node backend/scripts/test-user-pay-qr.js",
     "test:tron-scanpay-disabled": "node backend/scripts/test-tron-scanpay-disabled.js",
@@ -59,6 +59,7 @@
     "resend": "^6.18.1",
     "stripe": "^22.6.1",
     "tronweb": "^6.4.0",
+    "typescript": "~5.7.0",
     "web-push": "^3.6.7",
     "ws": "^8.22.1"
   }

@@ -4,7 +4,7 @@
  * Private key is read only from process.env.MASTER_PRIVATE_KEY (never hardcoded).
  */
 
-const { TronWeb } = require('tronweb');
+const { TronWeb } = require('../lib/tronWeb');
 
 const USDT_TRC20_CONTRACT =
   process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';

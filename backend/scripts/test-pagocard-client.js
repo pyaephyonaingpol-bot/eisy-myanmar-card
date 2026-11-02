@@ -2,18 +2,18 @@
 /**
  * Pago Card client: request shape, validation, and error handling.
  * Uses a mocked fetch — no live provider calls.
- * Run: node --experimental-strip-types backend/scripts/test-pagocard-client.js
+ * Run: node backend/scripts/test-pagocard-client.js
  */
 'use strict';
 
 const assert = require('assert');
-const path = require('path');
 
+const { loadPagoCardClient } = require('../src/services/loadPagoCardClient');
 const {
   PagoCardError,
   createPagoCardClient,
   truncateUsd,
-} = require(path.join(__dirname, '../../lib/pagocard.ts'));
+} = loadPagoCardClient();
 
 function clientWith(handler) {
   const calls = [];

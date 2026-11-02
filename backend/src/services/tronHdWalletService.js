@@ -13,7 +13,7 @@
 const { mnemonicToSeedSync, validateMnemonic } = require('@scure/bip39');
 const { wordlist } = require('@scure/bip39/wordlists/english');
 const { HDKey } = require('@scure/bip32');
-const { TronWeb } = require('tronweb');
+const { TronWeb } = require('../lib/tronWeb');
 const { firstEnv } = require('../lib/envAliases');
 
 const TRON_COIN_TYPE = 195;
