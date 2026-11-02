@@ -5,6 +5,12 @@
   "installCommand": "npm install",
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "public",
+  "crons": [
+    {
+      "path": "/api/cron/tron-deposit-ops",
+      "schedule": "0 * * * *"
+    }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/uploads/(.*)", "destination": "/api" },
@@ -62,7 +68,7 @@
     "api/index.js": {
       "memory": 1024,
       "maxDuration": 60,
-      "includeFiles": "{backend/**,server/**,lib/pagocard.ts}",
+      "includeFiles": "{backend/**,server/**,lib/pagocard.ts,lib/nettsUsdtSweep.js,app/api/**}",
       "excludeFiles": "{**/node_modules/sqlite3/**,**/node_modules/sqlite/**,backend/node_modules/sqlite3/**,backend/node_modules/sqlite/**,backend/data/**,backend/uploads/**}"
     }
   }

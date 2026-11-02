@@ -1,17 +1,20 @@
 /**
- * Sweep USDT from per-user HD deposit addresses → master wallet.
+ * Sweep USDT from per-user HD deposit addresses → master / central wallet.
  *
  * MANUAL ONLY — not started by cron or server boot. Trigger via:
  *   - POST /api/admin/sweep-deposits (admin API)
  *   - npm run sweep:tron-deposits (CLI)
  *
- * Because deposit addresses hold no TRX by default, each sweep:
- *   1. Sends a small TRX gas top-up from the master wallet → deposit address
- *   2. Waits briefly for confirmation
- *   3. Transfers the full USDT TRC-20 balance from the deposit address → master
+ * Each live sweep:
+ *   1. Rents Netts energy (POST /apiv2/order1h) for the deposit address
+ *   2. Waits briefly for delegation to settle
+ *   3. Transfers the full USDT TRC-20 balance → master wallet (CENTRAL_WALLET_ADDRESS
+ *      or MASTER_WALLET_ADDRESS when central is unset)
  *
  * HD private keys are derived ephemerally and never persisted/logged.
  */
+const crypto = require('crypto');
+const path = require('path');
 const {
   TronWeb,
 } = require('tronweb');
@@ -21,6 +24,7 @@ const {
   isHdEnabled,
   deriveTronAddressForUser,
   deriveTronAccountAtIndex,
+  derivationIndexForUser,
 } = require('./tronHdWalletService');
 
 const {
@@ -29,14 +33,24 @@ const {
   sunToUsdt,
 } = tronMaster;
 
-const TRON_FULL_HOST =
-  process.env.TRON_FULL_HOST || process.env.TRONGRID_FULL_HOST || 'https://api.trongrid.io';
+const nettsSweepLibPath = path.join(__dirname, '../../../lib/nettsUsdtSweep.js');
+const {
+  sweepUsdtWithNettsEnergy,
+  ENERGY_ORDER_AMOUNT,
+} = require(nettsSweepLibPath);
+
+const { tronApiKey, tronFullHost } = require('../lib/envAliases');
 const DEFAULT_FEE_LIMIT = Number(process.env.TRON_USDT_FEE_LIMIT_SUN) || 100_000_000;
 
-/** TRX sent from master → deposit address to cover USDT transfer bandwidth/energy burn. */
+/** Legacy label for admin UI — sweeps use Netts energy, not master TRX gas. */
 function getSweepGasTrx() {
   const n = Number(process.env.TRON_SWEEP_GAS_TRX || 1.1);
   return Number.isFinite(n) && n > 0 ? n : 1.1;
+}
+
+/** Netts energy units ordered per deposit sweep (see lib/nettsUsdtSweep.js). */
+function getNettsEnergyPerSweep() {
+  return ENERGY_ORDER_AMOUNT;
 }
 
 /** Skip USDT sweep when deposit balance is below this (USDT). Default 25. */
@@ -68,12 +82,265 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Pause between custodial addresses during batch sweep (TronGrid rate limits). */
+function getBetweenAccountDelayMs() {
+  const n = parseInt(process.env.TRON_SWEEP_ACCOUNT_DELAY_MS || '1000', 10);
+  return Number.isFinite(n) && n >= 0 ? n : 1000;
+}
+
+function getRateLimitMaxRetries() {
+  const n = parseInt(process.env.TRON_SWEEP_RATE_LIMIT_MAX_RETRIES || '5', 10);
+  return Math.min(Math.max(Number.isFinite(n) ? n : 5, 0), 20);
+}
+
+function getRateLimitRetryBaseMs() {
+  const n = parseInt(process.env.TRON_SWEEP_RATE_LIMIT_RETRY_MS || '2000', 10);
+  return Number.isFinite(n) && n >= 500 ? n : 2000;
+}
+
+function isTronRateLimitError(err) {
+  if (!err) return false;
+  const status = err.status ?? err.response?.status ?? err?.cause?.status;
+  if (status === 429) return true;
+  const code = String(err.code || err?.cause?.code || '');
+  if (code === 'TRON_RATE_LIMITED' || code === 'SWEEP_NETTS_RATE_LIMIT') return true;
+  const msg = String(err.message || err || '').toLowerCase();
+  return msg.includes('429')
+    || msg.includes('too many requests')
+    || msg.includes('rate limit');
+}
+
+/**
+ * Retry TronGrid / TronWeb calls when upstream returns HTTP 429.
+ * @template T
+ * @param {string} label
+ * @param {() => Promise<T>} fn
+ * @param {{ waitFn?: (ms: number) => Promise<void> }} [opts]
+ * @returns {Promise<T>}
+ */
+async function withTronRateLimitRetry(label, fn, { waitFn = sleep } = {}) {
+  const maxRetries = getRateLimitMaxRetries();
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isTronRateLimitError(err) || attempt >= maxRetries) throw err;
+      attempt += 1;
+      const waitMs = getRateLimitRetryBaseMs() * attempt;
+      console.warn(
+        `[tron/sweep] ${label}: rate limited (429), retry ${attempt}/${maxRetries} in ${waitMs}ms`
+      );
+      await waitFn(waitMs);
+    }
+  }
+}
+
+function maskTronAddress(addr) {
+  const s = String(addr || '').trim();
+  if (s.length <= 10) return s;
+  return `${s.slice(0, 4)}…${s.slice(-4)}`;
+}
+
+/** Exact USDT decimal string from TRC-20 base units (avoids float dust on sweep). */
+function formatUsdtAmountFromSun(rawSun) {
+  const sun = BigInt(rawSun?.toString?.() ?? String(rawSun || '0'));
+  const whole = sun / 1_000_000n;
+  const frac = (sun % 1_000_000n).toString().padStart(6, '0');
+  return `${whole}.${frac}`;
+}
+
+const REJECTED_CLIENT_KEY_FIELDS = [
+  'childPrivateKey',
+  'child_private_key',
+  'privateKey',
+  'private_key',
+  'privateKeyHex',
+  'private_key_hex',
+];
+
+function assertSweepBodyHasNoPrivateKey(body) {
+  if (!body || typeof body !== 'object') return;
+  for (const field of REJECTED_CLIENT_KEY_FIELDS) {
+    const val = body[field];
+    if (val != null && String(val).trim() !== '') {
+      const err = new Error(
+        `${field} is not accepted in API requests — keys are derived server-side from HD seed`
+      );
+      err.code = 'SWEEP_PRIVATE_KEY_NOT_ALLOWED';
+      throw err;
+    }
+  }
+}
+
+/**
+ * Derive ephemeral deposit signing material (never log or persist).
+ * @returns {{ privateKeyHex: string, address: string, index: number }}
+ */
+function deriveDepositSigningMaterial({
+  userId = null,
+  derivationIndex = null,
+} = {}) {
+  const storedIndex = derivationIndex != null ? Number(derivationIndex) : null;
+  let derived;
+  if (storedIndex != null && Number.isInteger(storedIndex) && storedIndex >= 0) {
+    derived = deriveTronAccountAtIndex(storedIndex);
+  } else if (userId != null) {
+    derived = deriveTronAddressForUser(userId);
+  } else {
+    const err = new Error('userId or derivationIndex is required to derive deposit keys');
+    err.code = 'SWEEP_KEY_REQUIRED';
+    throw err;
+  }
+
+  if (userId != null && storedIndex != null && Number.isInteger(storedIndex)) {
+    const expectedIndex = derivationIndexForUser(userId);
+    if (storedIndex !== expectedIndex) {
+      console.warn(
+        `[tron/sweep] user ${userId}: stored derivation_index ${storedIndex} `
+        + `≠ current formula index ${expectedIndex} — using stored index`
+      );
+    }
+  }
+
+  return {
+    privateKeyHex: derived.privateKeyHex,
+    address: derived.address,
+    index: derived.index,
+  };
+}
+
+function getNettsEnvReadiness() {
+  const apiUrl = process.env.TRON_ENERGY_API_URL?.trim();
+  const apiKey = process.env.TRON_ENERGY_API_KEY?.trim();
+  const realIp = process.env.TRON_NETTS_REAL_IP?.trim() || '';
+  const realIpValid = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(realIp);
+  return {
+    configured: Boolean(apiUrl && apiKey),
+    api_url_set: Boolean(apiUrl),
+    api_key_set: Boolean(apiKey),
+    real_ip_set: Boolean(realIp),
+    real_ip_valid: realIpValid,
+    energy_per_sweep: ENERGY_ORDER_AMOUNT,
+  };
+}
+
+async function verifyStoredDepositAddressAlignment({ limit = 500, maxReport = 25 } = {}) {
+  const rows = await listSweepableDepositAddresses({ limit });
+  const mismatches = [];
+  for (const row of rows) {
+    if (row.derivation_index == null) continue;
+    try {
+      const derived = deriveTronAccountAtIndex(Number(row.derivation_index));
+      if (derived.address !== row.address) {
+        mismatches.push({
+          user_id: row.user_id,
+          derivation_index: row.derivation_index,
+          stored_address: row.address,
+          derived_address: derived.address,
+        });
+      }
+    } catch (err) {
+      mismatches.push({
+        user_id: row.user_id,
+        derivation_index: row.derivation_index,
+        stored_address: row.address,
+        error: err.message,
+        code: err.code || 'SWEEP_VERIFY_FAILED',
+      });
+    }
+    if (mismatches.length >= maxReport) break;
+  }
+  return {
+    checked: rows.length,
+    mismatch_count: mismatches.length,
+    mismatches,
+  };
+}
+
+/**
+ * Pre-sweep readiness: HD, Netts env, master destination, optional DB/seed alignment.
+ */
+async function buildSweepPreflightReport({
+  verifyAddresses = true,
+  limit = 500,
+} = {}) {
+  let hdEnabled = false;
+  let hdError = null;
+  try {
+    hdEnabled = isHdEnabled();
+  } catch (err) {
+    hdError = err.message;
+  }
+
+  const netts = getNettsEnvReadiness();
+  let masterAddress = null;
+  let masterError = null;
+  try {
+    masterAddress = tronMaster.getMasterWalletAddress();
+  } catch (err) {
+    masterError = err.message;
+  }
+
+  const alignment = verifyAddresses && hdEnabled
+    ? await verifyStoredDepositAddressAlignment({ limit })
+    : {
+      checked: 0,
+      mismatch_count: 0,
+      mismatches: [],
+      skipped: !hdEnabled,
+    };
+
+  const blockers = [];
+  if (!hdEnabled) blockers.push('TRON_HD_NOT_CONFIGURED');
+  if (hdError) blockers.push('TRON_HD_ERROR');
+  if (!netts.configured) blockers.push('NETTS_ENV_INCOMPLETE');
+  if (netts.configured && !netts.real_ip_valid) blockers.push('NETTS_REAL_IP_NOT_SET');
+  if (masterError) blockers.push('MASTER_WALLET_NOT_CONFIGURED');
+  if (alignment.mismatch_count > 0) blockers.push('DEPOSIT_ADDRESS_MISMATCH');
+
+  const ready = blockers.length === 0;
+
+  return {
+    ready,
+    blockers,
+    hd_enabled: hdEnabled,
+    hd_error: hdError,
+    netts,
+    master: {
+      address_masked: masterAddress ? maskTronAddress(masterAddress) : null,
+      error: masterError,
+    },
+    sweep_destination_masked: masterAddress ? maskTronAddress(masterAddress) : null,
+    min_usdt: getMinSweepUsdt(),
+    netts_energy: getNettsEnergyPerSweep(),
+    child_trx_required: false,
+    address_alignment: alignment,
+  };
+}
+
+/**
+ * @returns {{ ok: true, report: object } | { ok: false, report: object, error: string, code: string }}
+ */
+async function assertSweepPreflightOrThrow(opts = {}) {
+  const report = await buildSweepPreflightReport(opts);
+  if (report.ready) {
+    return { ok: true, report };
+  }
+  const err = new Error(
+    `Sweep preflight failed: ${report.blockers.join(', ')}`
+  );
+  err.code = 'SWEEP_PREFLIGHT_FAILED';
+  err.preflight = report;
+  throw err;
+}
+
 function createTronWeb(privateKey) {
   const headers = {};
-  const apiKey = process.env.TRONGRID_API_KEY || process.env.TRON_PRO_API_KEY;
+  const apiKey = tronApiKey();
   if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
   return new TronWeb({
-    fullHost: TRON_FULL_HOST,
+    fullHost: tronFullHost(),
     headers,
     privateKey,
   });
@@ -196,8 +463,14 @@ async function sweepUsdtToMaster({
 
   // Read-only balance query can use any TronWeb; prefer child instance.
   childTw.setAddress(from);
-  const contract = await childTw.contract(USDT_TRC20_ABI, USDT_TRC20_CONTRACT);
-  const raw = await contract.methods.balanceOf(from).call();
+  const contract = await withTronRateLimitRetry(
+    'USDT contract',
+    () => childTw.contract(USDT_TRC20_ABI, USDT_TRC20_CONTRACT)
+  );
+  const raw = await withTronRateLimitRetry(
+    'balanceOf',
+    () => contract.methods.balanceOf(from).call()
+  );
   const sun = (raw?.toString?.() ?? String(raw || '0'));
   const usdt = sunToUsdt(raw);
   const minUsdt = getMinSweepUsdt();
@@ -264,6 +537,46 @@ async function sweepUsdtToMaster({
 /**
  * Full single-address sweep: TRX gas from master, then USDT back to master.
  */
+function buildNettsIdempotencyNonce({ forceGas, userId, derivationIndex, depositAddress }) {
+  if (forceGas) {
+    return crypto.randomBytes(16).toString('hex');
+  }
+  const parts = [
+    'sweep',
+    userId != null ? String(userId) : '',
+    derivationIndex != null ? String(derivationIndex) : '',
+    depositAddress,
+  ].filter(Boolean);
+  return parts.join(':');
+}
+
+function mapNettsSweepToUsdtResult(nettsResult, { usdtBalance, fromAddress }) {
+  const amountUsdt = sunToUsdt(nettsResult.amountInSun);
+  return {
+    dryRun: false,
+    skipped: false,
+    fromAddress,
+    toAddress: nettsResult.to,
+    usdtBalance,
+    amountUsdt,
+    amountSun: nettsResult.amountInSun,
+    txId: nettsResult.txid,
+  };
+}
+
+function mapNettsSweepToEnergyResult(nettsResult) {
+  return {
+    dryRun: false,
+    netts: true,
+    energy: nettsResult.energy ?? ENERGY_ORDER_AMOUNT,
+    orderId: nettsResult.nettsOrderId ?? null,
+    delegationHash: nettsResult.nettsDelegationHash ?? null,
+    paidTrx: nettsResult.nettsPaidTrx ?? null,
+    cached: Boolean(nettsResult.nettsCached),
+    idempotencyNonce: nettsResult.idempotencyNonce ?? null,
+  };
+}
+
 async function sweepDepositAddress({
   address,
   privateKeyHex,
@@ -273,6 +586,8 @@ async function sweepDepositAddress({
   forceGas = false,
   createTw = createTronWeb,
   waitFn = sleep,
+  sweepUsdtWithNettsEnergyFn = sweepUsdtWithNettsEnergy,
+  fetchImpl,
 } = {}) {
   if (!isHdEnabled() && !privateKeyHex) {
     const err = new Error('TRON HD is not configured — cannot derive deposit keys for sweep');
@@ -285,25 +600,15 @@ async function sweepDepositAddress({
   let index = derivationIndex;
 
   if (!key) {
-    if (userId != null) {
-      const derived = deriveTronAddressForUser(userId);
-      key = derived.privateKeyHex;
-      fromAddress = derived.address;
-      index = derived.index;
-    } else if (index != null) {
-      const derived = deriveTronAccountAtIndex(Number(index));
-      key = derived.privateKeyHex;
-      fromAddress = derived.address;
-    } else {
-      const err = new Error('userId, derivationIndex, or privateKeyHex is required to sweep');
-      err.code = 'SWEEP_KEY_REQUIRED';
-      throw err;
-    }
+    const material = deriveDepositSigningMaterial({ userId, derivationIndex: index });
+    key = material.privateKeyHex;
+    fromAddress = material.address;
+    index = material.index;
   }
 
   if (address && fromAddress && String(address).trim() !== fromAddress) {
     const err = new Error(
-      `Address mismatch: provided ${address} but derived ${fromAddress}`
+      `Address mismatch: provided ${address} but derived ${fromAddress} at index ${index}`
     );
     err.code = 'SWEEP_ADDRESS_MISMATCH';
     throw err;
@@ -314,9 +619,19 @@ async function sweepDepositAddress({
   probeTw.setAddress(fromAddress);
 
   // Peek USDT first — skip entirely when nothing to sweep.
-  const contract = await probeTw.contract(USDT_TRC20_ABI, USDT_TRC20_CONTRACT);
-  const rawBal = await contract.methods.balanceOf(fromAddress).call();
+  const contract = await withTronRateLimitRetry(
+    'USDT contract',
+    () => probeTw.contract(USDT_TRC20_ABI, USDT_TRC20_CONTRACT),
+    { waitFn }
+  );
+  const rawBal = await withTronRateLimitRetry(
+    'balanceOf',
+    () => contract.methods.balanceOf(fromAddress).call(),
+    { waitFn }
+  );
+  const balanceSunStr = rawBal?.toString?.() ?? String(rawBal || '0');
   const usdtBalance = sunToUsdt(rawBal);
+  const sweepAmountUsdt = formatUsdtAmountFromSun(balanceSunStr);
   if (usdtBalance < getMinSweepUsdt()) {
     return {
       ok: true,
@@ -332,50 +647,79 @@ async function sweepDepositAddress({
     };
   }
 
-  const trxSun = await probeTw.trx.getBalance(fromAddress);
+  const trxSun = await withTronRateLimitRetry(
+    'trx.getBalance',
+    () => probeTw.trx.getBalance(fromAddress),
+    { waitFn }
+  );
   const trxBalance = sunToTrx(trxSun);
-  const gasTrx = getSweepGasTrx();
-  const skipThreshold = getSkipGasIfTrxAtLeast();
-  const needsGas = forceGas || trxBalance < skipThreshold;
 
-  let gasResult = null;
-  if (needsGas) {
-    gasResult = await sendTrxFromMaster(fromAddress, gasTrx, { dryRun, createTw });
-    if (!dryRun) {
-      const waitMs = getGasWaitMs();
-      if (waitMs > 0) {
-        console.log(`[tron/sweep] waiting ${waitMs}ms for TRX gas confirmation…`);
-        await waitFn(waitMs);
-      }
-    }
-  } else {
-    gasResult = {
-      skipped: true,
-      reason: 'deposit_has_trx',
-      trxBalance,
-      skipThreshold,
+  if (dryRun) {
+    return {
+      ok: true,
+      skipped: false,
+      reason: null,
+      userId: userId != null ? Number(userId) : null,
+      derivationIndex: index,
+      depositAddress: fromAddress,
+      masterAddress,
+      usdtBalance,
+      trxBalanceBefore: trxBalance,
+      gas: null,
+      energy: {
+        dryRun: true,
+        netts: true,
+        energy: ENERGY_ORDER_AMOUNT,
+      },
+      usdt: {
+        dryRun: true,
+        skipped: false,
+        fromAddress,
+        toAddress: masterAddress,
+        usdtBalance,
+        amountSun: rawBal?.toString?.() ?? String(rawBal || '0'),
+        txId: null,
+      },
     };
   }
 
-  const usdtResult = await sweepUsdtToMaster({
-    privateKeyHex: key,
-    fromAddress,
-    masterAddress,
-    dryRun,
-    createTw,
+  const idempotencyNonce = buildNettsIdempotencyNonce({
+    forceGas,
+    userId,
+    derivationIndex: index,
+    depositAddress: fromAddress,
   });
+
+  const nettsResult = await withTronRateLimitRetry(
+    'Netts energy sweep',
+    () => sweepUsdtWithNettsEnergyFn({
+      childAddress: fromAddress,
+      childPrivateKey: key,
+      amountToSweep: sweepAmountUsdt,
+      destinationAddress: masterAddress,
+      idempotencyNonce,
+      fetchImpl,
+      tronWebFactory: (_host, pk) => createTw(pk),
+      sleepFn: waitFn,
+    }),
+    { waitFn }
+  );
+
+  const usdtResult = mapNettsSweepToUsdtResult(nettsResult, { usdtBalance, fromAddress });
+  const energyResult = mapNettsSweepToEnergyResult(nettsResult);
 
   return {
     ok: true,
-    skipped: Boolean(usdtResult.skipped),
-    reason: usdtResult.reason || null,
+    skipped: false,
+    reason: null,
     userId: userId != null ? Number(userId) : null,
     derivationIndex: index,
     depositAddress: fromAddress,
     masterAddress,
     usdtBalance,
     trxBalanceBefore: trxBalance,
-    gas: gasResult,
+    gas: null,
+    energy: energyResult,
     usdt: usdtResult,
   };
 }
@@ -414,6 +758,8 @@ async function sweepAllCustodialDeposits({
   onProgress = null,
   createTw = createTronWeb,
   waitFn = sleep,
+  sweepUsdtWithNettsEnergyFn,
+  fetchImpl,
 } = {}) {
   const rows = await listSweepableDepositAddresses({ limit });
   const results = [];
@@ -421,7 +767,10 @@ async function sweepAllCustodialDeposits({
   let skipped = 0;
   let failed = 0;
 
-  for (const row of rows) {
+  const betweenAccountDelayMs = getBetweenAccountDelayMs();
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
     try {
       const result = await sweepDepositAddress({
         userId: row.user_id,
@@ -431,6 +780,8 @@ async function sweepAllCustodialDeposits({
         forceGas,
         createTw,
         waitFn,
+        sweepUsdtWithNettsEnergyFn,
+        fetchImpl,
       });
       results.push(result);
       if (result.skipped) skipped += 1;
@@ -450,6 +801,10 @@ async function sweepAllCustodialDeposits({
       console.error('[tron/sweep] failed for user', row.user_id, err.message);
       if (typeof onProgress === 'function') onProgress(failure);
     }
+
+    if (i < rows.length - 1 && betweenAccountDelayMs > 0) {
+      await waitFn(betweenAccountDelayMs);
+    }
   }
 
   return {
@@ -460,6 +815,7 @@ async function sweepAllCustodialDeposits({
     skipped,
     failed,
     gasTrx: getSweepGasTrx(),
+    nettsEnergy: getNettsEnergyPerSweep(),
     minUsdt: getMinSweepUsdt(),
     results,
   };
@@ -473,8 +829,11 @@ async function runManualSweep({
   dryRun = false,
   forceGas = false,
   limit = 500,
+  scheduled = false,
   createTw,
   waitFn,
+  sweepUsdtWithNettsEnergyFn,
+  fetchImpl,
 } = {}) {
   if (sweepInFlight) {
     const err = new Error('A TRON deposit sweep is already in progress');
@@ -487,6 +846,10 @@ async function runManualSweep({
     const inject = {};
     if (createTw) inject.createTw = createTw;
     if (waitFn) inject.waitFn = waitFn;
+    if (sweepUsdtWithNettsEnergyFn) {
+      inject.sweepUsdtWithNettsEnergyFn = sweepUsdtWithNettsEnergyFn;
+    }
+    if (fetchImpl) inject.fetchImpl = fetchImpl;
 
     let summary;
     if (userId != null && userId !== '') {
@@ -506,6 +869,7 @@ async function runManualSweep({
         skipped: result.skipped ? 1 : 0,
         failed: result.ok === false ? 1 : 0,
         gasTrx: getSweepGasTrx(),
+        nettsEnergy: getNettsEnergyPerSweep(),
         minUsdt: getMinSweepUsdt(),
         results: [result],
       };
@@ -513,13 +877,31 @@ async function runManualSweep({
       summary = await sweepAllCustodialDeposits({ dryRun, forceGas, limit, ...inject });
       summary.mode = 'all';
     }
-    return {
+
+    const finished = {
       ...summary,
-      manual: true,
-      scheduled: false,
+      manual: !scheduled,
+      scheduled: Boolean(scheduled),
       started_at: startedAt,
       finished_at: new Date().toISOString(),
     };
+
+    try {
+      const { alertSweepFailuresIfNeeded } = require('./tronWalletMonitorService');
+      await alertSweepFailuresIfNeeded(finished, { dryRun });
+    } catch (alertErr) {
+      console.warn('[tron/sweep] monitor alert skipped:', alertErr.message);
+    }
+
+    return finished;
+  } catch (err) {
+    try {
+      const { alertSweepErrorIfNeeded } = require('./tronWalletMonitorService');
+      await alertSweepErrorIfNeeded(err, { userId });
+    } catch (alertErr) {
+      console.warn('[tron/sweep] monitor alert skipped:', alertErr.message);
+    }
+    throw err;
   } finally {
     sweepInFlight = false;
   }
@@ -529,11 +911,69 @@ function isSweepInFlight() {
   return sweepInFlight;
 }
 
+/**
+ * Sum USDT moved (or that would move on dry-run) from sweep result rows.
+ */
+function summarizeSweepTransferTotals(summary) {
+  const results = Array.isArray(summary?.results) ? summary.results : [];
+  let totalUsdt = 0;
+  let transferCount = 0;
+  const transfers = [];
+  const dryRun = Boolean(summary?.dryRun);
+
+  for (const row of results) {
+    if (row?.ok === false) continue;
+    if (row?.skipped) continue;
+
+    const usdtResult = row.usdt || {};
+    const amount = Number(
+      usdtResult.amountUsdt
+      ?? usdtResult.usdtBalance
+      ?? row.usdtBalance
+      ?? 0
+    );
+    if (!(amount > 0)) continue;
+
+    const txId = usdtResult.txId || usdtResult.txid || null;
+    if (!dryRun && !txId) continue;
+
+    totalUsdt += amount;
+    if (!dryRun && txId) transferCount += 1;
+
+    transfers.push({
+      user_id: row.userId ?? null,
+      deposit_address: row.depositAddress || usdtResult.fromAddress || null,
+      amount_usdt: Math.round(amount * 1e6) / 1e6,
+      tx_id: txId,
+      dry_run: dryRun,
+    });
+  }
+
+  return {
+    total_usdt: Math.round(totalUsdt * 1e6) / 1e6,
+    transfer_count: transferCount,
+    transfers: transfers.slice(0, 100),
+  };
+}
+
 module.exports = {
+  maskTronAddress,
+  getBetweenAccountDelayMs,
+  isTronRateLimitError,
+  withTronRateLimitRetry,
+  formatUsdtAmountFromSun,
+  assertSweepBodyHasNoPrivateKey,
+  deriveDepositSigningMaterial,
+  getNettsEnvReadiness,
+  verifyStoredDepositAddressAlignment,
+  buildSweepPreflightReport,
+  assertSweepPreflightOrThrow,
   getSweepGasTrx,
+  getNettsEnergyPerSweep,
   getMinSweepUsdt,
   getGasWaitMs,
   sendTrxFromMaster,
+  buildNettsIdempotencyNonce,
   sweepUsdtToMaster,
   sweepDepositAddress,
   sweepUserDeposit,
@@ -541,6 +981,7 @@ module.exports = {
   listSweepableDepositAddresses,
   runManualSweep,
   isSweepInFlight,
+  summarizeSweepTransferTotals,
   trxToSun,
   sunToTrx,
 };

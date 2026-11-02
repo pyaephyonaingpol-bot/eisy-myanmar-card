@@ -424,6 +424,8 @@ app.use('/api/kyc', createKycRateLimiter(), require('./routes/kyc'));
 app.use('/api/p2p', require('./routes/p2p'));
 app.use('/api/withdrawal', require('./routes/withdrawal'));
 app.use('/api/withdraw', require('./routes/withdraw'));
+app.use('/api/sweep', require('./routes/sweep'));
+app.use('/api/cron', require('./routes/cron'));
 
 app.use((req, res) => {
   if (req.path.startsWith('/api')) {

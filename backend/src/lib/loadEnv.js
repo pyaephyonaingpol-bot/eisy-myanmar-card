@@ -73,6 +73,9 @@ function loadEnv({ force = false } = {}) {
     seen.add(resolved);
     applyEnvFile(resolved, { override: true });
   }
+
+  const { normalizePlatformEnvAliases } = require('./envAliases');
+  normalizePlatformEnvAliases();
 }
 
 function resetLoadEnvForTests() {
