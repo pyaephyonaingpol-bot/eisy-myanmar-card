@@ -15,7 +15,7 @@
  */
 const crypto = require('crypto');
 const path = require('path');
-const { TronWeb } = require('../lib/tronWeb');
+const { createTronWeb: createTronWebClient } = require('../lib/tronWeb');
 const { getDb } = require('../db');
 const tronMaster = require('./tronMasterWalletService');
 const {
@@ -37,7 +37,7 @@ const {
   ENERGY_ORDER_AMOUNT,
 } = require(nettsSweepLibPath);
 
-const { tronFullHost, tronGridApiKeyHeaders } = require('../lib/envAliases');
+const { tronFullHost } = require('../lib/envAliases');
 const DEFAULT_FEE_LIMIT = Number(process.env.TRON_USDT_FEE_LIMIT_SUN) || 100_000_000;
 
 /** Legacy label for admin UI — sweeps use Netts energy, not master TRX gas. */
@@ -334,11 +334,7 @@ async function assertSweepPreflightOrThrow(opts = {}) {
 }
 
 function createTronWeb(privateKey) {
-  return new TronWeb({
-    fullHost: tronFullHost(),
-    headers: tronGridApiKeyHeaders(),
-    privateKey,
-  });
+  return createTronWebClient({ privateKey, fullHost: tronFullHost() });
 }
 
 function trxToSun(amountTrx) {

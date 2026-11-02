@@ -4,11 +4,11 @@
  * Private key is read only from process.env.MASTER_PRIVATE_KEY (never hardcoded).
  */
 
-const { TronWeb } = require('../lib/tronWeb');
+const { createTronWeb: createTronWebClient } = require('../lib/tronWeb');
 
 const USDT_TRC20_CONTRACT =
   process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const { firstEnv, tronFullHost, tronGridApiKeyHeaders, tronGridRequestHeaders } = require('../lib/envAliases');
+const { firstEnv, tronFullHost, tronGridRequestHeaders } = require('../lib/envAliases');
 
 function getTronFullHost() {
   return tronFullHost().replace(/\/$/, '');
@@ -81,11 +81,7 @@ function getMasterPrivateKey() {
 }
 
 function createTronWeb(privateKey) {
-  return new TronWeb({
-    fullHost: getTronFullHost(),
-    headers: tronGridApiKeyHeaders(),
-    privateKey,
-  });
+  return createTronWebClient({ privateKey, fullHost: getTronFullHost() });
 }
 
 /** Convert USDT amount to TRC20 base units (6 decimals) as a decimal string. */
@@ -319,7 +315,7 @@ function isLikelyTronAddress(addr) {
   // Mainnet Base58Check addresses are 34 chars starting with T.
   if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(s)) return false;
   try {
-    const tw = new TronWeb({ fullHost: getTronFullHost(), headers: tronGridApiKeyHeaders() });
+    const tw = createTronWebClient({ fullHost: getTronFullHost() });
     return Boolean(tw.isAddress(s));
   } catch (_) {
     return true;
@@ -456,7 +452,7 @@ async function fetchBalancesViaTronWeb(address) {
   try {
     tronWeb = createTronWeb(getMasterPrivateKey());
   } catch (_) {
-    tronWeb = new TronWeb({ fullHost: getTronFullHost(), headers: tronApiHeaders() });
+    tronWeb = createTronWebClient({ fullHost: getTronFullHost() });
     tronWeb.setAddress(address);
   }
   const [usdtInfo, trxSun] = await withTimeout(
