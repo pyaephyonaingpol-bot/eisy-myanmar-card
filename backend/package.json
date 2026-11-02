@@ -91,7 +91,7 @@
     "test:admin-mmk-tx-schema-drift": "node scripts/test-admin-mmk-tx-schema-drift.js",
     "test:payment-gateway-cleanup": "node scripts/test-payment-gateway-cleanup.js",
     "test:withdraw-markup": "node scripts/test-withdraw-markup.js",
-    "test:pagocard": "node --experimental-strip-types scripts/test-pagocard-client.js",
+    "test:pagocard": "node scripts/test-pagocard-client.js",
     "test:pago-card-issue": "node scripts/test-pago-card-issue.js",
     "test:user-pay-qr": "node scripts/test-user-pay-qr.js",
     "test:p2p-true-escrow": "node scripts/test-p2p-true-escrow.js",
@@ -118,7 +118,9 @@
     "resend": "^6.18.1",
     "stripe": "^22.6.1",
     "tronweb": "^6.4.0",
-    "web-push": "^3.6.7"
+    "typescript": "~5.7.0",
+    "web-push": "^3.6.7",
+    "ws": "^8.22.1"
   },
   "optionalDependencies": {
     "sqlite": "^5.1.1",

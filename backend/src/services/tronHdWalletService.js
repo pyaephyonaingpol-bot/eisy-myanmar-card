@@ -13,8 +13,8 @@
 const { mnemonicToSeedSync, validateMnemonic } = require('@scure/bip39');
 const { wordlist } = require('@scure/bip39/wordlists/english');
 const { HDKey } = require('@scure/bip32');
-const { TronWeb } = require('tronweb');
-const { firstEnv } = require('../lib/envAliases');
+const { TronWeb } = require('../lib/tronWeb');
+const { firstEnv, tronFullHost } = require('../lib/envAliases');
 
 const TRON_COIN_TYPE = 195;
 const DEFAULT_ACCOUNT = 0;
@@ -117,7 +117,7 @@ function deriveTronAccountAtIndex(index) {
   }
 
   const privateKeyHex = Buffer.from(child.privateKey).toString('hex');
-  const tw = new TronWeb({ fullHost: process.env.TRON_FULL_HOST || 'https://api.trongrid.io' });
+  const tw = new TronWeb({ fullHost: tronFullHost() });
   const address = tw.address.fromPrivateKey(privateKeyHex);
   if (!address || !tw.isAddress(address)) {
     const err = new Error(`Derived invalid TRON address at ${path}`);

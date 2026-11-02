@@ -20,6 +20,7 @@ async function openLegacySqlite3(filePath) {
 }
 
 async function initDb() {
+  if (db) return db;
   const config = getDatabaseConfig();
 
   if (config.mode === 'libsql') {

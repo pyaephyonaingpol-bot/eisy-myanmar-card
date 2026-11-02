@@ -26,7 +26,7 @@ function envIsSet(...names) {
 
 /** Vercel-first alias groups — any one name in a group satisfies runtime checks. */
 const ENV_ALIAS_GROUPS = [
-  ['TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY'],
+  ['TRON_PRO_API_KEY', 'TRONGRID_API_KEY', 'TRON_API_KEY'],
   ['TRON_FULL_HOST', 'TRONGRID_FULL_HOST'],
   ['DATABASE_URL', 'TURSO_DATABASE_URL', 'LIBSQL_URL'],
   ['DATABASE_AUTH_TOKEN', 'TURSO_AUTH_TOKEN', 'LIBSQL_AUTH_TOKEN'],
@@ -60,11 +60,23 @@ function normalizePlatformEnvAliases() {
 }
 
 function tronApiKey() {
-  return firstEnv('TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY');
+  return firstEnv('TRON_PRO_API_KEY', 'TRONGRID_API_KEY', 'TRON_API_KEY');
 }
 
 function tronFullHost() {
   return firstEnv('TRON_FULL_HOST', 'TRONGRID_FULL_HOST') || 'https://api.trongrid.io';
+}
+
+/** TronWeb / TronGrid REST — sends TRON-PRO-API-KEY when any TRON_* API key alias is set. */
+function tronGridApiKeyHeaders() {
+  const headers = {};
+  const apiKey = tronApiKey();
+  if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
+  return headers;
+}
+
+function tronGridRequestHeaders(extra = {}) {
+  return { Accept: 'application/json', ...tronGridApiKeyHeaders(), ...extra };
 }
 
 function databaseUrl() {
@@ -83,6 +95,8 @@ module.exports = {
   normalizePlatformEnvAliases,
   tronApiKey,
   tronFullHost,
+  tronGridApiKeyHeaders,
+  tronGridRequestHeaders,
   databaseUrl,
   databaseAuthToken,
 };

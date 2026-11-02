@@ -4,12 +4,15 @@
  * Private key is read only from process.env.MASTER_PRIVATE_KEY (never hardcoded).
  */
 
-const { TronWeb } = require('tronweb');
+const { TronWeb } = require('../lib/tronWeb');
 
 const USDT_TRC20_CONTRACT =
   process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const TRON_FULL_HOST =
-  process.env.TRON_FULL_HOST || process.env.TRONGRID_FULL_HOST || 'https://api.trongrid.io';
+const { firstEnv, tronFullHost, tronGridApiKeyHeaders, tronGridRequestHeaders } = require('../lib/envAliases');
+
+function getTronFullHost() {
+  return tronFullHost().replace(/\/$/, '');
+}
 const TRC20_DECIMALS = 6;
 /** Fee limit for USDT transfer (sun). Default 100 TRX. */
 const DEFAULT_FEE_LIMIT = Number(process.env.TRON_USDT_FEE_LIMIT_SUN) || 100_000_000;
@@ -51,8 +54,6 @@ const USDT_TRC20_ABI = [
   },
 ];
 
-const { firstEnv } = require('../lib/envAliases');
-
 function getMasterPrivateKey() {
   // Prefer MASTER_PRIVATE_KEY. Accept common paste aliases + strip accidental KEY= prefixes.
   const raw = firstEnv(
@@ -80,15 +81,9 @@ function getMasterPrivateKey() {
 }
 
 function createTronWeb(privateKey) {
-  const headers = {};
-  const apiKey = firstEnv('TRONGRID_API_KEY', 'TRON_PRO_API_KEY', 'TRON_API_KEY');
-  if (apiKey) {
-    headers['TRON-PRO-API-KEY'] = apiKey;
-  }
-
   return new TronWeb({
-    fullHost: TRON_FULL_HOST,
-    headers,
+    fullHost: getTronFullHost(),
+    headers: tronGridApiKeyHeaders(),
     privateKey,
   });
 }
@@ -324,7 +319,7 @@ function isLikelyTronAddress(addr) {
   // Mainnet Base58Check addresses are 34 chars starting with T.
   if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(s)) return false;
   try {
-    const tw = new TronWeb({ fullHost: TRON_FULL_HOST });
+    const tw = new TronWeb({ fullHost: getTronFullHost(), headers: tronGridApiKeyHeaders() });
     return Boolean(tw.isAddress(s));
   } catch (_) {
     return true;
@@ -381,10 +376,7 @@ async function fetchJsonTimed(url, options = {}, timeoutMs = BALANCE_FETCH_TIMEO
 }
 
 function tronApiHeaders() {
-  const headers = { Accept: 'application/json' };
-  const apiKey = firstEnv('TRONGRID_API_KEY', 'TRON_PRO_API_KEY', 'TRON_API_KEY');
-  if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
-  return headers;
+  return tronGridRequestHeaders();
 }
 
 function parseUsdtFromTrc20Map(trc20List) {
@@ -405,7 +397,7 @@ function parseUsdtFromTrc20Map(trc20List) {
 
 /** Timed TronGrid REST account lookup (preferred — does not hang like TronWeb RPC). */
 async function fetchBalancesViaTronGrid(address) {
-  const base = TRON_FULL_HOST.replace(/\/$/, '');
+  const base = getTronFullHost();
   const data = await fetchJsonTimed(
     `${base}/v1/accounts/${encodeURIComponent(address)}`,
     { headers: tronApiHeaders() }
@@ -464,8 +456,7 @@ async function fetchBalancesViaTronWeb(address) {
   try {
     tronWeb = createTronWeb(getMasterPrivateKey());
   } catch (_) {
-    const headers = tronApiHeaders();
-    tronWeb = new TronWeb({ fullHost: TRON_FULL_HOST, headers });
+    tronWeb = new TronWeb({ fullHost: getTronFullHost(), headers: tronApiHeaders() });
     tronWeb.setAddress(address);
   }
   const [usdtInfo, trxSun] = await withTimeout(

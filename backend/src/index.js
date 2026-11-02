@@ -1,4 +1,5 @@
 require('./lib/loadEnv');
+require('./lib/tronWebSocket').installTronWebSocketPolyfill();
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
@@ -242,7 +243,7 @@ app.get('/health', async (_req, res) => {
  * Used to verify Vercel env wiring after key rotation.
  */
 app.get('/health/tron', async (_req, res) => {
-  const { envIsSet, firstEnv } = require('./lib/envAliases');
+  const { envIsSet, tronApiKey, tronFullHost, tronGridRequestHeaders } = require('./lib/envAliases');
   const {
     getMasterWalletAddress,
     getMasterWalletInfo,
@@ -261,7 +262,7 @@ app.get('/health/tron', async (_req, res) => {
       'MASTER_TRON_ADDRESS',
       'TRON_MASTER_ADDRESS'
     ),
-    TRON_API_KEY: envIsSet('TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY'),
+    TRON_API_KEY: envIsSet('TRON_PRO_API_KEY', 'TRONGRID_API_KEY', 'TRON_API_KEY'),
   };
 
   const out = {
@@ -298,10 +299,8 @@ app.get('/health/tron', async (_req, res) => {
       }
     }
 
-    const host = firstEnv('TRON_FULL_HOST', 'TRONGRID_FULL_HOST') || 'https://api.trongrid.io';
-    const apiKey = firstEnv('TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY');
-    const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
-    if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
+    const host = tronFullHost();
+    const headers = tronGridRequestHeaders({ 'Content-Type': 'application/json' });
     const tgRes = await fetch(`${host.replace(/\/$/, '')}/wallet/getnowblock`, {
       method: 'POST',
       headers,
@@ -317,7 +316,7 @@ app.get('/health/tron', async (_req, res) => {
       ok: tgRes.ok,
       http_status: tgRes.status,
       host,
-      api_key_configured: Boolean(apiKey),
+      api_key_configured: Boolean(tronApiKey()),
       block,
     };
 
