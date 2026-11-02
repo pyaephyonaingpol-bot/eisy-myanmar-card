@@ -2,7 +2,7 @@
   "name": "eisy-myanmar-card",
   "version": "1.0.0",
   "private": true,
-  "description": "Eisy Myanmar card platform \u2014 Vercel entry + utilities",
+  "description": "Eisy Myanmar card platform — Vercel entry + utilities",
   "main": "api/index.js",
   "scripts": {
     "netts-sweep": "node scripts/netts-sweep.js",
@@ -31,12 +31,12 @@
     "test:pwa-setup": "node backend/scripts/test-pwa-setup.js",
     "test:apk-download-button": "node backend/scripts/test-apk-download-button.js",
     "build": "npm run vercel-build",
-    "vercel-build": "node backend/scripts/write-public-supabase-config.js; node backend/scripts/write-portal-html.js; node backend/scripts/stamp-admin-cache.js; node backend/scripts/write-admin-portal-html.js; node backend/scripts/test-tron-wallet-init.js || echo \"[vercel-build] TRON wallet init check failed (non-blocking \u2014 see /health/tron after deploy)\"; mkdir -p public && cp -R backend/public/. public/",
+    "vercel-build": "node backend/scripts/write-public-supabase-config.js; node backend/scripts/write-portal-html.js; node backend/scripts/stamp-admin-cache.js; node backend/scripts/write-admin-portal-html.js; node backend/scripts/test-tron-wallet-init.js || echo \"[vercel-build] TRON wallet init check failed (non-blocking — see /health/tron after deploy)\"; mkdir -p public && cp -R backend/public/. public/",
     "android:apk": "bash scripts/build-android-apk.sh debug",
     "android:apk:release": "bash scripts/build-android-apk.sh release"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "repository": {
     "type": "git",
@@ -59,6 +59,7 @@
     "resend": "^6.18.1",
     "stripe": "^22.6.1",
     "tronweb": "^6.4.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "ws": "^8.22.1"
   }
 }

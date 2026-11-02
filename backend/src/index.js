@@ -1,4 +1,5 @@
 require('./lib/loadEnv');
+require('./lib/tronWebSocket').installTronWebSocketPolyfill();
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
