@@ -296,6 +296,68 @@ async function run() {
   assert.strictEqual(repaired.card.cvv, '298');
   assert.strictEqual(Number(repaired.card.balance_display_usd), 10);
 
+  // Missing Pago columns (prod Turso drift) must be repaired by the ensure patch.
+  const { ensurePagoCardColumns, PAGO_CARD_COLUMNS } = require('../migrations/patches/ensurePagoCardColumns');
+  const { columnExists, tableExists } = require('../migrations/runner');
+  await db.exec('DROP VIEW IF EXISTS active_cards');
+  await db.exec('DROP TABLE cards_v2');
+  await db.exec(`
+    CREATE TABLE cards_v2 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      card_number TEXT NOT NULL,
+      exp_date TEXT NOT NULL,
+      cvv TEXT NOT NULL,
+      card_holder_name TEXT NOT NULL,
+      card_type TEXT DEFAULT 'virtual',
+      currency TEXT DEFAULT 'USD',
+      status TEXT DEFAULT 'pending',
+      is_primary INTEGER DEFAULT 0,
+      issued_by_admin_id INTEGER,
+      admin_notes TEXT,
+      daily_limit_usd REAL,
+      metadata TEXT,
+      activated_at TEXT,
+      cancelled_at TEXT,
+      suspended_at TEXT,
+      status_reason TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+  assert.strictEqual(await columnExists(db, 'cards_v2', 'pago_card_id'), false);
+  await ensurePagoCardColumns(db, columnExists, tableExists);
+  for (const [name] of PAGO_CARD_COLUMNS) {
+    assert.ok(await columnExists(db, 'cards_v2', name), `ensure adds cards_v2.${name}`);
+  }
+
+  const repairedClient = {
+    async createVirtualCard() {
+      return sampleCard({
+        card_id: 'card_pago_repaired',
+        card_number: '4937241043245430',
+        cvv: '298',
+        status: 'normal',
+      });
+    },
+    async getCardDetails() {
+      throw new Error('should not be called when PAN/CVV already present');
+    },
+  };
+  const repaired = await issuePagoCardForUser({
+    userId: user.id,
+    productCode: 'us_404_visa_bin',
+    firstName: 'Pago',
+    lastName: 'Tester',
+    email: user.email,
+    initialLoad: 10,
+  }, { client: repairedClient });
+  assert.strictEqual(repaired.card.pago_card_id, 'card_pago_repaired');
+  assert.strictEqual(repaired.card.status, 'active', 'Pago status normal maps to active');
+  assert.strictEqual(repaired.card.card_number, '4937241043245430');
+  assert.strictEqual(repaired.card.cvv, '298');
+  assert.strictEqual(Number(repaired.card.balance_display_usd), 10);
+
   console.log('pago card issue checks passed');
 }
 

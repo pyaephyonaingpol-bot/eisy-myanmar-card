@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Vercel Hobby does not rely on scheduled crons — vercel.json must not define them.
+ * Vercel must not define scheduled crons (Hobby limits) — use Droplet crontab
+ * calling GET /api/cron/tron-deposit-ops with Bearer CRON_SECRET instead.
  * Run: node backend/scripts/test-vercel-cron-config.js
  */
 'use strict';
@@ -16,14 +17,16 @@ const crons = config.crons || [];
 assert.strictEqual(
   crons.length,
   0,
-  'vercel.json must not define crons (use admin Trigger Deposit Credit Scan instead)'
+  'vercel.json must not define crons (schedule on DigitalOcean instead)',
 );
 
 const indexJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.js'), 'utf8');
-assert.ok(!indexJs.includes("'/api/cron'"), 'index.js must not mount /api/cron');
-assert.ok(!indexJs.includes('tronCron'), 'index.js must not reference tronCron');
+assert.ok(indexJs.includes("app.use('/api/cron'"), 'index.js mounts /api/cron for external cron HTTP');
 
-const tronCronPath = path.join(__dirname, '..', 'src', 'routes', 'tronCron.js');
-assert.ok(!fs.existsSync(tronCronPath), 'tronCron route file must be removed');
+const cronRoute = path.join(__dirname, '..', 'src', 'routes', 'cron.js');
+assert.ok(fs.existsSync(cronRoute), 'cron.js route must exist');
+
+const legacyTronCron = path.join(__dirname, '..', 'src', 'routes', 'tronCron.js');
+assert.ok(!fs.existsSync(legacyTronCron), 'legacy tronCron route file must not exist');
 
 console.log('test-vercel-cron-config: OK');
