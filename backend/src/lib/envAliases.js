@@ -10,6 +10,33 @@ function stripAssignmentPrefix(raw) {
   return match ? match[1].trim().replace(/^['"]|['"]$/g, '') : text.replace(/^['"]|['"]$/g, '');
 }
 
+/**
+ * HTTP header values must be ByteStrings (Latin-1). Strip BOM, whitespace, control
+ * chars, and non-ASCII so TronWeb/axios/fetch do not throw on TRON-PRO-API-KEY.
+ */
+function sanitizeAsciiHeaderValue(raw) {
+  if (raw == null) return '';
+  let s = stripAssignmentPrefix(raw);
+  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  s = s.trim();
+  s = s.replace(/[\u0000-\u001f\u007f-\u009f\uFEFF]/g, '');
+  s = s.replace(/[^\x20-\x7E]/g, '');
+  return s.trim();
+}
+
+function sanitizeHttpHeaderMap(extra = {}) {
+  const out = {};
+  if (!extra || typeof extra !== 'object') return out;
+  for (const [key, value] of Object.entries(extra)) {
+    if (value == null) continue;
+    const name = sanitizeAsciiHeaderValue(key);
+    if (!name) continue;
+    const cleaned = sanitizeAsciiHeaderValue(value);
+    if (cleaned) out[name] = cleaned;
+  }
+  return out;
+}
+
 function firstEnv(...names) {
   for (const name of names) {
     const raw = process.env[name];
@@ -49,8 +76,15 @@ const ENV_ALIAS_GROUPS = [
  */
 function normalizePlatformEnvAliases() {
   for (const group of ENV_ALIAS_GROUPS) {
-    const value = firstEnv(...group);
+    let value = firstEnv(...group);
     if (!value) continue;
+    if (group[0] === 'TRON_PRO_API_KEY' || group.includes('TRONGRID_API_KEY')) {
+      value = sanitizeAsciiHeaderValue(value);
+      if (!value) continue;
+    }
+    if (group[0] === 'TRON_FULL_HOST' || group.includes('TRONGRID_FULL_HOST')) {
+      value = sanitizeAsciiHeaderValue(value) || value;
+    }
     for (const name of group) {
       if (!String(process.env[name] ?? '').trim()) {
         process.env[name] = value;
@@ -60,11 +94,16 @@ function normalizePlatformEnvAliases() {
 }
 
 function tronApiKey() {
-  return firstEnv('TRON_PRO_API_KEY', 'TRONGRID_API_KEY', 'TRON_API_KEY');
+  return sanitizeAsciiHeaderValue(
+    firstEnv('TRON_PRO_API_KEY', 'TRONGRID_API_KEY', 'TRON_API_KEY')
+  );
 }
 
 function tronFullHost() {
-  return firstEnv('TRON_FULL_HOST', 'TRONGRID_FULL_HOST') || 'https://api.trongrid.io';
+  const host = sanitizeAsciiHeaderValue(
+    firstEnv('TRON_FULL_HOST', 'TRONGRID_FULL_HOST')
+  );
+  return host || 'https://api.trongrid.io';
 }
 
 /** TronWeb / TronGrid REST — sends TRON-PRO-API-KEY when any TRON_* API key alias is set. */
@@ -76,7 +115,11 @@ function tronGridApiKeyHeaders() {
 }
 
 function tronGridRequestHeaders(extra = {}) {
-  return { Accept: 'application/json', ...tronGridApiKeyHeaders(), ...extra };
+  return {
+    Accept: 'application/json',
+    ...tronGridApiKeyHeaders(),
+    ...sanitizeHttpHeaderMap(extra),
+  };
 }
 
 function databaseUrl() {
@@ -89,6 +132,8 @@ function databaseAuthToken() {
 
 module.exports = {
   stripAssignmentPrefix,
+  sanitizeAsciiHeaderValue,
+  sanitizeHttpHeaderMap,
   firstEnv,
   envIsSet,
   ENV_ALIAS_GROUPS,

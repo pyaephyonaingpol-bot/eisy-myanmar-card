@@ -5,7 +5,7 @@ const { installTronWebSocketPolyfill } = require('./tronWebSocket');
 installTronWebSocketPolyfill();
 
 const { TronWeb } = require('tronweb');
-const { tronApiKey, tronFullHost } = require('./envAliases');
+const { tronFullHost, tronGridApiKeyHeaders, sanitizeAsciiHeaderValue } = require('./envAliases');
 
 const DEFAULT_TRONGRID_HOST = 'https://api.trongrid.io';
 
@@ -14,15 +14,14 @@ const DEFAULT_TRONGRID_HOST = 'https://api.trongrid.io';
  * API key: TRON_PRO_API_KEY || TRONGRID_API_KEY (and TRON_API_KEY alias via tronApiKey()).
  */
 function buildTronWebOptions({ privateKey, fullHost } = {}) {
-  const host = String(fullHost || tronFullHost() || DEFAULT_TRONGRID_HOST).replace(/\/$/, '');
-  const apiKey = tronApiKey();
-  const headers = {};
-  if (apiKey) {
-    headers['TRON-PRO-API-KEY'] = apiKey;
-  }
-  const options = { fullHost: host, headers };
+  const host = sanitizeAsciiHeaderValue(fullHost || tronFullHost() || DEFAULT_TRONGRID_HOST)
+    .replace(/\/$/, '');
+  const options = {
+    fullHost: host || DEFAULT_TRONGRID_HOST,
+    headers: { ...tronGridApiKeyHeaders() },
+  };
   if (privateKey != null && String(privateKey).trim() !== '') {
-    options.privateKey = privateKey;
+    options.privateKey = String(privateKey).trim().replace(/^0x/i, '').replace(/\s+/g, '');
   }
   return options;
 }

@@ -82,6 +82,16 @@ try {
   assert.strictEqual(tronApiKey(), 'grid-only-key');
   assert.strictEqual(tronGridRequestHeaders()['TRON-PRO-API-KEY'], 'grid-only-key');
 
+  for (const k of ['TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY']) delete process.env[k];
+  process.env.TRON_PRO_API_KEY = '  abc123\r\n';
+  const { sanitizeAsciiHeaderValue, tronApiKey: tronKeyDirty } = require('../src/lib/envAliases');
+  assert.strictEqual(sanitizeAsciiHeaderValue('  abc123\r\n'), 'abc123');
+  assert.strictEqual(tronKeyDirty(), 'abc123');
+
+  process.env.TRON_PRO_API_KEY = 'key-with-emoji-\u{1F600}tail';
+  delete require.cache[require.resolve('../src/lib/envAliases')];
+  assert.strictEqual(require('../src/lib/envAliases').tronApiKey(), 'key-with-emoji-tail');
+
   console.log('test-env-aliases: OK');
 } finally {
   restore(before);
