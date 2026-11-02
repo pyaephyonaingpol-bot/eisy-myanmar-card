@@ -27,6 +27,16 @@ delete process.env.DEPOSIT_WEBHOOK_SECRET;
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const DEST = 'TNTU3x2BLuJg3MQCnk6hne43NpgphMK2NJ';
+const { isValidTronBase58Address } = require('../src/lib/tronAddress');
+
+/** 34-char custodial test address (valid Base58 shape; not a real wallet). */
+function testTronAddress(label, seq) {
+  const seed = `${label}${seq}`.replace(/[^1-9A-HJ-NP-Za-km-z]/g, 'X');
+  const body = (seed + '1111111111111111111111111111111').slice(0, 33);
+  const addr = `T${body}`;
+  assert.ok(isValidTronBase58Address(addr), `invalid test address: ${addr}`);
+  return addr;
+}
 
 function postJson(port, urlPath, body, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -185,7 +195,7 @@ async function main() {
     await UserUsdtWalletAddress.create({
       userId: Number(ins.lastID),
       network: 'TRC20',
-      address: `TBatch${batchStamp}${i}1111111111111111111`,
+      address: testTronAddress('Batch', `${batchStamp}${i}`),
       addressType: 'custodial',
       derivationIndex: 900 + i,
       derivationPath: `m/44'/195'/0'/0/${900 + i}`,
@@ -204,7 +214,7 @@ async function main() {
     `095${stamp}`
   );
   const userId = Number(user.lastID);
-  const address = `THdAuto${stamp}11111111111111111`;
+  const address = testTronAddress('HdAuto', stamp);
   await UserUsdtWalletAddress.create({
     userId,
     network: 'TRC20',

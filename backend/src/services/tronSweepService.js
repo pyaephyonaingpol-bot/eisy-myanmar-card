@@ -38,6 +38,7 @@ const {
 } = require(nettsSweepLibPath);
 
 const { tronFullHost } = require('../lib/envAliases');
+const { normalizeTronAddressOrNull, partitionCustodialAddressRows } = require('../lib/tronAddress');
 const DEFAULT_FEE_LIMIT = Number(process.env.TRON_USDT_FEE_LIMIT_SUN) || 100_000_000;
 
 /** Legacy label for admin UI — sweeps use Netts energy, not master TRX gas. */
@@ -605,6 +606,22 @@ async function sweepDepositAddress({
     throw err;
   }
 
+  fromAddress = normalizeTronAddressOrNull(fromAddress) || '';
+  if (!fromAddress) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'invalid_deposit_address',
+      userId: userId != null ? Number(userId) : null,
+      derivationIndex: index,
+      depositAddress: String(address || '').trim() || null,
+      masterAddress: null,
+      usdtBalance: 0,
+      gas: null,
+      usdt: null,
+    };
+  }
+
   const masterAddress = tronMaster.getMasterWalletAddress();
   const probeTw = createTw(key);
   probeTw.setAddress(fromAddress);
@@ -729,7 +746,13 @@ async function listSweepableDepositAddresses({ limit = 500 } = {}) {
     ORDER BY derivation_index ASC
     LIMIT ?
   `, Math.min(Math.max(Number(limit) || 500, 1), 5000));
-  return rows || [];
+  const { valid, invalid } = partitionCustodialAddressRows(rows || []);
+  if (invalid.length) {
+    console.warn(
+      `[tron/sweep] skipped ${invalid.length} custodial row(s) with invalid TRON address`
+    );
+  }
+  return valid;
 }
 
 /**

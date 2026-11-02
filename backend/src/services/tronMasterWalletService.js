@@ -9,6 +9,7 @@ const { createTronWeb: createTronWebClient } = require('../lib/tronWeb');
 const USDT_TRC20_CONTRACT =
   process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const { firstEnv, tronFullHost, tronGridRequestHeaders } = require('../lib/envAliases');
+const { normalizeTronAddressOrNull } = require('../lib/tronAddress');
 
 function getTronFullHost() {
   return tronFullHost().replace(/\/$/, '');
@@ -393,9 +394,13 @@ function parseUsdtFromTrc20Map(trc20List) {
 
 /** Timed TronGrid REST account lookup (preferred — does not hang like TronWeb RPC). */
 async function fetchBalancesViaTronGrid(address) {
+  const normalized = normalizeTronAddressOrNull(address);
+  if (!normalized) {
+    return { usdt: 0, trx: 0, source: 'trongrid', skipped: true, reason: 'invalid_address' };
+  }
   const base = getTronFullHost();
   const data = await fetchJsonTimed(
-    `${base}/v1/accounts/${encodeURIComponent(address)}`,
+    `${base}/v1/accounts/${encodeURIComponent(normalized)}`,
     { headers: tronApiHeaders() }
   );
   const row = Array.isArray(data?.data) ? data.data[0] : null;

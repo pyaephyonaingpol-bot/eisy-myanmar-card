@@ -16,6 +16,7 @@ const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require
 const { formatUsdt } = require('./walletService');
 
 const { tronFullHost, tronGridRequestHeaders } = require('../lib/envAliases');
+const { normalizeTronAddressOrNull } = require('../lib/tronAddress');
 
 const DEFAULT_MASTER_DEPOSIT_ADDRESS = 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH';
 const USDT_TRC20_CONTRACT = process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
@@ -82,7 +83,7 @@ function parseTrc20TransferAmount(transfer) {
 }
 
 function normalizeTronAddress(addr) {
-  return String(addr || '').trim();
+  return normalizeTronAddressOrNull(addr) || '';
 }
 
 function mapOrderRow(row) {
@@ -360,6 +361,11 @@ async function fetchIncomingUsdtTransfers({
   limit = 200,
   orderBy = 'block_timestamp,asc',
 } = {}) {
+  const normalizedAddress = normalizeTronAddressOrNull(address);
+  if (!normalizedAddress) {
+    return [];
+  }
+
   const params = new URLSearchParams({
     only_to: 'true',
     only_confirmed: 'true',
@@ -371,7 +377,7 @@ async function fetchIncomingUsdtTransfers({
     params.set('min_timestamp', String(Math.floor(minTimestampMs)));
   }
 
-  const url = `${getTronFullHost()}/v1/accounts/${encodeURIComponent(address)}/transactions/trc20?${params.toString()}`;
+  const url = `${getTronFullHost()}/v1/accounts/${encodeURIComponent(normalizedAddress)}/transactions/trc20?${params.toString()}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {

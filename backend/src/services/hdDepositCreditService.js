@@ -9,6 +9,7 @@
  */
 const { getDb } = require('../db');
 const { isTronDepositEnabled } = require('./securityFlags');
+const { normalizeTronAddressOrNull, partitionCustodialAddressRows } = require('../lib/tronAddress');
 
 const USDT_TRC20_CONTRACT = process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const SCAN_INTERVAL_MS = Math.max(5000, parseInt(process.env.TRON_HD_SCAN_INTERVAL_MS || '20000', 10) || 20000);
@@ -153,9 +154,11 @@ async function listCustodialTrc20Addresses({ userId = null, limit = 100, offset 
         AND address IS NOT NULL AND TRIM(address) != ''
       LIMIT 1
     `, userId);
-    return row?.address ? [row] : [];
+    if (!row?.address) return [];
+    const { valid } = partitionCustodialAddressRows([row]);
+    return valid;
   }
-  return db.all(`
+  const rows = await db.all(`
     SELECT user_id, address, created_at, derivation_index
     FROM user_usdt_wallet_addresses
     WHERE network = 'TRC20' AND address_type = 'custodial'
@@ -163,6 +166,13 @@ async function listCustodialTrc20Addresses({ userId = null, limit = 100, offset 
     ORDER BY COALESCE(derivation_index, user_id) ASC, user_id ASC
     LIMIT ? OFFSET ?
   `, cap, off);
+  const { valid, invalid } = partitionCustodialAddressRows(rows);
+  if (invalid.length) {
+    console.warn(
+      `[tron/hd] skipped ${invalid.length} custodial row(s) with invalid TRON address`
+    );
+  }
+  return valid;
 }
 
 function inboundFloorMs(row) {
@@ -228,8 +238,11 @@ async function creditInboundHdDepositsForRows(rows, {
   const matches = [];
 
   for (const row of rows) {
-    const address = String(row.address || '').trim();
-    if (!address) continue;
+    const address = normalizeTronAddressOrNull(row.address);
+    if (!address) {
+      skipped += 1;
+      continue;
+    }
     const floorMs = inboundFloorMs(row);
     let transfers;
     try {
