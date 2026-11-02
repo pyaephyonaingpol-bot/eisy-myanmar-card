@@ -5,7 +5,7 @@
  *
  * Run: node backend/scripts/test-tron-transfer-abi.js
  */
-const { TronWeb } = require('tronweb');
+const { createTronWeb } = require('../src/lib/tronWeb');
 const { USDT_TRC20_ABI } = require('../src/services/tronMasterWalletService');
 
 function assert(cond, msg) {
@@ -30,7 +30,7 @@ async function main() {
   );
 
   const pk = 'a'.repeat(64);
-  const tw = new TronWeb({ fullHost: 'https://api.trongrid.io', privateKey: pk });
+  const tw = createTronWeb({ privateKey: pk });
   const from = tw.address.fromPrivateKey(pk);
   const contract = await tw.contract(USDT_TRC20_ABI, 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t');
 
