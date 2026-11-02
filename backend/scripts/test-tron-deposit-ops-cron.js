@@ -32,16 +32,13 @@ section('Express mounted');
 const indexSrc = fs.readFileSync(indexJs, 'utf8');
 assert.ok(indexSrc.includes("app.use('/api/cron'"), 'index mounts /api/cron');
 
-section('vercel cron schedule');
+section('vercel.json (no platform crons)');
 const vercel = JSON.parse(fs.readFileSync(vercelJson, 'utf8'));
 const crons = vercel.crons || [];
-assert.ok(
-  crons.some((c) => c.path === '/api/cron/tron-deposit-ops'),
-  'vercel.json defines tron-deposit-ops cron',
-);
-assert.ok(
-  crons.find((c) => c.path === '/api/cron/tron-deposit-ops')?.schedule,
-  'cron has schedule',
+assert.strictEqual(
+  crons.length,
+  0,
+  'vercel.json must not define crons — DigitalOcean crontab calls the HTTP endpoint',
 );
 
 section('cronAuth bearer validation');
