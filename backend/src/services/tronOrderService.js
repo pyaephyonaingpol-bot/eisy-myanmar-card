@@ -15,7 +15,7 @@ const { getDepositFeeSettings } = require('./settingsService');
 const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require('./depositService');
 const { formatUsdt } = require('./walletService');
 
-const { tronApiKey, tronFullHost } = require('../lib/envAliases');
+const { tronFullHost, tronGridRequestHeaders } = require('../lib/envAliases');
 
 const DEFAULT_MASTER_DEPOSIT_ADDRESS = 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH';
 const USDT_TRC20_CONTRACT = process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
@@ -28,10 +28,7 @@ function getTronFullHost() {
 }
 
 function tronApiHeaders() {
-  const headers = { Accept: 'application/json' };
-  const apiKey = tronApiKey();
-  if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
-  return headers;
+  return tronGridRequestHeaders();
 }
 
 /**

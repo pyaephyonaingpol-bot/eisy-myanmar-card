@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * Vercel-style env alias normalization (TRON_API_KEY vs TRONGRID_API_KEY, TURSO_* vs DATABASE_*).
+ * Vercel-style env alias normalization (TRON_PRO_API_KEY / TRONGRID_API_KEY / TRON_API_KEY, TURSO_* vs DATABASE_*).
  * Run: node backend/scripts/test-env-aliases.js
  */
 const assert = require('assert');
@@ -45,15 +45,42 @@ try {
   const { normalizePlatformEnvAliases } = require('../src/lib/envAliases');
   normalizePlatformEnvAliases();
 
+  assert.strictEqual(process.env.TRON_PRO_API_KEY, 'vercel-tron-key');
   assert.strictEqual(process.env.TRONGRID_API_KEY, 'vercel-tron-key');
   assert.strictEqual(process.env.TRON_API_KEY, 'vercel-tron-key');
   assert.strictEqual(process.env.DATABASE_URL, 'libsql://example.turso.io');
   assert.strictEqual(process.env.DATABASE_AUTH_TOKEN, 'turso-token');
 
-  const { tronApiKey, databaseUrl, databaseAuthToken } = require('../src/lib/envAliases');
+  let {
+    tronApiKey,
+    tronGridRequestHeaders,
+    databaseUrl,
+    databaseAuthToken,
+  } = require('../src/lib/envAliases');
   assert.strictEqual(tronApiKey(), 'vercel-tron-key');
+  assert.strictEqual(tronGridRequestHeaders()['TRON-PRO-API-KEY'], 'vercel-tron-key');
   assert.strictEqual(databaseUrl(), 'libsql://example.turso.io');
   assert.strictEqual(databaseAuthToken(), 'turso-token');
+
+  for (const k of ['TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY']) delete process.env[k];
+  process.env.TRON_PRO_API_KEY = 'pro-only-key';
+  normalizePlatformEnvAliases();
+  ({
+    tronApiKey,
+    tronGridRequestHeaders,
+  } = require('../src/lib/envAliases'));
+  assert.strictEqual(tronApiKey(), 'pro-only-key');
+  assert.strictEqual(tronGridRequestHeaders()['TRON-PRO-API-KEY'], 'pro-only-key');
+
+  for (const k of ['TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY']) delete process.env[k];
+  process.env.TRONGRID_API_KEY = 'grid-only-key';
+  normalizePlatformEnvAliases();
+  ({
+    tronApiKey,
+    tronGridRequestHeaders,
+  } = require('../src/lib/envAliases'));
+  assert.strictEqual(tronApiKey(), 'grid-only-key');
+  assert.strictEqual(tronGridRequestHeaders()['TRON-PRO-API-KEY'], 'grid-only-key');
 
   console.log('test-env-aliases: OK');
 } finally {
