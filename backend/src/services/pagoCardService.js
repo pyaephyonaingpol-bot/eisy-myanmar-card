@@ -11,8 +11,6 @@ const { loadPagoCardClient } = require('./loadPagoCardClient');
 const { displayStatusLabel } = require('../constants/cardStatuses');
 const {
   readCardPanUrlFromSources,
-  isPago4xxBinProduct,
-  needsPagoPanUrlFetch,
 } = require('./pagoPanView');
 const { quoteCardIssuanceCheckout } = require('../constants/cardIssuanceFees');
 
@@ -171,19 +169,15 @@ function parseExpiryParts(card) {
 function cardFieldsFromProvider(card) {
   const balance = readBalance(card);
   const cardPanUrl = readCardPanUrlFromSources(card);
-  const panViaIframe = Boolean(cardPanUrl)
-    || isPago4xxBinProduct(card.product_code);
-  const number = panViaIframe ? null : (card.card_number || card.cardnumber || null);
+  const number = card.card_number || card.cardnumber || null;
   const digits = String(number || '').replace(/\D/g, '');
   const lastFour = String(card.last_four || card.lastfour || digits.slice(-4) || '')
     .replace(/\D/g, '')
     .slice(-4);
   const { expiryMonth, expiryYear, expDate } = parseExpiryParts(card);
-  const cvv = panViaIframe
-    ? null
-    : (card.cvv != null && String(card.cvv).trim() !== ''
-      ? String(card.cvv).replace(/\D/g, '')
-      : null);
+  const cvv = card.cvv != null && String(card.cvv).trim() !== ''
+    ? String(card.cvv).replace(/\D/g, '')
+    : null;
   return {
     pagoCardId: String(card.card_id || card.cardid || '').trim(),
     productCode: card.product_code || null,
@@ -207,12 +201,6 @@ function cardFieldsFromProvider(card) {
 }
 
 function needsSensitiveDetails(card) {
-  if (needsPagoPanUrlFetch(card)) {
-    return true;
-  }
-  if (readCardPanUrlFromSources(card)) {
-    return false;
-  }
   const number = String(card?.card_number || card?.cardnumber || '').replace(/\D/g, '');
   const cvv = String(card?.cvv || '').replace(/\D/g, '');
   return number.length < 12 || cvv.length < 3;
@@ -667,10 +655,6 @@ async function refreshPagoCard(userId, localCardId, deps = {}) {
   }
   const fields = cardFieldsFromProvider(remote);
   const updated = await Card.updateFromPago(card.id, fields);
-  const panUrl = readCardPanUrlFromSources(remote);
-  if (!panUrl && isPago4xxBinProduct(fields.productCode || card.product_code)) {
-    console.warn('[pago] getCardDetails returned no card_pan_url for 4xx card', card.pago_card_id);
-  }
   return updated;
 }
 
@@ -1348,7 +1332,6 @@ module.exports = {
   syncPagoCardsForUser,
   importPagoCardById,
   mapPagoStatus,
-  isPago4xxBinProduct,
   getWalletProvisioningInfo,
   normalizePagoCardTransactions,
   listPagoCardTransactions,

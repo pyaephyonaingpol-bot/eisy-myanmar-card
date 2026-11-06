@@ -50,15 +50,15 @@ function mapCardForClient(c) {
     card_pan_url: cardPanUrl,
     metadata,
   });
-  const digits = pending || panIframe ? '' : String(c.card_number || '').replace(/\s/g, '');
+  const digits = pending ? '' : String(c.card_number || '').replace(/\s/g, '');
   const storedLast4 = String(c.last_four || '').replace(/\D/g, '').slice(-4);
   const last4 = storedLast4 || (digits.length >= 4 ? digits.slice(-4) : '????');
 
   return {
     id: c.id,
-    card_number: pending || panIframe ? null : c.card_number,
-    exp_date: pending || panIframe ? null : c.exp_date,
-    cvv: pending || panIframe ? null : c.cvv,
+    card_number: pending ? null : c.card_number,
+    exp_date: pending ? null : c.exp_date,
+    cvv: pending ? null : c.cvv,
     card_pan_url: panIframe ? (cardPanUrl || null) : null,
     pan_view: panIframe ? 'iframe' : 'legacy',
     pan_url_ready: panIframe ? Boolean(cardPanUrl) : false,
@@ -610,7 +610,7 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
     let providerUnavailable = false;
     const shouldCallProvider = Boolean(row.pago_card_id) && (
       forceRefresh
-      || (iframeCard ? !panFromDbEarly : true)
+      || iframeCard
     );
     if (shouldCallProvider) {
       try {
@@ -635,7 +635,12 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
     let metaAfter = rowMeta;
     try { metaAfter = rowAfter?.metadata ? JSON.parse(rowAfter.metadata) : {}; } catch (_) { metaAfter = rowMeta; }
     const panFromDb = readCardPanUrlFromSources(rowAfter || {}, metaAfter) || panFromDbEarly;
-    if (panFromDb) {
+    if (panFromDb && usesPagoPanIframe({
+      provider: rowAfter.provider || metaAfter.provider || 'pago',
+      product_code: rowAfter.product_code || metaAfter.product_code,
+      card_pan_url: panFromDb,
+      metadata: metaAfter,
+    })) {
       card = {
         ...card,
         card_pan_url: panFromDb,
@@ -659,7 +664,13 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
       ...payload,
       timed_out: timedOut,
       provider_unavailable: providerUnavailable,
-      pan_url_ready: Boolean(panFromDb || readCardPanUrlFromSources(card)),
+      pan_url_ready: Boolean(
+        panFromDb && usesPagoPanIframe({
+          provider: card.provider,
+          product_code: card.product_code,
+          card_pan_url: panFromDb,
+        })
+      ),
     });
   } catch (err) {
     console.error('[user/cards/detail]', err.code || err.message);

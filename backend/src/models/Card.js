@@ -385,16 +385,15 @@ const Card = {
     const isPrimary = !siblings.some((row) => Number(row.is_primary) === 1);
     const last4 = String(lastFour || '').replace(/\D/g, '').slice(-4);
     const panUrl = cardPanUrl || (metadata && metadata.card_pan_url) || null;
-    const { isPago4xxBinProduct } = require('../services/pagoPanView');
-    const stripPanFields = Boolean(panUrl) || isPago4xxBinProduct(productCode);
-    const digits = stripPanFields ? '' : String(cardNumber || '').replace(/\D/g, '');
-    const storedNumber = stripPanFields
-      ? (last4 ? `SECURE••••${last4}` : `SECURE-PAGO-${id.slice(0, 12)}`)
-      : (digits || (last4 ? `************${last4}` : `PAGO-${id}`));
-    const storedExp = stripPanFields
-      ? '—'
-      : (expDate || [expiryMonth, expiryYear].filter(Boolean).join('/') || '—');
-    const storedCvv = stripPanFields ? '—' : (String(cvv || '').replace(/\D/g, '') || '—');
+    const digits = String(cardNumber || '').replace(/\D/g, '');
+    const hasFullPan = digits.length >= 12;
+    const storedNumber = hasFullPan
+      ? digits
+      : (last4 ? `SECURE••••${last4}` : `SECURE-PAGO-${id.slice(0, 12)}`);
+    const storedExp = hasFullPan
+      ? (expDate || [expiryMonth, expiryYear].filter(Boolean).join('/') || '—')
+      : '—';
+    const storedCvv = hasFullPan ? (String(cvv || '').replace(/\D/g, '') || '—') : '—';
     const localStatus = String(status || 'active').toLowerCase();
     const meta = {
       provider: 'pago',
@@ -488,19 +487,17 @@ const Card = {
     }
     const last4 = String(lastFour || existing.last_four || '').replace(/\D/g, '').slice(-4);
     const panUrl = cardPanUrl || (metadata && metadata.card_pan_url) || current.card_pan_url || null;
-    const { isPago4xxBinProduct } = require('../services/pagoPanView');
-    const iframeProduct = isPago4xxBinProduct(
-      productCode || existing.product_code || current.product_code
-    );
-    const stripPanFields = Boolean(panUrl) || iframeProduct;
-    const digits = stripPanFields ? '' : String(cardNumber || '').replace(/\D/g, '');
-    const storedCvv = stripPanFields ? '—' : (String(cvv || '').replace(/\D/g, '') || null);
-    const storedNumber = stripPanFields
-      ? (last4 ? `SECURE••••${last4}` : `SECURE-PAGO-${String(existing.pago_card_id || id || '').slice(0, 12)}`)
-      : (digits || null);
-    const storedExp = stripPanFields
-      ? '—'
-      : (expDate || null);
+    const incomingDigits = cardNumber != null ? String(cardNumber).replace(/\D/g, '') : '';
+    const existingDigits = String(existing.card_number || '').replace(/\D/g, '');
+    const digits = incomingDigits.length >= 12 ? incomingDigits : existingDigits;
+    const hasFullPan = digits.length >= 12;
+    const storedNumber = hasFullPan
+      ? digits
+      : (last4 ? `SECURE••••${last4}` : `SECURE-PAGO-${String(existing.pago_card_id || id || '').slice(0, 12)}`);
+    const storedCvv = hasFullPan
+      ? (String(cvv ?? '').replace(/\D/g, '') || null)
+      : '—';
+    const storedExp = hasFullPan ? (expDate || null) : '—';
     const localStatus = status != null ? String(status).toLowerCase() : null;
     const nextMeta = {
       ...current,
@@ -517,7 +514,7 @@ const Card = {
 
     await db.run(`
       UPDATE ${this.TABLE}
-      SET card_number = COALESCE(?, card_number),
+      SET card_number = ?,
           exp_date = COALESCE(?, exp_date),
           cvv = COALESCE(?, cvv),
           card_holder_name = COALESCE(?, card_holder_name),

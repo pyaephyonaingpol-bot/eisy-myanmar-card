@@ -48,18 +48,21 @@ function readCardPanUrlFromSources(card, metadata = {}) {
   return sanitizeHttpsUrl(raw);
 }
 
-function needsPagoPanUrlFetch(card) {
-  if (readCardPanUrlFromSources(card)) return false;
-  const product = card?.product_code || card?.productCode || null;
-  return isPago4xxBinProduct(product);
+function needsPagoPanUrlFetch(_card) {
+  /** Pagocards PAN is delivered via Get Card JSON; iframe URL fetch is not used. */
+  return false;
 }
 
 function usesPagoPanIframe({ provider, product_code: productCode, productCode: camelProduct, card_pan_url: panUrl, metadata } = {}) {
   const prov = String(provider || metadata?.provider || '').toLowerCase();
   if (prov !== 'pago') return false;
-  const product = productCode || camelProduct || metadata?.product_code || null;
-  if (readCardPanUrlFromSources({ card_pan_url: panUrl }, metadata)) return true;
-  return isPago4xxBinProduct(product);
+  /** Optional escape hatch if Pagocards re-enforces hosted PAN-only for a product. */
+  if (String(process.env.PAGO_CARD_FORCE_PAN_IFRAME || '').trim() === '1') {
+    const product = productCode || camelProduct || metadata?.product_code || null;
+    if (readCardPanUrlFromSources({ card_pan_url: panUrl }, metadata)) return true;
+    return isPago4xxBinProduct(product);
+  }
+  return false;
 }
 
 module.exports = {
