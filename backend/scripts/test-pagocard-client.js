@@ -347,10 +347,10 @@ const sampleCard = {
         await api.getCardBalance('card_proxy_1');
         await api.topUpCard('card_proxy_1', 10);
         assert.deepStrictEqual(calls, [
-          `${proxy}/api/v1/cards`,
-          `${proxy}/api/v1/cards/card_proxy_1`,
-          `${proxy}/api/v1/cards/card_proxy_1`,
-          `${proxy}/api/v1/cards/card_proxy_1/fund`,
+          `${proxy}/cards`,
+          `${proxy}/cards/card_proxy_1`,
+          `${proxy}/cards/card_proxy_1`,
+          `${proxy}/cards/card_proxy_1/fund`,
         ]);
       }
       delete process.env.PAGO_CARD_API_BASE_URL;
@@ -363,7 +363,7 @@ const sampleCard = {
         lastName: 'Lovelace',
         email: 'ada@example.com',
       });
-      assert.strictEqual(calls[0], 'http://proxy.test/api/pago/api/v1/cards');
+      assert.strictEqual(calls[0], 'http://proxy.test/api/pago/cards');
       delete process.env.PAGO_CARD_PROXY_HOST;
       await assert.rejects(
         () => createPagoCardClient({ fetchImpl }).createVirtualCard({
