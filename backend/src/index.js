@@ -445,6 +445,8 @@ app.use('/api/withdrawal', require('./routes/withdrawal'));
 app.use('/api/withdraw', require('./routes/withdraw'));
 app.use('/api/sweep', require('./routes/sweep'));
 app.use('/api/cron', require('./routes/cron'));
+// Pagocards reverse proxy — forwards /api/pago/* to PAGO_PROXY_UPSTREAM_ORIGIN (default https://pagocards.com)
+app.use('/api/pago', require('./routes/pagocardsProxy'));
 
 app.use((req, res) => {
   if (req.path.startsWith('/api')) {
