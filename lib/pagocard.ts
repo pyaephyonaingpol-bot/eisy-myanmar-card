@@ -164,6 +164,8 @@ class PagoCardError extends Error {
   status: number;
   code: string;
   details?: Record<string, string[]>;
+  /** Underlying fetch/network error from pagoRequest (matches PagoCardErrorOptions.cause). */
+  cause?: unknown;
 
   constructor(message: string, options: PagoCardErrorOptions = {}) {
     super(message);
