@@ -5110,6 +5110,38 @@ const Dashboard = {
     return digits.replace(/(.{4})/g, '$1 ').trim();
   },
 
+  usesPagoPanIframe(card) {
+    if (!card || this.isCardPending(card)) return false;
+    if (card.pan_view === 'iframe') return true;
+    if (card.card_pan_url) return true;
+    const code = String(card.product_code || '').toLowerCase();
+    if (card.provider === 'pago' && (code.includes('493') || code.includes('404') || /4\d{2}/.test(code))) {
+      return true;
+    }
+    return false;
+  },
+
+  renderPagoPanIframe(card) {
+    const secure = $('pagoCardPanSecure');
+    const legacy = $('pagoCardLegacyPanFields');
+    const frame = $('pagoCardPanFrame');
+    const pending = $('pagoCardPanFramePending');
+    const useIframe = this.usesPagoPanIframe(card);
+    legacy?.classList.toggle('hidden', useIframe);
+    secure?.classList.toggle('hidden', !useIframe);
+    if (!useIframe) {
+      if (frame) frame.removeAttribute('src');
+      pending?.classList.add('hidden');
+      return;
+    }
+    const url = String(card?.card_pan_url || '').trim();
+    if (frame) {
+      if (url && frame.src !== url) frame.src = url;
+      else if (!url) frame.removeAttribute('src');
+    }
+    if (pending) pending.classList.toggle('hidden', Boolean(url));
+  },
+
   formatAllCardDetails(card) {
     const number = this.formatCardNumber(card.card_number);
     return [
@@ -5183,7 +5215,12 @@ const Dashboard = {
 
   openCardDetailsForActiveCard() {
     const card = this.allCards[this.activeCardIndex];
-    if (!card || !this.isCardActive(card) || !card.card_number) return;
+    if (!card || !this.isCardActive(card)) return;
+    if (this.usesPagoPanIframe(card)) {
+      this.openPagoCardDetail(card.id, card);
+      return;
+    }
+    if (!card.card_number) return;
     this.openCardDetailModal(this.activeCardIndex);
   },
 
@@ -5298,7 +5335,7 @@ const Dashboard = {
     const active = this.isCardActive(card);
     const pillCls = this.cardStatusPillClass(card);
     const statusLabel = this.cardStatusLabel(card);
-    const canReveal = active && Boolean(card.card_number);
+    const canReveal = active && (Boolean(card.card_number) || this.usesPagoPanIframe(card));
     const showDetails = canReveal && this.cardDetailRevealed;
 
     if ($('cardDetailModalTitle')) {
@@ -5325,7 +5362,12 @@ const Dashboard = {
       }
     }
 
-    if (showDetails) {
+    if (this.usesPagoPanIframe(card)) {
+      this.renderPagoPanIframe(card);
+      if ($('cardDetailNumber')) $('cardDetailNumber').textContent = '—';
+      if ($('cardDetailExp')) $('cardDetailExp').textContent = '—';
+      if ($('cardDetailCvv')) $('cardDetailCvv').textContent = '—';
+    } else if (showDetails) {
       if ($('cardDetailNumber')) $('cardDetailNumber').textContent = this.formatCardNumber(card.card_number);
       if ($('cardDetailExp')) $('cardDetailExp').textContent = card.exp_date || '—';
       if ($('cardDetailCvv')) $('cardDetailCvv').textContent = card.cvv || '—';
@@ -5488,7 +5530,7 @@ const Dashboard = {
     this.currentCard = pending ? null : card;
 
     const pillCls = this.cardStatusPillClass(card);
-    const canRevealDetails = active && Boolean(card?.card_number);
+    const canRevealDetails = active && (Boolean(card?.card_number) || this.usesPagoPanIframe(card));
 
     const detailsTitle = $('cardDetailsTitle');
     if (detailsTitle) detailsTitle.textContent = card ? `— ${card.label}` : '';
@@ -8495,10 +8537,17 @@ const Dashboard = {
         ? '—'
         : `$${Number(card.balance_usd).toFixed(2)}`;
     }
-    const number = card.card_number ? this.formatCardNumber(card.card_number) : '—';
-    if ($('pagoCardDetailNumber')) $('pagoCardDetailNumber').textContent = number;
-    if ($('pagoCardDetailExpiry')) $('pagoCardDetailExpiry').textContent = card.exp_date || '—';
-    if ($('pagoCardDetailCvv')) $('pagoCardDetailCvv').textContent = card.cvv || '—';
+    this.renderPagoPanIframe(card);
+    if (!this.usesPagoPanIframe(card)) {
+      const number = card.card_number ? this.formatCardNumber(card.card_number) : '—';
+      if ($('pagoCardDetailNumber')) $('pagoCardDetailNumber').textContent = number;
+      if ($('pagoCardDetailExpiry')) $('pagoCardDetailExpiry').textContent = card.exp_date || '—';
+      if ($('pagoCardDetailCvv')) $('pagoCardDetailCvv').textContent = card.cvv || '—';
+    } else {
+      if ($('pagoCardDetailNumber')) $('pagoCardDetailNumber').textContent = '—';
+      if ($('pagoCardDetailExpiry')) $('pagoCardDetailExpiry').textContent = '—';
+      if ($('pagoCardDetailCvv')) $('pagoCardDetailCvv').textContent = '—';
+    }
   },
 
   async openPagoCardDetail(cardId, fallback) {

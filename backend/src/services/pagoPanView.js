@@ -1,0 +1,49 @@
+'use strict';
+
+/**
+ * Pagocards secure PAN iframe (4xx BIN series, effective 2026-11-03).
+ * @see https://pagocards.com/documentation
+ */
+
+function sanitizeHttpsUrl(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  try {
+    const url = new URL(s);
+    if (url.protocol !== 'https:') return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function isPago4xxBinProduct(productCode) {
+  const code = String(productCode || '').toLowerCase();
+  if (!code) return false;
+  if (code.includes('404') || code.includes('493')) return true;
+  return /(?:^|[_-])4\d{2}(?:[_-]|$)/.test(code);
+}
+
+function readCardPanUrlFromSources(card, metadata = {}) {
+  const raw = card?.card_pan_url
+    ?? card?.cardPanUrl
+    ?? metadata?.card_pan_url
+    ?? metadata?.cardPanUrl
+    ?? null;
+  return sanitizeHttpsUrl(raw);
+}
+
+function usesPagoPanIframe({ provider, product_code: productCode, productCode: camelProduct, card_pan_url: panUrl, metadata } = {}) {
+  const prov = String(provider || metadata?.provider || '').toLowerCase();
+  if (prov !== 'pago') return false;
+  const product = productCode || camelProduct || metadata?.product_code || null;
+  if (readCardPanUrlFromSources({ card_pan_url: panUrl }, metadata)) return true;
+  return isPago4xxBinProduct(product);
+}
+
+module.exports = {
+  sanitizeHttpsUrl,
+  isPago4xxBinProduct,
+  readCardPanUrlFromSources,
+  usesPagoPanIframe,
+};

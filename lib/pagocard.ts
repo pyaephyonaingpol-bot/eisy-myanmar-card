@@ -57,6 +57,9 @@ export interface PagoCard {
   balance: PagoCardBalance;
   card_number: string | null;
   cvv: string | null;
+  /** HTTPS URL for secure PAN iframe (4xx BIN cards). */
+  card_pan_url?: string | null;
+  cardPanUrl?: string | null;
   created_at: string;
   cardnumber?: string;
   expiredate?: string;

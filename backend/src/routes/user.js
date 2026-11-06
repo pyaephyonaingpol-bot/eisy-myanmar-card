@@ -22,6 +22,11 @@ const {
   isCardReloadAllowed,
   isCardVisibleInUserList,
 } = require('../constants/cardStatuses');
+const {
+  readCardPanUrlFromSources,
+  usesPagoPanIframe,
+} = require('../services/pagoPanView');
+
 const router = express.Router();
 
 function resolveClientCardStatus(c) {
@@ -35,15 +40,27 @@ function mapCardForClient(c) {
 
   const pending = isPendingCardRecord(c);
   const status = resolveClientCardStatus(c);
-  const digits = pending ? '' : String(c.card_number || '').replace(/\s/g, '');
+  const providerHint = c.pago_card_id || metadata.pago_card_id || c.provider === 'pago' || metadata.provider === 'pago'
+    ? 'pago'
+    : null;
+  const cardPanUrl = readCardPanUrlFromSources(c, metadata);
+  const panIframe = !pending && usesPagoPanIframe({
+    provider: providerHint || c.provider || metadata.provider,
+    product_code: c.product_code || metadata.product_code,
+    card_pan_url: cardPanUrl,
+    metadata,
+  });
+  const digits = pending || panIframe ? '' : String(c.card_number || '').replace(/\s/g, '');
   const storedLast4 = String(c.last_four || '').replace(/\D/g, '').slice(-4);
   const last4 = storedLast4 || (digits.length >= 4 ? digits.slice(-4) : '????');
 
   return {
     id: c.id,
-    card_number: pending ? null : c.card_number,
-    exp_date: pending ? null : c.exp_date,
-    cvv: pending ? null : c.cvv,
+    card_number: pending || panIframe ? null : c.card_number,
+    exp_date: pending || panIframe ? null : c.exp_date,
+    cvv: pending || panIframe ? null : c.cvv,
+    card_pan_url: panIframe ? cardPanUrl : null,
+    pan_view: panIframe ? 'iframe' : 'legacy',
     card_holder_name: c.card_holder_name,
     status,
     display_status: displayStatusLabel(status),

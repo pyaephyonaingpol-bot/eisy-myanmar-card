@@ -66,6 +66,7 @@ async function run() {
   assert.ok(schema.includes('pago_status'), 'supabase alter adds pago_status');
   assert.ok(appSchema.includes('pago_card_id TEXT'), 'fresh schema includes pago_card_id');
   assert.ok(indexHtml.includes('id="pagoCardRequestForm"'), 'request form exists');
+  assert.ok(indexHtml.includes('id="pagoCardPanFrame"'), 'secure PAN iframe in cards UI');
   assert.ok(indexHtml.includes('data-page="cards"'), 'cards page exists');
   assert.ok(dash.includes("'/api/user/cards/request'"), 'request calls the Pago route');
   assert.ok(dash.includes('/api/user/cards/${cardId}/topup') || dash.includes('/api/user/cards/${cardId}/topup'.replace('cardId', 'cardId')), 'top-up route');
@@ -121,10 +122,12 @@ async function run() {
       assert.strictEqual(cardId, 'card_pago_1');
       return sampleCard({
         status: 'normal',
-        card_number: '4111111111114242',
-        cardnumber: '4111111111114242',
-        cvv: '123',
+        card_pan_url: 'https://secure.pagocards.example/embed/card_pago_1',
+        card_number: null,
+        cvv: null,
         expiredate: '12/30',
+        expiry_month: '12',
+        expiry_year: '30',
       });
     },
     async topUpCard(cardId, amount) {
@@ -156,9 +159,10 @@ async function run() {
   assert.strictEqual(issued.card.status, 'active');
   assert.strictEqual(issued.card.last_four, '4242');
   assert.strictEqual(issued.card.product_code, 'us_493_visa_bin_v2');
-  assert.strictEqual(issued.card.card_number, '4111111111114242');
-  assert.strictEqual(issued.card.cvv, '123');
-  assert.strictEqual(issued.card.exp_date, '12/30');
+  assert.ok(String(issued.card.card_number || '').startsWith('SECURE'), '493 cards store masked placeholder not PAN');
+  assert.strictEqual(issued.card.cvv, '—');
+  const meta = JSON.parse(issued.card.metadata || '{}');
+  assert.strictEqual(meta.card_pan_url, 'https://secure.pagocards.example/embed/card_pago_1');
   assert.strictEqual(issued.card.expiry_month, '12');
   assert.strictEqual(issued.card.expiry_year, '30');
   assert.strictEqual(Number(issued.card.balance_display_usd), 10);
@@ -249,13 +253,14 @@ async function run() {
     async createVirtualCard() {
       return sampleCard({
         card_id: 'card_pago_repaired',
-        card_number: '4937241043245430',
-        cvv: '298',
+        card_pan_url: 'https://secure.pagocards.example/embed/card_pago_repaired',
+        card_number: null,
+        cvv: null,
         status: 'normal',
       });
     },
     async getCardDetails() {
-      throw new Error('should not be called when PAN/CVV already present');
+      throw new Error('should not be called when card_pan_url is present');
     },
   };
   const repaired = await issuePagoCardForUser({
@@ -268,8 +273,10 @@ async function run() {
   }, { client: repairedClient });
   assert.strictEqual(repaired.card.pago_card_id, 'card_pago_repaired');
   assert.strictEqual(repaired.card.status, 'active', 'Pago status normal maps to active');
-  assert.strictEqual(repaired.card.card_number, '4937241043245430');
-  assert.strictEqual(repaired.card.cvv, '298');
+  assert.ok(String(repaired.card.card_number || '').startsWith('SECURE'));
+  assert.strictEqual(repaired.card.cvv, '—');
+  const repairedMeta = JSON.parse(repaired.card.metadata || '{}');
+  assert.ok(repairedMeta.card_pan_url);
   assert.strictEqual(Number(repaired.card.balance_display_usd), 10);
 
   console.log('pago card issue checks passed');

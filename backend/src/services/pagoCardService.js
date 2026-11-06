@@ -9,6 +9,10 @@ const {
 } = require('./settingsService');
 const { loadPagoCardClient } = require('./loadPagoCardClient');
 const { displayStatusLabel } = require('../constants/cardStatuses');
+const {
+  readCardPanUrlFromSources,
+  isPago4xxBinProduct,
+} = require('./pagoPanView');
 
 const PAGO_PRODUCTS = [
   { code: 'us_493_visa_bin_v2', label: 'Visa (493)', allows_initial_load: true },
@@ -119,15 +123,20 @@ function parseExpiryParts(card) {
 
 function cardFieldsFromProvider(card) {
   const balance = readBalance(card);
-  const number = card.card_number || card.cardnumber || null;
+  const cardPanUrl = readCardPanUrlFromSources(card);
+  const panViaIframe = Boolean(cardPanUrl)
+    || isPago4xxBinProduct(card.product_code);
+  const number = panViaIframe ? null : (card.card_number || card.cardnumber || null);
   const digits = String(number || '').replace(/\D/g, '');
   const lastFour = String(card.last_four || card.lastfour || digits.slice(-4) || '')
     .replace(/\D/g, '')
     .slice(-4);
   const { expiryMonth, expiryYear, expDate } = parseExpiryParts(card);
-  const cvv = card.cvv != null && String(card.cvv).trim() !== ''
-    ? String(card.cvv).replace(/\D/g, '')
-    : null;
+  const cvv = panViaIframe
+    ? null
+    : (card.cvv != null && String(card.cvv).trim() !== ''
+      ? String(card.cvv).replace(/\D/g, '')
+      : null);
   return {
     pagoCardId: String(card.card_id || card.cardid || '').trim(),
     productCode: card.product_code || null,
@@ -145,10 +154,15 @@ function cardFieldsFromProvider(card) {
     balanceDisplayUsd: balance.balance_display_usd,
     balanceAmount: balance.balance_amount,
     balanceCurrency: balance.balance_currency,
+    cardPanUrl,
+    metadata: cardPanUrl ? { card_pan_url: cardPanUrl } : undefined,
   };
 }
 
 function needsSensitiveDetails(card) {
+  if (readCardPanUrlFromSources(card)) {
+    return false;
+  }
   const number = String(card?.card_number || card?.cardnumber || '').replace(/\D/g, '');
   const cvv = String(card?.cvv || '').replace(/\D/g, '');
   return number.length < 12 || cvv.length < 3;
@@ -425,4 +439,5 @@ module.exports = {
   refreshPagoCard,
   topUpPagoCard,
   mapPagoStatus,
+  isPago4xxBinProduct,
 };
