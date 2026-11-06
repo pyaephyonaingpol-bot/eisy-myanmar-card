@@ -12,6 +12,7 @@ const { displayStatusLabel } = require('../constants/cardStatuses');
 const {
   readCardPanUrlFromSources,
   isPago4xxBinProduct,
+  needsPagoPanUrlFetch,
 } = require('./pagoPanView');
 const { quoteCardIssuanceCheckout } = require('../constants/cardIssuanceFees');
 
@@ -197,6 +198,9 @@ function cardFieldsFromProvider(card) {
 }
 
 function needsSensitiveDetails(card) {
+  if (needsPagoPanUrlFetch(card)) {
+    return true;
+  }
   if (readCardPanUrlFromSources(card)) {
     return false;
   }
