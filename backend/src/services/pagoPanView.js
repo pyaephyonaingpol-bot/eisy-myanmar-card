@@ -35,11 +35,15 @@ function readCardPanUrlFromSources(card, metadata = {}) {
     ?? card?.secure_pan_url
     ?? card?.secure_card_url
     ?? card?.card_pan_view_url
+    ?? card?.display_url
+    ?? card?.pan_view_url
+    ?? card?.card_pan_link
     ?? nested?.url
     ?? nested?.card_pan_url
     ?? metadata?.card_pan_url
     ?? metadata?.cardPanUrl
     ?? metadata?.pan_url
+    ?? metadata?.display_url
     ?? null;
   return sanitizeHttpsUrl(raw);
 }

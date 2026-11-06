@@ -21,7 +21,8 @@ assert.ok(dash.includes('renderPagoPanIframe'), 'dashboard renders iframe');
 assert.ok(dash.includes('mergePagoSensitiveCard'), 'dashboard merges sensitive card API fields');
 assert.ok(dash.includes('mountPagoPanIframeSrc'), 'dashboard mounts iframe src');
 assert.ok(dash.includes('pagoCardPanFrame'), 'dashboard references iframe element');
-assert.ok(html.includes('allow-modals'), 'iframe sandbox allows modals for Pagocards embed');
+assert.ok(dash.includes('isTrustedPagoPanUrl'), 'dashboard validates Pagocards pan URL host');
+assert.ok(dash.includes('upsertPagoCardInList'), 'dashboard persists pan URL on card state');
 assert.ok(!html.includes('referrerpolicy="no-referrer"'), 'iframe keeps referrer for Pagocards');
 
 const { usesPagoPanIframe, readCardPanUrlFromSources } = require('../src/services/pagoPanView');

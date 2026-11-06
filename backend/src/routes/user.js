@@ -61,6 +61,7 @@ function mapCardForClient(c) {
     cvv: pending || panIframe ? null : c.cvv,
     card_pan_url: panIframe ? (cardPanUrl || null) : null,
     pan_view: panIframe ? 'iframe' : 'legacy',
+    pan_url_ready: panIframe ? Boolean(cardPanUrl) : false,
     card_holder_name: c.card_holder_name,
     status,
     display_status: displayStatusLabel(status),
@@ -593,8 +594,10 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
     let timedOut = false;
     try {
       await withCardApiTimeout(
-        refreshPagoCard(req.user.id, cardId),
-        CARD_FETCH_TIMEOUT_MS + 2000,
+        refreshPagoCard(req.user.id, cardId, {
+          timeoutMs: CARD_FETCH_TIMEOUT_MS + 4000,
+        }),
+        CARD_FETCH_TIMEOUT_MS + 5000,
         'Card fetch'
       );
     } catch (err) {
@@ -603,9 +606,37 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
       console.warn('[user/cards/detail] timed out, returning saved card');
     }
     const payload = await getUserCardsPayload(req.user.id);
-    const card = payload.cards.find((item) => Number(item.id) === cardId);
+    let card = payload.cards.find((item) => Number(item.id) === cardId);
     if (!card) return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
-    res.json({ card, ...payload, timed_out: timedOut });
+    const row = await Card.findById(cardId);
+    let rowMeta = {};
+    try { rowMeta = row?.metadata ? JSON.parse(row.metadata) : {}; } catch (_) { rowMeta = {}; }
+    const panFromDb = readCardPanUrlFromSources(row || {}, rowMeta);
+    if (panFromDb) {
+      card = {
+        ...card,
+        card_pan_url: panFromDb,
+        pan_view: 'iframe',
+        pan_url_ready: true,
+      };
+      payload.cards = payload.cards.map((item) => (
+        Number(item.id) === cardId
+          ? { ...item, card_pan_url: panFromDb, pan_view: 'iframe', pan_url_ready: true }
+          : item
+      ));
+    } else if (usesPagoPanIframe({
+      provider: card.provider,
+      product_code: card.product_code,
+      card_pan_url: card.card_pan_url,
+    })) {
+      card = { ...card, pan_url_ready: false };
+    }
+    res.json({
+      card,
+      ...payload,
+      timed_out: timedOut,
+      pan_url_ready: Boolean(panFromDb || readCardPanUrlFromSources(card)),
+    });
   } catch (err) {
     console.error('[user/cards/detail]', err.code || err.message);
     sendPagoError(res, err, 'Failed to load card details');
