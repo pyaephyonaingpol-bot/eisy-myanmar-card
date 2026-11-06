@@ -8,6 +8,16 @@ Production **never** calls Pagocards directly from Vercel. All Business API traf
 Browser → Vercel (Express) → HTTP PAGO_CARD_API_BASE_URL → Droplet /api/pago → Pagocards API
 ```
 
+Default business paths: `GET {base}/api/v1/cards/{id}` (prefix from `PAGO_CARD_BUSINESS_API_PREFIX`, default `/api/v1`).
+
+**404 on every reveal** often means the proxy already maps `/api/pago` → upstream `/api/v1`, so the client must **not** add another `/api/v1`. Set:
+
+```bash
+PAGO_CARD_BUSINESS_API_PREFIX=
+```
+
+Then requests become `GET {base}/cards/{id}` → Droplet forwards to `.../api/v1/cards/{id}`. If your proxy expects the full path under base, leave the default unset.
+
 Headers on upstream calls (set by `lib/pagocard.ts`):
 
 | Header | Env var |

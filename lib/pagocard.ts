@@ -237,6 +237,42 @@ function resolveBaseUrl(raw: string | undefined): string {
   return resolvePagoCardBaseUrl();
 }
 
+/**
+ * Business card API path prefix (Pagocards "Get card" etc.).
+ * Default `/api/v1`. If your Droplet proxy already maps `/api/pago` → upstream `/api/v1`,
+ * set env to empty string so requests are `baseUrl/cards/...` not `baseUrl/api/v1/cards/...`.
+ */
+function businessApiPrefix(): string {
+  const raw = process.env.PAGO_CARD_BUSINESS_API_PREFIX;
+  if (raw === '') return '';
+  const p = String(raw ?? '/api/v1').trim();
+  if (!p) return '';
+  const norm = p.startsWith('/') ? p : `/${p}`;
+  return norm.replace(/\/+$/, '');
+}
+
+/** Pagocards Admin API prefix; default `/api` (paths like `/api/admin/balance`). */
+function adminApiPrefix(): string {
+  const raw = process.env.PAGO_CARD_ADMIN_API_PREFIX;
+  if (raw === '') return '';
+  const p = String(raw ?? '/api').trim();
+  if (!p) return '';
+  const norm = p.startsWith('/') ? p : `/${p}`;
+  return norm.replace(/\/+$/, '');
+}
+
+function businessPath(suffix: string): string {
+  const suf = suffix.startsWith('/') ? suffix : `/${suffix}`;
+  const pre = businessApiPrefix();
+  return pre ? `${pre}${suf}` : suf;
+}
+
+function adminPath(suffix: string): string {
+  const suf = suffix.startsWith('/') ? suffix : `/${suffix}`;
+  const pre = adminApiPrefix();
+  return pre ? `${pre}${suf}` : suf;
+}
+
 function truncateUsd(amount: number): number {
   if (!Number.isFinite(amount)) return amount;
   const sign = amount < 0 ? -1 : 1;
@@ -380,8 +416,28 @@ async function pagoRequest<T>(
   }
 
   if (!response.ok || payload?.status === 'failure' || payload == null) {
+    const fullUrl = `${config.baseUrl}${path}`;
+    if (response.status === 404 && process.env.PAGO_CARD_SILENCE_HTTP_LOG !== 'true') {
+      console.warn(
+        '[pago] http_404',
+        JSON.stringify({
+          method,
+          path,
+          host: proxyHostForLog(config.baseUrl),
+          businessPrefix: businessApiPrefix() || '(empty)',
+          hint:
+            'Proxy path mismatch — if your Droplet maps /api/pago → upstream /api/v1, set PAGO_CARD_BUSINESS_API_PREFIX=""',
+        })
+      );
+    }
     throw new PagoCardError(
-      redact(payload?.message || `Pago Card request failed (${response.status})`, [config.apiKey, config.secretKey]),
+      redact(
+        payload?.message
+          || (response.status === 404
+            ? `Pago Card not found (404). Check proxy maps to Pagocards Business API — tried ${method} ${fullUrl}. If paths are doubled, set PAGO_CARD_BUSINESS_API_PREFIX="" (see docs).`
+            : `Pago Card request failed (${response.status})`),
+        [config.apiKey, config.secretKey]
+      ),
       {
         status: response.status,
         code: payload?.code || 'PAGO_REQUEST_FAILED',
@@ -474,7 +530,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
       body.initial_load = initialLoad;
     }
 
-    return pagoRequest<PagoCard>(config, 'POST', '/api/v1/cards', {
+    return pagoRequest<PagoCard>(config, 'POST', businessPath('/cards'), {
       body,
       idempotencyKey: input.idempotencyKey,
       timeoutMs: requestTimeoutMs,
@@ -488,7 +544,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
   async function getCardDetails(cardId: string): Promise<PagoCard> {
     const config = resolveConfig(options);
     const id = requireText(cardId, 'card_id');
-    return pagoRequest<PagoCard>(config, 'GET', `/api/v1/cards/${encodeURIComponent(id)}`, {
+    return pagoRequest<PagoCard>(config, 'GET', businessPath(`/cards/${encodeURIComponent(id)}`), {
       timeoutMs: requestTimeoutMs,
     });
   }
@@ -533,7 +589,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     return pagoRequest<PagoCardFundResult>(
       config,
       'POST',
-      `/api/v1/cards/${encodeURIComponent(cardId)}/fund`,
+      businessPath(`/cards/${encodeURIComponent(cardId)}/fund`),
       {
         body: { amount: fundAmount },
         idempotencyKey: input.idempotencyKey,
@@ -567,7 +623,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     return pagoRequest<PagoCardFundResult>(
       config,
       'POST',
-      `/api/v1/cards/${encodeURIComponent(cardId)}/withdraw`,
+      businessPath(`/cards/${encodeURIComponent(cardId)}/withdraw`),
       {
         body: { amount: withdrawAmount },
         idempotencyKey: input.idempotencyKey,
@@ -579,7 +635,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
   async function blockCard(cardId: string, extra: { idempotencyKey?: string } = {}): Promise<PagoCard> {
     const config = resolveConfig(options);
     const id = requireText(cardId, 'card_id');
-    return pagoRequest<PagoCard>(config, 'POST', `/api/v1/cards/${encodeURIComponent(id)}/block`, {
+    return pagoRequest<PagoCard>(config, 'POST', businessPath(`/cards/${encodeURIComponent(id)}/block`), {
       idempotencyKey: extra.idempotencyKey,
       timeoutMs: requestTimeoutMs,
     });
@@ -588,7 +644,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
   async function unblockCard(cardId: string, extra: { idempotencyKey?: string } = {}): Promise<PagoCard> {
     const config = resolveConfig(options);
     const id = requireText(cardId, 'card_id');
-    return pagoRequest<PagoCard>(config, 'POST', `/api/v1/cards/${encodeURIComponent(id)}/unblock`, {
+    return pagoRequest<PagoCard>(config, 'POST', businessPath(`/cards/${encodeURIComponent(id)}/unblock`), {
       idempotencyKey: extra.idempotencyKey,
       timeoutMs: requestTimeoutMs,
     });
@@ -597,7 +653,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
   async function terminateCard(cardId: string, extra: { idempotencyKey?: string } = {}): Promise<PagoCard> {
     const config = resolveConfig(options);
     const id = requireText(cardId, 'card_id');
-    return pagoRequest<PagoCard>(config, 'POST', `/api/v1/cards/${encodeURIComponent(id)}/terminate`, {
+    return pagoRequest<PagoCard>(config, 'POST', businessPath(`/cards/${encodeURIComponent(id)}/terminate`), {
       idempotencyKey: extra.idempotencyKey,
       timeoutMs: requestTimeoutMs,
     });
@@ -631,7 +687,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
 
     let response: Response;
     try {
-      response = await config.fetchImpl(`${config.baseUrl}/api/v1/cards/getallcards`, {
+      response = await config.fetchImpl(`${config.baseUrl}${businessPath('/cards/getallcards')}`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ email, product_code: productCode }),
@@ -649,7 +705,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
           JSON.stringify({
             host: proxyHostForLog(config.baseUrl),
             method: 'POST',
-            path: '/api/v1/cards/getallcards',
+            path: businessPath('/cards/getallcards'),
             timeoutMs: requestTimeoutMs,
             timedOut,
             code: timedOut ? 'PAGO_TIMEOUT' : 'PAGO_NETWORK',
@@ -688,9 +744,29 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     }
 
     if (!response.ok || payload?.status === 'failure' || payload == null) {
+      const listPath = businessPath('/cards/getallcards');
+      const fullUrl = `${config.baseUrl}${listPath}`;
+      if (response.status === 404 && process.env.PAGO_CARD_SILENCE_HTTP_LOG !== 'true') {
+        console.warn(
+          '[pago] http_404',
+          JSON.stringify({
+            method: 'POST',
+            path: listPath,
+            host: proxyHostForLog(config.baseUrl),
+            businessPrefix: businessApiPrefix() || '(empty)',
+            hint:
+              'Proxy path mismatch — if your Droplet maps /api/pago → upstream /api/v1, set PAGO_CARD_BUSINESS_API_PREFIX=""',
+          })
+        );
+      }
       throw new PagoCardError(
         redact(
-          String(payload?.message || `Pago Card request failed (${response.status})`),
+          String(
+            payload?.message
+              || (response.status === 404
+                ? `Pago Card not found (404). Check proxy maps to Pagocards Business API — tried POST ${fullUrl}. If paths are doubled, set PAGO_CARD_BUSINESS_API_PREFIX="" (see docs).`
+                : `Pago Card request failed (${response.status})`)
+          ),
           [config.apiKey, config.secretKey]
         ),
         {
@@ -719,7 +795,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
   /** Pagocards Admin API — platform wallet balances (funding, visa, giftcard). */
   async function getAdminBalance(): Promise<Record<string, unknown>> {
     const config = resolveConfig(options);
-    return pagoRequest<Record<string, unknown>>(config, 'GET', '/api/admin/balance', {
+    return pagoRequest<Record<string, unknown>>(config, 'GET', adminPath('/admin/balance'), {
       timeoutMs: requestTimeoutMs,
     });
   }
@@ -742,7 +818,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     const body: Record<string, unknown> = { brand, per_page: perPage };
     const page = Number(input?.page);
     if (Number.isFinite(page) && page > 0) body.page = Math.floor(page);
-    return pagoRequest<Record<string, unknown>>(config, 'POST', '/api/admin/allcards', {
+    return pagoRequest<Record<string, unknown>>(config, 'POST', adminPath('/admin/allcards'), {
       body,
       timeoutMs: requestTimeoutMs,
     });
@@ -756,7 +832,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
       params.set(key, String(value));
     }
     const qs = params.toString();
-    return pagoRequest(config, 'GET', `/api/admin/transactions${qs ? `?${qs}` : ''}`, {
+    return pagoRequest(config, 'GET', `${adminPath('/admin/transactions')}${qs ? `?${qs}` : ''}`, {
       timeoutMs: requestTimeoutMs,
     });
   }
@@ -769,7 +845,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
       params.set(key, String(value));
     }
     const qs = params.toString();
-    return pagoRequest(config, 'GET', `/api/admin/deposits${qs ? `?${qs}` : ''}`, {
+    return pagoRequest(config, 'GET', `${adminPath('/admin/deposits')}${qs ? `?${qs}` : ''}`, {
       timeoutMs: requestTimeoutMs,
     });
   }
@@ -790,7 +866,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     return pagoRequest(
       config,
       'GET',
-      `/api/v1/cards/${encodeURIComponent(id)}/transactions?pageNum=${page}`,
+      businessPath(`/cards/${encodeURIComponent(id)}/transactions?pageNum=${page}`),
       { timeoutMs: requestTimeoutMs }
     );
   }
@@ -888,6 +964,8 @@ function listAdminDeposits(query?: Record<string, string | number | undefined>) 
 module.exports = {
   PagoCardError,
   resolvePagoCardBaseUrl,
+  /** @internal exported for proxy/path tests */
+  businessApiPrefix,
   createPagoCardClient,
   createVirtualCard,
   createCard,
