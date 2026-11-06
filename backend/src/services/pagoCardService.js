@@ -650,7 +650,12 @@ async function refreshPagoCard(userId, localCardId, deps = {}) {
     rethrowPago(err);
   }
   const fields = cardFieldsFromProvider(remote);
-  return Card.updateFromPago(card.id, fields);
+  const updated = await Card.updateFromPago(card.id, fields);
+  const panUrl = readCardPanUrlFromSources(remote);
+  if (!panUrl && isPago4xxBinProduct(fields.productCode || card.product_code)) {
+    console.warn('[pago] getCardDetails returned no card_pan_url for 4xx card', card.pago_card_id);
+  }
+  return updated;
 }
 
 async function topUpPagoCard({ userId, localCardId, amountUsd }, deps = {}) {
