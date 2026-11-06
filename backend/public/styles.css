@@ -5951,6 +5951,15 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   margin: 0;
 }
 
+.pago-card-selected-summary {
+  margin: 0 0 0.35rem;
+  min-height: 0;
+}
+
+.pago-card-component:has(.pago-card-selected-summary:empty) .pago-card-selected-summary {
+  display: none;
+}
+
 .pago-card-carousel {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
