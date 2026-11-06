@@ -5,7 +5,7 @@
  * Auth headers: `publickey` = PAGO_CARD_API_KEY, `secretkey` = PAGO_CARD_SECRET_KEY.
  * Base URL: PAGO_CARD_API_BASE_URL. Every request is sent to the DigitalOcean
  * proxy so Pago Card sees the whitelisted server IP.
- * Default: http://161.35.58.86/api/pago
+ * Env: PAGO_CARD_API_BASE_URL or PAGO_CARD_PROXY_HOST; whitelist Droplet IPv4 at Pagocards.
  * A trailing slash on the env value is removed. /api/pago is not repeated.
  * Paths such as /api/v1/cards are appended once, so the proxy receives
  * /api/pago/api/v1/cards.
@@ -26,7 +26,7 @@
  */
 'use strict';
 
-const DEFAULT_BASE_URL = 'http://161.35.58.86/api/pago';
+const LEGACY_DEV_PROXY_BASE_URL = '';
 const REQUEST_TIMEOUT_MS = 12_000;
 const ATM_PRODUCT_CODE = 'us_493_visa_atm';
 const MIN_INITIAL_LOAD = 10;
@@ -189,9 +189,43 @@ function responseSnippet(text: string): string {
   return String(text || '').replace(/\s+/g, ' ').trim().slice(0, 180);
 }
 
+function normalizePagoBaseUrl(raw: string): string {
+  const trimmed = String(raw || '').trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  return trimmed.replace(/\/api\/v1$/i, '');
+}
+
+/**
+ * Resolve the DigitalOcean proxy base (no trailing slash, no /api/v1 suffix).
+ * Vercel/serverless calls this URL; the proxy forwards to Pagocards with a whitelisted egress IP.
+ */
+function resolvePagoCardBaseUrl(optionsBase?: string): string {
+  const fromOpt = normalizePagoBaseUrl(String(optionsBase ?? '').trim());
+  if (fromOpt) return fromOpt;
+
+  const fromEnv = normalizePagoBaseUrl(String(process.env.PAGO_CARD_API_BASE_URL ?? '').trim());
+  if (fromEnv) return fromEnv;
+
+  const hostRaw = String(process.env.PAGO_CARD_PROXY_HOST ?? '').trim();
+  if (hostRaw) {
+    const scheme = String(process.env.PAGO_CARD_PROXY_SCHEME ?? 'http').trim().replace(/:$/, '') || 'http';
+    const pathPart = String(process.env.PAGO_CARD_PROXY_PATH ?? '/api/pago').trim() || '/api/pago';
+    const pathNorm = pathPart.startsWith('/') ? pathPart : `/${pathPart}`;
+    const hostOnly = hostRaw.replace(/^https?:\/\//i, '').split('/')[0];
+    return normalizePagoBaseUrl(`${scheme}://${hostOnly}${pathNorm.replace(/\/+$/, '')}`);
+  }
+
+  if (LEGACY_DEV_PROXY_BASE_URL && process.env.NODE_ENV !== 'production') {
+    return normalizePagoBaseUrl(LEGACY_DEV_PROXY_BASE_URL);
+  }
+  return '';
+}
+
 function resolveBaseUrl(raw: string | undefined): string {
-  const trimmed = String(raw || DEFAULT_BASE_URL).trim().replace(/\/+$/, '');
-  return trimmed.replace(/\/api\/v1$/i, '') || DEFAULT_BASE_URL;
+  if (raw !== undefined && String(raw).trim()) {
+    return normalizePagoBaseUrl(String(raw).trim());
+  }
+  return resolvePagoCardBaseUrl();
 }
 
 function truncateUsd(amount: number): number {
@@ -242,8 +276,15 @@ function resolveConfig(options: PagoCardClientOptions = {}): ResolvedPagoConfig 
   if (typeof fetchImpl !== 'function') {
     throw new PagoCardError('fetch is not available', { status: 500, code: 'PAGO_NO_FETCH' });
   }
+  const baseUrl = resolvePagoCardBaseUrl(options.baseUrl);
+  if (!baseUrl) {
+    throw new PagoCardError(
+      'Pagocards proxy is not configured. Set PAGO_CARD_API_BASE_URL or PAGO_CARD_PROXY_HOST to your DigitalOcean proxy (whitelisted IP).',
+      { status: 503, code: 'PAGO_NOT_CONFIGURED' }
+    );
+  }
   return {
-    baseUrl: resolveBaseUrl(options.baseUrl ?? process.env.PAGO_CARD_API_BASE_URL),
+    baseUrl,
     apiKey,
     secretKey,
     fetchImpl: fetchImpl.bind(globalThis),
@@ -799,6 +840,7 @@ function listAdminDeposits(query?: Record<string, string | number | undefined>) 
 
 module.exports = {
   PagoCardError,
+  resolvePagoCardBaseUrl,
   createPagoCardClient,
   createVirtualCard,
   createCard,

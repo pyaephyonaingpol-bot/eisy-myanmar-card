@@ -45,9 +45,10 @@ const GROUPS = [
   {
     title: 'Pago Card',
     keys: [
-      ['PAGO_CARD_API_BASE_URL', ['PAGO_CARD_API_BASE_URL']],
+      ['PAGO_CARD_API_BASE_URL', ['PAGO_CARD_API_BASE_URL', 'PAGO_CARD_PROXY_HOST']],
       ['PAGO_CARD_API_KEY', ['PAGO_CARD_API_KEY']],
       ['PAGO_CARD_SECRET_KEY', ['PAGO_CARD_SECRET_KEY']],
+      ['PAGO_CARD_WHITELIST_IP', ['PAGO_CARD_WHITELIST_IP', 'PAGO_CARD_PROXY_OUTBOUND_IP']],
     ],
   },
   {

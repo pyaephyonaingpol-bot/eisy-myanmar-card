@@ -869,6 +869,22 @@ function sendPagoAdminError(res, err, fallbackMessage) {
   });
 }
 
+router.get('/pagocards/proxy-check', requirePermission('cards'), async (_req, res) => {
+  try {
+    const { evaluatePagoProxyEnv } = require('../services/pagoProxyEnvCheck');
+    const report = await evaluatePagoProxyEnv({ probe: true, probeTimeoutMs: 15000 });
+    res.json({
+      success: report.ok,
+      checks: report.checks.results,
+      probe: report.probe,
+      docs: 'backend/docs/PAGO_PROXY_DROPLET.md',
+    });
+  } catch (err) {
+    console.error('[admin/pagocards/proxy-check]', err.message);
+    res.status(500).json({ success: false, error: err.message || 'Proxy check failed' });
+  }
+});
+
 router.get('/pagocards/balance', requirePermission('cards'), async (_req, res) => {
   try {
     const { fetchPagoAdminBalance } = require('../services/pagoAdminService');
