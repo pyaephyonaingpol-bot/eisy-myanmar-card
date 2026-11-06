@@ -189,6 +189,15 @@ function responseSnippet(text: string): string {
   return String(text || '').replace(/\s+/g, ' ').trim().slice(0, 180);
 }
 
+/** Safe for logs: proxy host only (no path/query). */
+function proxyHostForLog(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).hostname || baseUrl;
+  } catch {
+    return '(invalid base URL)';
+  }
+}
+
 function normalizePagoBaseUrl(raw: string): string {
   const trimmed = String(raw || '').trim().replace(/\/+$/, '');
   if (!trimmed) return '';
@@ -317,10 +326,29 @@ async function pagoRequest<T>(
   } catch (err) {
     const timedOut = isTimeoutError(err);
     const message = err instanceof Error ? err.message : 'Pago Card request failed';
+    const redactedMsg = redact(message, [config.apiKey, config.secretKey]);
+    const errName = err instanceof Error ? err.name : typeof err;
+    const errCode = err && typeof err === 'object' && 'code' in err ? String((err as { code?: string }).code) : '';
+    if (process.env.PAGO_CARD_SILENCE_TRANSPORT_LOG !== 'true') {
+      console.warn(
+        '[pago] transport_fail',
+        JSON.stringify({
+          host: proxyHostForLog(config.baseUrl),
+          method,
+          path,
+          timeoutMs,
+          timedOut,
+          code: timedOut ? 'PAGO_TIMEOUT' : 'PAGO_NETWORK',
+          errName,
+          errCode,
+          message: redactedMsg.slice(0, 240),
+        })
+      );
+    }
     throw new PagoCardError(
       timedOut
         ? `Pago Card request timed out after ${timeoutMs}ms`
-        : redact(message, [config.apiKey, config.secretKey]),
+        : redactedMsg,
       {
         status: 0,
         code: timedOut ? 'PAGO_TIMEOUT' : 'PAGO_NETWORK',
@@ -612,10 +640,29 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     } catch (err) {
       const timedOut = isTimeoutError(err);
       const message = err instanceof Error ? err.message : 'Pago Card request failed';
+      const redactedMsg = redact(message, [config.apiKey, config.secretKey]);
+      const errName = err instanceof Error ? err.name : typeof err;
+      const errCode = err && typeof err === 'object' && 'code' in err ? String((err as { code?: string }).code) : '';
+      if (process.env.PAGO_CARD_SILENCE_TRANSPORT_LOG !== 'true') {
+        console.warn(
+          '[pago] transport_fail',
+          JSON.stringify({
+            host: proxyHostForLog(config.baseUrl),
+            method: 'POST',
+            path: '/api/v1/cards/getallcards',
+            timeoutMs: requestTimeoutMs,
+            timedOut,
+            code: timedOut ? 'PAGO_TIMEOUT' : 'PAGO_NETWORK',
+            errName,
+            errCode,
+            message: redactedMsg.slice(0, 240),
+          })
+        );
+      }
       throw new PagoCardError(
         timedOut
           ? `Pago Card request timed out after ${requestTimeoutMs}ms`
-          : redact(message, [config.apiKey, config.secretKey]),
+          : redactedMsg,
         {
           status: 0,
           code: timedOut ? 'PAGO_TIMEOUT' : 'PAGO_NETWORK',

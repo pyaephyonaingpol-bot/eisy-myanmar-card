@@ -40,6 +40,23 @@ node scripts/verify-pago-proxy-env.js --probe   # live getAdminBalance via proxy
 
 Admin UI: `GET /api/admin/pagocards/proxy-check` (cards permission).
 
+## Reading Vercel / server logs (`Could not reach Pagocards`)
+
+On transport failures the server logs one JSON line per attempt (no secrets):
+
+```
+[pago] transport_fail {"host":"167.x.x.x","method":"GET","path":"/api/v1/cards/{id}","timeoutMs":12000,"timedOut":false,"code":"PAGO_NETWORK","errName":"TypeError","errCode":"UND_ERR_CONNECT_TIMEOUT","message":"fetch failed"}
+```
+
+| Field | Meaning |
+|--------|---------|
+| `timedOut` true | Upstream did not respond within `timeoutMs` (or AbortSignal timeout) |
+| `errCode` e.g. `ECONNREFUSED` | Nothing listening on that host:port (wrong URL or service down) |
+| `errCode` `ENOTFOUND` | DNS / hostname typo in `PAGO_CARD_API_BASE_URL` |
+| `UND_ERR_*` (undici) | Low-level connection failure from Node’s fetch (often firewall or TLS) |
+
+Set `PAGO_CARD_SILENCE_TRANSPORT_LOG=true` only if you must mute these lines.
+
 ## Symptoms
 
 | Symptom | Likely cause |
