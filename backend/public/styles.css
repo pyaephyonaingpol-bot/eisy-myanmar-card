@@ -7399,4 +7399,17 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
 
 }
 
+.pago-pan-secure {
+  margin: 0 0 1rem;
+}
+
+.pago-pan-iframe {
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
 

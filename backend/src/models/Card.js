@@ -350,6 +350,7 @@ const Card = {
     balanceCurrency,
     email,
     metadata,
+    cardPanUrl,
   }) {
     const id = String(pagoCardId || '').trim();
     if (!id) {
@@ -375,6 +376,7 @@ const Card = {
         balanceCurrency,
         email,
         metadata,
+        cardPanUrl,
       });
     }
 
@@ -382,10 +384,17 @@ const Card = {
     const siblings = await this.findByUserId(userId);
     const isPrimary = !siblings.some((row) => Number(row.is_primary) === 1);
     const last4 = String(lastFour || '').replace(/\D/g, '').slice(-4);
-    const digits = String(cardNumber || '').replace(/\D/g, '');
-    const storedNumber = digits || (last4 ? `************${last4}` : `PAGO-${id}`);
-    const storedExp = expDate || [expiryMonth, expiryYear].filter(Boolean).join('/') || '—';
-    const storedCvv = String(cvv || '').replace(/\D/g, '') || '—';
+    const panUrl = cardPanUrl || (metadata && metadata.card_pan_url) || null;
+    const { isPago4xxBinProduct } = require('../services/pagoPanView');
+    const stripPanFields = Boolean(panUrl) || isPago4xxBinProduct(productCode);
+    const digits = stripPanFields ? '' : String(cardNumber || '').replace(/\D/g, '');
+    const storedNumber = stripPanFields
+      ? (last4 ? `SECURE••••${last4}` : `SECURE-PAGO-${id.slice(0, 12)}`)
+      : (digits || (last4 ? `************${last4}` : `PAGO-${id}`));
+    const storedExp = stripPanFields
+      ? '—'
+      : (expDate || [expiryMonth, expiryYear].filter(Boolean).join('/') || '—');
+    const storedCvv = stripPanFields ? '—' : (String(cvv || '').replace(/\D/g, '') || '—');
     const localStatus = String(status || 'active').toLowerCase();
     const meta = {
       provider: 'pago',
@@ -395,6 +404,7 @@ const Card = {
       pago_status: pagoStatus || null,
       balance_usd: balanceDisplayUsd ?? null,
       email: email || null,
+      ...(panUrl ? { card_pan_url: panUrl } : {}),
       ...(metadata && typeof metadata === 'object' ? metadata : {}),
     };
 
@@ -464,6 +474,7 @@ const Card = {
     balanceCurrency,
     email,
     metadata,
+    cardPanUrl,
   } = {}) {
     const db = getDb();
     const existing = await this.findById(id);
@@ -476,8 +487,20 @@ const Card = {
       current = {};
     }
     const last4 = String(lastFour || existing.last_four || '').replace(/\D/g, '').slice(-4);
-    const digits = String(cardNumber || '').replace(/\D/g, '');
-    const storedCvv = String(cvv || '').replace(/\D/g, '') || null;
+    const panUrl = cardPanUrl || (metadata && metadata.card_pan_url) || current.card_pan_url || null;
+    const { isPago4xxBinProduct } = require('../services/pagoPanView');
+    const iframeProduct = isPago4xxBinProduct(
+      productCode || existing.product_code || current.product_code
+    );
+    const stripPanFields = Boolean(panUrl) || iframeProduct;
+    const digits = stripPanFields ? '' : String(cardNumber || '').replace(/\D/g, '');
+    const storedCvv = stripPanFields ? '—' : (String(cvv || '').replace(/\D/g, '') || null);
+    const storedNumber = stripPanFields
+      ? (last4 ? `SECURE••••${last4}` : `SECURE-PAGO-${String(existing.pago_card_id || id || '').slice(0, 12)}`)
+      : (digits || null);
+    const storedExp = stripPanFields
+      ? '—'
+      : (expDate || null);
     const localStatus = status != null ? String(status).toLowerCase() : null;
     const nextMeta = {
       ...current,
@@ -488,6 +511,7 @@ const Card = {
       pago_status: pagoStatus || existing.pago_status || null,
       balance_usd: balanceDisplayUsd ?? current.balance_usd ?? null,
       email: email || current.email || null,
+      ...(panUrl ? { card_pan_url: panUrl } : {}),
       ...(metadata && typeof metadata === 'object' ? metadata : {}),
     };
 
@@ -517,8 +541,8 @@ const Card = {
           updated_at = datetime('now')
       WHERE id = ?
     `,
-      digits || null,
-      expDate || null,
+      storedNumber,
+      storedExp,
       storedCvv,
       cardHolderName || null,
       localStatus,

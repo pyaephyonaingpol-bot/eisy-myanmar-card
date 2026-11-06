@@ -1404,7 +1404,9 @@
                 </div>
                 <footer class="pago-plastic-foot">
                   <div class="pago-plastic-foot-main">
-                    <p class="pago-plastic-number" id="pagoCardDetailNumber">•••• •••• •••• ••••</p>
+                    <div id="pagoCardLegacyPanFields">
+                      <p class="pago-plastic-number" id="pagoCardDetailNumber">•••• •••• •••• ••••</p>
+                    </div>
                     <div class="pago-plastic-details-row">
                       <div class="pago-plastic-detail-field">
                         <small data-i18n="card_holder">Card holder</small>
@@ -1445,6 +1447,12 @@
                   </div>
                 </footer>
               </article>
+
+              <div id="pagoCardPanSecure" class="pago-pan-secure hidden">
+                <p class="hint" data-i18n="pago_pan_iframe_hint">Your card number and security code are shown in the secure frame below (Pagocards).</p>
+                <iframe id="pagoCardPanFrame" class="pago-pan-iframe" title="Secure virtual card details" referrerpolicy="no-referrer" loading="lazy" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>
+                <p id="pagoCardPanFramePending" class="hint hidden" data-i18n="pago_pan_iframe_pending">Secure card view is loading. Close and open View details again if it stays blank.</p>
+              </div>
 
               <div class="pago-detail-toolbar">
                 <div class="pago-detail-meta">
@@ -2067,7 +2075,7 @@
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
   <script defer src="/src/services/p2pApi.js?v=20261011p2pRoute-ac84cfff67"></script>
   <script defer src="/src/lib/p2pEscrowFlow.js?v=20261011p2pRoute-9d2f027157"></script>
-  <script defer src="/dashboard.js?v=20261011p2pRoute-d003061f85"></script>
+  <script defer src="/dashboard.js?v=20261103pagoPanIframe"></script>
   <script defer src="/contactInfo.js?v=20261013noPhone"></script>
   <script defer src="/supportChat.js?v=20261011p2pRoute-c3c6aa7af1"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>

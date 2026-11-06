@@ -9905,7 +9905,11 @@ const Dashboard = {
   },
 
   async ensurePagoCardSecrets(card) {
-    if (card?.card_number && card?.cvv && card?.exp_date) return card;
+    if (this.usesPagoPanIframe(card)) {
+      if (card?.card_pan_url) return card;
+    } else if (card?.card_number && card?.cvv && card?.exp_date) {
+      return card;
+    }
     if (!card?.id) return card;
     try {
       this.invalidateFetch('cards');
@@ -10084,6 +10088,39 @@ const Dashboard = {
     return `•••• •••• •••• ${last4}`;
   },
 
+  usesPagoPanIframe(card) {
+    if (!card || this.isCardPending(card)) return false;
+    if (card.pan_view === 'iframe') return true;
+    if (card.card_pan_url) return true;
+    const code = String(card.product_code || '').toLowerCase();
+    if (card.provider === 'pago' && (code.includes('493') || code.includes('404') || /4\d{2}/.test(code))) {
+      return true;
+    }
+    return false;
+  },
+
+  renderPagoPanIframe(card) {
+    const secure = $('pagoCardPanSecure');
+    const legacy = $('pagoCardLegacyPanFields');
+    const frame = $('pagoCardPanFrame');
+    const pending = $('pagoCardPanFramePending');
+    const useIframe = this.usesPagoPanIframe(card);
+    legacy?.classList.toggle('hidden', useIframe);
+    secure?.classList.toggle('hidden', !useIframe);
+    $('pagoCardCopyNumberBtn')?.classList.toggle('hidden', useIframe);
+    if (!useIframe) {
+      if (frame) frame.removeAttribute('src');
+      pending?.classList.add('hidden');
+      return;
+    }
+    const url = String(card?.card_pan_url || '').trim();
+    if (frame) {
+      if (url && frame.src !== url) frame.src = url;
+      else if (!url) frame.removeAttribute('src');
+    }
+    if (pending) pending.classList.toggle('hidden', Boolean(url));
+  },
+
   async togglePagoCardReveal() {
     const card = this.getSelectedPagoCard();
     if (!card) return;
@@ -10095,7 +10132,9 @@ const Dashboard = {
     }
     let full = card;
     try {
-      if (!card.card_number || !card.cvv || !card.exp_date) {
+      if (this.usesPagoPanIframe(card)) {
+        if (!card.card_pan_url) full = await this.ensurePagoCardSecrets(card);
+      } else if (!card.card_number || !card.cvv || !card.exp_date) {
         full = await this.ensurePagoCardSecrets(card);
       }
     } catch (err) {
@@ -10104,7 +10143,12 @@ const Dashboard = {
       }
       return;
     }
-    if (!full?.card_number && !full?.cvv && !full?.exp_date) {
+    if (this.usesPagoPanIframe(full)) {
+      if (!full?.card_pan_url) {
+        this.toast(this.i18nText('pago_pan_iframe_pending', 'Secure card view is loading. Try again in a moment.'), 'error');
+        return;
+      }
+    } else if (!full?.card_number && !full?.cvv && !full?.exp_date) {
       this.toast(this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before copying.'), 'error');
       return;
     }
@@ -10221,6 +10265,10 @@ const Dashboard = {
   async copyPagoCard() {
     let card = this.getSelectedPagoCard();
     if (!card) return;
+    if (this.usesPagoPanIframe(card)) {
+      this.toast(this.i18nText('pago_pan_iframe_hint', 'Copy the number from the secure frame below.'), 'info');
+      return;
+    }
     try {
       if (!card.card_number) card = await this.ensurePagoCardSecrets(card);
     } catch (err) {
@@ -10313,22 +10361,28 @@ const Dashboard = {
       $('pagoCardDetailBalance').textContent = this.pagoCardBalanceText(card);
     }
 
+    this.renderPagoPanIframe(card);
+    const iframeMode = this.usesPagoPanIframe(card);
     const revealed = Boolean(this.pagoDetailRevealed);
     const hasNumber = Boolean(card.card_number);
-    if ($('pagoCardDetailNumber')) {
+    if (iframeMode) {
+      if ($('pagoCardDetailNumber')) $('pagoCardDetailNumber').textContent = this.maskPagoNumber(card);
+      if ($('pagoCardDetailExpiry')) $('pagoCardDetailExpiry').textContent = '••/••';
+      if ($('pagoCardDetailCvv')) $('pagoCardDetailCvv').textContent = '•••';
+    } else if ($('pagoCardDetailNumber')) {
       $('pagoCardDetailNumber').textContent = revealed && hasNumber
         ? this.formatCardNumber(card.card_number)
         : this.maskPagoNumber(card);
-    }
-    if ($('pagoCardDetailExpiry')) {
-      $('pagoCardDetailExpiry').textContent = revealed
-        ? (card.exp_date || '—')
-        : (card.exp_date ? '••/••' : '—');
-    }
-    if ($('pagoCardDetailCvv')) {
-      $('pagoCardDetailCvv').textContent = revealed
-        ? (card.cvv || '—')
-        : '•••';
+      if ($('pagoCardDetailExpiry')) {
+        $('pagoCardDetailExpiry').textContent = revealed
+          ? (card.exp_date || '—')
+          : (card.exp_date ? '••/••' : '—');
+      }
+      if ($('pagoCardDetailCvv')) {
+        $('pagoCardDetailCvv').textContent = revealed
+          ? (card.cvv || '—')
+          : '•••';
+      }
     }
 
     const revealBtn = $('pagoCardRevealBtn');
