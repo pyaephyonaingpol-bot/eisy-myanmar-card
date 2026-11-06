@@ -1447,9 +1447,9 @@
               </article>
 
               <div id="pagoCardPanSecure" class="pago-pan-secure hidden">
-                <p class="hint" data-i18n="pago_pan_iframe_hint">Your card number and security code are shown in the secure frame below (Pagocards).</p>
-                <iframe id="pagoCardPanFrame" class="pago-pan-iframe" title="Secure virtual card details" referrerpolicy="no-referrer" loading="lazy" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>
-                <p id="pagoCardPanFramePending" class="hint hidden" data-i18n="pago_pan_iframe_pending">Secure card view is loading. Close and open View details again if it stays blank.</p>
+                <p id="pagoCardPanHint" class="hint pago-pan-hint" data-i18n="pago_pan_iframe_hint">Tap the eye icon on the card to load your card number and CVV in the secure Pagocards frame below.</p>
+                <iframe id="pagoCardPanFrame" class="pago-pan-iframe hidden" title="Secure virtual card details" referrerpolicy="no-referrer" loading="lazy" sandbox="allow-scripts allow-same-origin allow-popups allow-forms"></iframe>
+                <p id="pagoCardPanFramePending" class="hint pago-pan-pending" data-i18n="pago_pan_iframe_pending">Secure card view is loading… Tap View details or the eye icon to refresh.</p>
               </div>
 
               <div class="pago-detail-toolbar">

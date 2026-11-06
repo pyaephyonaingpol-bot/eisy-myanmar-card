@@ -7400,16 +7400,44 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
 }
 
 .pago-pan-secure {
-  margin: 0 0 1rem;
+  margin: 0.75rem 0 1.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  background: var(--surface-elevated, rgba(15, 23, 42, 0.55));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+}
+
+.pago-pan-secure .pago-pan-hint,
+.pago-pan-secure .pago-pan-pending {
+  margin: 0 0 0.65rem;
+  line-height: 1.45;
+  color: var(--text-muted, rgba(226, 232, 240, 0.82));
+}
+
+.pago-pan-secure .pago-pan-pending:last-child {
+  margin-bottom: 0;
 }
 
 .pago-pan-iframe {
   display: block;
   width: 100%;
-  min-height: 220px;
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.2);
+  min-height: 200px;
+  max-height: min(420px, 55vh);
+  border: 0;
+  border-radius: 10px;
+  background: #0b1220;
+  color-scheme: dark;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.pago-pan-iframe.hidden {
+  display: none !important;
+  min-height: 0;
+}
+
+.pago-pan-iframe.is-loading {
+  min-height: 200px;
+  opacity: 0.85;
 }
 
 
