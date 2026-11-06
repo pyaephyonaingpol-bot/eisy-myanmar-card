@@ -585,33 +585,56 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
     if (!Number.isFinite(cardId) || cardId <= 0) {
       return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
     }
+    const row = await Card.findById(cardId);
+    if (!row || Number(row.user_id) !== Number(req.user.id)) {
+      return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
+    }
+    let rowMeta = {};
+    try { rowMeta = row?.metadata ? JSON.parse(row.metadata) : {}; } catch (_) { rowMeta = {}; }
+    const panFromDbEarly = readCardPanUrlFromSources(row || {}, rowMeta);
+    const forceRefresh = String(req.query?.refresh || '').trim() === '1';
+    const iframeCard = usesPagoPanIframe({
+      provider: row.provider || rowMeta.provider || 'pago',
+      product_code: row.product_code || rowMeta.product_code,
+      card_pan_url: panFromDbEarly,
+      metadata: rowMeta,
+    });
     const {
       refreshPagoCard,
       withCardApiTimeout,
       isCardTimeoutError,
+      isCardProviderSoftError,
       CARD_FETCH_TIMEOUT_MS,
     } = require('../services/pagoCardService');
     let timedOut = false;
-    try {
-      await withCardApiTimeout(
-        refreshPagoCard(req.user.id, cardId, {
-          timeoutMs: CARD_FETCH_TIMEOUT_MS + 4000,
-        }),
-        CARD_FETCH_TIMEOUT_MS + 5000,
-        'Card fetch'
-      );
-    } catch (err) {
-      if (!isCardTimeoutError(err)) throw err;
-      timedOut = true;
-      console.warn('[user/cards/detail] timed out, returning saved card');
+    let providerUnavailable = false;
+    const shouldCallProvider = Boolean(row.pago_card_id) && (
+      forceRefresh
+      || (iframeCard ? !panFromDbEarly : true)
+    );
+    if (shouldCallProvider) {
+      try {
+        await withCardApiTimeout(
+          refreshPagoCard(req.user.id, cardId, {
+            timeoutMs: CARD_FETCH_TIMEOUT_MS + 4000,
+          }),
+          CARD_FETCH_TIMEOUT_MS + 6000,
+          'Card fetch'
+        );
+      } catch (err) {
+        if (!isCardProviderSoftError(err)) throw err;
+        timedOut = isCardTimeoutError(err);
+        providerUnavailable = !timedOut;
+        console.warn('[user/cards/detail] provider fetch soft-fail:', err.code || err.message);
+      }
     }
     const payload = await getUserCardsPayload(req.user.id);
     let card = payload.cards.find((item) => Number(item.id) === cardId);
     if (!card) return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
-    const row = await Card.findById(cardId);
-    let rowMeta = {};
-    try { rowMeta = row?.metadata ? JSON.parse(row.metadata) : {}; } catch (_) { rowMeta = {}; }
-    const panFromDb = readCardPanUrlFromSources(row || {}, rowMeta);
+    const rowAfter = await Card.findById(cardId) || row;
+    let metaAfter = rowMeta;
+    try { metaAfter = rowAfter?.metadata ? JSON.parse(rowAfter.metadata) : {}; } catch (_) { metaAfter = rowMeta; }
+    const panFromDb = readCardPanUrlFromSources(rowAfter || {}, metaAfter) || panFromDbEarly;
     if (panFromDb) {
       card = {
         ...card,
@@ -635,6 +658,7 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
       card,
       ...payload,
       timed_out: timedOut,
+      provider_unavailable: providerUnavailable,
       pan_url_ready: Boolean(panFromDb || readCardPanUrlFromSources(card)),
     });
   } catch (err) {
