@@ -17,7 +17,7 @@ assert.ok(userRoutes.includes('pan_view'), 'API exposes pan_view mode');
 assert.ok(html.includes('id="pagoCardPanFrame"'), 'secure iframe in cards UI');
 assert.ok(html.includes('pagoCardLegacyPanFields'), 'legacy PAN fields separated');
 assert.ok(dash.includes('usesPagoPanIframe'), 'dashboard detects iframe cards');
-assert.ok(dash.includes('renderPagoPanIframe'), 'dashboard renders iframe');
+assert.ok(dash.includes('renderPagoPanIframe'), 'dashboard hides hosted iframe by default');
 assert.ok(dash.includes('mergePagoSensitiveCard'), 'dashboard merges sensitive card API fields');
 assert.ok(dash.includes('mountPagoPanIframeSrc'), 'dashboard mounts iframe src');
 assert.ok(dash.includes('pagoCardPanFrame'), 'dashboard references iframe element');
@@ -28,8 +28,17 @@ assert.ok(!html.includes('referrerpolicy="no-referrer"'), 'iframe keeps referrer
 const { usesPagoPanIframe, readCardPanUrlFromSources } = require('../src/services/pagoPanView');
 assert.strictEqual(
   usesPagoPanIframe({ provider: 'pago', product_code: 'us_493_visa_bin_v2' }),
+  false,
+);
+process.env.PAGO_CARD_FORCE_PAN_IFRAME = '1';
+delete require.cache[require.resolve('../src/services/pagoPanView')];
+const pagoPanForced = require('../src/services/pagoPanView');
+assert.strictEqual(
+  pagoPanForced.usesPagoPanIframe({ provider: 'pago', product_code: 'us_493_visa_bin_v2' }),
   true,
 );
+delete process.env.PAGO_CARD_FORCE_PAN_IFRAME;
+delete require.cache[require.resolve('../src/services/pagoPanView')];
 assert.strictEqual(
   readCardPanUrlFromSources({ card_pan_url: 'https://secure.pagocards.example/pan/1' }),
   'https://secure.pagocards.example/pan/1',
@@ -42,13 +51,6 @@ assert.strictEqual(
   'https://cards.cardapi.vip/display/abc#secret=signed',
 );
 const { needsPagoPanUrlFetch } = require('../src/services/pagoPanView');
-assert.strictEqual(needsPagoPanUrlFetch({ product_code: 'us_493_visa_bin_v2' }), true);
-assert.strictEqual(
-  needsPagoPanUrlFetch({
-    product_code: 'us_493_visa_bin_v2',
-    card_pan_url: 'https://cards.cardapi.vip/display/x',
-  }),
-  false,
-);
+assert.strictEqual(needsPagoPanUrlFetch({ product_code: 'us_493_visa_bin_v2' }), false);
 
 console.log('test-pago-pan-iframe-ui: OK');

@@ -9952,9 +9952,9 @@ const Dashboard = {
       ...local,
       ...base,
       ...(fromApi || {}),
-      card_pan_url: trustedUrl,
-      pan_view: fromApi?.pan_view || base.pan_view || local?.pan_view || (trustedUrl ? 'iframe' : undefined),
-      pan_url_ready: Boolean(data?.pan_url_ready || fromApi?.pan_url_ready || trustedUrl),
+      card_pan_url: fromApi?.card_pan_url ?? base.card_pan_url ?? local?.card_pan_url ?? trustedUrl,
+      pan_view: fromApi?.pan_view || base.pan_view || local?.pan_view,
+      pan_url_ready: Boolean(data?.pan_url_ready || fromApi?.pan_url_ready),
       pan_timed_out: Boolean(data?.timed_out),
       pan_provider_unavailable: Boolean(data?.provider_unavailable),
     };
@@ -9962,15 +9962,13 @@ const Dashboard = {
   },
 
   async ensurePagoCardSecrets(card) {
-    if (this.usesPagoPanIframe(card)) {
-      if (this.resolvePagoPanUrl(card)) return this.upsertPagoCardInList(card);
-    } else if (card?.card_number && card?.cvv && card?.exp_date) {
+    if (card?.card_number && card?.cvv && card?.exp_date) {
       return card;
     }
     if (!card?.id) return card;
     try {
       this.invalidateFetch('cards');
-      const refreshQs = this.resolvePagoPanUrl(card) ? '' : '?refresh=1';
+      const refreshQs = '?refresh=1';
       const data = await Auth.api('GET', `/api/user/cards/${card.id}${refreshQs}`, null, {
         sensitive: true,
         timeoutMs: 24000,
@@ -10153,15 +10151,15 @@ const Dashboard = {
     return `•••• •••• •••• ${last4}`;
   },
 
+  hasFullPagoPanDigits(card) {
+    const raw = String(card?.card_number || '').replace(/\s/g, '');
+    const digits = raw.replace(/\D/g, '');
+    return digits.length >= 12;
+  },
+
   usesPagoPanIframe(card) {
     if (!card || this.isCardPending(card)) return false;
-    if (card.pan_view === 'iframe') return true;
-    if (this.resolvePagoPanUrl(card)) return true;
-    const code = String(card.product_code || '').toLowerCase();
-    if (card.provider === 'pago' && (code.includes('493') || code.includes('404') || /4\d{2}/.test(code))) {
-      return true;
-    }
-    return false;
+    return card.pan_view === 'iframe';
   },
 
   resolvePagoPanUrl(card) {
@@ -10269,90 +10267,15 @@ const Dashboard = {
     const secure = $('pagoCardPanSecure');
     const legacy = $('pagoCardLegacyPanFields');
     const frame = $('pagoCardPanFrame');
-    const pending = $('pagoCardPanFramePending');
-    const hint = $('pagoCardPanHint');
-    const useIframe = this.usesPagoPanIframe(card);
-    legacy?.classList.toggle('hidden', useIframe);
-    secure?.classList.toggle('hidden', !useIframe);
-    $('pagoCardCopyNumberBtn')?.classList.toggle('hidden', useIframe);
-    if (!useIframe) {
-      if (frame) {
-        frame.removeAttribute('src');
-        frame.classList.add('hidden');
-        frame.classList.remove('is-loading');
-      }
-      $('pagoCardPanFramePending')?.classList.add('hidden');
-      return;
-    }
-    const url = this.resolvePagoPanUrl(card);
-    const trustedUrl = url && this.isTrustedPagoPanUrl(url) ? url : '';
-    const revealed = Boolean(this.pagoDetailRevealed);
-    const loadingPan = Boolean(this._pagoPanRevealBusy);
-    const frameLoading = Boolean(frame?.classList.contains('is-loading'));
-    const shouldShowFrame = Boolean(trustedUrl) && revealed;
-
-    if (hint) {
-      hint.classList.toggle('hidden', shouldShowFrame && !frameLoading);
-    }
-    if (pending) {
-      if (!revealed) {
-        pending.classList.add('hidden');
-      } else if (loadingPan || (revealed && !trustedUrl)) {
-        pending.classList.remove('hidden');
-        pending.textContent = card?.pan_timed_out
-          ? this.i18nText(
-            'pago_pan_iframe_load_failed',
-            'Could not load the secure card view. Tap the eye icon to try again.'
-          )
-          : this.i18nText(
-            'pago_pan_iframe_pending',
-            'Secure card view is loading… Tap View details or the eye icon to refresh.'
-          );
-      } else if (shouldShowFrame && !frameLoading) {
-        pending.classList.add('hidden');
-      }
-    }
-
+    legacy?.classList.remove('hidden');
+    secure?.classList.add('hidden');
+    $('pagoCardCopyNumberBtn')?.classList.remove('hidden');
     if (frame) {
-      if (shouldShowFrame) {
-        this.mountPagoPanIframeSrc(frame, trustedUrl);
-      } else if (!loadingPan) {
-        frame.removeAttribute('src');
-        frame.classList.add('hidden');
-        frame.classList.remove('is-loading');
-      }
+      frame.removeAttribute('src');
+      frame.classList.add('hidden');
+      frame.classList.remove('is-loading');
     }
-  },
-
-  async maybeLoadPagoPanUrl(card) {
-    if (!card?.id || !this.usesPagoPanIframe(card)) return card;
-    if (this.resolvePagoPanUrl(card)) return card;
-    const loadKey = String(card.id);
-    if (this._pagoPanUrlLoadId === loadKey) return card;
-    this._pagoPanUrlLoadId = loadKey;
-    this.setPagoPanIframeMessages({ hasUrl: false });
-    try {
-      const full = await this.ensurePagoCardSecrets(card);
-      if (this.resolvePagoPanUrl(full)) {
-        this.pagoDetailRevealed = true;
-        this.showPagoCardDetail(full);
-      }
-      return full;
-    } catch (err) {
-      if (err?.code !== 'SENSITIVE_AUTH_REQUIRED') {
-        const pending = $('pagoCardPanFramePending');
-        if (pending) {
-          pending.classList.remove('hidden');
-          pending.textContent = this.i18nText(
-            'pago_pan_iframe_load_failed',
-            'Could not load the secure card view. Tap the eye icon to try again.'
-          );
-        }
-      }
-      return card;
-    } finally {
-      if (this._pagoPanUrlLoadId === loadKey) this._pagoPanUrlLoadId = null;
-    }
+    $('pagoCardPanFramePending')?.classList.add('hidden');
   },
 
   async togglePagoCardReveal() {
@@ -10365,50 +10288,25 @@ const Dashboard = {
       this.showPagoCardDetail(card);
       return;
     }
-    const iframeMode = this.usesPagoPanIframe(card);
-    if (iframeMode) {
-      this.pagoDetailRevealed = true;
-      this._pagoPanRevealBusy = true;
-      this.showPagoCardDetail(card);
-    }
     let full = card;
     try {
-      if (iframeMode) {
-        if (!this.resolvePagoPanUrl(card)) full = await this.ensurePagoCardSecrets(card);
-      } else if (!card.card_number || !card.cvv || !card.exp_date) {
+      if (!this.hasFullPagoPanDigits(card)
+        || !String(card.cvv || '').replace(/\D/g, '').slice(0, 4)
+        || !String(card.exp_date || '').trim()) {
         full = await this.ensurePagoCardSecrets(card);
       }
     } catch (err) {
-      this._pagoPanRevealBusy = false;
       if (err?.code !== 'SENSITIVE_AUTH_REQUIRED') {
         this.toast(
           this.cardTimeoutMessage(err) || err.message || 'Could not show card details',
           'error'
         );
       }
-      if (iframeMode) this.showPagoCardDetail(card);
       return;
-    } finally {
-      this._pagoPanRevealBusy = false;
     }
-    if (iframeMode) {
-      full = this.upsertPagoCardInList(full);
-      if (!this.resolvePagoPanUrl(full)) {
-        const msgKey = full?.pan_provider_unavailable
-          ? 'pago_network_error'
-          : (full?.pan_timed_out ? 'pago_pan_iframe_load_failed' : 'pago_pan_iframe_pending');
-        this.toast(this.i18nText(
-          msgKey,
-          full?.pan_provider_unavailable
-            ? 'Could not reach Pagocards. Check your connection and tap the eye icon to try again.'
-            : (full?.pan_timed_out
-              ? 'Could not load the secure card view. Tap the eye icon to try again.'
-              : 'Secure card view is loading… Tap View details or the eye icon to refresh.')
-        ), 'error');
-        this.showPagoCardDetail(full);
-        return;
-      }
-    } else if (!full?.card_number && !full?.cvv && !full?.exp_date) {
+    if (!this.hasFullPagoPanDigits(full)
+      || !String(full.cvv || '').replace(/\D/g, '').slice(0, 4)
+      || !String(full.exp_date || '').trim()) {
       this.toast(this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before copying.'), 'error');
       return;
     }
@@ -10528,10 +10426,6 @@ const Dashboard = {
   async copyPagoCard() {
     let card = this.getSelectedPagoCard();
     if (!card) return;
-    if (this.usesPagoPanIframe(card)) {
-      this.toast(this.i18nText('pago_pan_iframe_hint', 'Copy the number from the secure frame below.'), 'info');
-      return;
-    }
     try {
       if (!card.card_number) card = await this.ensurePagoCardSecrets(card);
     } catch (err) {
@@ -10630,13 +10524,13 @@ const Dashboard = {
     this.renderPagoPanIframe(card);
     const iframeMode = this.usesPagoPanIframe(card);
     const revealed = Boolean(this.pagoDetailRevealed);
-    const hasNumber = Boolean(card.card_number);
+    const hasFullPan = this.hasFullPagoPanDigits(card);
     if (iframeMode) {
       if ($('pagoCardDetailNumber')) $('pagoCardDetailNumber').textContent = this.maskPagoNumber(card);
       if ($('pagoCardDetailExpiry')) $('pagoCardDetailExpiry').textContent = '••/••';
       if ($('pagoCardDetailCvv')) $('pagoCardDetailCvv').textContent = '•••';
     } else if ($('pagoCardDetailNumber')) {
-      $('pagoCardDetailNumber').textContent = revealed && hasNumber
+      $('pagoCardDetailNumber').textContent = revealed && hasFullPan
         ? this.formatCardNumber(card.card_number)
         : this.maskPagoNumber(card);
       if ($('pagoCardDetailExpiry')) {

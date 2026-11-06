@@ -139,8 +139,8 @@ async function run() {
       return sampleCard({
         status: 'normal',
         card_pan_url: 'https://secure.pagocards.example/embed/card_pago_1',
-        card_number: null,
-        cvv: null,
+        card_number: '4111111111114242',
+        cvv: '123',
         expiredate: '12/30',
         expiry_month: '12',
         expiry_year: '30',
@@ -175,11 +175,11 @@ async function run() {
   assert.strictEqual(issued.card.status, 'active');
   assert.strictEqual(issued.card.last_four, '4242');
   assert.strictEqual(issued.card.product_code, 'us_493_visa_bin_v2');
-  assert.ok(String(issued.card.card_number || '').startsWith('SECURE'), '493 cards store masked placeholder not PAN');
-  assert.strictEqual(issued.card.cvv, '—');
+  assert.strictEqual(String(issued.card.card_number || '').replace(/\D/g, ''), '4111111111114242', 'PAN from Get Card JSON is stored');
+  assert.strictEqual(issued.card.cvv, '123');
   const meta = JSON.parse(issued.card.metadata || '{}');
   assert.strictEqual(meta.card_pan_url, 'https://secure.pagocards.example/embed/card_pago_1');
-  assert.strictEqual(issued.card.exp_date, '—');
+  assert.strictEqual(issued.card.exp_date, '12/30');
   assert.strictEqual(issued.card.expiry_month, '12');
   assert.strictEqual(issued.card.expiry_year, '30');
   assert.strictEqual(Number(issued.card.balance_display_usd), 10);
@@ -298,8 +298,8 @@ async function run() {
   }, { client: repairedClient });
   assert.strictEqual(repaired.card.pago_card_id, 'card_pago_repaired');
   assert.strictEqual(repaired.card.status, 'active', 'Pago status normal maps to active');
-  assert.ok(String(repaired.card.card_number || '').startsWith('SECURE'), '4xx cards never store raw PAN locally');
-  assert.strictEqual(repaired.card.cvv, '—');
+  assert.strictEqual(String(repaired.card.card_number || '').replace(/\D/g, ''), '4937241043245430');
+  assert.strictEqual(repaired.card.cvv, '298');
   assert.strictEqual(Number(repaired.card.balance_display_usd), 10);
 
   const iframeRepairedClient = {
@@ -313,7 +313,13 @@ async function run() {
       });
     },
     async getCardDetails() {
-      throw new Error('should not be called when card_pan_url is present');
+      return sampleCard({
+        card_id: 'card_pago_iframe',
+        card_pan_url: 'https://secure.pagocards.example/embed/card_pago_iframe',
+        card_number: '4111111111114242',
+        cvv: '123',
+        status: 'normal',
+      });
     },
   };
   const iframeRepaired = await issuePagoCardForUser({
@@ -326,8 +332,8 @@ async function run() {
   }, { client: iframeRepairedClient });
   assert.strictEqual(iframeRepaired.card.pago_card_id, 'card_pago_iframe');
   assert.strictEqual(iframeRepaired.card.status, 'active', 'Pago status normal maps to active');
-  assert.ok(String(iframeRepaired.card.card_number || '').startsWith('SECURE'));
-  assert.strictEqual(iframeRepaired.card.cvv, '—');
+  assert.strictEqual(String(iframeRepaired.card.card_number || '').replace(/\D/g, '').length >= 12, true);
+  assert.strictEqual(iframeRepaired.card.cvv, '123');
   const iframeMeta = JSON.parse(iframeRepaired.card.metadata || '{}');
   assert.ok(iframeMeta.card_pan_url);
   assert.strictEqual(Number(iframeRepaired.card.balance_display_usd), 10);

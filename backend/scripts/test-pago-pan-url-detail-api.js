@@ -5,9 +5,19 @@
  * Verifies card_pan_url flows from provider mock → DB → GET /cards/:id JSON.
  */
 const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
 
+const dbFile = path.join('/tmp', 'eisy-pago-pan-url-detail.db');
+for (const suffix of ['', '-journal', '-wal', '-shm']) {
+  try { fs.unlinkSync(dbFile + suffix); } catch (_) { /* fresh file */ }
+}
+
 async function run() {
+  process.env.DATABASE_URL = `file:${dbFile}`;
+  process.env.TURSO_DATABASE_URL = '';
+  process.env.TURSO_AUTH_TOKEN = '';
+  process.env.DATABASE_AUTH_TOKEN = '';
   process.env.SUPABASE_URL = 'off';
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'off';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'off';
@@ -81,12 +91,12 @@ async function run() {
 
   const panForClient = readCardPanUrlFromSources(row, meta);
   assert.strictEqual(panForClient, panUrl, 'client mapping source has pan URL');
-  assert.ok(usesPagoPanIframe({
+  assert.ok(!usesPagoPanIframe({
     provider: 'pago',
     product_code: row.product_code,
     card_pan_url: panForClient,
     metadata: meta,
-  }));
+  }), 'direct JSON PAN is default; hosted iframe only when PAGO_CARD_FORCE_PAN_IFRAME=1');
 
   console.log('test-pago-pan-url-detail-api: OK');
 }
