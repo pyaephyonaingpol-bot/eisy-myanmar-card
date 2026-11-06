@@ -126,9 +126,9 @@ async function testSettingsAndBreakdown() {
   });
 
   const settings = await getWithdrawalFeeSettings();
-  // Platform policy forces 4% markup regardless of admin percent writes.
-  assert.strictEqual(settings.payment_service_fee_percent, 4);
-  assert.strictEqual(settings.withdrawal_service_fee_percent, 4);
+  assert.strictEqual(settings.payment_service_fee_percent, 3);
+  assert.strictEqual(settings.withdrawal_service_fee_percent, 3);
+  assert.strictEqual(settings.payment_service_fee_mode, 'fixed_plus_percent');
   assert.strictEqual(settings.minimum_usdt_withdrawal, 25);
   assert.strictEqual(settings.usdt_withdraw_fee_trc20_type, 'percent');
   assert.strictEqual(settings.usdt_withdraw_fee_bank_type, 'percent');
@@ -141,24 +141,25 @@ async function testSettingsAndBreakdown() {
   assert.strictEqual(String(rawPayment.value), '3', 'payment_service_fee_percent mirrored in DB');
 
   const bankBreakdown = calculateWithdrawalBreakdown(100, 'BANK', settings);
-  assert.strictEqual(bankBreakdown.fee_usdt, 4, '100 USDT at forced 4% = 4 USDT fee');
+  assert.strictEqual(bankBreakdown.fee_usdt, 3, '100 USDT at admin 3% with min 1 = 3 USDT fee');
   assert.strictEqual(bankBreakdown.minimum_usdt_withdrawal, 25);
-  assert.ok(bankBreakdown.fee_label.includes('4%'), 'fee label shows 4%');
-  assert.strictEqual(bankBreakdown.network_fee_usdt, 3);
-  assert.strictEqual(bankBreakdown.platform_margin_usdt, 1);
+  assert.ok(bankBreakdown.fee_label.includes('3%'), 'fee label shows 3%');
+  assert.strictEqual(bankBreakdown.network_fee_usdt, 2.25);
+  assert.strictEqual(bankBreakdown.platform_margin_usdt, 0.75);
 
   const trc20Breakdown = calculateWithdrawalBreakdown(100, 'TRC20', settings);
-  assert.strictEqual(trc20Breakdown.fee_usdt, 4, 'TRC20 uses the forced 4% markup');
-  assert.ok(trc20Breakdown.fee_label.includes('4%'), 'TRC20 fee label shows 4%');
+  assert.strictEqual(trc20Breakdown.fee_usdt, 3, 'TRC20 uses the admin percent');
+  assert.ok(trc20Breakdown.fee_label.includes('3%'), 'TRC20 fee label shows 3%');
 
   const staleSettings = {
     ...settings,
     usdt_withdraw_fee_trc20_type: 'fixed',
     usdt_withdraw_fee_trc20: 2,
     withdrawal_service_fee_percent: 3,
+    payment_service_fee_percent: 3,
   };
   const staleBreakdown = calculateWithdrawalBreakdown(100, 'TRC20', staleSettings);
-  assert.strictEqual(staleBreakdown.fee_usdt, 4, 'forced markup overrides stale fixed/admin percent');
+  assert.strictEqual(staleBreakdown.fee_usdt, 3, 'legacy fixed network type does not replace admin percent');
 
   const belowMin = calculateWithdrawalBreakdown(20, 'BANK', settings);
   assert.strictEqual(belowMin.below_minimum, true);

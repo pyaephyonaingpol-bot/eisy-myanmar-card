@@ -35,6 +35,12 @@ function staticContractChecks() {
   assert.ok(ledger.includes('refundEscrowHold'), 'refundEscrowHold present');
   assert.ok(ledger.includes('consumeEscrowToBuyer'), 'consumeEscrowToBuyer present');
   assert.ok(ads.includes("holdType: 'p2p_ad'") || ads.includes("hold_type: 'p2p_ad'") || ads.includes("'p2p_ad'"), 'sell ads lock p2p_ad holds');
+  assert.ok(ads.includes('P2P_BUY_AD_DISABLED'), 'new buy ads are rejected');
+  const portal = read('public/index.html');
+  assert.ok(!portal.includes('Buy USDT (I want USDT, will pay MMK)'), 'post-ad form has no MMK buy option');
+  assert.ok(portal.includes('Sell USDT (I have USDT, want MMK)'), 'sell ad remains the post-ad trade type');
+  assert.ok(portal.includes('id="p2pAdSide"'), 'posted side stays sell');
+  assert.ok(!read('public/dashboard.js').includes('Buy ads: no USDT escrow'), 'dashboard no longer offers buy-ad copy');
   assert.ok(sell.includes("'p2p_sell_order'") || sell.includes('p2p_sell_order'), 'sell orders lock p2p_sell_order holds');
 
   // Buy state machine markers
@@ -75,6 +81,7 @@ async function liveEscrowAndMmkIsolation() {
 
   const { initDb, closeDb, getDb } = require('../src/db');
   const User = require('../src/models/User');
+  const P2PAd = require('../src/models/P2PAd');
   const { creditAvailable, getUsdtBalances } = require('../src/services/usdtLedgerService');
   const { createP2pAd, cancelP2pAd } = require('../src/services/p2pAdService');
   const {
@@ -152,19 +159,35 @@ async function liveEscrowAndMmkIsolation() {
   const buyerBal = await getUsdtBalances(buyer.id);
   assert.ok(buyerBal.available_usdt >= 9.8, 'buyer received net USDT from escrow');
 
-  // --- Sell flow (buy ad) ---
-  const { ad: buyAd } = await createP2pAd(buyer.id, {
+  // New buy ads are closed. Existing buy-ad rows can still be filled with USDT escrow.
+  await assert.rejects(
+    () => createP2pAd(buyer.id, {
+      side: 'buy',
+      network: 'TRC20',
+      price_mmk_per_usdt: 4400,
+      total_volume_usdt: 15,
+      min_order_usdt: 5,
+      max_order_usdt: 15,
+      payment_methods: ['WavePay'],
+      wave_account_name: 'ISO Buyer',
+      wave_account_number: '09990002222',
+    }),
+    (err) => err && err.code === 'P2P_BUY_AD_DISABLED'
+  );
+  const buyAd = await P2PAd.create({
+    userId: buyer.id,
     side: 'buy',
     network: 'TRC20',
-    price_mmk_per_usdt: 4400,
-    total_volume_usdt: 15,
-    min_order_usdt: 5,
-    max_order_usdt: 15,
-    payment_methods: ['WavePay'],
-    wave_account_name: 'ISO Buyer',
-    wave_account_number: '09990002222',
+    priceMmkPerUsdt: 4400,
+    totalVolumeUsdt: 15,
+    availableVolumeUsdt: 15,
+    minOrderUsdt: 5,
+    maxOrderUsdt: 15,
+    paymentMethods: ['WavePay'],
+    paymentAccounts: { WavePay: { account_name: 'ISO Buyer', account_number: '09990002222' } },
+    escrowLockedUsdt: 0,
   });
-  assert.strictEqual(Number(buyAd.escrow_locked_usdt || 0), 0, 'buy ads do not lock USDT');
+  assert.strictEqual(Number(buyAd.escrow_locked_usdt || 0), 0, 'legacy buy ads do not lock USDT');
 
   const { order: sellOrder } = await createP2pSellOrder(seller.id, {
     ad_id: buyAd.id,

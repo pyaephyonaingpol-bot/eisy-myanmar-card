@@ -1,6 +1,6 @@
 # Eisy Myanmar
 
-**Eisy Myanmar** is a virtual card and digital wallet platform for Myanmar users. It combines MMK local payments (KBZPay / WavePay / bank), USDT crypto rails (TRC20 / BEP20), Binance Pay, a P2P marketplace, KYC, and an admin console for card issuance and payouts.
+**Eisy Myanmar** is a virtual card and digital wallet platform for Myanmar users. It combines MMK local payments (KBZPay / WavePay / bank), USDT on Tron (TRC20), Binance Pay, a P2P marketplace, KYC, and an admin console for card issuance and payouts.
 
 Production site: [eisymyanmar.com](https://eisymyanmar.com)
 
@@ -29,7 +29,7 @@ Operators use the **Admin portal** (`/admin`) for deposits, card issuance, withd
 | **Database** | LibSQL / Turso (`@libsql/client`); local file DB by default; optional legacy `sqlite3` |
 | **Realtime / sync** | Supabase (optional — wallet/deposit sync + Realtime) |
 | **Auth** | Session + PIN tokens, OTP email (Resend), admin RBAC |
-| **Payments** | Binance Pay, TRON (TronWeb / TronGrid), BEP20 RPC / explorers |
+| **Payments** | Binance Pay, TRON (TronWeb / TronGrid) USDT TRC20 |
 | **Web UI** | Vanilla HTML / JS / CSS SPA served from `backend/public` |
 | **Styling** | Custom CSS design system (`styles.css`) — CSS variables, responsive layout (**not Tailwind**) |
 | **Native shells** | Unified Android WebView app (`android/`); legacy Capacitor (`mobile/`), Flutter (`user_app/`) |

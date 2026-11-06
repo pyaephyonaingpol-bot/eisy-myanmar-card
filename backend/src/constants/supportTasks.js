@@ -26,11 +26,11 @@ const SUPPORT_STATUSES = Object.freeze([
 const SUPPORT_STATUS_LABELS = Object.freeze({
   pending: 'Open',
   in_progress: 'In Progress',
-  completed: 'Resolved',
+  completed: 'Closed',
   failed: 'Failed',
   open: 'Open',
-  closed: 'Resolved',
-  resolved: 'Resolved',
+  closed: 'Closed',
+  resolved: 'Closed',
 });
 
 const SUPPORT_PRIORITY_LABELS = Object.freeze({

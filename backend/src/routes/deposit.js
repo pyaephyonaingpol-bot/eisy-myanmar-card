@@ -18,7 +18,7 @@ const {
 } = require('../services/p2pDepositService');
 const { enrichDeposit } = require('../services/depositEnrichment');
 const { walletPayload } = require('../services/walletService');
-const { getUsdtDepositSettings } = require('../services/settingsService');
+const { getUsdtDepositSettings, getDepositFeeSettings } = require('../services/settingsService');
 const { listPaymentMethods } = require('../services/depositPaymentMethodService');
 const { getMasterWalletAddress } = require('../services/tronMasterWalletService');
 
@@ -262,6 +262,30 @@ router.post('/submit', requireAuth, requireSensitive, (req, res, next) => {
   }
 });
 
+router.get('/fees', requireAuth, async (_req, res) => {
+  try {
+    const settings = await getDepositFeeSettings();
+    res.json({
+      deposit_service_fee_mode: settings.deposit_service_fee_mode,
+      deposit_service_fee_percent: settings.deposit_service_fee_percent,
+      deposit_service_fee_fixed_usdt: settings.deposit_service_fee_fixed_usdt,
+      deposit_service_fee_minimum_usdt: settings.deposit_service_fee_minimum_usdt,
+      payment_service_fee_mode: settings.payment_service_fee_mode,
+      payment_service_fee_percent: settings.payment_service_fee_percent,
+      payment_service_fee_fixed_usdt: settings.payment_service_fee_fixed_usdt,
+      payment_service_fee_minimum_usdt: settings.payment_service_fee_minimum_usdt,
+      minimum_usdt_deposit: settings.minimum_usdt_deposit,
+      mmk_to_usd_rate: settings.mmk_to_usd_rate,
+      fee_rule: settings.payment_service_fee_mode === 'off'
+        ? 'fee = 0'
+        : 'fee = fixed + amount * percent/100',
+    });
+  } catch (err) {
+    console.error('[deposit/fees GET]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.get('/payment-methods', requireAuth, async (_req, res) => {
   try {
     const methods = await listPaymentMethods({ activeOnly: true });
@@ -307,7 +331,6 @@ router.get('/usdt-addresses', requireAuth, async (_req, res) => {
             ? `/api/qr?size=180&data=${encodeURIComponent(masterWalletAddress)}`
             : null,
         },
-        { id: 'BEP20', label: 'BEP20 (BSC)', address: settings.usdt_bep20_address },
       ],
       master_wallet_address: masterWalletAddress,
       minimum_usdt_deposit: settings.minimum_usdt_deposit,

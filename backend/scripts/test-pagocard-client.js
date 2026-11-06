@@ -2,18 +2,18 @@
 /**
  * Pago Card client: request shape, validation, and error handling.
  * Uses a mocked fetch — no live provider calls.
- * Run: node --experimental-strip-types backend/scripts/test-pagocard-client.js
+ * Run: node backend/scripts/test-pagocard-client.js
  */
 'use strict';
 
 const assert = require('assert');
-const path = require('path');
 
+const { loadPagoCardClient } = require('../src/services/loadPagoCardClient');
 const {
   PagoCardError,
   createPagoCardClient,
   truncateUsd,
-} = require(path.join(__dirname, '../../lib/pagocard.ts'));
+} = loadPagoCardClient();
 
 function clientWith(handler) {
   const calls = [];
@@ -236,6 +236,38 @@ const sampleCard = {
       () => api.getCardDetails('card_test_1'),
       (err) => err.code === 'PAGO_NETWORK' && !err.message.includes('pub-test-key')
     );
+  }
+
+  {
+    const started = Date.now();
+    const api = createPagoCardClient({
+      baseUrl: 'https://pagocards.example',
+      apiKey: 'pub-test-key',
+      secretKey: 'sec-test-key',
+      timeoutMs: 300,
+      fetchImpl: (_url, init) => new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          resolve({
+            ok: true,
+            status: 200,
+            async text() {
+              return JSON.stringify({ status: 'success', data: { card_id: 'late' } });
+            },
+          });
+        }, 1500);
+        init.signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          const err = new Error('The operation was aborted due to timeout');
+          err.name = 'TimeoutError';
+          reject(err);
+        });
+      }),
+    });
+    await assert.rejects(
+      () => api.getCardDetails('card_slow'),
+      (err) => err instanceof PagoCardError && err.code === 'PAGO_TIMEOUT'
+    );
+    assert.ok(Date.now() - started < 1200, 'create/fetch abort before the slow response');
   }
 
   {

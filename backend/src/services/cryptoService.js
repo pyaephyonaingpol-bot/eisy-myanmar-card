@@ -1,5 +1,6 @@
 const { firstEnv } = require('../lib/envAliases');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
 const DEV_AUTH_SECRET = 'eisy-dev-secret-change-in-production';
 const AUTH_SECRET = firstEnv('AUTH_SECRET', 'JWT_SECRET') || DEV_AUTH_SECRET;
@@ -150,8 +151,17 @@ function validatePasswordFormat(password) {
   return { ok: true };
 }
 
+function isBcryptHash(stored) {
+  return /^\$2[aby]\$\d{2}\$/.test(String(stored || ''));
+}
+
 function hashPassword(password) {
   return hashPin(password);
+}
+
+/** bcrypt hash for operator passwords. Existing PBKDF2 hashes stay valid. */
+async function hashPasswordBcrypt(password, rounds = 12) {
+  return bcrypt.hash(String(password), rounds);
 }
 
 async function hashPasswordAsync(password) {
@@ -159,10 +169,16 @@ async function hashPasswordAsync(password) {
 }
 
 function verifyPassword(password, stored) {
+  if (isBcryptHash(stored)) {
+    return bcrypt.compareSync(String(password), String(stored));
+  }
   return verifyPin(password, stored);
 }
 
 async function verifyPasswordAsync(password, stored) {
+  if (isBcryptHash(stored)) {
+    return bcrypt.compare(String(password), String(stored));
+  }
   return verifyPinAsync(password, stored);
 }
 
@@ -185,6 +201,8 @@ module.exports = {
   validatePasswordFormat,
   hashPassword,
   hashPasswordAsync,
+  hashPasswordBcrypt,
+  isBcryptHash,
   verifyPassword,
   verifyPasswordAsync,
   PASSWORD_MIN_LENGTH,

@@ -16,6 +16,7 @@ const {
   recordPlatformUsdFee,
   PLATFORM_FEE_TYPES,
 } = require('./platformRevenueService');
+const { creditUsdtBalanceAtomic } = require('./depositCreditService');
 
 async function syncWalletAndDeposit(userId, depositRow) {
   try {
@@ -215,16 +216,17 @@ async function createUsdtDepositRequest(userId, {
   const feeBreakdown = calculateDepositFeeBreakdown(amount, { currency: 'USDT', settings });
   assertValidPaymentAmount(feeBreakdown, { kind: 'USDT deposit' });
 
-  const net = String(network || 'TRC20').toUpperCase();
-  if (!['TRC20', 'BEP20'].includes(net)) {
-    throw new Error('network must be TRC20 or BEP20');
+  const requestedNet = String(network || 'TRC20').toUpperCase();
+  if (requestedNet !== 'TRC20' && requestedNet !== 'TRON') {
+    const err = new Error('USDT deposits use TRC20 (Tron) only.');
+    err.code = 'TRC20_ONLY';
+    throw err;
   }
+  const net = 'TRC20';
 
   let depositAddress;
   let addressSource = 'shared';
-  if (net === 'BEP20') {
-    depositAddress = settings.usdt_bep20_address;
-  } else {
+  {
     const { resolveUserTrc20DepositAddress } = require('./tronDepositAddressService');
     const sharedGateway = () => {
       const explicit = String(
@@ -321,6 +323,17 @@ async function createUsdtDepositRequest(userId, {
       deposit_address: depositAddress,
       payment_fee: mergedMetadata.payment_fee,
     },
+  });
+
+  const { notifyAdminDepositForUser } = require('./telegram');
+  notifyAdminDepositForUser(userId, {
+    amountUsdt: grossAmount,
+    feeUsdt: feeBreakdown.fee_usdt,
+    netUsdt: feeBreakdown.net_usdt,
+    network: net,
+    refCode,
+    address: depositAddress,
+    deposit,
   });
 
   return { deposit, depositAddress, network: net, fee_breakdown: feeBreakdown };
@@ -530,6 +543,35 @@ async function submitAndAutoVerifyUsdtDeposit(depositId, {
 }
 
 
+/**
+ * Honor a stored deposit quote only when fee + net equals the gross amount.
+ * A tampered net above the deposit is recomputed and never credited.
+ */
+function resolveUsdtTopupCredit(grossUsdt, feeMeta, settings) {
+  const gross = Math.round(Number(grossUsdt) * 100) / 100;
+  let feeUsdt = Number(feeMeta?.fee_usdt);
+  let netUsdt = Number(feeMeta?.net_usdt);
+  const reconciled = Number.isFinite(gross)
+    && gross > 0
+    && Number.isFinite(feeUsdt)
+    && Number.isFinite(netUsdt)
+    && feeUsdt >= 0
+    && netUsdt > 0
+    && netUsdt <= gross + 0.001
+    && Math.abs((feeUsdt + netUsdt) - gross) <= 0.05;
+  if (!reconciled) {
+    const feeBreakdown = calculateDepositFeeBreakdown(gross, { currency: 'USDT', settings });
+    feeUsdt = feeBreakdown.fee_usdt;
+    netUsdt = feeBreakdown.net_usdt;
+  }
+  feeUsdt = Math.round(Number(feeUsdt) * 100) / 100;
+  netUsdt = Math.round(Math.min(Number(netUsdt), gross) * 100) / 100;
+  if (!(gross > 0) || !(netUsdt > 0) || netUsdt > gross + 0.001) {
+    throw new Error('USDT deposit net credit must be positive and cannot exceed the deposited amount');
+  }
+  return { grossUsdt: gross, feeUsdt, netUsdt };
+}
+
 async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, createdBy = 'admin', adminNote }) {
   const db = getDb();
   const user = await User.findById(deposit.user_id);
@@ -694,55 +736,29 @@ async function creditDepositAndVerify(deposit, { txnId, reviewedByAdminId, creat
   if (purpose === 'usdt_topup') {
     const grossUsdt = Number(deposit.amount_usd ?? metadata.amount_usdt ?? 0);
     const feeMeta = metadata.payment_fee || metadata.pricing || {};
-    let feeUsdt = Number(feeMeta.fee_usdt);
-    let netUsdt = Number(feeMeta.net_usdt);
+    const settings = await getCardPricingSettings();
+    const quoted = resolveUsdtTopupCredit(grossUsdt, feeMeta, settings);
+    const feeUsdt = quoted.feeUsdt;
+    const netUsdt = quoted.netUsdt;
 
-    if (!Number.isFinite(feeUsdt) || !Number.isFinite(netUsdt) || feeUsdt < 0 || netUsdt <= 0) {
-      const settings = await getCardPricingSettings();
-      const feeBreakdown = calculateDepositFeeBreakdown(grossUsdt, { currency: 'USDT', settings });
-      feeUsdt = feeBreakdown.fee_usdt;
-      netUsdt = feeBreakdown.net_usdt;
+    const atomic = await creditUsdtBalanceAtomic({
+      deposit,
+      netUsdt,
+      txnId: creditTxnId,
+      reviewedByAdminId,
+      adminNote,
+      network: deposit.usdt_network || metadata.usdt_network || null,
+      counterpartyAddress: metadata.deposit_address || null,
+      description: `USDT deposit verified: ${deposit.ref_code} — ${formatUsdt(netUsdt)} credited after fee`,
+    });
+    if (atomic.alreadyVerified) {
+      return { deposit: atomic.deposit, user: atomic.user, alreadyVerified: true };
     }
 
-    netUsdt = Math.round(netUsdt * 100) / 100;
-    feeUsdt = Math.round(feeUsdt * 100) / 100;
-    if (!(netUsdt > 0)) {
-      throw new Error('USDT deposit net credit must be positive after service fee');
-    }
-
-    const balanceBeforeUsdt = Number(user.balance_usdt ?? 0);
-
-    await db.run('BEGIN');
-    try {
-      const claim = await claimDepositOrThrow(deposit, {
-        txnId: creditTxnId,
-        reviewedByAdminId,
-        adminNote,
-      });
-      if (!claim.claimed) {
-        await db.run('ROLLBACK');
-        const freshUser = await User.findById(deposit.user_id);
-        return { deposit: claim.deposit, user: freshUser, alreadyVerified: true };
-      }
-
-      await db.run(`
-        UPDATE users SET balance_usdt = COALESCE(balance_usdt, 0) + ?, updated_at = datetime('now') WHERE id = ?
-      `, netUsdt, deposit.user_id);
-
-      await db.run(`
-        UPDATE deposit_requests SET status = 'VERIFIED', txn_id = COALESCE(?, txn_id)
-        WHERE ref_code = ? AND status != 'VERIFIED'
-      `, creditTxnId, deposit.ref_code).catch(() => {});
-
-      await db.run('COMMIT');
-    } catch (err) {
-      await db.run('ROLLBACK');
-      throw err;
-    }
-
-    const updatedUser = await User.findById(deposit.user_id);
-    const updatedDeposit = await DepositRequest.findById(deposit.id);
-    const balanceAfterUsdt = Number(updatedUser.balance_usdt ?? 0);
+    const balanceBeforeUsdt = atomic.balanceBefore;
+    const updatedUser = atomic.user;
+    const updatedDeposit = atomic.deposit;
+    const balanceAfterUsdt = atomic.balanceAfter;
 
     await TransactionLog.create({
       userId: deposit.user_id,

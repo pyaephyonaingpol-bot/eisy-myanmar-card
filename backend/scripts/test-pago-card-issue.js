@@ -77,6 +77,21 @@ async function run() {
   assert.ok(dash.includes('_cardsEpoch'), 'stale in-flight GET cannot overwrite newer cards');
   const userRoutes = fs.readFileSync(path.join(root, 'backend/src/routes/user.js'), 'utf8');
   assert.ok(userRoutes.includes('function setCardsNoStore'), 'cards API sets no-store headers');
+  assert.ok(userRoutes.includes('withCardApiTimeout'), 'card routes enforce a timeout');
+  assert.ok(userRoutes.includes('CARD_CREATE_ROUTE_TIMEOUT_MS'), 'card creation has a route timeout');
+  assert.ok(userRoutes.includes('CARD_FETCH_TIMEOUT_MS') || userRoutes.includes('CARD_SYNC_BUDGET_MS'), 'card fetch has a route timeout');
+  assert.ok(dash.includes('timeoutMs: 26000'), 'card create client timeout');
+  assert.ok(dash.includes('_pagoCardRequestGuard'), 'card request in-flight guard');
+  assert.ok(dash.includes('setSubmitBusy(btn, true'), 'card request submit shows busy state');
+  assert.ok(dash.includes('pago_request_creating'), 'creating label for card request button');
+  assert.ok(dash.includes('timeoutMs: 16000'), 'card list client timeout');
+  assert.ok(dash.includes('timeoutMs: 12000'), 'card detail client timeout');
+  assert.ok(dash.includes('cardTimeoutMessage'), 'timeout toast helper');
+  const { withCardApiTimeout } = require('../src/services/pagoCardService');
+  await assert.rejects(
+    () => withCardApiTimeout(new Promise(() => {}), 1000, 'Card fetch'),
+    (err) => err.code === 'CARD_REQUEST_TIMEOUT' && err.status === 504
+  );
 
   const { resetSupabaseClientForTests } = require('../src/lib/supabase');
   process.env.SUPABASE_URL = 'off';
@@ -163,11 +178,21 @@ async function run() {
   assert.strictEqual(issued.card.cvv, '—');
   const meta = JSON.parse(issued.card.metadata || '{}');
   assert.strictEqual(meta.card_pan_url, 'https://secure.pagocards.example/embed/card_pago_1');
+  assert.strictEqual(issued.card.exp_date, '—');
   assert.strictEqual(issued.card.expiry_month, '12');
   assert.strictEqual(issued.card.expiry_year, '30');
   assert.strictEqual(Number(issued.card.balance_display_usd), 10);
-  assert.strictEqual(issued.debited_usdt, 10.12);
-  assert.strictEqual(await balanceOf(user.id), 89.88);
+  const { quoteCardIssuanceCheckout } = require('../src/constants/cardIssuanceFees');
+  const { getCardPricingSettings } = require('../src/services/settingsService');
+  const issueQuote = quoteCardIssuanceCheckout({
+    initialLoadUsd: 10.12,
+    settings: await getCardPricingSettings(),
+  });
+  assert.ok(issueQuote.card_issuance_fee_usd > 0, 'default issuing fee is charged');
+  assert.strictEqual(issued.debited_usdt, issueQuote.total_usd);
+  assert.strictEqual(issued.pricing.initial_load_usd, 10.12);
+  const afterIssue = Math.round((100 - issueQuote.total_usd) * 100) / 100;
+  assert.strictEqual(await balanceOf(user.id), afterIssue);
 
   const failing = {
     async createVirtualCard() {
@@ -188,7 +213,7 @@ async function run() {
     }, { client: failing }),
     (err) => err.code === 'PAGO_REQUEST_FAILED'
   );
-  assert.strictEqual(await balanceOf(user.id), 89.88, 'failed issue refunds the wallet');
+  assert.strictEqual(await balanceOf(user.id), afterIssue, 'failed issue refunds the wallet');
 
   await assert.rejects(
     () => issuePagoCardForUser({
@@ -201,7 +226,7 @@ async function run() {
     }, { client }),
     (err) => err.code === 'VALIDATION_ERROR'
   );
-  assert.strictEqual(await balanceOf(user.id), 89.88, 'rejected ATM load does not debit');
+  assert.strictEqual(await balanceOf(user.id), afterIssue, 'rejected ATM load does not debit');
 
   const topped = await topUpPagoCard({
     userId: user.id,
@@ -212,7 +237,7 @@ async function run() {
   assert.ok(topped.debited_usdt >= 10);
   assert.strictEqual(topped.transaction_id, 'txn_pago_1');
   assert.strictEqual(Number(topped.card.balance_display_usd), 15);
-  assert.strictEqual(await balanceOf(user.id), Math.round((89.88 - topped.debited_usdt) * 100) / 100);
+  assert.strictEqual(await balanceOf(user.id), Math.round((afterIssue - topped.debited_usdt) * 100) / 100);
 
   // Missing Pago columns (prod Turso drift) must be repaired by the ensure patch.
   const { ensurePagoCardColumns, PAGO_CARD_COLUMNS } = require('../migrations/patches/ensurePagoCardColumns');
@@ -253,14 +278,13 @@ async function run() {
     async createVirtualCard() {
       return sampleCard({
         card_id: 'card_pago_repaired',
-        card_pan_url: 'https://secure.pagocards.example/embed/card_pago_repaired',
-        card_number: null,
-        cvv: null,
+        card_number: '4937241043245430',
+        cvv: '298',
         status: 'normal',
       });
     },
     async getCardDetails() {
-      throw new Error('should not be called when card_pan_url is present');
+      throw new Error('should not be called when PAN/CVV already present');
     },
   };
   const repaired = await issuePagoCardForUser({
@@ -273,11 +297,39 @@ async function run() {
   }, { client: repairedClient });
   assert.strictEqual(repaired.card.pago_card_id, 'card_pago_repaired');
   assert.strictEqual(repaired.card.status, 'active', 'Pago status normal maps to active');
-  assert.ok(String(repaired.card.card_number || '').startsWith('SECURE'));
+  assert.ok(String(repaired.card.card_number || '').startsWith('SECURE'), '4xx cards never store raw PAN locally');
   assert.strictEqual(repaired.card.cvv, '—');
-  const repairedMeta = JSON.parse(repaired.card.metadata || '{}');
-  assert.ok(repairedMeta.card_pan_url);
   assert.strictEqual(Number(repaired.card.balance_display_usd), 10);
+
+  const iframeRepairedClient = {
+    async createVirtualCard() {
+      return sampleCard({
+        card_id: 'card_pago_iframe',
+        card_pan_url: 'https://secure.pagocards.example/embed/card_pago_iframe',
+        card_number: null,
+        cvv: null,
+        status: 'normal',
+      });
+    },
+    async getCardDetails() {
+      throw new Error('should not be called when card_pan_url is present');
+    },
+  };
+  const iframeRepaired = await issuePagoCardForUser({
+    userId: user.id,
+    productCode: 'us_404_visa_bin',
+    firstName: 'Pago',
+    lastName: 'Tester',
+    email: user.email,
+    initialLoad: 10,
+  }, { client: iframeRepairedClient });
+  assert.strictEqual(iframeRepaired.card.pago_card_id, 'card_pago_iframe');
+  assert.strictEqual(iframeRepaired.card.status, 'active', 'Pago status normal maps to active');
+  assert.ok(String(iframeRepaired.card.card_number || '').startsWith('SECURE'));
+  assert.strictEqual(iframeRepaired.card.cvv, '—');
+  const iframeMeta = JSON.parse(iframeRepaired.card.metadata || '{}');
+  assert.ok(iframeMeta.card_pan_url);
+  assert.strictEqual(Number(iframeRepaired.card.balance_display_usd), 10);
 
   console.log('pago card issue checks passed');
 }

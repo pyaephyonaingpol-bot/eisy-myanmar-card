@@ -40,7 +40,8 @@ assert.ok(!appView.includes('instantCardView'), 'card issue view is not mounted'
 assert.ok(i18n.includes('TRON HD deposit address') || i18n.includes('TRON HD'), 'i18n describes TRON HD');
 
 assert.ok(!/app\.use\(\s*['"]\/api\/[^'"]*services['"]/.test(indexJs), 'hub routes unmounted');
-assert.ok(indexJs.includes('startTronOrderPoller'), 'TRON deposit poller starts');
+assert.ok(indexJs.includes('TRON_ORDER_POLL_ENABLED'), 'TRON deposit poller is env-gated');
+assert.ok(indexJs.includes('TRON HD deposit poll disabled'), 'background poll off unless explicitly enabled');
 assert.ok(!indexJs.includes('DepositPoller'), 'retired deposit poller is not started');
 assert.ok(!depositJs.includes('-networks'), 'retired network route removed');
 assert.ok(!depositJs.includes('-collection'), 'retired collection route removed');

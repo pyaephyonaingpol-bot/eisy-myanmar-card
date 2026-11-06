@@ -11,13 +11,17 @@ const html = fs.readFileSync(path.join(ROOT, 'backend/public/index.html'), 'utf8
 const dash = fs.readFileSync(path.join(ROOT, 'backend/public/dashboard.js'), 'utf8');
 
 const modalStart = html.indexOf('id="usdtTopUpModal"');
-const modalEnd = html.indexOf('<!-- ═══ CARD DETAIL MODAL ═══');
+const modalEnd = html.indexOf('<!-- ═══ SELL USDT');
 assert.ok(modalStart >= 0 && modalEnd > modalStart, 'USDT top-up modal present');
 const modalHtml = html.slice(modalStart, modalEnd);
 
 assert.ok(modalHtml.includes('id="usdtDepositForm"'), 'deposit form in modal');
 assert.ok(modalHtml.includes('id="btnCreateTronDeposit"'), 'create deposit button in modal');
 assert.ok(modalHtml.includes('id="usdtDepositFeePreview"'), 'fee preview in modal');
+assert.ok(modalHtml.includes('id="usdtDepositPreviewGross"'), 'deposit amount row');
+assert.ok(modalHtml.includes('id="usdtDepositPreviewFee"'), 'fee amount row');
+assert.ok(modalHtml.includes('id="usdtDepositPreviewNet"'), 'net credit row');
+assert.ok(modalHtml.indexOf('id="usdtDepositFeePreview"') < modalHtml.indexOf('id="usdtDepositAddress"'), 'fee breakdown is shown before the deposit address');
 assert.ok(modalHtml.includes('id="usdtTopUpModalClose"'), 'modal close control');
 
 const pageStart = html.indexOf('data-i18n="deposits_page_title"');

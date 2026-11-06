@@ -18,15 +18,22 @@
  * getCardDetails(cardId) returns number, CVV, and expiry when the provider sends them.
  * getCardBalance(cardId) reads the current balance.
  * topUpCard(cardId, amount) funds the card with USD already taken from the platform balance.
+ *
+ * Apple Pay / Google Pay: Pagocards marketing lists wallet support (ATM BIN notes
+ * contactless Google Pay), but the public Business API has no token-provisioning,
+ * OPC JWT, or wallet deep-link endpoints. Clients guide users to add the card
+ * manually with PAN / expiry / CVV until issuer push provisioning is available.
  */
 'use strict';
 
 const DEFAULT_BASE_URL = 'http://161.35.58.86/api/pago';
-const REQUEST_TIMEOUT_MS = 20_000;
+const REQUEST_TIMEOUT_MS = 12_000;
 const ATM_PRODUCT_CODE = 'us_493_visa_atm';
 const MIN_INITIAL_LOAD = 10;
 const MAX_INITIAL_LOAD = 2500;
 const MIN_TOP_UP = 5;
+/** Pagocards requires at least this USD remain on the card after a withdraw. */
+const MIN_REMAINING_AFTER_WITHDRAW = 5;
 
 export type PagoCardProductCode =
   | 'us_493_visa_bin_v2'
@@ -74,6 +81,19 @@ export interface PagoCardFundResult {
   transaction_id: string;
 }
 
+/** Summary row from POST /api/v1/cards/getallcards (field names vary). */
+export interface PagoCardSummary {
+  card_id?: string;
+  cardid?: string;
+  useremail?: string;
+  email?: string;
+  last_four?: string;
+  lastfour?: string;
+  brand?: string;
+  type?: string;
+  product_code?: string;
+}
+
 export interface CreateCardInput {
   product_code: PagoCardProductCode;
   first_name: string;
@@ -114,6 +134,8 @@ export interface PagoCardClientOptions {
   apiKey?: string;
   secretKey?: string;
   fetchImpl?: typeof fetch;
+  /** Per-request abort. Defaults to PAGO_CARD_REQUEST_TIMEOUT_MS or 12s. */
+  timeoutMs?: number;
 }
 
 export interface PagoCardErrorOptions {
@@ -191,6 +213,22 @@ function requireText(value: unknown, field: string): string {
   return text;
 }
 
+function resolveRequestTimeout(raw: unknown): number {
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed >= 250) return Math.floor(parsed);
+  const fromEnv = Number(process.env.PAGO_CARD_REQUEST_TIMEOUT_MS);
+  if (Number.isFinite(fromEnv) && fromEnv >= 250) return Math.floor(fromEnv);
+  return REQUEST_TIMEOUT_MS;
+}
+
+function isTimeoutError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = String((err as { name?: string }).name || '');
+  if (name === 'TimeoutError' || name === 'AbortError') return true;
+  const message = err instanceof Error ? err.message : String(err);
+  return /timed out|timeout/i.test(message);
+}
+
 function resolveConfig(options: PagoCardClientOptions = {}): ResolvedPagoConfig {
   const apiKey = String(options.apiKey ?? process.env.PAGO_CARD_API_KEY ?? '').trim();
   const secretKey = String(options.secretKey ?? process.env.PAGO_CARD_SECRET_KEY ?? '').trim();
@@ -216,8 +254,9 @@ async function pagoRequest<T>(
   config: ResolvedPagoConfig,
   method: string,
   path: string,
-  options: { body?: unknown; idempotencyKey?: string } = {}
+  options: { body?: unknown; idempotencyKey?: string; timeoutMs?: number } = {}
 ): Promise<T> {
+  const timeoutMs = resolveRequestTimeout(options.timeoutMs);
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'Content-Type': 'application/json',
@@ -232,15 +271,21 @@ async function pagoRequest<T>(
       method,
       headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
+    const timedOut = isTimeoutError(err);
     const message = err instanceof Error ? err.message : 'Pago Card request failed';
-    throw new PagoCardError(redact(message, [config.apiKey, config.secretKey]), {
-      status: 0,
-      code: 'PAGO_NETWORK',
-      cause: err,
-    });
+    throw new PagoCardError(
+      timedOut
+        ? `Pago Card request timed out after ${timeoutMs}ms`
+        : redact(message, [config.apiKey, config.secretKey]),
+      {
+        status: 0,
+        code: timedOut ? 'PAGO_TIMEOUT' : 'PAGO_NETWORK',
+        cause: err,
+      }
+    );
   }
 
   const text = await response.text();
@@ -315,6 +360,8 @@ function normalizeCardholder(input: CardholderData | null | undefined): CreateCa
 }
 
 function createPagoCardClient(options: PagoCardClientOptions = {}) {
+  const requestTimeoutMs = resolveRequestTimeout(options.timeoutMs);
+
   async function createCard(input: CreateCardInput): Promise<PagoCard> {
     const config = resolveConfig(options);
     const productCode = requireText(input?.product_code, 'product_code');
@@ -361,6 +408,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     return pagoRequest<PagoCard>(config, 'POST', '/api/v1/cards', {
       body,
       idempotencyKey: input.idempotencyKey,
+      timeoutMs: requestTimeoutMs,
     });
   }
 
@@ -371,7 +419,9 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
   async function getCardDetails(cardId: string): Promise<PagoCard> {
     const config = resolveConfig(options);
     const id = requireText(cardId, 'card_id');
-    return pagoRequest<PagoCard>(config, 'GET', `/api/v1/cards/${encodeURIComponent(id)}`);
+    return pagoRequest<PagoCard>(config, 'GET', `/api/v1/cards/${encodeURIComponent(id)}`, {
+      timeoutMs: requestTimeoutMs,
+    });
   }
 
   async function getCardBalance(cardId: string): Promise<PagoCardBalance> {
@@ -418,7 +468,242 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
       {
         body: { amount: fundAmount },
         idempotencyKey: input.idempotencyKey,
+        timeoutMs: requestTimeoutMs,
       }
+    );
+  }
+
+  async function withdrawCard(
+    cardIdOrInput: string | { cardId: string; amount: number; idempotencyKey?: string },
+    amount?: number,
+    extra: { idempotencyKey?: string } = {}
+  ): Promise<PagoCardFundResult> {
+    const config = resolveConfig(options);
+    const input = typeof cardIdOrInput === 'object' && cardIdOrInput !== null
+      ? cardIdOrInput
+      : {
+        cardId: String(cardIdOrInput || ''),
+        amount: Number(amount),
+        idempotencyKey: extra.idempotencyKey,
+      };
+    const cardId = requireText(input.cardId, 'card_id');
+    const withdrawAmount = truncateUsd(Number(input.amount));
+    if (!Number.isFinite(withdrawAmount) || withdrawAmount <= 0) {
+      throw new PagoCardError('amount must be greater than zero', {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        details: { amount: ['Enter a valid withdraw amount.'] },
+      });
+    }
+    return pagoRequest<PagoCardFundResult>(
+      config,
+      'POST',
+      `/api/v1/cards/${encodeURIComponent(cardId)}/withdraw`,
+      {
+        body: { amount: withdrawAmount },
+        idempotencyKey: input.idempotencyKey,
+        timeoutMs: requestTimeoutMs,
+      }
+    );
+  }
+
+  async function blockCard(cardId: string, extra: { idempotencyKey?: string } = {}): Promise<PagoCard> {
+    const config = resolveConfig(options);
+    const id = requireText(cardId, 'card_id');
+    return pagoRequest<PagoCard>(config, 'POST', `/api/v1/cards/${encodeURIComponent(id)}/block`, {
+      idempotencyKey: extra.idempotencyKey,
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
+  async function unblockCard(cardId: string, extra: { idempotencyKey?: string } = {}): Promise<PagoCard> {
+    const config = resolveConfig(options);
+    const id = requireText(cardId, 'card_id');
+    return pagoRequest<PagoCard>(config, 'POST', `/api/v1/cards/${encodeURIComponent(id)}/unblock`, {
+      idempotencyKey: extra.idempotencyKey,
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
+  async function terminateCard(cardId: string, extra: { idempotencyKey?: string } = {}): Promise<PagoCard> {
+    const config = resolveConfig(options);
+    const id = requireText(cardId, 'card_id');
+    return pagoRequest<PagoCard>(config, 'POST', `/api/v1/cards/${encodeURIComponent(id)}/terminate`, {
+      idempotencyKey: extra.idempotencyKey,
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
+  /**
+   * List cards for an email + product. Pago returns `{ cards: [...] }`
+   * (not always the usual `{ status, data }` envelope).
+   */
+  async function listCardsByEmail(input: {
+    email: string;
+    product_code: PagoCardProductCode;
+  }): Promise<PagoCardSummary[]> {
+    const config = resolveConfig(options);
+    const email = requireText(input?.email, 'email');
+    const productCode = requireText(input?.product_code, 'product_code');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new PagoCardError('email must be a valid email address', {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        details: { email: ['The email field must be a valid email address.'] },
+      });
+    }
+
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      publickey: config.apiKey,
+      secretkey: config.secretKey,
+    };
+
+    let response: Response;
+    try {
+      response = await config.fetchImpl(`${config.baseUrl}/api/v1/cards/getallcards`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ email, product_code: productCode }),
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
+    } catch (err) {
+      const timedOut = isTimeoutError(err);
+      const message = err instanceof Error ? err.message : 'Pago Card request failed';
+      throw new PagoCardError(
+        timedOut
+          ? `Pago Card request timed out after ${requestTimeoutMs}ms`
+          : redact(message, [config.apiKey, config.secretKey]),
+        {
+          status: 0,
+          code: timedOut ? 'PAGO_TIMEOUT' : 'PAGO_NETWORK',
+          cause: err,
+        }
+      );
+    }
+
+    const text = await response.text();
+    let payload: Record<string, unknown> | null = null;
+    if (text) {
+      try {
+        payload = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        throw new PagoCardError(
+          redact(`Pago Card returned a non-JSON response (HTTP ${response.status})`, [
+            config.apiKey,
+            config.secretKey,
+          ]),
+          { status: response.status, code: 'PAGO_BAD_RESPONSE' }
+        );
+      }
+    }
+
+    if (!response.ok || payload?.status === 'failure' || payload == null) {
+      throw new PagoCardError(
+        redact(
+          String(payload?.message || `Pago Card request failed (${response.status})`),
+          [config.apiKey, config.secretKey]
+        ),
+        {
+          status: response.status,
+          code: String(payload?.code || 'PAGO_REQUEST_FAILED'),
+          details: payload?.errors as Record<string, string[]> | undefined,
+        }
+      );
+    }
+
+    const data = payload.data;
+    const rawList = Array.isArray(payload.cards)
+      ? payload.cards
+      : (data && typeof data === 'object' && Array.isArray((data as { cards?: unknown }).cards)
+        ? (data as { cards: unknown[] }).cards
+        : Array.isArray(data)
+          ? data
+          : []);
+
+    return (rawList as PagoCardSummary[]).map((row) => ({
+      ...row,
+      product_code: row.product_code || productCode,
+    }));
+  }
+
+  /** Pagocards Admin API — platform wallet balances (funding, visa, giftcard). */
+  async function getAdminBalance(): Promise<Record<string, unknown>> {
+    const config = resolveConfig(options);
+    return pagoRequest<Record<string, unknown>>(config, 'GET', '/api/admin/balance', {
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
+  /**
+   * Pagocards Admin API — all issued cards across users.
+   * Docs: POST /api/admin/allcards body `{ brand, per_page }`.
+   */
+  async function listAdminAllCards(input: {
+    brand?: string;
+    per_page?: number;
+    page?: number;
+  } = {}): Promise<Record<string, unknown>> {
+    const config = resolveConfig(options);
+    const brand = String(input?.brand || 'visa').trim() || 'visa';
+    const perPageRaw = Number(input?.per_page);
+    const perPage = Number.isFinite(perPageRaw) && perPageRaw > 0
+      ? Math.min(100, Math.floor(perPageRaw))
+      : 20;
+    const body: Record<string, unknown> = { brand, per_page: perPage };
+    const page = Number(input?.page);
+    if (Number.isFinite(page) && page > 0) body.page = Math.floor(page);
+    return pagoRequest<Record<string, unknown>>(config, 'POST', '/api/admin/allcards', {
+      body,
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
+  async function listAdminTransactions(query: Record<string, string | number | undefined> = {}): Promise<unknown> {
+    const config = resolveConfig(options);
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || String(value).trim() === '') continue;
+      params.set(key, String(value));
+    }
+    const qs = params.toString();
+    return pagoRequest(config, 'GET', `/api/admin/transactions${qs ? `?${qs}` : ''}`, {
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
+  async function listAdminDeposits(query: Record<string, string | number | undefined> = {}): Promise<unknown> {
+    const config = resolveConfig(options);
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || String(value).trim() === '') continue;
+      params.set(key, String(value));
+    }
+    const qs = params.toString();
+    return pagoRequest(config, 'GET', `/api/admin/deposits${qs ? `?${qs}` : ''}`, {
+      timeoutMs: requestTimeoutMs,
+    });
+  }
+
+  /**
+   * Recent card activity. Docs: GET /api/v1/cards/{card_id}/transactions?pageNum=1
+   * 3DS OTPs are not a dedicated list endpoint; callers scan rows for otp fields.
+   */
+  async function listCardTransactions(cardId: string, pageNum = 1): Promise<{
+    transactions?: unknown[];
+    pagination?: unknown;
+  }> {
+    const config = resolveConfig(options);
+    const id = requireText(cardId, 'card_id');
+    const page = Number.isFinite(Number(pageNum)) && Number(pageNum) > 0
+      ? Math.floor(Number(pageNum))
+      : 1;
+    return pagoRequest(
+      config,
+      'GET',
+      `/api/v1/cards/${encodeURIComponent(id)}/transactions?pageNum=${page}`,
+      { timeoutMs: requestTimeoutMs }
     );
   }
 
@@ -428,6 +713,16 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     getCardDetails,
     getCardBalance,
     topUpCard,
+    withdrawCard,
+    blockCard,
+    unblockCard,
+    terminateCard,
+    getAdminBalance,
+    listAdminAllCards,
+    listAdminTransactions,
+    listAdminDeposits,
+    listCardsByEmail,
+    listCardTransactions,
   };
 }
 
@@ -455,6 +750,53 @@ function topUpCard(
   return createPagoCardClient().topUpCard(cardIdOrInput, amount, extra);
 }
 
+function withdrawCard(
+  cardIdOrInput: string | { cardId: string; amount: number; idempotencyKey?: string },
+  amount?: number,
+  extra?: { idempotencyKey?: string }
+): Promise<PagoCardFundResult> {
+  return createPagoCardClient().withdrawCard(cardIdOrInput, amount, extra);
+}
+
+function blockCard(cardId: string, extra?: { idempotencyKey?: string }): Promise<PagoCard> {
+  return createPagoCardClient().blockCard(cardId, extra);
+}
+
+function unblockCard(cardId: string, extra?: { idempotencyKey?: string }): Promise<PagoCard> {
+  return createPagoCardClient().unblockCard(cardId, extra);
+}
+
+function terminateCard(cardId: string, extra?: { idempotencyKey?: string }): Promise<PagoCard> {
+  return createPagoCardClient().terminateCard(cardId, extra);
+}
+
+function listCardsByEmail(input: {
+  email: string;
+  product_code: PagoCardProductCode;
+}): Promise<PagoCardSummary[]> {
+  return createPagoCardClient().listCardsByEmail(input);
+}
+
+function listCardTransactions(cardId: string, pageNum = 1) {
+  return createPagoCardClient().listCardTransactions(cardId, pageNum);
+}
+
+function getAdminBalance() {
+  return createPagoCardClient().getAdminBalance();
+}
+
+function listAdminAllCards(input?: { brand?: string; per_page?: number; page?: number }) {
+  return createPagoCardClient().listAdminAllCards(input);
+}
+
+function listAdminTransactions(query?: Record<string, string | number | undefined>) {
+  return createPagoCardClient().listAdminTransactions(query);
+}
+
+function listAdminDeposits(query?: Record<string, string | number | undefined>) {
+  return createPagoCardClient().listAdminDeposits(query);
+}
+
 module.exports = {
   PagoCardError,
   createPagoCardClient,
@@ -463,5 +805,16 @@ module.exports = {
   getCardDetails,
   getCardBalance,
   topUpCard,
+  withdrawCard,
+  blockCard,
+  unblockCard,
+  terminateCard,
+  listCardsByEmail,
+  listCardTransactions,
+  getAdminBalance,
+  listAdminAllCards,
+  listAdminTransactions,
+  listAdminDeposits,
   truncateUsd,
+  MIN_REMAINING_AFTER_WITHDRAW,
 };

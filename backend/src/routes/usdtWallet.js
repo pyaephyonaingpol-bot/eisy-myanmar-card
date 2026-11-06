@@ -115,6 +115,50 @@ router.get('/transactions', requireAuth, requireSensitive, async (req, res) => {
   }
 });
 
+/** User Pay — receive QR payload (internal USDT transfer, not on-chain Scan Pay). */
+router.get('/pay/receive-qr', requireAuth, requireSensitive, async (req, res) => {
+  try {
+    const { buildUserReceiveQrPayload } = require('../services/userPayQrService');
+    const email = req.user?.email ? String(req.user.email).trim().toLowerCase() : '';
+    const payload = buildUserReceiveQrPayload({ userId: req.user.id, email });
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.json({
+      ok: true,
+      payload,
+      email: email || null,
+      user_id: req.user.id,
+      qr_image_url: `/api/qr?size=240&data=${encodeURIComponent(payload)}`,
+    });
+  } catch (err) {
+    console.error('[usdt-wallet/pay/receive-qr]', err.message);
+    res.status(500).json({ error: err.message || 'Failed to build Pay QR' });
+  }
+});
+
+router.post('/pay/parse', requireAuth, async (req, res) => {
+  try {
+    const {
+      parseUserPayQrPayload,
+      enrichParsedPayRecipient,
+    } = require('../services/userPayQrService');
+    const payload = String(req.body?.payload || req.body?.qr || '').trim();
+    if (!payload) {
+      return res.status(400).json({ error: 'QR payload is required' });
+    }
+    const parsed = parseUserPayQrPayload(payload);
+    const enriched = await enrichParsedPayRecipient(parsed, { payerUserId: req.user.id });
+    return res.json({ ok: true, parsed: enriched });
+  } catch (err) {
+    const status = ['SELF_PAYMENT', 'UNPARSEABLE_QR', 'EMPTY_QR', 'INVALID_AMOUNT', 'AMOUNT_TOO_LARGE'].includes(err.code)
+      ? 400
+      : 500;
+    return res.status(status).json({
+      error: err.message || 'Could not parse Pay QR',
+      code: err.code || 'PARSE_FAILED',
+    });
+  }
+});
+
 router.post('/transfer', requireAuth, requireSensitive, async (req, res) => {
   try {
     const { to_user_id, to_email, amount_usdt, note, idempotency_key } = req.body || {};
@@ -151,7 +195,7 @@ router.post('/transfer', requireAuth, requireSensitive, async (req, res) => {
     });
   } catch (err) {
     const status = err.code === 'INSUFFICIENT_USDT_BALANCE' ? 400 : 500;
-    res.status(status).json({ error: err.message });
+    res.status(status).json({ error: err.message, code: err.code || undefined });
   }
 });
 

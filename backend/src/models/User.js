@@ -37,10 +37,16 @@ const User = {
   async findByEmail(email) {
     const db = getDb();
     const normalized = String(email || '').trim().toLowerCase();
-    return db.get(
-      'SELECT * FROM users WHERE LOWER(TRIM(email)) = ?',
-      normalized
-    );
+    if (!normalized) return null;
+    // Emails are stored normalized — prefer the unique index on email.
+    let row = await db.get('SELECT * FROM users WHERE email = ?', normalized);
+    if (!row) {
+      row = await db.get(
+        'SELECT * FROM users WHERE LOWER(TRIM(email)) = ?',
+        normalized
+      );
+    }
+    return row;
   },
 
   async findByUsername(username) {
@@ -159,6 +165,19 @@ const User = {
     return this.findById(userId);
   },
 
+  async rememberAuthUserId(userId, authUserId) {
+    const value = String(authUserId || '').trim();
+    if (!value) return null;
+    const db = getDb();
+    await db.run(`
+      UPDATE users
+      SET auth_user_id = ?, updated_at = datetime('now')
+      WHERE id = ?
+        AND (auth_user_id IS NULL OR TRIM(auth_user_id) = '')
+    `, value, userId);
+    return this.findById(userId);
+  },
+
   async setAdminRole(userId, role) {
     const db = getDb();
     const value = role ? String(role).trim() : null;
@@ -175,6 +194,7 @@ const User = {
       WHERE admin_role IS NOT NULL AND TRIM(admin_role) != ''
       ORDER BY
         CASE admin_role
+          WHEN 'ADMIN' THEN 0
           WHEN 'super_admin' THEN 1
           WHEN 'finance_admin' THEN 2
           WHEN 'support_admin' THEN 3
@@ -212,7 +232,7 @@ const User = {
     status = '',
   } = {}) {
     const db = getDb();
-    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 10000);
     const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
     const query = String(q || '').trim();
     const authStatus = String(status || '').trim().toLowerCase();
@@ -246,7 +266,7 @@ const User = {
     const total = Number(totalRow?.c || 0);
 
     const users = await db.all(
-      `SELECT id, email, name, balance_usdt, auth_status, created_at
+      `SELECT id, email, name, balance_usdt, auth_status, created_at, auth_user_id
        FROM users
        ${whereSql}
        ORDER BY created_at DESC, id DESC

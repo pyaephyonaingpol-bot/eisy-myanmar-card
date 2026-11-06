@@ -12,11 +12,38 @@ const Auth = {
 
   /** In-memory session mirror — avoids repeated JSON.parse on every getter. */
   _mem: undefined,
+  /** Skip redundant GET /api/auth/me immediately after login/register. */
+  _sessionFreshUntil: 0,
+
+  markSessionFresh(ttlMs = 120000) {
+    this._sessionFreshUntil = Date.now() + Math.max(5000, ttlMs);
+  },
+
+  isSessionFresh() {
+    return Boolean(this._sessionFreshUntil && Date.now() < this._sessionFreshUntil);
+  },
+
+  /** Live session dies with the tab. A leftover localStorage copy is moved once. */
+  readStoredSession() {
+    try {
+      const current = sessionStorage.getItem(this.STORAGE_KEY);
+      if (current) return current;
+    } catch (_) { /* private mode */ }
+    try {
+      const legacy = localStorage.getItem(this.STORAGE_KEY);
+      if (!legacy) return null;
+      try { sessionStorage.setItem(this.STORAGE_KEY, legacy); } catch (_) { /* ignore */ }
+      try { localStorage.removeItem(this.STORAGE_KEY); } catch (_) { /* ignore */ }
+      return legacy;
+    } catch (_) {
+      return null;
+    }
+  },
 
   load() {
     if (this._mem !== undefined) return this._mem;
     try {
-      this._mem = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || 'null');
+      this._mem = JSON.parse(this.readStoredSession() || 'null');
     } catch {
       this._mem = null;
     }
@@ -25,16 +52,65 @@ const Auth = {
 
   save(data) {
     this._mem = data;
+    const raw = JSON.stringify(data);
     try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+      sessionStorage.setItem(this.STORAGE_KEY, raw);
     } catch (err) {
-      console.error('[Auth] Failed to persist session to localStorage:', err);
+      console.error('[Auth] Failed to persist session:', err);
     }
+    try { localStorage.removeItem(this.STORAGE_KEY); } catch (_) { /* tab session only */ }
   },
 
   clear() {
     this._mem = null;
-    localStorage.removeItem(this.STORAGE_KEY);
+    try { sessionStorage.removeItem(this.STORAGE_KEY); } catch (_) { /* ignore */ }
+    try { localStorage.removeItem(this.STORAGE_KEY); } catch (_) { /* ignore */ }
+  },
+
+  IDLE_LIMIT_MS: 20 * 60 * 1000,
+
+  startIdleWatch() {
+    if (this._idleWatching) return;
+    this._idleWatching = true;
+    this._lastActivityAt = Date.now();
+    const bump = () => {
+      const now = Date.now();
+      if (now - (this._lastActivityAt || 0) < 1000) return;
+      this._lastActivityAt = now;
+    };
+    ['mousemove', 'mousedown', 'click', 'keydown', 'touchstart', 'scroll', 'wheel'].forEach((name) => {
+      window.addEventListener(name, bump, { passive: true });
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') this.checkIdle();
+    });
+    this._idleTimer = setInterval(() => this.checkIdle(), 15000);
+  },
+
+  checkIdle() {
+    if (!this.isLoggedIn() || this._idleLoggingOut) return;
+    const idleFor = Date.now() - (this._lastActivityAt || Date.now());
+    if (idleFor >= this.IDLE_LIMIT_MS) this.logoutForInactivity();
+  },
+
+  async logoutForInactivity() {
+    if (this._idleLoggingOut || !this.isLoggedIn()) return;
+    this._idleLoggingOut = true;
+    const token = this.sessionToken;
+    try { sessionStorage.setItem('eisy_logout_notice', 'inactive'); } catch (_) { /* ignore */ }
+    this.clear();
+    window.dispatchEvent(new CustomEvent('eisy:session-end', { detail: { reason: 'inactive' } }));
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: '{}',
+      });
+    } catch (_) { /* the tab session is already gone */ }
+    this._idleLoggingOut = false;
   },
 
   getDeviceProfile() {
@@ -141,8 +217,18 @@ const Auth = {
     return h;
   },
 
+  _apiInflight: {},
+
   async api(method, path, body, opts = {}) {
     if (window.__EISY_DEBUG_API) console.log(`[Auth.api] ${method} ${path}`, body || '');
+    const m = String(method || 'GET').toUpperCase();
+    const dedupeKey = m === 'GET' && !opts.force && !opts.skipDedupe
+      ? `${path}|${opts.sensitive ? 's' : 'n'}`
+      : null;
+    if (dedupeKey && this._apiInflight[dedupeKey]) {
+      return this._apiInflight[dedupeKey];
+    }
+
     const timeoutMs = Number.isFinite(opts.timeoutMs)
       ? Math.max(1000, opts.timeoutMs)
       : 25000;
@@ -155,49 +241,60 @@ const Auth = {
         } catch (_) { /* ignore */ }
       }, timeoutMs);
     }
-    try {
-      const res = await fetch(path, {
-        method,
-        headers: this.headers(opts),
-        body: body ? JSON.stringify(body) : undefined,
-        cache: opts.sensitive ? 'no-store' : 'default',
-        signal: controller?.signal,
-      });
-      const text = await res.text();
-      let data = {};
+
+    const run = (async () => {
       try {
-        data = text ? JSON.parse(text) : {};
-      } catch (parseErr) {
-        console.error('[Auth.api] JSON parse error', parseErr, text);
-        throw new Error(`Invalid server response (${res.status})`);
-      }
+        const res = await fetch(path, {
+          method: m,
+          headers: this.headers(opts),
+          body: body ? JSON.stringify(body) : undefined,
+          cache: opts.sensitive ? 'no-store' : 'default',
+          signal: controller?.signal,
+        });
+        const text = await res.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (parseErr) {
+          console.error('[Auth.api] JSON parse error', parseErr, text);
+          throw new Error(`Invalid server response (${res.status})`);
+        }
 
-      if (window.__EISY_DEBUG_API) console.log(`[Auth.api] ${method} ${path} → ${res.status}`, data);
+        if (window.__EISY_DEBUG_API) console.log(`[Auth.api] ${m} ${path} → ${res.status}`, data);
 
-      if (!res.ok) {
-        const err = new Error(data.error || `HTTP ${res.status}`);
-        err.code = data.code;
-        err.status = res.status;
-        err.response = data;
-        console.error('[Auth.api] Request failed:', err.message, data);
+        if (!res.ok) {
+          const err = new Error(data.error || `HTTP ${res.status}`);
+          err.code = data.code;
+          err.status = res.status;
+          err.response = data;
+          console.error('[Auth.api] Request failed:', err.message, data);
+          throw err;
+        }
+        return data;
+      } catch (err) {
+        if (err?.name === 'AbortError' || controller?.signal?.aborted) {
+          const timeoutErr = new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+          timeoutErr.code = 'REQUEST_TIMEOUT';
+          timeoutErr.status = 408;
+          console.error('[Auth.api] Timeout:', m, path);
+          throw timeoutErr;
+        }
+        if (!err.message?.includes('HTTP')) {
+          console.error('[Auth.api] Network or unexpected error:', err);
+        }
         throw err;
+      } finally {
+        if (timer) clearTimeout(timer);
       }
-      return data;
-    } catch (err) {
-      if (err?.name === 'AbortError' || controller?.signal?.aborted) {
-        const timeoutErr = new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
-        timeoutErr.code = 'REQUEST_TIMEOUT';
-        timeoutErr.status = 408;
-        console.error('[Auth.api] Timeout:', method, path);
-        throw timeoutErr;
-      }
-      if (!err.message?.includes('HTTP')) {
-        console.error('[Auth.api] Network or unexpected error:', err);
-      }
-      throw err;
-    } finally {
-      if (timer) clearTimeout(timer);
+    })();
+
+    if (dedupeKey) {
+      this._apiInflight[dedupeKey] = run;
+      run.finally(() => {
+        if (this._apiInflight[dedupeKey] === run) delete this._apiInflight[dedupeKey];
+      });
     }
+    return run;
   },
 
   async apiForm(path, formData, opts = {}) {
@@ -255,6 +352,7 @@ const Auth = {
       pinToken: data.pin_token || null,
       ...this.authPayload(data),
     });
+    this.markSessionFresh();
     this.rememberAuthSuccess(data, email);
     return { ...data, user, has_pin: hasPin, needs_pin_setup: data.needs_pin_setup ?? !hasPin };
   },
@@ -301,6 +399,7 @@ const Auth = {
       pinToken: data.pin_token || null,
       ...this.authPayload(data),
     });
+    this.markSessionFresh();
     this.rememberAuthSuccess(data, email);
     return { ...data, user };
   },
@@ -317,6 +416,7 @@ const Auth = {
       pinToken: data.pin_token || null,
       ...this.authPayload(data),
     });
+    this.markSessionFresh();
     this.rememberAuthSuccess(data, email);
     return { ...data, user };
   },
@@ -558,6 +658,7 @@ const Auth = {
       pinToken: data.pin_token || null,
       ...this.authPayload(data),
     });
+    this.markSessionFresh();
     this.rememberAuthSuccess(data, user.email);
     return { ...data, user };
   },
@@ -637,24 +738,63 @@ const Auth = {
     const emailInput = document.getElementById('loginEmail');
     const pinInput = document.getElementById('loginPin');
     const otpSection = document.getElementById('loginOtpSection');
+    const pinResetSection = document.getElementById('authPinResetSection');
     const showOtpBtn = document.getElementById('showOtpLoginBtn');
+    const showPinResetBtn = document.getElementById('showPinResetBtn');
     const bioBtn = document.getElementById('bioLoginBtn');
+
+    const setLinkOpen = (btn, open, closedLabel) => {
+      if (!btn) return;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (closedLabel && !open) btn.textContent = closedLabel;
+    };
 
     if (emailInput && profile?.email && !emailInput.value.trim()) {
       emailInput.value = profile.email;
     }
 
-    if (otpSection && profile?.email) {
-      otpSection.classList.add('hidden');
-    }
+    if (otpSection) otpSection.classList.add('hidden');
+    if (pinResetSection) pinResetSection.classList.add('hidden');
+    setLinkOpen(showOtpBtn, false, 'Use email OTP instead');
+    setLinkOpen(showPinResetBtn, false, 'Forgot PIN');
 
     if (showOtpBtn && otpSection) {
       showOtpBtn.onclick = () => {
-        otpSection.classList.toggle('hidden');
-        showOtpBtn.textContent = otpSection.classList.contains('hidden')
-          ? 'Use email OTP instead'
-          : 'Back to PIN login';
+        const open = otpSection.classList.contains('hidden');
+        otpSection.classList.toggle('hidden', !open);
+        showOtpBtn.textContent = open ? 'Hide email OTP' : 'Use email OTP instead';
+        showOtpBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open && pinResetSection) {
+          pinResetSection.classList.add('hidden');
+          setLinkOpen(showPinResetBtn, false, 'Forgot PIN');
+        }
       };
+    }
+
+    if (showPinResetBtn && pinResetSection && !showPinResetBtn.dataset.quietBound) {
+      showPinResetBtn.dataset.quietBound = '1';
+      const previous = showPinResetBtn.onclick;
+      showPinResetBtn.onclick = (event) => {
+        if (typeof previous === 'function') previous.call(showPinResetBtn, event);
+        const open = !pinResetSection.classList.contains('hidden');
+        showPinResetBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open && otpSection) {
+          otpSection.classList.add('hidden');
+          setLinkOpen(showOtpBtn, false, 'Use email OTP instead');
+        }
+      };
+    }
+
+    const authTabs = document.getElementById('authTabs');
+    if (authTabs && !authTabs.dataset.ariaBound) {
+      authTabs.dataset.ariaBound = '1';
+      authTabs.addEventListener('click', (event) => {
+        const tab = event.target.closest('.tab');
+        if (!tab || !authTabs.contains(tab)) return;
+        authTabs.querySelectorAll('.tab').forEach((el) => {
+          el.setAttribute('aria-selected', el === tab ? 'true' : 'false');
+        });
+      });
     }
 
     if (bioBtn) {

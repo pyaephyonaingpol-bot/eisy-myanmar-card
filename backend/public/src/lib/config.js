@@ -36,8 +36,6 @@
 
     NETWORKS: Object.freeze({
       TRC20: 'TRC20',
-      BEP20: 'BEP20',
-      ERC20: 'ERC20',
       BANK: 'BANK',
     }),
   };

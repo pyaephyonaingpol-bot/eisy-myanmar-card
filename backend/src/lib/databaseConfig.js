@@ -1,20 +1,13 @@
 const path = require('path');
 const { isVercel, ensureDir } = require('../paths');
+const { databaseUrl, databaseAuthToken } = require('./envAliases');
 
 function readDatabaseUrl() {
-  return (
-    process.env.DATABASE_URL
-    || process.env.TURSO_DATABASE_URL
-    || ''
-  ).trim();
+  return databaseUrl();
 }
 
 function readDatabaseAuthToken() {
-  return (
-    process.env.DATABASE_AUTH_TOKEN
-    || process.env.TURSO_AUTH_TOKEN
-    || ''
-  ).trim();
+  return databaseAuthToken();
 }
 
 function isRemoteDatabaseUrl(url) {

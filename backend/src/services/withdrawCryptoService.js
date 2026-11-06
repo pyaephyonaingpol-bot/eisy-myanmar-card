@@ -3,11 +3,11 @@
  * Manual energy mode — no Feee.io / external energy rental APIs.
  *
  * POST /api/withdraw body: { customerAddress, withdrawAmount }
- * Fee: fixed 2.0 USDT (Net Payout = withdrawAmount - 2.0)
+ * Fee: $2 fixed + 2% of the requested amount (Net Payout = withdrawAmount - fee)
  *
- * SECURITY: After unauthorized-withdrawal incident, on-chain broadcast requires
- * WITHDRAWALS_PAUSED=false AND AUTO_ONCHAIN_WITHDRAWALS=true. Otherwise the
- * debit is recorded and the request stays pending for admin review.
+ * SECURITY: After the unauthorized-withdrawal incident, on-chain broadcast stays
+ * off while WITHDRAWALS_PAUSED is true (the production default). Once that pause
+ * is lifted, TRC20 payouts broadcast unless AUTO_ONCHAIN_WITHDRAWALS=false.
  */
 const UsdtWithdrawal = require('../models/UsdtWithdrawal');
 const {
@@ -25,6 +25,7 @@ const {
 } = require('./securityFlags');
 
 const FIXED_WITHDRAW_FEE_USDT = Number(process.env.WITHDRAW_FIXED_FEE_USDT || 2);
+const WITHDRAW_PERCENT = 2;
 
 function roundUsdt(value) {
   return Math.round(Number(value) * 1e6) / 1e6;
@@ -85,7 +86,8 @@ function calculateFixedFeeWithdraw({ customerAddress, withdrawAmount }) {
     throw err;
   }
 
-  const feeUsdt = getFixedWithdrawFeeUsdt();
+  const fixedFee = getFixedWithdrawFeeUsdt();
+  const feeUsdt = roundUsdt(fixedFee + roundUsdt(amount * WITHDRAW_PERCENT / 100));
   if (!(amount > feeUsdt)) {
     const err = new Error(
       `withdrawAmount must be strictly greater than the ${feeUsdt.toFixed(1)} USDT fee`
@@ -185,6 +187,18 @@ async function executeFixedFeeTrc20Withdraw(userId, { customerAddress, withdrawA
       status: 'pending',
       adminNote: 'Queued for admin review — auto on-chain withdraw disabled (security incident lock)',
     });
+    const { notifyAdminWithdrawalForUser } = require('./telegram');
+    notifyAdminWithdrawalForUser(userId, {
+      kind: 'USDT',
+      network: 'TRC20',
+      amountUsdt: calc.withdrawAmount,
+      feeUsdt: calc.feeUsdt,
+      netUsdt: calc.netPayout,
+      destination: calc.customerAddress,
+      refCode,
+      status: pending.status || 'pending',
+      withdrawal: pending,
+    });
     return {
       success: true,
       queued: true,
@@ -253,6 +267,19 @@ async function executeFixedFeeTrc20Withdraw(userId, { customerAddress, withdrawA
     status: 'completed',
     txHash: transfer.txId,
     adminNote: `On-chain TRC20 transfer from master wallet (${transfer.fromAddress})`,
+  });
+
+  const { notifyAdminWithdrawalForUser } = require('./telegram');
+  notifyAdminWithdrawalForUser(userId, {
+    kind: 'USDT',
+    network: 'TRC20',
+    amountUsdt: calc.withdrawAmount,
+    feeUsdt: calc.feeUsdt,
+    netUsdt: calc.netPayout,
+    destination: calc.customerAddress,
+    refCode,
+    status: completed.status || 'completed',
+    withdrawal: completed,
   });
 
   return {

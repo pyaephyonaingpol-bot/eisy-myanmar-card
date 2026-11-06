@@ -8,8 +8,12 @@
 -- Supabase Auth signup trigger fix (handle_new_user / profiles):
 -- see supabase/auth_profiles.sql if auth.signUp() returns "Database error saving new user".
 
+-- user_id is the local users.id (integer) stored as text.
+-- auth_user_id is the Supabase Auth UUID when one exists.
+-- Do not replace user_id with that UUID; existing wallet rows stay as they are.
 CREATE TABLE IF NOT EXISTS user_wallets (
   user_id TEXT PRIMARY KEY,
+  auth_user_id TEXT,
   email TEXT,
   name TEXT,
   balance_mmk NUMERIC(18, 2) NOT NULL DEFAULT 0,
@@ -38,6 +42,10 @@ CREATE TABLE IF NOT EXISTS deposit_requests (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE user_wallets ADD COLUMN IF NOT EXISTS auth_user_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_user_wallets_email_lower ON user_wallets (LOWER(email));
+CREATE INDEX IF NOT EXISTS idx_user_wallets_auth_user_id ON user_wallets (auth_user_id);
 
 CREATE INDEX IF NOT EXISTS idx_deposit_requests_user ON deposit_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_deposit_requests_status ON deposit_requests(status);

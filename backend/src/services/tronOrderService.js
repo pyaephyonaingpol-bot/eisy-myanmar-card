@@ -15,22 +15,20 @@ const { getDepositFeeSettings } = require('./settingsService');
 const { creditDepositAndVerify, uniqueRefCode, assertTxHashAvailable } = require('./depositService');
 const { formatUsdt } = require('./walletService');
 
+const { tronFullHost, tronGridRequestHeaders } = require('../lib/envAliases');
+
 const DEFAULT_MASTER_DEPOSIT_ADDRESS = 'TM8LqqR6Tz8qbvGRYAMbHv2PQgw3biPgqH';
 const USDT_TRC20_CONTRACT = process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const TRON_FULL_HOST = (
-  process.env.TRON_FULL_HOST
-  || process.env.TRONGRID_FULL_HOST
-  || 'https://api.trongrid.io'
-).replace(/\/$/, '');
 const TRC20_DECIMALS = 6;
 const ORDER_STATUS_PENDING = 'PENDING';
 const ORDER_STATUS_COMPLETED = 'COMPLETED';
 
+function getTronFullHost() {
+  return tronFullHost().replace(/\/$/, '');
+}
+
 function tronApiHeaders() {
-  const headers = { Accept: 'application/json' };
-  const apiKey = process.env.TRONGRID_API_KEY || process.env.TRON_PRO_API_KEY;
-  if (apiKey) headers['TRON-PRO-API-KEY'] = apiKey;
-  return headers;
+  return tronGridRequestHeaders();
 }
 
 /**
@@ -306,6 +304,17 @@ async function createTronOrder(userId, { amount_usdt, amount } = {}) {
     throw err;
   }
 
+  const { notifyAdminDepositForUser } = require('./telegram');
+  notifyAdminDepositForUser(userId, {
+    amountUsdt: feeBreakdown.amount_usdt,
+    feeUsdt: feeBreakdown.fee_usdt,
+    netUsdt: feeBreakdown.net_usdt,
+    network: 'TRC20',
+    refCode,
+    address: depositAddress,
+    deposit,
+  });
+
   return {
     message: 'TRON USDT deposit order created',
     provider: 'tron_trc20',
@@ -349,19 +358,20 @@ async function fetchIncomingUsdtTransfers({
   address,
   minTimestampMs = 0,
   limit = 200,
+  orderBy = 'block_timestamp,asc',
 } = {}) {
   const params = new URLSearchParams({
     only_to: 'true',
     only_confirmed: 'true',
     contract_address: USDT_TRC20_CONTRACT,
     limit: String(Math.min(Math.max(Number(limit) || 200, 1), 200)),
-    order_by: 'block_timestamp,asc',
+    order_by: String(orderBy || 'block_timestamp,asc'),
   });
   if (minTimestampMs > 0) {
     params.set('min_timestamp', String(Math.floor(minTimestampMs)));
   }
 
-  const url = `${TRON_FULL_HOST}/v1/accounts/${encodeURIComponent(address)}/transactions/trc20?${params.toString()}`;
+  const url = `${getTronFullHost()}/v1/accounts/${encodeURIComponent(address)}/transactions/trc20?${params.toString()}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {
@@ -447,6 +457,15 @@ async function verifyPendingTronOrders() {
     if (!addr) continue;
     if (!ordersByAddress.has(addr)) ordersByAddress.set(addr, []);
     ordersByAddress.get(addr).push(order);
+  }
+
+  for (const [, orders] of ordersByAddress) {
+    orders.sort((a, b) => {
+      const ta = new Date(a.created_at).getTime();
+      const tb = new Date(b.created_at).getTime();
+      if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
+      return String(a.order_id || '').localeCompare(String(b.order_id || ''));
+    });
   }
 
   const usedTransactionIds = new Set();
@@ -574,17 +593,55 @@ async function verifyPendingTronOrders() {
 
 let pollInFlight = false;
 
+function isTronOrderPollInFlight() {
+  return pollInFlight;
+}
+
 async function runTronOrderPollSafely() {
   if (pollInFlight) return { skipped: true, reason: 'poll_in_flight' };
   pollInFlight = true;
   try {
-    return await verifyPendingTronOrders();
-  } catch (err) {
-    console.error('[tron/orders/poll]', err.message, err.code || '');
+    let orders;
+    try {
+      orders = await verifyPendingTronOrders();
+    } catch (err) {
+      console.error('[tron/orders/poll]', err.message, err.code || '');
+      orders = {
+        ok: false,
+        error: err.message,
+        code: err.code || 'TRON_ORDER_POLL_FAILED',
+      };
+    }
+
+    let hdDeposits;
+    try {
+      const { creditInboundHdDeposits } = require('./hdDepositCreditService');
+      hdDeposits = await creditInboundHdDeposits();
+    } catch (err) {
+      console.error('[tron/hd] inbound scan failed:', err.message, err.code || '');
+      hdDeposits = {
+        ok: false,
+        error: err.message,
+        code: err.code || 'HD_DEPOSIT_SCAN_FAILED',
+        credited: 0,
+      };
+    }
+
+    let monitor;
+    try {
+      const { runTronWalletMonitorSafely } = require('./tronWalletMonitorService');
+      monitor = await runTronWalletMonitorSafely();
+    } catch (err) {
+      console.error('[tron/monitor] poll hook failed:', err.message);
+      monitor = { ok: false, error: err.message };
+    }
+
     return {
-      ok: false,
-      error: err.message,
-      code: err.code || 'TRON_ORDER_POLL_FAILED',
+      ...orders,
+      ok: orders.ok !== false && hdDeposits.ok !== false && monitor?.ok !== false,
+      hd_deposits: hdDeposits,
+      wallet_monitor: monitor,
+      credited: Number(orders.credited || 0) + Number(hdDeposits.credited || 0),
     };
   } finally {
     pollInFlight = false;
@@ -596,8 +653,11 @@ function startTronOrderPoller({ intervalMs } = {}) {
     10_000,
     parseInt(process.env.TRON_ORDER_POLL_MS || String(intervalMs || 30_000), 10) || 30_000
   );
-  if (String(process.env.TRON_ORDER_POLL_ENABLED || 'true').toLowerCase() === 'false') {
-    console.log('[tron/orders] background poll disabled (TRON_ORDER_POLL_ENABLED=false)');
+  const enabled = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.TRON_ORDER_POLL_ENABLED || 'false').trim().toLowerCase()
+  );
+  if (!enabled) {
+    console.log('[tron/orders] background poll disabled (set TRON_ORDER_POLL_ENABLED=true to enable)');
     return null;
   }
 
@@ -629,6 +689,7 @@ module.exports = {
   listPendingTronOrders,
   verifyPendingTronOrders,
   runTronOrderPollSafely,
+  isTronOrderPollInFlight,
   startTronOrderPoller,
   parseTrc20TransferAmount,
   amountWithinTolerance,
