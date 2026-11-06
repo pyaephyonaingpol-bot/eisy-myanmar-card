@@ -300,6 +300,7 @@ const sampleCard = {
 
   {
     const previousBase = process.env.PAGO_CARD_API_BASE_URL;
+    const previousProxyHost = process.env.PAGO_CARD_PROXY_HOST;
     const previousKey = process.env.PAGO_CARD_API_KEY;
     const previousSecret = process.env.PAGO_CARD_SECRET_KEY;
     const proxy = 'http://161.35.58.86/api/pago';
@@ -328,7 +329,6 @@ const sampleCard = {
       'http://161.35.58.86/api/pago/',
       'http://161.35.58.86/api/pago/api/v1',
       'http://161.35.58.86/api/pago',
-      '',
     ];
     try {
       process.env.PAGO_CARD_API_KEY = 'proxy-pub-key';
@@ -354,6 +354,7 @@ const sampleCard = {
         ]);
       }
       delete process.env.PAGO_CARD_API_BASE_URL;
+      process.env.PAGO_CARD_PROXY_HOST = 'proxy.test';
       calls.length = 0;
       const fallback = createPagoCardClient({ fetchImpl });
       await fallback.createVirtualCard({
@@ -362,10 +363,22 @@ const sampleCard = {
         lastName: 'Lovelace',
         email: 'ada@example.com',
       });
-      assert.strictEqual(calls[0], `${proxy}/api/v1/cards`);
+      assert.strictEqual(calls[0], 'http://proxy.test/api/pago/api/v1/cards');
+      delete process.env.PAGO_CARD_PROXY_HOST;
+      await assert.rejects(
+        () => createPagoCardClient({ fetchImpl }).createVirtualCard({
+          productCode: 'us_493_visa_bin_v2',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          email: 'ada@example.com',
+        }),
+        (err) => err.code === 'PAGO_NOT_CONFIGURED',
+      );
     } finally {
       if (previousBase === undefined) delete process.env.PAGO_CARD_API_BASE_URL;
       else process.env.PAGO_CARD_API_BASE_URL = previousBase;
+      if (previousProxyHost === undefined) delete process.env.PAGO_CARD_PROXY_HOST;
+      else process.env.PAGO_CARD_PROXY_HOST = previousProxyHost;
       if (previousKey === undefined) delete process.env.PAGO_CARD_API_KEY;
       else process.env.PAGO_CARD_API_KEY = previousKey;
       if (previousSecret === undefined) delete process.env.PAGO_CARD_SECRET_KEY;

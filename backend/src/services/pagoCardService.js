@@ -243,7 +243,11 @@ function rethrowPago(err) {
     throw httpError('Pago Card timed out. Please try again.', 504, 'PAGO_TIMEOUT');
   }
   if (code === 'PAGO_NETWORK') {
-    throw httpError('Pagocards API is temporarily unreachable.', 503, 'PAGO_NETWORK');
+    throw httpError(
+      'Pagocards proxy unreachable. Update PAGO_CARD_API_BASE_URL to the new Droplet host and whitelist its public IP at Pagocards.',
+      503,
+      'PAGO_NETWORK'
+    );
   }
   if (code === 'PAGO_NOT_CONFIGURED') {
     throw httpError(err.message, 503, code);

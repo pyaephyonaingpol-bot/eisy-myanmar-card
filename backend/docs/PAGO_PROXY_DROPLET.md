@@ -1,0 +1,51 @@
+# Pagocards proxy on DigitalOcean
+
+Production **never** calls Pagocards directly from Vercel. All Business API traffic goes through a **DigitalOcean Droplet proxy** so Pagocards sees a **fixed whitelisted IPv4**.
+
+## Request path
+
+```
+Browser → Vercel (Express) → HTTP PAGO_CARD_API_BASE_URL → Droplet /api/pago → Pagocards API
+```
+
+Headers on upstream calls (set by `lib/pagocard.ts`):
+
+| Header | Env var |
+|--------|---------|
+| `publickey` | `PAGO_CARD_API_KEY` |
+| `secretkey` | `PAGO_CARD_SECRET_KEY` |
+
+Pagocards validates the **Droplet egress IP**, not the Vercel serverless IP.
+
+## After migrating to a new Droplet
+
+1. **Pagocards dashboard** — add the **new public IPv4** to the IP whitelist; remove the old IP when safe.
+2. **Vercel** (Production + Preview if used):
+   - `PAGO_CARD_API_BASE_URL=http://NEW_IP/api/pago`  
+     **or**
+   - `PAGO_CARD_PROXY_HOST=NEW_IP` (optional `PAGO_CARD_PROXY_SCHEME=http`, `PAGO_CARD_PROXY_PATH=/api/pago`)
+   - `PAGO_CARD_WHITELIST_IP=NEW_IP` (recommended — used by verify scripts only)
+   - `PAGO_CARD_DEPRECATED_PROXY_HOSTS=OLD_IP` (optional — fails verify if base URL still points at old host)
+3. **Droplet** — restore the reverse proxy that forwards `/api/pago` to Pagocards with the same `publickey` / `secretkey` forwarding rules.
+4. **Firewall** — allow Vercel (or `0.0.0.0/0` if only key-protected) to reach the Droplet on port 80/443 for `/api/pago`.
+
+## Verify
+
+```bash
+cd backend
+node scripts/check-env-config.js
+node scripts/verify-pago-proxy-env.js
+node scripts/verify-pago-proxy-env.js --probe   # live getAdminBalance via proxy
+```
+
+Admin UI: `GET /api/admin/pagocards/proxy-check` (cards permission).
+
+## Symptoms
+
+| Symptom | Likely cause |
+|---------|----------------|
+| `fetch failed` / `PAGO_NETWORK` | Wrong `PAGO_CARD_API_BASE_URL`, Droplet down, or firewall |
+| HTTP 401/403 from Pagocards | API keys wrong or **new IP not whitelisted** |
+| Card list works, reveal fails | Same as above on `getCardDetails` refresh |
+
+See also `backend/docs/DROPLET_SWEEP_CRON.md` for **Netts** IP whitelist (`TRON_NETTS_REAL_IP`) — separate from Pagocards.
