@@ -59,7 +59,7 @@ function mapCardForClient(c) {
     card_number: pending || panIframe ? null : c.card_number,
     exp_date: pending || panIframe ? null : c.exp_date,
     cvv: pending || panIframe ? null : c.cvv,
-    card_pan_url: panIframe ? cardPanUrl : null,
+    card_pan_url: panIframe ? (cardPanUrl || null) : null,
     pan_view: panIframe ? 'iframe' : 'legacy',
     card_holder_name: c.card_holder_name,
     status,
