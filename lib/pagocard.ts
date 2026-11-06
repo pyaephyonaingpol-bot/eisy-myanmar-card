@@ -200,6 +200,29 @@ function proxyHostForLog(baseUrl: string): string {
   }
 }
 
+/**
+ * Join proxy base + request path without duplicating `/api/v1` after `/api/pago`.
+ * Example: base `http://host/api/pago` + path `/api/v1/cards/x` → `http://host/api/pago/cards/x`
+ * (proxy maps `/api/pago` → upstream already at `/api/v1`).
+ */
+function joinPagoRequestUrl(baseUrl: string, path: string): string {
+  const p = path.startsWith('/') ? path : `/${path}`;
+  try {
+    const base = new URL(baseUrl);
+    const pathname = base.pathname.replace(/\/+$/, '');
+    let rel = p;
+    if (/\/api\/pago$/i.test(pathname) && /^\/api\/v1(\/|$)/i.test(rel)) {
+      rel = rel.replace(/^\/api\/v1/i, '') || '/';
+    }
+    /** Must concatenate path segments — `new URL('/cards', base)` would drop `/api/pago`. */
+    const joined = `${pathname}${rel}`.replace(/\/{2,}/g, '/');
+    base.pathname = joined;
+    return base.href;
+  } catch {
+    return `${baseUrl}${p}`;
+  }
+}
+
 function normalizePagoBaseUrl(raw: string): string {
   const trimmed = String(raw || '').trim().replace(/\/+$/, '');
   if (!trimmed) return '';
@@ -353,9 +376,10 @@ async function pagoRequest<T>(
   };
   if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
 
+  const requestUrl = joinPagoRequestUrl(config.baseUrl, path);
   let response: Response;
   try {
-    response = await config.fetchImpl(`${config.baseUrl}${path}`, {
+    response = await config.fetchImpl(requestUrl, {
       method,
       headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
@@ -374,6 +398,7 @@ async function pagoRequest<T>(
           host: proxyHostForLog(config.baseUrl),
           method,
           path,
+          url: requestUrl,
           timeoutMs,
           timedOut,
           code: timedOut ? 'PAGO_TIMEOUT' : 'PAGO_NETWORK',
@@ -404,7 +429,7 @@ async function pagoRequest<T>(
       const status = response.status;
       const secrets = [config.apiKey, config.secretKey];
       const snippet = redact(responseSnippet(text), secrets);
-      const url = `${config.baseUrl}${path}`;
+      const url = requestUrl;
       const proxyDown = status === 502 || status === 503 || status === 504;
       const message = proxyDown
         ? `Pago proxy returned HTTP ${status} instead of JSON. URL: ${method} ${url}. Upstream body: ${snippet}`
@@ -418,17 +443,18 @@ async function pagoRequest<T>(
   }
 
   if (!response.ok || payload?.status === 'failure' || payload == null) {
-    const fullUrl = `${config.baseUrl}${path}`;
+    const fullUrl = requestUrl;
     if (response.status === 404 && process.env.PAGO_CARD_SILENCE_HTTP_LOG !== 'true') {
       console.warn(
         '[pago] http_404',
         JSON.stringify({
           method,
           path,
+          url: fullUrl,
           host: proxyHostForLog(config.baseUrl),
           businessPrefix: businessApiPrefix() || '(empty)',
           hint:
-            'Proxy path mismatch — if your Droplet maps /api/pago → upstream /api/v1, set PAGO_CARD_BUSINESS_API_PREFIX=""',
+            '404 — verify proxy URL, path, card id, and Pagocards whitelist (/api/v1 stripped after /api/pago when needed)',
         })
       );
     }
@@ -436,7 +462,7 @@ async function pagoRequest<T>(
       redact(
         payload?.message
           || (response.status === 404
-            ? `Pago Card not found (404). Check proxy maps to Pagocards Business API — tried ${method} ${fullUrl}. If paths are doubled, set PAGO_CARD_BUSINESS_API_PREFIX="" (see docs).`
+            ? `Pago Card not found (404). Check proxy and request path — tried ${method} ${fullUrl}.`
             : `Pago Card request failed (${response.status})`),
         [config.apiKey, config.secretKey]
       ),
@@ -687,9 +713,11 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
       secretkey: config.secretKey,
     };
 
+    const listPath = businessPath('/cards/getallcards');
+    const listRequestUrl = joinPagoRequestUrl(config.baseUrl, listPath);
     let response: Response;
     try {
-      response = await config.fetchImpl(`${config.baseUrl}${businessPath('/cards/getallcards')}`, {
+      response = await config.fetchImpl(listRequestUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify({ email, product_code: productCode }),
@@ -707,7 +735,8 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
           JSON.stringify({
             host: proxyHostForLog(config.baseUrl),
             method: 'POST',
-            path: businessPath('/cards/getallcards'),
+            path: listPath,
+            url: listRequestUrl,
             timeoutMs: requestTimeoutMs,
             timedOut,
             code: timedOut ? 'PAGO_TIMEOUT' : 'PAGO_NETWORK',
@@ -746,18 +775,18 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     }
 
     if (!response.ok || payload?.status === 'failure' || payload == null) {
-      const listPath = businessPath('/cards/getallcards');
-      const fullUrl = `${config.baseUrl}${listPath}`;
+      const fullUrl = listRequestUrl;
       if (response.status === 404 && process.env.PAGO_CARD_SILENCE_HTTP_LOG !== 'true') {
         console.warn(
           '[pago] http_404',
           JSON.stringify({
             method: 'POST',
             path: listPath,
+            url: fullUrl,
             host: proxyHostForLog(config.baseUrl),
             businessPrefix: businessApiPrefix() || '(empty)',
             hint:
-              'Proxy path mismatch — if your Droplet maps /api/pago → upstream /api/v1, set PAGO_CARD_BUSINESS_API_PREFIX=""',
+              '404 — verify PAGO_CARD_API_BASE_URL proxy path, card id, and Pagocards whitelist',
           })
         );
       }
@@ -766,7 +795,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
           String(
             payload?.message
               || (response.status === 404
-                ? `Pago Card not found (404). Check proxy maps to Pagocards Business API — tried POST ${fullUrl}. If paths are doubled, set PAGO_CARD_BUSINESS_API_PREFIX="" (see docs).`
+                ? `Pago Card not found (404). Check proxy and card id — tried POST ${fullUrl}.`
                 : `Pago Card request failed (${response.status})`)
           ),
           [config.apiKey, config.secretKey]
@@ -968,6 +997,7 @@ module.exports = {
   resolvePagoCardBaseUrl,
   /** @internal exported for proxy/path tests */
   businessApiPrefix,
+  joinPagoRequestUrl,
   createPagoCardClient,
   createVirtualCard,
   createCard,
