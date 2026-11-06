@@ -10501,6 +10501,8 @@ const Dashboard = {
     if (!cards.length) {
       list.innerHTML = '';
       list.classList.add('hidden');
+      const sumEl = $('pagoCardSelectedSummary');
+      if (sumEl) sumEl.textContent = '';
       if (this._cardsUiLoading) {
         empty?.classList.add('hidden');
         $('pagoCardSkeleton')?.classList.remove('hidden');
@@ -10605,8 +10607,10 @@ const Dashboard = {
       else if (netClass === 'is-mastercard') netEl.textContent = '';
       else netEl.textContent = network ? String(network).toUpperCase() : 'VISA';
     }
-    if ($('pagoCardDetailSummary')) {
-      $('pagoCardDetailSummary').textContent = `${brand} · •••• ${card.last4 || '????'}`;
+    const summary = $('pagoCardSelectedSummary');
+    const manyCards = Array.isArray(this.allCards) && this.allCards.length > 1;
+    if (summary) {
+      summary.textContent = manyCards ? '' : `${brand} · •••• ${card.last4 || '????'}`;
     }
     if ($('pagoPlasticHolder')) {
       $('pagoPlasticHolder').textContent = this.pagoCardHolderName(card);

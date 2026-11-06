@@ -1334,7 +1334,6 @@
             <section class="panel pago-card-stage" id="pagoCardStage">
               <div class="pago-card-stage-head">
                 <h2 data-i18n="pago_cards_heading">Your virtual card</h2>
-                <p id="pagoCardDetailSummary" class="hint"></p>
               </div>
               <div id="pagoCardCarousel" class="pago-card-carousel hidden">
                 <button type="button" class="pago-card-carousel-nav" id="pagoCardPrev" data-pago-step="-1" aria-label="Previous card">‹</button>
@@ -1390,6 +1389,7 @@
               </div>
 
               <div class="pago-card-component hidden" id="pagoCardDetailPanel">
+              <p id="pagoCardSelectedSummary" class="hint pago-card-selected-summary" aria-live="polite"></p>
               <article class="pago-plastic-card pago-plastic-reference" id="pagoPlasticCard" aria-label="Virtual card">
                 <div class="pago-plastic-sheen" aria-hidden="true"></div>
                 <div class="pago-plastic-body">
