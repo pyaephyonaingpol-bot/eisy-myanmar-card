@@ -4,6 +4,14 @@
  * Reverse proxy: /api/pago/* → Pagocards upstream so Droplet :3000 matches
  * PAGO_CARD_API_BASE_URL=http://HOST:3000/api/pago (no separate nginx required).
  *
+ * Query strings are forwarded unchanged (e.g. `?pageNum=1`).
+ *
+ * Pagocards paths (see public docs):
+ * - Card transaction history (virtual card spend): upstream
+ *   `GET /api/v1/cards/{card_id}/transactions?pageNum=1` (optional `pageNum`, default 1).
+ * - Admin ledger (different product surface): `GET /api/admin/transactions` with
+ *   `page_number`, `per_page`, `uuid`, `searchterm` — not the per-card endpoint above.
+ *
  * Env:
  *   PAGO_PROXY_UPSTREAM_ORIGIN — default https://pagocards.com (override if your docs use another host)
  */
