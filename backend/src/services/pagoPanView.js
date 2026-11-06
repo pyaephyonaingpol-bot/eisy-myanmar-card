@@ -27,8 +27,12 @@ function isPago4xxBinProduct(productCode) {
 function readCardPanUrlFromSources(card, metadata = {}) {
   const raw = card?.card_pan_url
     ?? card?.cardPanUrl
+    ?? card?.pan_url
+    ?? card?.secure_pan_url
+    ?? card?.secure_card_url
     ?? metadata?.card_pan_url
     ?? metadata?.cardPanUrl
+    ?? metadata?.pan_url
     ?? null;
   return sanitizeHttpsUrl(raw);
 }
