@@ -279,6 +279,18 @@ const Auth = {
           console.error('[Auth.api] Timeout:', m, path);
           throw timeoutErr;
         }
+        const rawMsg = String(err?.message || '');
+        if (
+          !err?.code
+          && (err?.name === 'TypeError' || /fetch failed|failed to fetch|networkerror|load failed/i.test(rawMsg))
+        ) {
+          const netErr = new Error('Could not reach the server. Check your connection and try again.');
+          netErr.code = 'NETWORK_ERROR';
+          netErr.status = 0;
+          netErr.cause = err;
+          console.error('[Auth.api] Network error:', m, path, rawMsg);
+          throw netErr;
+        }
         if (!err.message?.includes('HTTP')) {
           console.error('[Auth.api] Network or unexpected error:', err);
         }

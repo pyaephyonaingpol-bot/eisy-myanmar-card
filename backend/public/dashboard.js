@@ -9956,6 +9956,7 @@ const Dashboard = {
       pan_view: fromApi?.pan_view || base.pan_view || local?.pan_view || (trustedUrl ? 'iframe' : undefined),
       pan_url_ready: Boolean(data?.pan_url_ready || fromApi?.pan_url_ready || trustedUrl),
       pan_timed_out: Boolean(data?.timed_out),
+      pan_provider_unavailable: Boolean(data?.provider_unavailable),
     };
     return merged;
   },
@@ -9969,9 +9970,11 @@ const Dashboard = {
     if (!card?.id) return card;
     try {
       this.invalidateFetch('cards');
-      const data = await Auth.api('GET', `/api/user/cards/${card.id}`, null, {
+      const refreshQs = this.resolvePagoPanUrl(card) ? '' : '?refresh=1';
+      const data = await Auth.api('GET', `/api/user/cards/${card.id}${refreshQs}`, null, {
         sensitive: true,
-        timeoutMs: 20000,
+        timeoutMs: 24000,
+        force: true,
       });
       const selected = this.applyCardsPayload(data, {
         selectCardId: card.id,
@@ -10378,7 +10381,10 @@ const Dashboard = {
     } catch (err) {
       this._pagoPanRevealBusy = false;
       if (err?.code !== 'SENSITIVE_AUTH_REQUIRED') {
-        this.toast(err.message || 'Could not show card details', 'error');
+        this.toast(
+          this.cardTimeoutMessage(err) || err.message || 'Could not show card details',
+          'error'
+        );
       }
       if (iframeMode) this.showPagoCardDetail(card);
       return;
@@ -10388,12 +10394,16 @@ const Dashboard = {
     if (iframeMode) {
       full = this.upsertPagoCardInList(full);
       if (!this.resolvePagoPanUrl(full)) {
-        const msgKey = full?.pan_timed_out ? 'pago_pan_iframe_load_failed' : 'pago_pan_iframe_pending';
+        const msgKey = full?.pan_provider_unavailable
+          ? 'pago_network_error'
+          : (full?.pan_timed_out ? 'pago_pan_iframe_load_failed' : 'pago_pan_iframe_pending');
         this.toast(this.i18nText(
           msgKey,
-          full?.pan_timed_out
-            ? 'Could not load the secure card view. Tap the eye icon to try again.'
-            : 'Secure card view is loading… Tap View details or the eye icon to refresh.'
+          full?.pan_provider_unavailable
+            ? 'Could not reach Pagocards. Check your connection and tap the eye icon to try again.'
+            : (full?.pan_timed_out
+              ? 'Could not load the secure card view. Tap the eye icon to try again.'
+              : 'Secure card view is loading… Tap View details or the eye icon to refresh.')
         ), 'error');
         this.showPagoCardDetail(full);
         return;
@@ -10910,6 +10920,23 @@ const Dashboard = {
     ) {
       return this.i18nText('pago_timeout', 'Card service timed out. Please try again.');
     }
+    if (
+      code === 'PAGO_NETWORK'
+      || code === 'NETWORK_ERROR'
+      || Number(err?.status) === 503
+    ) {
+      return this.i18nText(
+        'pago_network_error',
+        'Could not reach Pagocards. Check your connection and tap the eye icon to try again.'
+      );
+    }
+    const msg = String(err?.message || '').toLowerCase();
+    if (/fetch failed|failed to fetch|networkerror/.test(msg)) {
+      return this.i18nText(
+        'pago_network_error',
+        'Could not reach Pagocards. Check your connection and tap the eye icon to try again.'
+      );
+    }
     return '';
   },
 
@@ -10924,7 +10951,8 @@ const Dashboard = {
       this.invalidateFetch('cards');
       const data = await Auth.api('GET', `/api/user/cards/${cardId}`, null, {
         sensitive: true,
-        timeoutMs: 12000,
+        timeoutMs: 24000,
+        force: true,
       });
       if (this._pagoDetailRequestId !== requestId) return null;
       const card = this.applyCardsPayload(data, { selectCardId: cardId })
@@ -10933,6 +10961,11 @@ const Dashboard = {
       if (this._pagoDetailRequestId !== requestId) return null;
       if (data.timed_out) {
         this.toast(this.i18nText('pago_timeout', 'Card service timed out. Please try again.'), 'error');
+      } else if (data.provider_unavailable) {
+        this.toast(this.i18nText(
+          'pago_network_error',
+          'Could not reach Pagocards. Check your connection and tap the eye icon to try again.'
+        ), 'error');
       }
       if (card) {
         this.showPagoCardDetail(card);

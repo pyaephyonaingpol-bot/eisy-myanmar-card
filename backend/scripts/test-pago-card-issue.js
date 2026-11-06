@@ -85,7 +85,8 @@ async function run() {
   assert.ok(dash.includes('setSubmitBusy(btn, true'), 'card request submit shows busy state');
   assert.ok(dash.includes('pago_request_creating'), 'creating label for card request button');
   assert.ok(dash.includes('timeoutMs: 16000'), 'card list client timeout');
-  assert.ok(dash.includes('timeoutMs: 12000'), 'card detail client timeout');
+  assert.ok(dash.includes('timeoutMs: 24000'), 'card detail client timeout');
+  assert.ok(dash.includes('pago_network_error'), 'card detail network error copy');
   assert.ok(dash.includes('cardTimeoutMessage'), 'timeout toast helper');
   const { withCardApiTimeout } = require('../src/services/pagoCardService');
   await assert.rejects(

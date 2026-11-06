@@ -36,7 +36,7 @@ const MIN_CARD_REMAINING_USD = 5;
 const CARD_CREATE_TIMEOUT_MS = parseInt(process.env.CARD_CREATE_TIMEOUT_MS || '15000', 10);
 const CARD_CREATE_ROUTE_TIMEOUT_MS = parseInt(process.env.CARD_CREATE_ROUTE_TIMEOUT_MS || '22000', 10);
 /** One card details / list call. */
-const CARD_FETCH_TIMEOUT_MS = parseInt(process.env.CARD_FETCH_TIMEOUT_MS || '8000', 10);
+const CARD_FETCH_TIMEOUT_MS = parseInt(process.env.CARD_FETCH_TIMEOUT_MS || '12000', 10);
 /** Whole provider sync while loading My Cards. */
 const CARD_SYNC_BUDGET_MS = parseInt(process.env.CARD_SYNC_BUDGET_MS || '12000', 10);
 
@@ -63,6 +63,15 @@ function withCardApiTimeout(promise, ms, label = 'Card request') {
 function isCardTimeoutError(err) {
   const code = String(err?.code || '');
   return code === 'PAGO_TIMEOUT' || code === 'CARD_REQUEST_TIMEOUT';
+}
+
+/** Provider unreachable or slow — safe to return saved card rows to the client. */
+function isCardProviderSoftError(err) {
+  if (isCardTimeoutError(err)) return true;
+  const code = String(err?.code || '');
+  if (code === 'PAGO_NETWORK' || code === 'PAGO_BAD_RESPONSE') return true;
+  const msg = String(err?.message || '').toLowerCase();
+  return /fetch failed|econnreset|etimedout|enotfound|network|socket hang up/i.test(msg);
 }
 
 function truncateUsd(amount) {
@@ -232,6 +241,9 @@ function rethrowPago(err) {
   const code = err?.code || 'PAGO_ERROR';
   if (code === 'PAGO_TIMEOUT' || isCardTimeoutError(err)) {
     throw httpError('Pago Card timed out. Please try again.', 504, 'PAGO_TIMEOUT');
+  }
+  if (code === 'PAGO_NETWORK') {
+    throw httpError('Pagocards API is temporarily unreachable.', 503, 'PAGO_NETWORK');
   }
   if (code === 'PAGO_NOT_CONFIGURED') {
     throw httpError(err.message, 503, code);
@@ -1320,6 +1332,7 @@ module.exports = {
   CARD_SYNC_BUDGET_MS,
   withCardApiTimeout,
   isCardTimeoutError,
+  isCardProviderSoftError,
   issuePagoCardForUser,
   refreshPagoCard,
   topUpPagoCard,
