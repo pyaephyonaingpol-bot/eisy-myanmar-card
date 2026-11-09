@@ -12,8 +12,10 @@ const contactJs = fs.readFileSync(path.join(PUBLIC, 'contactInfo.js'), 'utf8');
 const supportChat = fs.readFileSync(path.join(PUBLIC, 'supportChat.js'), 'utf8');
 const about = fs.readFileSync(path.join(PUBLIC, 'about.html'), 'utf8');
 
-const email = 'pyaephyo.naing@eisymyanmar.com';
+const email = 'support@eisymyanmar.com';
+const legacyEmail = 'pyaephyo.naing@eisymyanmar.com';
 const telegram = 'eisymyanmar';
+const contactCacheBust = 'contactInfo.js?v=20261109support';
 const bannedPublicPatterns = [
   /971505176334/,
   /wa\.me\/971/,
@@ -24,12 +26,13 @@ const bannedPublicPatterns = [
 ];
 
 assert.ok(contactJs.includes(email), 'contact module email');
+assert.ok(!contactJs.includes(legacyEmail), 'contact module must not use legacy personal email');
 assert.ok(contactJs.includes('@eisymyanmar'), 'contact module telegram');
 assert.ok(contactJs.includes('Al Batal building 302'), 'contact module address');
 assert.ok(contactJs.includes('official-contact-icon'), 'contact icons');
 assert.ok(!contactJs.includes('971505176334'), 'contact module must not expose phone');
 
-assert.ok(index.includes('contactInfo.js?v=20261013noPhone'), 'index loads contactInfo (cache bust)');
+assert.ok(index.includes(contactCacheBust), 'index loads contactInfo (cache bust)');
 assert.ok(index.includes('id="authOfficialSupport"'), 'auth mounts support links container');
 assert.ok(index.includes('data-contact-modal-open'), 'logged-in sidebar contact modal remains');
 assert.ok(!index.includes('sidebar-footer') || !index.match(/sidebar-footer[\s\S]*data-official-contact="compact"/), 'sidebar inline contact removed');
@@ -54,6 +57,7 @@ assert.ok(about.includes('data-official-contact="legal"'), 'about contact block'
 const htmlFiles = fs.readdirSync(PUBLIC).filter((f) => f.endsWith('.html'));
 for (const file of htmlFiles) {
   const text = fs.readFileSync(path.join(PUBLIC, file), 'utf8');
+  assert.ok(!text.includes(legacyEmail), `${file} must not expose legacy personal email`);
   for (const pattern of bannedPublicPatterns) {
     assert.ok(!pattern.test(text), `${file} must not match public phone pattern ${pattern}`);
   }
