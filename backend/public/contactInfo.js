@@ -7,7 +7,7 @@
   const CONTACT = Object.freeze({
     telegramHandle: '@eisymyanmar',
     telegramUrl: 'https://t.me/eisymyanmar',
-    email: 'pyaephyo.naing@eisymyanmar.com',
+    email: 'support@eisymyanmar.com',
     address:
       'Al Batal building 302 Zahiya Abudhabi (opposite of Ramada downtown hotel)',
     mapsUrl:

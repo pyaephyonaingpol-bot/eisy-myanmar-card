@@ -55,6 +55,7 @@ assert.ok(!terms.includes('[Registered Address]'), 'terms has no address placeho
 assert.ok(!terms.includes('Registered Address'), 'terms omits registered address');
 assert.ok(terms.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'terms copyright');
 assert.ok(terms.includes('support@eisymyanmar.com'), 'terms support email');
+assert.ok(!terms.includes('pyaephyo.naing@eisymyanmar.com'), 'terms must not use legacy personal email');
 assert.ok(terms.includes('href="/about"'), 'terms nav links to about');
 
 assert.ok(privacy.includes('Privacy Policy'), 'privacy title');
@@ -66,6 +67,7 @@ assert.ok(!privacy.includes('[Registered Address]'), 'privacy has no address pla
 assert.ok(!privacy.includes('Registered Address'), 'privacy omits registered address');
 assert.ok(privacy.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'privacy copyright');
 assert.ok(privacy.includes('support@eisymyanmar.com'), 'privacy support email');
+assert.ok(!privacy.includes('pyaephyo.naing@eisymyanmar.com'), 'privacy must not use legacy personal email');
 assert.ok(privacy.includes('href="/about"'), 'privacy nav links to about');
 
 assert.ok(refund.includes('Refund'), 'refund title');
@@ -76,6 +78,7 @@ assert.ok(!refund.includes('[Registered Address]'), 'refund has no address place
 assert.ok(!refund.includes('Registered Address'), 'refund omits registered address');
 assert.ok(refund.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'refund copyright');
 assert.ok(refund.includes('support@eisymyanmar.com'), 'refund support email');
+assert.ok(!refund.includes('pyaephyo.naing@eisymyanmar.com'), 'refund must not use legacy personal email');
 assert.ok(refund.includes('href="/about"'), 'refund nav links to about');
 
 assert.ok(about.includes('About Eisy Myanmar'), 'about title');
@@ -86,6 +89,7 @@ assert.ok(about.includes('Pyae Phyo Naing'), 'about names founder');
 assert.ok(about.includes('Founder') || about.includes('founder'), 'about founder section');
 assert.ok(/trust|security|accessible|accessibility/i.test(about), 'about emphasizes trust/security/access');
 assert.ok(about.includes('support@eisymyanmar.com'), 'about support email');
+assert.ok(!about.includes('pyaephyo.naing@eisymyanmar.com'), 'about must not use legacy personal email');
 assert.ok(about.includes('about-founder'), 'about founder markup class');
 assert.ok(about.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'about copyright');
 assert.ok(!about.includes('[Registered Address]'), 'about has no address placeholder');
