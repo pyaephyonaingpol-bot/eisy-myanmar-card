@@ -9,6 +9,14 @@
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/uploads/(.*)", "destination": "/api" },
     {
+      "source": "/supabase",
+      "destination": "/api"
+    },
+    {
+      "source": "/supabase/(.*)",
+      "destination": "/api"
+    },
+    {
       "source": "/((?!assets/)(?!.*\\.).*)",
       "destination": "/api"
     }

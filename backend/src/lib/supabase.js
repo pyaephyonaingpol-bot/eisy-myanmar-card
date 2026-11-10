@@ -293,19 +293,130 @@ function getSupabase() {
   return client;
 }
 
-function getPublicSupabaseConfig() {
+/**
+ * Public path mount for the same-origin Supabase reverse proxy
+ * (Vercel rewrite + Express /supabase → *.supabase.co).
+ */
+function supabaseBrowserProxyPath() {
+  const raw = String(process.env.SUPABASE_BROWSER_PROXY_PATH || '/supabase').trim() || '/supabase';
+  const withSlash = raw.startsWith('/') ? raw : `/${raw}`;
+  return withSlash.replace(/\/+$/, '') || '/supabase';
+}
+
+function isSupabaseBrowserProxyEnabled() {
+  const flag = String(process.env.SUPABASE_BROWSER_PROXY || 'true').trim().toLowerCase();
+  return flag !== '0' && flag !== 'false' && flag !== 'off' && flag !== 'no';
+}
+
+/** Site origin for browser-facing Supabase proxy URLs (no trailing slash). */
+function resolvePublicSiteOrigin(req) {
+  const fromEnv = String(process.env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (fromEnv && /^https?:\/\//i.test(fromEnv)) return fromEnv;
+  if (req && typeof req === 'object') {
+    const proto = String(
+      req.headers?.['x-forwarded-proto'] || req.protocol || 'https'
+    ).split(',')[0].trim() || 'https';
+    const host = String(
+      req.headers?.['x-forwarded-host'] || req.headers?.host || ''
+    ).split(',')[0].trim();
+    if (host) return `${proto}://${host}`.replace(/\/+$/, '');
+  }
+  const vercel = String(
+    process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || ''
+  ).trim();
+  if (vercel) {
+    const host = vercel.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    if (host) return `https://${host}`;
+  }
+  return '';
+}
+
+/**
+ * URL the browser / Supabase JS client should use.
+ * Prefers https://eisymyanmar.com/supabase (proxied) over *.supabase.co.
+ */
+function getBrowserSupabaseUrl(upstreamUrl, req) {
+  const upstream = String(upstreamUrl || '').trim().replace(/\/+$/, '');
+  if (!upstream || !isSupabaseBrowserProxyEnabled()) return upstream;
+  const siteOrigin = resolvePublicSiteOrigin(req);
+  if (!siteOrigin) return upstream;
+  return `${siteOrigin}${supabaseBrowserProxyPath()}`;
+}
+
+/**
+ * Rewrite Location (and Google OAuth redirect_uri query values) that point at
+ * the upstream Supabase host so the browser stays on the site proxy path.
+ */
+function rewriteSupabaseProxyLocation(location, {
+  upstreamOrigin,
+  publicOrigin,
+  proxyPath,
+} = {}) {
+  const raw = String(location || '').trim();
+  if (!raw || !publicOrigin || !proxyPath) return raw;
+  const upstream = String(upstreamOrigin || '').replace(/\/+$/, '');
+  let url;
+  try {
+    url = new URL(raw, upstream || publicOrigin);
+  } catch {
+    return raw;
+  }
+
+  const rewriteIfSupabase = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return text;
+    try {
+      const u = new URL(text, upstream || publicOrigin);
+      const isUpstream = upstream && u.origin === new URL(upstream).origin;
+      const isSupabaseHost = /\.supabase\.co$/i.test(u.hostname);
+      if (!isUpstream && !isSupabaseHost) return text;
+      return `${publicOrigin}${proxyPath}${u.pathname}${u.search}${u.hash}`;
+    } catch {
+      return text;
+    }
+  };
+
+  if (url.searchParams.has('redirect_uri')) {
+    url.searchParams.set('redirect_uri', rewriteIfSupabase(url.searchParams.get('redirect_uri')));
+  }
+
+  const hostIsUpstream = upstream && url.origin === new URL(upstream).origin;
+  const hostIsSupabase = /\.supabase\.co$/i.test(url.hostname);
+  if (hostIsUpstream || hostIsSupabase) {
+    return `${publicOrigin}${proxyPath}${url.pathname}${url.search}${url.hash}`;
+  }
+  return url.toString();
+}
+
+/**
+ * Browser-facing Supabase config (Google OAuth + supabase-js).
+ * Pass the Express `req` when available so preview Host headers resolve.
+ */
+function getPublicSupabaseConfig(req) {
   const { url, anonKey } = getSupabaseConfig();
   const hasUrl = Boolean(url && /^https?:\/\//i.test(url));
   const hasAnon = Boolean(anonKey && acceptExplicitAnonKey(anonKey));
   if (hasUrl && hasAnon) {
-    return { enabled: true, url, anonKey, reason: 'ok' };
+    const browserUrl = getBrowserSupabaseUrl(url, req);
+    const proxied = Boolean(
+      isSupabaseBrowserProxyEnabled()
+      && resolvePublicSiteOrigin(req)
+      && browserUrl !== String(url).replace(/\/+$/, '')
+    );
+    return {
+      enabled: true,
+      url: browserUrl,
+      anonKey,
+      reason: 'ok',
+      proxied,
+    };
   }
   let reason = 'missing_credentials';
   if (!hasUrl && !hasAnon) reason = 'missing_url_and_anon_key';
   else if (!hasUrl) reason = 'missing_url';
   else if (!hasAnon) reason = 'missing_anon_key';
   // Never partially leak credentials when disabled.
-  return { enabled: false, url: null, anonKey: null, reason };
+  return { enabled: false, url: null, anonKey: null, reason, proxied: false };
 }
 
 function resetSupabaseClientForTests() {
@@ -324,6 +435,11 @@ module.exports = {
   isPublicSupabaseEnabled,
   getSupabaseConfig,
   getPublicSupabaseConfig,
+  getBrowserSupabaseUrl,
+  supabaseBrowserProxyPath,
+  isSupabaseBrowserProxyEnabled,
+  resolvePublicSiteOrigin,
+  rewriteSupabaseProxyLocation,
   resolveSupabaseCredentials,
   resetSupabaseClientForTests,
   setSupabaseClientForTests,
