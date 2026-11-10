@@ -73,6 +73,9 @@ assert.ok(service.includes("provider: 'google'") || service.includes('Google OAu
 
 const server = read('backend/src/index.js');
 assert.ok(server.includes("app.get('/auth/callback'"), 'serves /auth/callback');
+assert.ok(server.includes("app.use('/supabase'"), 'mounts same-origin Supabase proxy');
+const vercel = read('vercel.json');
+assert.ok(vercel.includes('"/supabase/(.*)"'), 'vercel rewrites /supabase to API');
 console.log('ok');
 
 console.log('\n== CSS ==');

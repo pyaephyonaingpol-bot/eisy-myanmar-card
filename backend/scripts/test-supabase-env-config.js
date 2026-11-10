@@ -23,6 +23,11 @@ const SUPABASE_ENV_KEYS = [
   'SUPABASE_SERVICE_ROLE_KEY',
   'SUPABASE_SERVICE_KEY',
   'SUPABASE_SECRET_KEY',
+  'PUBLIC_BASE_URL',
+  'SUPABASE_BROWSER_PROXY',
+  'SUPABASE_BROWSER_PROXY_PATH',
+  'VERCEL_URL',
+  'VERCEL_PROJECT_PRODUCTION_URL',
 ];
 
 function snapshotEnv(keys) {
@@ -83,8 +88,15 @@ function main() {
     assert.strictEqual(isPublicSupabaseEnabled(), true);
     const pub = getPublicSupabaseConfig();
     assert.strictEqual(pub.enabled, true);
+    // Without PUBLIC_BASE_URL the public URL stays on the upstream project host.
     assert.strictEqual(pub.url, 'https://example.supabase.co');
+    assert.strictEqual(pub.proxied, false);
     assert.ok(pub.anonKey.startsWith('sb_publishable_'));
+
+    process.env.PUBLIC_BASE_URL = 'https://eisymyanmar.com';
+    const proxied = getPublicSupabaseConfig();
+    assert.strictEqual(proxied.url, 'https://eisymyanmar.com/supabase');
+    assert.strictEqual(proxied.proxied, true);
     console.log('ok');
 
     section('scrambled Cursor-style secrets are recovered');
@@ -109,6 +121,7 @@ function main() {
     assert.strictEqual(publicCfg.enabled, true);
     assert.strictEqual(publicCfg.url, 'https://fixture-project.supabase.co');
     assert.strictEqual(publicCfg.anonKey, 'sb_publishable_fixture_anon_key_00123456789');
+    assert.strictEqual(publicCfg.proxied, false);
     console.log('ok');
 
     section('truncated anon key alone does not enable public config');

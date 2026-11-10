@@ -18,6 +18,13 @@ directory exists (avoids `No Output Directory named "public" found`).
 
 Static files (`.js`, `.css`, `/assets/**`) are served from `public/` by Vercel CDN.
 Extensionless routes (`/`, `/admin`, `/dashboard`) rewrite to the Express function.
+`/supabase` and `/supabase/*` also rewrite to the Express function, which reverse-proxies to
+`NEXT_PUBLIC_SUPABASE_URL` so Google OAuth authorize/callback can stay on `eisymyanmar.com`
+without a Supabase Pro custom domain. Add this Authorized redirect URI in Google Cloud for the
+same OAuth client Supabase uses:
+
+`https://eisymyanmar.com/supabase/auth/v1/callback`
+
 Deposit QR images use `GET /api/qr?data=…` (PNG) so they do not rely on third-party hosts.
 
 User-uploaded deposit receipts, P2P payment proofs, and KYC images are stored in
@@ -40,12 +47,14 @@ Paste **bare values only** into the Vercel env UI (never commit `.env` files). F
 | `BINANCE_MERCHANT_ID` | Merchant id (stored on deposit metadata) |
 | `DATABASE_URL` | **Turso / LibSQL URL** (`libsql://…`) — required for persistent production data |
 | `DATABASE_AUTH_TOKEN` | Turso auth token |
-| `PUBLIC_BASE_URL` | Canonical site URL (e.g. `https://eisymyanmar.com`) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (bare `https://….supabase.co` only — no `KEY=` prefix / markdown) |
+| `PUBLIC_BASE_URL` | Canonical site URL (e.g. `https://eisymyanmar.com`) — also used as the browser Supabase proxy origin |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (bare `https://….supabase.co` only — no `KEY=` prefix / markdown). Server + `/supabase` proxy upstream; **not** what the browser uses when the proxy is on |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **Required for the browser bridge** (`createClient` via `GET /api/config/supabase`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key for server-side Storage uploads + Turso→Supabase dual-write |
 | `SUPABASE_UPLOAD_BUCKET` | Storage bucket name (default `uploads`; run `supabase/upload_storage.sql`) |
 | `SUPABASE_UPLOAD_STORAGE` | Set `false` to force local `/uploads` disk only |
+| `SUPABASE_BROWSER_PROXY` | Default `true`. Browser gets `PUBLIC_BASE_URL/supabase` instead of `*.supabase.co` |
+| `SUPABASE_BROWSER_PROXY_PATH` | Proxy mount path (default `/supabase`) |
 | `AUTH_SECRET` | Session signing secret |
 | `MASTER_PRIVATE_KEY` | TRON hex key for USDT TRC20 withdrawal payouts (fallback) |
 
