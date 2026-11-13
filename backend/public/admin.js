@@ -326,8 +326,46 @@
       clearTimeout(this._adminWarmTimer);
       this._adminWarmTimer = setTimeout(() => {
         if (document.visibilityState !== 'visible') return;
-        this.loadAll().catch(() => {});
+        // Stagger warm fetches so Turso + Supabase are not hammered in one burst
+        // (parallel loadAll was a common path into Admin auth / HTTP 504 errors).
+        this.warmAdminTabsStaggered().catch(() => {});
       }, 15000);
+    },
+
+    async warmAdminTabsStaggered() {
+      const pipeline = this._pipeline || this.getPipeline();
+      if (!pipeline) return;
+      const pageOk = (page) => !this.pagesForPipeline(pipeline) || this.pagesForPipeline(pipeline).has(page);
+      const queue = [];
+      if (pageOk('settings') && (this.hasPermission('settings_read') || this.hasPermission('rates'))) {
+        queue.push(() => this.loadPricingSettings());
+      }
+      if (pageOk('overview') && (this.hasPermission('overview') || this.hasPermission('master_wallet'))) {
+        queue.push(() => this.checkMasterWalletBalance());
+      }
+      if (pageOk('deposits') && this.hasPermission('deposits')) {
+        queue.push(() => this.loadDeposits());
+      }
+      if (pageOk('users') && this.hasPermission('users')) {
+        queue.push(() => this.loadUsers({ skipMirror: true }));
+      }
+      if (pageOk('mmk-withdrawals') && this.hasPermission('withdrawals')) {
+        queue.push(() => this.loadUsdtWithdrawals());
+      }
+      if (pageOk('cards') && this.hasPermission('cards')) {
+        queue.push(() => this.loadPendingCards());
+        queue.push(() => this.loadIssuedCards());
+      }
+      if (pageOk('support') && this.hasPermission('support')) {
+        queue.push(() => this.loadSupportThreads());
+      }
+      for (const run of queue) {
+        if (document.visibilityState !== 'visible') return;
+        try {
+          await run();
+        } catch (_) { /* ignore warm failures */ }
+        await new Promise((r) => setTimeout(r, 350));
+      }
     },
 
     async apiFormData(method, path, formData) {

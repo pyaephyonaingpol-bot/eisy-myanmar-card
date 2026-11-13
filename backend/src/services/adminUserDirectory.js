@@ -4,6 +4,10 @@
  * that never landed in that registry. The list is the union of both, sorted
  * by created_at, then paged with limit/offset so a PostgREST 15-row cap
  * cannot hide the rest.
+ *
+ * Performance: Turso scan is capped; Supabase merge is time-budgeted and
+ * briefly cached so /api/admin/users stays under the Vercel gateway limit
+ * (opaque HTTP 504) instead of scanning forever on every page click.
  */
 
 const User = require('../models/User');
@@ -78,6 +82,18 @@ function walletToUser(row) {
   };
 }
 
+function scheduleAuthUserIdLinks(links) {
+  if (!Array.isArray(links) || !links.length) return;
+  // Never block the admin list response on Turso writes — that path contributed
+  // to gateway 504s under load. Cap how many we heal per request.
+  const batch = links.slice(0, 10);
+  setImmediate(() => {
+    Promise.allSettled(
+      batch.map((link) => User.rememberAuthUserId(link.id, link.auth_user_id))
+    ).catch(() => {});
+  });
+}
+
 async function listAdminUserDirectory({
   limit = 50,
   offset = 0,
@@ -117,9 +133,11 @@ async function listAdminUserDirectory({
   }
 
   let supabaseError = null;
+  let supabaseTruncated = false;
   try {
     const wallets = await listSupabaseUserWallets();
     if (wallets.error) supabaseError = wallets.error;
+    supabaseTruncated = Boolean(wallets.truncated);
     const links = [];
     for (const row of wallets.rows || []) {
       const id = row?.user_id == null ? '' : String(row.user_id);
@@ -137,9 +155,7 @@ async function listAdminUserDirectory({
       byId.set(id, created);
       if (email && !byEmail.has(email)) byEmail.set(email, created);
     }
-    for (const link of links) {
-      await User.rememberAuthUserId(link.id, link.auth_user_id);
-    }
+    scheduleAuthUserIdLinks(links);
   } catch (err) {
     supabaseError = err.message || String(err);
   }
@@ -160,6 +176,7 @@ async function listAdminUserDirectory({
     has_more: pageOffset + users.length < total,
     sort: sortKey,
     supabase_error: supabaseError,
+    supabase_truncated: supabaseTruncated || undefined,
   };
 }
 

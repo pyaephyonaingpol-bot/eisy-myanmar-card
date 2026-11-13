@@ -28,6 +28,25 @@ function shouldTouchSession(token) {
   return true;
 }
 
+function isTransientDbError(err) {
+  const msg = String(err?.message || err || '');
+  return /timeout|timed out|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|socket|network|temporar|429|503|502|rate.?limit|too many|server busy|SQLITE_BUSY|database is locked/i.test(msg);
+}
+
+async function findAdminSessionByToken(token) {
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await UserSession.findByToken(token);
+    } catch (err) {
+      lastErr = err;
+      if (!isTransientDbError(err) || attempt === 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 /** Fallback when ADMIN_API_KEY env is unset (local/dev ONLY — never production). */
 const DEFAULT_ADMIN_API_KEY = 'eisy-admin-dev-key';
 
@@ -220,7 +239,7 @@ async function requireAdminAuth(req, res, next) {
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
 
     if (token) {
-      const session = await UserSession.findByToken(token);
+      const session = await findAdminSessionByToken(token);
       if (!session) {
         return res.status(401).json({ error: 'Invalid or expired admin session', code: 'SESSION_INVALID' });
       }
@@ -274,7 +293,23 @@ async function requireAdminAuth(req, res, next) {
     });
   } catch (err) {
     console.error('[admin auth middleware]', err);
-    return res.status(500).json({ error: 'Admin authentication error' });
+    const msg = String(err?.message || err || '');
+    if (/Database not initialized/i.test(msg)) {
+      return res.status(503).json({
+        error: 'Admin database not ready — retry in a moment',
+        code: 'ADMIN_DB_NOT_READY',
+      });
+    }
+    if (isTransientDbError(err)) {
+      return res.status(503).json({
+        error: 'Admin authentication temporarily unavailable — retry',
+        code: 'ADMIN_AUTH_UNAVAILABLE',
+      });
+    }
+    return res.status(500).json({
+      error: 'Admin authentication error',
+      code: 'ADMIN_AUTH_ERROR',
+    });
   }
 }
 

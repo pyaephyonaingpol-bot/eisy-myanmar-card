@@ -17,9 +17,9 @@ async function main() {
   const dbFile = path.join(os.tmpdir(), `eisy-delete-user-${Date.now()}.db`);
   process.env.DATABASE_URL = `file:${dbFile}`;
   process.env.NODE_ENV = 'test';
-  delete process.env.SUPABASE_URL;
-  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-  delete process.env.SUPABASE_ANON_KEY;
+  for (const key of Object.keys(process.env)) {
+    if (/SUPABASE/i.test(key)) delete process.env[key];
+  }
   delete process.env.ADMIN_EMAIL;
   delete process.env.ADMIN_PASSWORD;
 
@@ -46,6 +46,10 @@ async function main() {
   assert.ok(routeSrc.includes("'/users/:userId/delete'"), 'delete route');
   const deleteSrc = fs.readFileSync(path.join(__dirname, '../src/services/adminUserDeleteService.js'), 'utf8');
   assert.ok(!deleteSrc.includes('PRAGMA foreign_key_list'), 'delete does not scan every foreign key at request time');
+  assert.ok(deleteSrc.includes('scheduleMirrorPurge'), 'supabase mirror purge is budgeted / background');
+  assert.ok(deleteSrc.includes('admin_purge_user_mirror'), 'prefers single RPC mirror purge');
+  assert.ok(deleteSrc.includes('SUPABASE_MIRROR_TABLES'), 'bulk table list for mirror fallback');
+  assert.ok(fs.existsSync(path.join(__dirname, '../../supabase/user_delete_cascade.sql')), 'cascade SQL helper exists');
   const plan = cleanupStatements(1);
   assert.ok(plan.length <= 20, 'delete is a fixed statement batch');
   assert.ok(plan.some((step) => step.sql.includes('DELETE FROM users')), 'batch removes the user row');

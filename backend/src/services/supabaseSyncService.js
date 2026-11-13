@@ -270,11 +270,38 @@ function backfillAllUserWalletsInBackground(options = {}) {
   return _backfillInFlight;
 }
 
+let _directoryWalletCache = null; // { expiresAt, payload }
+
+function directoryWalletCacheTtlMs() {
+  const n = parseInt(process.env.ADMIN_DIRECTORY_SUPABASE_CACHE_TTL_MS || '20000', 10);
+  return Number.isFinite(n) ? Math.max(0, n) : 20000;
+}
+
+function directoryWalletFetchBudgetMs() {
+  const raw = process.env.ADMIN_DIRECTORY_SUPABASE_BUDGET_MS;
+  if (raw == null || String(raw).trim() === '') return 8000;
+  const n = parseInt(raw, 10);
+  // Allow low values in tests; production default stays 8s when unset.
+  return Number.isFinite(n) ? Math.max(250, n) : 8000;
+}
+
+function directoryWalletMaxRows() {
+  const n = parseInt(process.env.ADMIN_DIRECTORY_SUPABASE_MAX_ROWS || '5000', 10);
+  return Number.isFinite(n) ? Math.max(100, n) : 5000;
+}
+
+function resetDirectoryWalletCacheForTests() {
+  _directoryWalletCache = null;
+}
+
 /**
  * Read every row from a Supabase table.
  * PostgREST db-max-rows (sometimes 15) truncates a single .range() even when
  * a higher end index is requested. Advance by the rows actually returned and
  * keep going until `count` is covered or the next page is empty.
+ *
+ * `deadlineMs` stops pagination early so admin list handlers stay under the
+ * Vercel gateway limit instead of returning opaque HTTP 504.
  */
 async function fetchAllSupabaseRows(sb, {
   table,
@@ -283,9 +310,12 @@ async function fetchAllSupabaseRows(sb, {
   ascending = true,
   pageSize = 1000,
   maxRows = 20000,
+  deadlineMs = null,
 } = {}) {
   const selects = (Array.isArray(columnsList) ? columnsList : [columnsList]).filter(Boolean);
   let lastError = null;
+  const startedAt = Date.now();
+  const budgetMs = deadlineMs == null ? null : Math.max(1, Number(deadlineMs) || 0);
 
   for (const columns of selects) {
     const rows = [];
@@ -293,8 +323,14 @@ async function fetchAllSupabaseRows(sb, {
     let total = null;
     let previousFirstKey = undefined;
     let failed = false;
+    let truncated = false;
 
     for (;;) {
+      if (budgetMs != null && Date.now() - startedAt >= budgetMs) {
+        truncated = true;
+        break;
+      }
+
       const to = from + pageSize - 1;
       const { data, error, count } = await sb
         .from(table)
@@ -321,26 +357,49 @@ async function fetchAllSupabaseRows(sb, {
       rows.push(...batch);
       from += batch.length;
       if (total != null && rows.length >= total) break;
-      if (rows.length >= maxRows) break;
+      if (rows.length >= maxRows) {
+        truncated = true;
+        break;
+      }
     }
 
-    if (!failed) return { rows, total: total ?? rows.length, error: null };
+    if (!failed) {
+      return {
+        rows,
+        total: truncated ? rows.length : (total ?? rows.length),
+        error: null,
+        truncated,
+      };
+    }
   }
 
-  return { rows: [], total: null, error: lastError };
+  return { rows: [], total: null, error: lastError, truncated: false };
 }
 
 /**
  * Every Supabase user_wallets row, past a 15-row PostgREST cap.
+ * Cached briefly so repeated admin /users pages do not re-scan PostgREST.
  */
-async function listSupabaseUserWallets() {
+async function listSupabaseUserWallets(options = {}) {
   if (!isSupabaseEnabled()) {
-    return { enabled: false, rows: [], total: 0, error: null };
+    return { enabled: false, rows: [], total: 0, error: null, truncated: false };
   }
   const sb = getSupabase();
   if (!sb) {
-    return { enabled: false, rows: [], total: 0, error: 'supabase_client_unavailable' };
+    return { enabled: false, rows: [], total: 0, error: 'supabase_client_unavailable', truncated: false };
   }
+
+  const bypassCache = options.bypassCache === true;
+  const now = Date.now();
+  if (!bypassCache && _directoryWalletCache && _directoryWalletCache.expiresAt > now) {
+    return _directoryWalletCache.payload;
+  }
+
+  const cacheTtlMs = directoryWalletCacheTtlMs();
+  const budgetMs = options.deadlineMs != null
+    ? Number(options.deadlineMs)
+    : directoryWalletFetchBudgetMs();
+  const maxRows = options.maxRows != null ? Number(options.maxRows) : directoryWalletMaxRows();
 
   const result = await fetchAllSupabaseRows(sb, {
     table: 'user_wallets',
@@ -351,12 +410,41 @@ async function listSupabaseUserWallets() {
     ],
     orderColumn: 'user_id',
     ascending: true,
+    // PostgREST often caps near 15–1000; smaller pages keep each RTT short.
+    pageSize: Math.min(1000, Math.max(50, Number(options.pageSize) || 200)),
+    maxRows,
+    deadlineMs: budgetMs,
   });
 
   if (result.error) {
-    return { enabled: true, rows: [], total: null, error: result.error.message || String(result.error) };
+    const payload = {
+      enabled: true,
+      rows: [],
+      total: null,
+      error: result.error.message || String(result.error),
+      truncated: false,
+    };
+    return payload;
   }
-  return { enabled: true, rows: result.rows, total: result.total, error: null };
+
+  const payload = {
+    enabled: true,
+    rows: result.rows,
+    total: result.total,
+    error: result.truncated
+      ? `supabase_scan_truncated_after_${result.rows.length}_rows`
+      : null,
+    truncated: Boolean(result.truncated),
+  };
+
+  if (cacheTtlMs > 0 && !result.truncated) {
+    _directoryWalletCache = {
+      expiresAt: now + cacheTtlMs,
+      payload,
+    };
+  }
+
+  return payload;
 }
 
 /**
@@ -709,4 +797,5 @@ module.exports = {
   isSupabaseEnabled,
   fetchAllSupabaseRows,
   listSupabaseUserWallets,
+  resetDirectoryWalletCacheForTests,
 };
