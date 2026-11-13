@@ -12,7 +12,8 @@
  *   SUPABASE_BROWSER_PROXY_PATH — public mount path (default /supabase)
  *   SUPABASE_BROWSER_PROXY — set false/off to disable public URL rewriting
  *   PUBLIC_BASE_URL — site origin used when rewriting Location / redirect_uri
- *   SUPABASE_PROXY_TIMEOUT_MS — upstream fetch timeout (default 60000)
+ *   SUPABASE_PROXY_TIMEOUT_MS — upstream fetch timeout (default 25000;
+ *     keep under Vercel maxDuration so clients get 502 instead of opaque 504)
  */
 const express = require('express');
 const {
@@ -116,8 +117,8 @@ router.use(async (req, res) => {
   const publicOrigin = resolvePublicSiteOrigin(req);
   const proxyPath = supabaseBrowserProxyPath();
   const timeoutMs = Math.min(
-    120000,
-    Math.max(5000, Number(process.env.SUPABASE_PROXY_TIMEOUT_MS) || 60000)
+    55000,
+    Math.max(5000, Number(process.env.SUPABASE_PROXY_TIMEOUT_MS) || 25000)
   );
 
   try {

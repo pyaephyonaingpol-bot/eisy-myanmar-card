@@ -1529,6 +1529,8 @@ router.get('/users', requirePermission('users'), async (req, res) => {
   try {
     // Union of Turso users and every Supabase wallet, paged in this API.
     // A PostgREST max-rows cap (for example 15) must not hide the rest.
+    // Supabase scan is time-budgeted inside listAdminUserDirectory so this
+    // handler returns before the Vercel gateway emits opaque HTTP 504.
     const { listAdminUserDirectory } = require('../services/adminUserDirectory');
     const page = await listAdminUserDirectory({
       limit: req.query.limit,
@@ -1548,7 +1550,9 @@ router.get('/users', requirePermission('users'), async (req, res) => {
       const sync = require('../services/supabaseSyncService');
       try {
         if (awaitSync) {
-          backfill = await sync.backfillAllUserWallets();
+          // Full backfill can exceed serverless duration — never await it on the list path.
+          sync.backfillAllUserWalletsInBackground({ source: 'admin-users-sync' });
+          backfill = { started: true, mode: 'background' };
         }
         mirror = await sync.getUserWalletsMirrorStatus({
           includeMissingIds: String(req.query.include_missing || '').trim() === '1',

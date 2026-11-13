@@ -65,6 +65,7 @@ async function main() {
   }
 
   const { resetSupabaseClientForTests, setSupabaseClientForTests } = require('../src/lib/supabase');
+  const { resetDirectoryWalletCacheForTests } = require('../src/services/supabaseSyncService');
   const { initDb, closeDb, getDb } = require('../src/db');
   await initDb();
 
@@ -73,6 +74,7 @@ async function main() {
   const db = getDb();
 
   try {
+    resetDirectoryWalletCacheForTests();
     const localIds = [];
     for (let i = 1; i <= 15; i += 1) {
       const user = await User.create({
@@ -116,7 +118,13 @@ async function main() {
     const total = tursoCount + 34;
 
     resetSupabaseClientForTests();
+    resetDirectoryWalletCacheForTests();
     setSupabaseClientForTests(makeCappedSupabase(wallets, 15));
+
+    // Tests need the full uncapped scan — disable the production time budget.
+    process.env.ADMIN_DIRECTORY_SUPABASE_BUDGET_MS = '120000';
+    process.env.ADMIN_DIRECTORY_SUPABASE_CACHE_TTL_MS = '0';
+    process.env.ADMIN_DIRECTORY_SUPABASE_MAX_ROWS = '20000';
 
     const all = await listAdminUserDirectory({ limit: 10000, offset: 0, sort: 'created_at_desc' });
     assert.strictEqual(all.total, total, 'directory includes every Supabase wallet plus Turso users');
