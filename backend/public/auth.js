@@ -340,7 +340,19 @@ const Auth = {
     };
   },
 
+  assertGmailOnlyEmail(email) {
+    const normalized = String(email || '').trim().toLowerCase();
+    if (!normalized.endsWith('@gmail.com')) {
+      throw Object.assign(
+        new Error('Gmail accounts only. Other email providers are not allowed for OTP.'),
+        { code: 'GMAIL_ONLY_REQUIRED' }
+      );
+    }
+    return normalized;
+  },
+
   async sendRegisterOtp(email) {
+    this.assertGmailOnlyEmail(email);
     return this.api('POST', '/api/auth/register/send-otp', { email });
   },
 
@@ -370,6 +382,7 @@ const Auth = {
   },
 
   async sendLoginOtp(email) {
+    this.assertGmailOnlyEmail(email);
     return this.api('POST', '/api/auth/login/send-otp', { email });
   },
 
@@ -464,6 +477,7 @@ const Auth = {
   async sendPinResetOtp(email) {
     const target = (email || this.user?.email || '').trim();
     if (!target) throw new Error('Email is required to reset your PIN');
+    this.assertGmailOnlyEmail(target);
     return this.api('POST', '/api/auth/pin/reset/send-otp', { email: target });
   },
 
