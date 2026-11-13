@@ -5,7 +5,7 @@
 -- write other users' rows.
 --
 -- Goals:
---   1) ENABLE ROW LEVEL SECURITY on every public app table (and storage.objects).
+--   1) ENABLE ROW LEVEL SECURITY on every public app table.
 --   2) Drop open / mis-scoped policies (especially "service_role_*" policies that
 --      omitted `TO service_role` and therefore applied to anon + authenticated).
 --   3) Authenticated users: SELECT (and limited profile UPDATE) of OWN rows only
@@ -14,6 +14,8 @@
 --   5) service_role: full access for Express / Edge (SUPABASE_SERVICE_ROLE_KEY).
 --
 -- Safe to re-run. Does NOT require / create user_wallets.auth_user_id.
+-- Does NOT touch storage.objects (avoids ERROR 42501 must be owner of table objects).
+-- Configure Storage RLS in the Supabase Dashboard → Storage settings instead.
 -- =============================================================================
 
 -- ─── Helpers (user_id only — matches live schemas without auth_user_id) ───────
@@ -326,14 +328,6 @@ BEGIN
   END LOOP;
 END $$;
 
--- Storage objects (bucket policies)
-DO $$
-BEGIN
-  IF to_regclass('storage.objects') IS NOT NULL THEN
-    ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-  END IF;
-END $$;
-
 -- ─── Revoke default client privileges on app tables ──────────────────────────
 DO $$
 DECLARE
@@ -614,35 +608,14 @@ BEGIN
   END LOOP;
 END $$;
 
--- ─── Storage lockdown ────────────────────────────────────────────────────────
--- Keep public READ of proof images in the uploads bucket (legacy public URLs).
--- Writes must be service_role only (Express upload path).
-DO $$
-BEGIN
-  IF to_regclass('storage.objects') IS NULL THEN
-    RETURN;
-  END IF;
-
-  DROP POLICY IF EXISTS "Public read uploads bucket" ON storage.objects;
-  DROP POLICY IF EXISTS "Service role manage uploads bucket" ON storage.objects;
-  DROP POLICY IF EXISTS "Authenticated upload to uploads bucket" ON storage.objects;
-  DROP POLICY IF EXISTS "Anon upload to uploads bucket" ON storage.objects;
-
-  CREATE POLICY "public_select_uploads_bucket"
-    ON storage.objects FOR SELECT
-    TO anon, authenticated, service_role
-    USING (bucket_id = 'uploads');
-
-  CREATE POLICY "service_role_manage_uploads_bucket"
-    ON storage.objects FOR ALL
-    TO service_role
-    USING (bucket_id = 'uploads')
-    WITH CHECK (bucket_id = 'uploads');
-END $$;
+-- Storage RLS is intentionally omitted here (storage.objects is owned by
+-- Supabase; ALTER/POLICY from the SQL Editor often fails with 42501).
+-- Set bucket policies in Dashboard → Storage, or run supabase/upload_storage.sql
+-- only if your role can own/manage storage.objects.
 
 -- ─── Verification helpers (read-only) ────────────────────────────────────────
 -- After apply, run:
 --   SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER BY 1;
 --   SELECT tablename, policyname, roles, cmd, qual
---     FROM pg_policies WHERE schemaname IN ('public','storage') ORDER BY 1,2;
+--     FROM pg_policies WHERE schemaname = 'public' ORDER BY 1, 2;
 -- Expect: no anon policies on money tables; authenticated policies use is_own_*.
