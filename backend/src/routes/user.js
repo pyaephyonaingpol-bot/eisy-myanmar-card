@@ -639,7 +639,12 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
         if (!isCardProviderSoftError(err)) throw err;
         timedOut = isCardTimeoutError(err);
         providerUnavailable = !timedOut;
-        providerErrorCode = err.code || (timedOut ? 'CARD_REQUEST_TIMEOUT' : 'PAGO_BAD_RESPONSE');
+        providerErrorCode = err.code
+          || (timedOut
+            ? 'CARD_REQUEST_TIMEOUT'
+            : (/unable to retrieve card/i.test(String(err.message || ''))
+              ? 'PAGO_CARD_RETRIEVE_FAILED'
+              : 'PAGO_BAD_RESPONSE'));
         console.warn('[user/cards/detail] provider fetch soft-fail:', err.code || err.message);
       }
     }

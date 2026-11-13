@@ -367,13 +367,20 @@ function resolveConfig(options: PagoCardClientOptions = {}): ResolvedPagoConfig 
   };
 }
 
-function pagoAuthHeaders(config: ResolvedPagoConfig): Record<string, string> {
+function pagoAuthHeaders(
+  config: ResolvedPagoConfig,
+  { withJsonContentType = false }: { withJsonContentType?: boolean } = {}
+): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    'Content-Type': 'application/json',
     publickey: config.apiKey,
     secretkey: config.secretKey,
   };
+  // Only set Content-Type when sending a JSON body. Some Pagocards/Get Card
+  // paths reject GET requests that advertise application/json with no body.
+  if (withJsonContentType) {
+    headers['Content-Type'] = 'application/json';
+  }
   const proxyKey = resolvePagoProxyAccessKey();
   if (proxyKey) headers[PAGO_PROXY_ACCESS_HEADER] = proxyKey;
   return headers;
@@ -386,7 +393,8 @@ async function pagoRequest<T>(
   options: { body?: unknown; idempotencyKey?: string; timeoutMs?: number } = {}
 ): Promise<T> {
   const timeoutMs = resolveRequestTimeout(options.timeoutMs);
-  const headers = pagoAuthHeaders(config);
+  const hasBody = options.body !== undefined;
+  const headers = pagoAuthHeaders(config, { withJsonContentType: hasBody });
   if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
 
   const requestUrl = joinPagoRequestUrl(config.baseUrl, path);
@@ -395,7 +403,7 @@ async function pagoRequest<T>(
     response = await config.fetchImpl(requestUrl, {
       method,
       headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      body: hasBody ? JSON.stringify(options.body) : undefined,
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
@@ -719,7 +727,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
       });
     }
 
-    const headers = pagoAuthHeaders(config);
+    const headers = pagoAuthHeaders(config, { withJsonContentType: true });
 
     const listPath = businessPath('/cards/getallcards');
     const listRequestUrl = joinPagoRequestUrl(config.baseUrl, listPath);

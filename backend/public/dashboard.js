@@ -10590,10 +10590,14 @@ const Dashboard = {
     }
     if (!this.hasUsablePagoWalletSecrets(full)) {
       this.toast(
-        this.i18nText(
-          'pago_wallet_need_details',
-          'Reveal or refresh card details before copying.'
-        ),
+        this.cardTimeoutMessage({
+          code: full?.provider_error_code || (full?.pan_provider_unavailable ? 'PAGO_CARD_RETRIEVE_FAILED' : ''),
+          message: full?.pan_timed_out ? 'timeout' : 'Unable to retrieve card.',
+        })
+          || this.i18nText(
+            'pago_retrieve_error',
+            'Card details are temporarily unavailable. Tap the eye icon to try again.'
+          ),
         'error'
       );
       this.showPagoCardDetail(full);
@@ -11134,6 +11138,7 @@ const Dashboard = {
 
   cardTimeoutMessage(err) {
     const code = String(err?.code || '');
+    const msg = String(err?.message || '').toLowerCase();
     if (
       code === 'REQUEST_TIMEOUT'
       || code === 'PAGO_TIMEOUT'
@@ -11143,9 +11148,19 @@ const Dashboard = {
       return this.i18nText('pago_timeout', 'Card service timed out. Please try again.');
     }
     if (
+      code === 'PAGO_CARD_RETRIEVE_FAILED'
+      || /unable to retrieve card/i.test(msg)
+    ) {
+      return this.i18nText(
+        'pago_retrieve_error',
+        'Card details are temporarily unavailable. Tap the eye icon to try again.'
+      );
+    }
+    if (
       code === 'PAGO_NETWORK'
       || code === 'NETWORK_ERROR'
       || code === 'PAGO_BAD_RESPONSE'
+      || code === 'PAGO_PROXY_UNAUTHORIZED'
       || Number(err?.status) === 502
       || Number(err?.status) === 503
     ) {
@@ -11154,7 +11169,6 @@ const Dashboard = {
         'Could not reach Pagocards. Check your connection and tap the eye icon to try again.'
       );
     }
-    const msg = String(err?.message || '').toLowerCase();
     if (
       /fetch failed|failed to fetch|networkerror|non-json|bad gateway|gateway timeout/.test(msg)
     ) {
