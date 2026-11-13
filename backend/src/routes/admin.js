@@ -1610,28 +1610,46 @@ router.post('/users/backfill-wallets', requirePermission('users'), async (_req, 
 
 
 router.post('/users/:userId/delete', requirePermission('users'), async (req, res) => {
+  const started = Date.now();
   try {
     const userId = parseInt(req.params.userId, 10);
     if (!userId) return res.status(400).json({ error: 'Invalid user id', code: 'INVALID_USER_ID' });
 
+    // Turso delete is a fixed batch; Supabase mirror purge is budgeted / background
+    // so this handler stays under the Vercel gateway limit (opaque HTTP 504).
     const result = await deleteAdminUser(userId, {
       confirm: req.body?.confirm,
       adminId: req.user?.id || null,
       adminEmail: req.user?.email || null,
     });
 
+    console.info('[admin/users/delete] ok', {
+      userId,
+      source: result.source,
+      supabase_wallet: result.supabase_wallet || null,
+      ms: Date.now() - started,
+    });
+
     return res.json({
       success: true,
       removed: true,
-      message: 'User deleted',
+      message: result.supabase_wallet === 'pending'
+        ? 'User deleted (Supabase mirror cleanup continuing in background)'
+        : 'User deleted',
       source: result.source,
       user: result.user,
       supabase_wallet: result.supabase_wallet || null,
+      supabase_mirror: result.supabase_mirror || null,
     });
   } catch (err) {
-    console.error('[admin/users/delete]', err.message, err.code || '');
-    const code = err.status || 400;
-    return res.status(code >= 400 && code < 600 ? code : 500).json({
+    console.error('[admin/users/delete]', {
+      message: err.message,
+      code: err.code || null,
+      status: err.status || null,
+      ms: Date.now() - started,
+    });
+    const status = err.status || 400;
+    return res.status(status >= 400 && status < 600 ? status : 500).json({
       error: err.message || 'Failed to delete user',
       code: err.code || 'USER_DELETE_FAILED',
     });
