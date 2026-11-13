@@ -422,6 +422,7 @@ function sendPagoError(res, err, fallback) {
     code === 'CARD_LIMIT_REACHED'
     || code === 'RATE_LIMITED'
     || code === 'CARD_ISSUE_COOLDOWN'
+    || code === 'CARD_ISSUE_DAILY_LIMIT'
     || code === 'CARD_ISSUE_USER_RATE_LIMITED'
     || code === 'CARD_ISSUE_IP_RATE_LIMITED'
   ) status = 429;
@@ -465,11 +466,11 @@ router.post(
         return res.status(401).json({ error: 'Authentication required', code: 'AUTH_REQUIRED' });
       }
       const {
-        assertCardIssueCooldown,
+        assertCardIssueDailyLimit,
         createCardIssueConfirmToken,
         CONFIRM_ACK,
       } = require('../services/cardIssueAbuseService');
-      await assertCardIssueCooldown(req.user.id);
+      await assertCardIssueDailyLimit(req.user.id);
       const challenge = createCardIssueConfirmToken(req.user.id);
       return res.json({
         success: true,
@@ -553,12 +554,17 @@ router.post(
         ...payload,
       });
     } catch (err) {
-      if (err.code === 'CARD_ISSUE_COOLDOWN' || err._cardIssueCooldown) {
+      if (
+        err.code === 'CARD_ISSUE_DAILY_LIMIT'
+        || err.code === 'CARD_ISSUE_COOLDOWN'
+        || err._cardIssueDailyLimit
+        || err._cardIssueCooldown
+      ) {
         try {
           const { recordCardIssueAbuseStrike } = require('../services/cardIssueAbuseService');
           const { getRequestIp } = require('../middleware/ipBlocklist');
           const abuse = await recordCardIssueAbuseStrike(req.user?.id, {
-            reason: 'card_issue_cooldown_bypass_attempt',
+            reason: 'card_issue_daily_limit_bypass_attempt',
             ip: getRequestIp(req) || req.ip || null,
             path: String(req.originalUrl || req.url || ''),
             email: req.user?.email || null,

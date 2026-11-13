@@ -86,7 +86,10 @@ assert.strictEqual(
   );
 
   const abuseSrc = fs.readFileSync(path.join(__dirname, '../src/services/cardIssueAbuseService.js'), 'utf8');
+  assert.ok(abuseSrc.includes('assertCardIssueDailyLimit'));
   assert.ok(abuseSrc.includes('assertCardIssueCooldown'));
+  assert.ok(abuseSrc.includes('countCardsIssuedInWindow'));
+  assert.ok(abuseSrc.includes('Daily card limit reached. You can only issue 1 card per day.'));
   assert.ok(abuseSrc.includes('recordCardIssueAbuseStrike'));
   assert.ok(abuseSrc.includes('createCardIssueConfirmToken'));
 

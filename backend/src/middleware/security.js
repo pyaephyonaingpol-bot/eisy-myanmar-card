@@ -107,11 +107,12 @@ function createSignupRateLimiter() {
 
 /**
  * Virtual card issue — per authenticated user (falls back to IP).
- * Default: 1 request / hour / user. On trip: abuse strike → auto-block.
+ * Default: 1 request / 24h / user (aligned with durable daily card cap).
+ * On trip: abuse strike → auto-block.
  */
 function createCardIssueRateLimiter() {
   return rateLimit({
-    windowMs: envInt('RATE_LIMIT_CARD_ISSUE_WINDOW_MS', 60 * 60 * 1000),
+    windowMs: envInt('RATE_LIMIT_CARD_ISSUE_WINDOW_MS', 24 * 60 * 60 * 1000),
     max: envInt('RATE_LIMIT_CARD_ISSUE_MAX', 1),
     standardHeaders: true,
     legacyHeaders: false,
@@ -152,7 +153,7 @@ function createCardIssueRateLimiter() {
         console.warn('[rate-limit] card-issue alert skipped:', err.message);
       }
       return res.status(options.statusCode || 429).json({
-        error: 'Too many card requests. You can request one card per hour.',
+        error: 'Daily card limit reached. You can only issue 1 card per day.',
         code: 'CARD_ISSUE_USER_RATE_LIMITED',
       });
     },

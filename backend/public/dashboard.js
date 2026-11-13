@@ -11410,10 +11410,17 @@ const Dashboard = {
           'error'
         );
       }
-      if (err.code === 'CARD_ISSUE_COOLDOWN' || err.code === 'CARD_ISSUE_USER_RATE_LIMITED') {
+      if (
+        err.code === 'CARD_ISSUE_DAILY_LIMIT'
+        || err.code === 'CARD_ISSUE_COOLDOWN'
+        || err.code === 'CARD_ISSUE_USER_RATE_LIMITED'
+      ) {
         this.toast(
           err.message
-            || this.i18nText('pago_request_cooldown', 'You can only request one card per hour.'),
+            || this.i18nText(
+              'pago_request_daily_limit',
+              'Daily card limit reached. You can only issue 1 card per day.'
+            ),
           'error'
         );
       }
