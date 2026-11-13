@@ -20,10 +20,15 @@ function makeCappedSupabase(wallets, cap = 15) {
       const api = {
         _from: 0,
         _to: null,
+        _ids: null,
         select() { return api; },
         eq() { return api; },
         ilike() { return api; },
         order() { return api; },
+        in(_col, ids) {
+          api._ids = Array.isArray(ids) ? ids.map(String) : null;
+          return api;
+        },
         range(fromIdx, toIdx) {
           api._from = fromIdx;
           api._to = toIdx;
@@ -35,6 +40,15 @@ function makeCappedSupabase(wallets, cap = 15) {
           try {
             if (table !== 'user_wallets') {
               resolve({ data: [], error: null, count: 0 });
+              return;
+            }
+            if (api._ids) {
+              const idSet = new Set(api._ids);
+              resolve({
+                data: wallets.filter((row) => idSet.has(String(row.user_id))),
+                error: null,
+                count: api._ids.length,
+              });
               return;
             }
             const start = api._from || 0;
@@ -126,7 +140,13 @@ async function main() {
     process.env.ADMIN_DIRECTORY_SUPABASE_CACHE_TTL_MS = '0';
     process.env.ADMIN_DIRECTORY_SUPABASE_MAX_ROWS = '20000';
 
-    const all = await listAdminUserDirectory({ limit: 10000, offset: 0, sort: 'created_at_desc' });
+    const all = await listAdminUserDirectory({
+      limit: 10000,
+      offset: 0,
+      sort: 'created_at_desc',
+      includeOrphans: true,
+    });
+    assert.strictEqual(all.mode, 'union');
     assert.strictEqual(all.total, total, 'directory includes every Supabase wallet plus Turso users');
     assert.strictEqual(all.users.length, total, 'All page size returns every user in one response');
     assert.strictEqual(String(all.users[0].id), newestId, 'newest created_at is first');
@@ -140,7 +160,12 @@ async function main() {
     const seen = new Set();
     let offset = 0;
     while (offset < total + 15) {
-      const page = await listAdminUserDirectory({ limit: 15, offset, sort: 'created_at_desc' });
+      const page = await listAdminUserDirectory({
+        limit: 15,
+        offset,
+        sort: 'created_at_desc',
+        includeOrphans: true,
+      });
       assert.ok(page.users.length > 0);
       assert.strictEqual(page.limit, 15);
       for (const row of page.users) {
@@ -152,12 +177,29 @@ async function main() {
     }
     assert.strictEqual(seen.size, total, 'paging 15 at a time still reaches all 49 wallets');
 
-    const found = await listAdminUserDirectory({ q: 'wallet5020@example.com', limit: 50, offset: 0 });
+    const found = await listAdminUserDirectory({
+      q: 'wallet5020@example.com',
+      limit: 50,
+      offset: 0,
+      includeOrphans: true,
+    });
     assert.strictEqual(found.total, 1);
     assert.strictEqual(String(found.users[0].id), '5020');
 
-    const blocked = await listAdminUserDirectory({ status: 'blocked', limit: 50, offset: 0 });
+    const blocked = await listAdminUserDirectory({
+      status: 'blocked',
+      limit: 50,
+      offset: 0,
+      includeOrphans: true,
+    });
     assert.ok(blocked.users.some((row) => String(row.id) === '5003'));
+
+    // Default hot path must SQL-page Turso only (no full union) — this is what
+    // keeps /api/admin/users under the Vercel gateway limit.
+    const fast = await listAdminUserDirectory({ limit: 10, offset: 0, sort: 'created_at_desc' });
+    assert.strictEqual(fast.mode, 'registry');
+    assert.ok(fast.users.length <= 10);
+    assert.strictEqual(fast.total, tursoCount, 'default list total is Turso count, not full union');
 
     const adminJs = fs.readFileSync(path.join(__dirname, '../public/admin.js'), 'utf8');
     assert.ok(adminJs.includes('usersGoNextPage') && adminJs.includes('usersLoadMore'), 'pager controls stay wired');

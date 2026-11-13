@@ -25,15 +25,40 @@ async function initDb() {
 
   if (config.mode === 'libsql') {
     const { createClient } = require('@libsql/client');
-    const client = createClient({
+    const fetchTimeoutMs = Math.max(
+      2000,
+      parseInt(process.env.LIBSQL_FETCH_TIMEOUT_MS || '15000', 10) || 15000
+    );
+    const concurrency = Math.max(
+      1,
+      Math.min(32, parseInt(process.env.LIBSQL_CONCURRENCY || '8', 10) || 8)
+    );
+    const clientOpts = {
       url: config.url,
       authToken: config.authToken,
-    });
+      intMode: 'number',
+      concurrency,
+    };
+    // Bound each Turso HTTP round-trip so a hung connection cannot sit until
+    // the Vercel gateway emits opaque HTTP 504.
+    if (typeof globalThis.fetch === 'function' && !String(config.url).startsWith('file:')) {
+      clientOpts.fetch = (input, init = {}) => {
+        const timeout = AbortSignal.timeout(fetchTimeoutMs);
+        const signal = init.signal
+          ? AbortSignal.any([init.signal, timeout])
+          : timeout;
+        return globalThis.fetch(input, { ...init, signal });
+      };
+    }
+    const client = createClient(clientOpts);
     db = createLibsqlDb(client);
     if (String(config.url).startsWith('file:')) {
       console.log('[db] Connected to LibSQL file database:', config.filePath || config.url);
     } else {
-      console.log('[db] Connected to persistent LibSQL / Turso database');
+      console.log('[db] Connected to persistent LibSQL / Turso database', {
+        concurrency,
+        fetchTimeoutMs,
+      });
     }
   } else if (config.mode === 'sqlite-file') {
     db = await openLegacySqlite3(config.filePath);
@@ -57,17 +82,31 @@ async function initDb() {
   await ensurePagoCardColumns(db, columnExists, tableExists);
   await ensurePago3dsEventsTable(db, tableExists);
 
-  try {
-    const { migrateAllLegacyUsdBalances } = require('./services/walletService');
-    await migrateAllLegacyUsdBalances();
-  } catch (err) {
-    console.warn('[db] Legacy USD migration skipped:', err.message);
-  }
+  // Defer non-critical housekeeping so auth / admin list APIs are not blocked
+  // on cold start (a common path into gateway HTTP 504).
+  const bootDb = db;
+  setImmediate(() => {
+    if (db !== bootDb) return;
+    Promise.resolve()
+      .then(async () => {
+        try {
+          const { migrateAllLegacyUsdBalances } = require('./services/walletService');
+          await migrateAllLegacyUsdBalances();
+        } catch (err) {
+          console.warn('[db] Legacy USD migration skipped:', err.message);
+        }
+      })
+      .catch((err) => {
+        console.warn('[db] deferred boot work failed:', err.message);
+      });
+  });
 
-  const tables = await db.all(
-    "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
-  );
-  console.log('[db] Tables ready:', tables.map((t) => t.name).join(', '));
+  if (process.env.NODE_ENV !== 'production' && process.env.VERCEL !== '1') {
+    const tables = await db.all(
+      "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+    );
+    console.log('[db] Tables ready:', tables.map((t) => t.name).join(', '));
+  }
 
   const userCount = await db.get('SELECT COUNT(*) AS c FROM users');
   console.log('[db] User count:', Number(userCount?.c || 0));

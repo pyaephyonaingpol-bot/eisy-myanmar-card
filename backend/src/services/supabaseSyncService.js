@@ -448,6 +448,49 @@ async function listSupabaseUserWallets(options = {}) {
 }
 
 /**
+ * Fetch a small set of user_wallets by id (admin page enrich).
+ * One PostgREST round-trip — never paginate the whole table for a page view.
+ */
+async function listSupabaseWalletsByUserIds(userIds = []) {
+  const ids = [...new Set((userIds || []).map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!ids.length) {
+    return { enabled: false, rows: [], error: null };
+  }
+  if (!isSupabaseEnabled()) {
+    return { enabled: false, rows: [], error: null };
+  }
+  const sb = getSupabase();
+  if (!sb) {
+    return { enabled: false, rows: [], error: 'supabase_client_unavailable' };
+  }
+
+  const columnsList = [
+    'user_id, email, name, balance_usdt, updated_at, created_at, auth_status',
+    'user_id, email, name, balance_usdt, updated_at, created_at',
+    'user_id, email, name, balance_usdt, updated_at',
+  ];
+
+  let lastError = null;
+  for (const columns of columnsList) {
+    const { data, error } = await sb
+      .from('user_wallets')
+      .select(columns)
+      .in('user_id', ids.slice(0, 200));
+    if (error) {
+      lastError = error;
+      continue;
+    }
+    return { enabled: true, rows: data || [], error: null };
+  }
+
+  return {
+    enabled: true,
+    rows: [],
+    error: lastError ? (lastError.message || String(lastError)) : null,
+  };
+}
+
+/**
  * Compare Turso users vs Supabase user_wallets (paginated) so admins can see
  * whether the mirror is complete — not stuck on PostgREST's default page size.
  */
@@ -797,5 +840,6 @@ module.exports = {
   isSupabaseEnabled,
   fetchAllSupabaseRows,
   listSupabaseUserWallets,
+  listSupabaseWalletsByUserIds,
   resetDirectoryWalletCacheForTests,
 };
