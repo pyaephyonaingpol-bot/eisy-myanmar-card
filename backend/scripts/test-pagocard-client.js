@@ -176,7 +176,11 @@ const sampleCard = {
     assert.strictEqual(calls[0].init.method, 'GET');
     assert.strictEqual(calls[0].init.headers.publickey, 'pub-test-key');
     assert.strictEqual(calls[0].init.headers.secretkey, 'sec-test-key');
-    assert.strictEqual(calls[0].init.headers['Content-Type'], 'application/json');
+    assert.strictEqual(
+      calls[0].init.headers['Content-Type'],
+      undefined,
+      'GET getCardDetails must not send Content-Type without a body'
+    );
     assert.strictEqual(calls[0].init.body, undefined);
     const balance = await api.getCardBalance('card_test_1');
     assert.deepStrictEqual(balance, { amount: 12000000, display_amount: 12, currency: 'USD' });

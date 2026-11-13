@@ -63,13 +63,37 @@ function isCardTimeoutError(err) {
   return code === 'PAGO_TIMEOUT' || code === 'CARD_REQUEST_TIMEOUT';
 }
 
-/** Provider unreachable or slow — safe to return saved card rows to the client. */
+/** Pagocards Get Card often returns this right after unblock / vendor PAN fetch. */
+function isPagoRetrieveFailure(err) {
+  const code = String(err?.code || '');
+  const msg = String(err?.message || '').toLowerCase();
+  if (code === 'PAGO_CARD_RETRIEVE_FAILED') return true;
+  if (/unable to retrieve card/i.test(msg)) return true;
+  if (code === 'CARD_NOT_FOUND' || code === 'PAGO_REQUEST_FAILED') {
+    const status = Number(err?.status);
+    return status === 404 || status === 502 || status === 503;
+  }
+  return false;
+}
+
+/** Provider unreachable, slow, or transient retrieve failure — return saved rows. */
 function isCardProviderSoftError(err) {
   if (isCardTimeoutError(err)) return true;
+  if (isPagoRetrieveFailure(err)) return true;
   const code = String(err?.code || '');
-  if (code === 'PAGO_NETWORK' || code === 'PAGO_BAD_RESPONSE') return true;
+  if (
+    code === 'PAGO_NETWORK'
+    || code === 'PAGO_BAD_RESPONSE'
+    || code === 'PAGO_PROXY_UNAUTHORIZED'
+  ) {
+    return true;
+  }
   const msg = String(err?.message || '').toLowerCase();
-  return /fetch failed|econnreset|etimedout|enotfound|network|socket hang up/i.test(msg);
+  return /fetch failed|econnreset|etimedout|enotfound|network|socket hang up|unable to retrieve card/i.test(msg);
+}
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function truncateUsd(amount) {
@@ -247,6 +271,20 @@ function rethrowPago(err) {
       'Pagocards proxy unreachable. Update PAGO_CARD_API_BASE_URL to the new Droplet host and whitelist its public IP at Pagocards.',
       503,
       'PAGO_NETWORK'
+    );
+  }
+  if (code === 'PAGO_PROXY_UNAUTHORIZED') {
+    throw httpError(
+      'Pagocards proxy authentication failed. Redeploy Vercel and the Droplet together.',
+      503,
+      'PAGO_PROXY_UNAUTHORIZED'
+    );
+  }
+  if (isPagoRetrieveFailure(err)) {
+    throw httpError(
+      'Card details are temporarily unavailable from Pagocards. Tap reveal to try again.',
+      Number(err?.status) === 404 ? 404 : 502,
+      'PAGO_CARD_RETRIEVE_FAILED'
     );
   }
   if (code === 'PAGO_NOT_CONFIGURED') {
@@ -741,15 +779,42 @@ async function refreshPagoCard(userId, localCardId, deps = {}) {
   }
   if (!card.pago_card_id) return card;
 
+  const maxAttempts = Math.max(1, Math.min(5, Number(deps.refreshAttempts) || 3));
   let remote;
-  try {
-    remote = await getClient({
-      ...deps,
-      timeoutMs: deps.timeoutMs || CARD_FETCH_TIMEOUT_MS,
-    }).getCardDetails(card.pago_card_id);
-  } catch (err) {
-    rethrowPago(err);
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      remote = await getClient({
+        ...deps,
+        timeoutMs: deps.timeoutMs || CARD_FETCH_TIMEOUT_MS,
+      }).getCardDetails(card.pago_card_id);
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+      const retryable = isPagoRetrieveFailure(err)
+        || isCardTimeoutError(err)
+        || String(err?.code || '') === 'PAGO_NETWORK'
+        || String(err?.code || '') === 'PAGO_BAD_RESPONSE';
+      console.warn(
+        '[pago] getCardDetails attempt failed',
+        JSON.stringify({
+          attempt,
+          maxAttempts,
+          pago_card_id: card.pago_card_id,
+          code: err?.code || null,
+          status: err?.status || null,
+          message: String(err?.message || '').slice(0, 160),
+          retryable,
+        })
+      );
+      if (!retryable || attempt >= maxAttempts) {
+        rethrowPago(err);
+      }
+      await sleepMs(350 * attempt);
+    }
   }
+  if (!remote) rethrowPago(lastErr || httpError('Pago Card request failed', 502, 'PAGO_ERROR'));
   const fields = cardFieldsFromProvider(remote);
   const updated = await Card.updateFromPago(card.id, fields);
   return updated;
@@ -1439,6 +1504,7 @@ module.exports = {
   withCardApiTimeout,
   isCardTimeoutError,
   isCardProviderSoftError,
+  isPagoRetrieveFailure,
   needsSensitiveDetails,
   cardSecretsReady,
   issuePagoCardForUser,
