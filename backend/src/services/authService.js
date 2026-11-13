@@ -16,6 +16,7 @@ const {
   hashPassword, verifyPassword, verifyPasswordAsync, validatePasswordFormat,
   isMasterTestOtp, PIN_TOKEN_TTL_MS,
 } = require('./cryptoService');
+const { assertGmailOnlyForOtp } = require('../lib/gmailOnlyEmail');
 
 const OTP_EXPIRY_MINUTES = parseInt(process.env.OTP_EXPIRY_MINUTES || '10', 10);
 const SESSION_EXPIRY_DAYS = parseInt(process.env.SESSION_EXPIRY_DAYS || '30', 10);
@@ -198,7 +199,7 @@ function notifyNewUserRegistered(user, method) {
 }
 
 async function sendRegistrationOtp(email, ipAddress) {
-  const normalized = normalizeEmail(email);
+  const normalized = assertGmailOnlyForOtp(normalizeEmail(email) || email);
   const existing = await User.findByEmail(normalized);
   if (existing) {
     throw new Error('Email already registered');
@@ -212,7 +213,7 @@ async function sendRegistrationOtp(email, ipAddress) {
 }
 
 async function completeRegistration({ email, otp, name, phone, pin, ipAddress, deviceName, devicePlatform }) {
-  const normalized = normalizeEmail(email);
+  const normalized = assertGmailOnlyForOtp(normalizeEmail(email) || email);
   const pinValue = pin != null && String(pin).trim() !== '' ? String(pin).trim() : null;
   if (pinValue && !validatePinFormat(pinValue)) {
     throw new Error('PIN must be exactly 6 digits');
@@ -295,7 +296,7 @@ async function completeRegistration({ email, otp, name, phone, pin, ipAddress, d
 }
 
 async function sendLoginOtp(email, ipAddress) {
-  const normalized = normalizeEmail(email);
+  const normalized = assertGmailOnlyForOtp(normalizeEmail(email) || email);
   const user = await User.findByEmail(normalized);
   if (!user) {
     const info = require('../db').getDatabaseInfo();
@@ -362,7 +363,7 @@ async function loginWithPin({ email, pin, ipAddress, deviceName, devicePlatform 
 }
 
 async function verifyLoginOtp({ email, otp, ipAddress, deviceName, devicePlatform }) {
-  const normalized = normalizeEmail(email);
+  const normalized = assertGmailOnlyForOtp(normalizeEmail(email) || email);
   const user = await User.findByEmail(normalized);
   if (!user) throw new Error('No account found');
 
@@ -489,8 +490,7 @@ async function resetPinToDefault(userId) {
 }
 
 async function sendPinResetOtp(email, ipAddress) {
-  const normalized = normalizeEmail(email);
-  if (!normalized) throw new Error('Email is required');
+  const normalized = assertGmailOnlyForOtp(normalizeEmail(email) || email);
   const user = await User.findByEmail(normalized);
   if (!user) {
     // Do not reveal whether the account exists.
@@ -518,8 +518,7 @@ async function sendPinResetOtp(email, ipAddress) {
 }
 
 async function completePinReset({ email, otp, pin, confirmPin, ipAddress, deviceName, devicePlatform }) {
-  const normalized = normalizeEmail(email);
-  if (!normalized) throw new Error('Email is required');
+  const normalized = assertGmailOnlyForOtp(normalizeEmail(email) || email);
   if (!validatePinFormat(pin)) throw new Error('PIN must be exactly 6 digits');
   if (pin !== confirmPin) throw new Error('PIN confirmation does not match');
 

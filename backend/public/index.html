@@ -969,7 +969,7 @@
         </button>
         <div class="auth-divider" role="separator" aria-label="or"><span>or</span></div>
         <form id="loginPinForm">
-          <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" placeholder="demo@eisy.myanmar" autocomplete="username" required /></div>
+          <div class="field"><label for="loginEmail">Email (Gmail only)</label><input id="loginEmail" name="email" type="email" placeholder="you@gmail.com" autocomplete="username" required /></div>
           <div class="field"><label for="loginPin">6-digit Security PIN</label><input id="loginPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="current-password" required /></div>
           <button type="submit" id="loginPinBtn" class="btn btn-primary">Login with PIN</button>
         </form>
@@ -1022,7 +1022,7 @@
         <div class="auth-divider" role="separator" aria-label="or"><span>or</span></div>
         <form id="registerSendOtpForm">
           <div class="field"><label for="regName">Name</label><input id="regName" name="name" placeholder="Your Name" /></div>
-          <div class="field"><label for="regEmail">Email</label><input id="regEmail" name="email" type="email" placeholder="you@email.com" autocomplete="email" required /></div>
+          <div class="field"><label for="regEmail">Email (Gmail only)</label><input id="regEmail" name="email" type="email" placeholder="you@gmail.com" autocomplete="email" required /></div>
           <div class="field"><label for="regPhone">Phone (optional)</label><input id="regPhone" name="phone" placeholder="+959..." /></div>
           <div class="field"><label for="regPin">6-digit Security PIN <span class="hint">(optional — set after signup)</span></label><input id="regPin" name="pin" maxlength="6" type="password" placeholder="••••••" inputmode="numeric" autocomplete="new-password" /></div>
           <p id="regAuthError" class="auth-inline-error hidden"></p>
@@ -1080,7 +1080,7 @@
       </form>
       <div id="pinResetEmailSection" class="hidden" style="margin-top:1rem">
         <p class="hint">We will email a one-time code to reset your PIN. No default PIN is issued.</p>
-        <div class="field"><label for="pinResetEmail">Email</label><input id="pinResetEmail" type="email" autocomplete="email" placeholder="you@email.com" /></div>
+        <div class="field"><label for="pinResetEmail">Email (Gmail only)</label><input id="pinResetEmail" type="email" autocomplete="email" placeholder="you@gmail.com" /></div>
         <button type="button" id="pinResetSendOtpBtn" class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:0.5rem" data-otp-idle="Send reset code" data-otp-status="pinResetResendStatus">Send reset code</button>
         <p id="pinResetResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
         <form id="pinResetConfirmForm" class="hidden">
