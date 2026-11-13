@@ -488,16 +488,25 @@ const Card = {
     const last4 = String(lastFour || existing.last_four || '').replace(/\D/g, '').slice(-4);
     const panUrl = cardPanUrl || (metadata && metadata.card_pan_url) || current.card_pan_url || null;
     const incomingDigits = cardNumber != null ? String(cardNumber).replace(/\D/g, '') : '';
-    const existingDigits = String(existing.card_number || '').replace(/\D/g, '');
+    const existingRaw = String(existing.card_number || '').trim();
+    const existingDigits = /^SECURE/i.test(existingRaw) || /^PENDING/i.test(existingRaw)
+      ? ''
+      : existingRaw.replace(/\D/g, '');
     const digits = incomingDigits.length >= 12 ? incomingDigits : existingDigits;
     const hasFullPan = digits.length >= 12;
+    const existingCvvDigits = String(existing.cvv || '').replace(/\D/g, '');
+    const existingExp = String(existing.exp_date || '').trim();
+    const usableExistingExp = existingExp && existingExp !== '—' ? existingExp : '';
     const storedNumber = hasFullPan
       ? digits
       : (last4 ? `SECURE••••${last4}` : `SECURE-PAGO-${String(existing.pago_card_id || id || '').slice(0, 12)}`);
+    // Never store em-dash placeholders as "present" CVV/exp — wallet/reveal treat those as ready.
     const storedCvv = hasFullPan
-      ? (String(cvv ?? '').replace(/\D/g, '') || null)
-      : '—';
-    const storedExp = hasFullPan ? (expDate || null) : '—';
+      ? (String(cvv ?? '').replace(/\D/g, '') || (existingCvvDigits.length >= 3 ? existingCvvDigits : null))
+      : (existingCvvDigits.length >= 3 ? existingCvvDigits : '');
+    const storedExp = hasFullPan
+      ? (expDate || usableExistingExp || null)
+      : (usableExistingExp || '');
     const localStatus = status != null ? String(status).toLowerCase() : null;
     const nextMeta = {
       ...current,

@@ -206,6 +206,18 @@ function needsSensitiveDetails(card) {
   return number.length < 12 || cvv.length < 3;
 }
 
+/** True when local row has a full PAN + CVV usable for wallet / reveal copy. */
+function cardSecretsReady(card) {
+  const rawNumber = String(card?.card_number || card?.cardnumber || '').trim();
+  if (!rawNumber || /^SECURE/i.test(rawNumber) || /^PENDING/i.test(rawNumber)) {
+    return false;
+  }
+  const digits = rawNumber.replace(/\D/g, '');
+  const cvv = String(card?.cvv || '').replace(/\D/g, '');
+  const exp = String(card?.exp_date || card?.expDate || '').trim();
+  return digits.length >= 12 && cvv.length >= 3 && Boolean(exp) && exp !== '—';
+}
+
 async function enrichCreatedCard(created, deps = {}) {
   if (!created || !needsSensitiveDetails(created)) return created;
   const cardId = String(created.card_id || created.cardid || '').trim();
@@ -1010,10 +1022,31 @@ async function unblockPagoCard({ userId, localCardId }, deps = {}) {
     rethrowPago(err);
   }
 
-  const updated = await syncCardFromProvider(card, remote, 'active');
+  let updated = await syncCardFromProvider(card, remote, 'active');
+  // Freeze/unfreeze payloads often omit PAN/CVV. Refresh Get Card so wallet/reveal work.
+  let secretsRefreshed = false;
+  let secretsSoftFail = false;
+  if (!cardSecretsReady(updated)) {
+    try {
+      updated = await refreshPagoCard(userId, localCardId, {
+        ...deps,
+        timeoutMs: deps.timeoutMs || CARD_FETCH_TIMEOUT_MS,
+      });
+      secretsRefreshed = cardSecretsReady(updated);
+    } catch (err) {
+      if (!isCardProviderSoftError(err)) throw err;
+      secretsSoftFail = true;
+      console.warn('[pago] post-unblock detail refresh soft-fail:', err.code || err.message);
+    }
+  } else {
+    secretsRefreshed = true;
+  }
   return {
     card: updated,
     display_status: displayStatusLabel(updated?.status || 'active'),
+    secrets_ready: cardSecretsReady(updated),
+    secrets_refreshed: secretsRefreshed,
+    secrets_soft_fail: secretsSoftFail,
   };
 }
 
@@ -1321,6 +1354,8 @@ module.exports = {
   withCardApiTimeout,
   isCardTimeoutError,
   isCardProviderSoftError,
+  needsSensitiveDetails,
+  cardSecretsReady,
   issuePagoCardForUser,
   refreshPagoCard,
   topUpPagoCard,
