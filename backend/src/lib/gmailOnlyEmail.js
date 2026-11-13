@@ -25,17 +25,30 @@ function assertGmailOnlyForOtp(email) {
     err.code = 'EMAIL_REQUIRED';
     throw err;
   }
-  if (!normalized.endsWith('@gmail.com')) {
+  // Exact host match only — blocks yahoo, mailinator, fldubai, googlemail, etc.
+  const at = normalized.lastIndexOf('@');
+  const domain = at >= 0 ? normalized.slice(at + 1) : '';
+  if (domain !== 'gmail.com') {
     const err = new Error(GMAIL_ONLY_OTP_MESSAGE);
     err.code = GMAIL_ONLY_OTP_CODE;
+    throw err;
+  }
+  const local = normalized.slice(0, at);
+  if (!local || local.includes(' ')) {
+    const err = new Error('Email is required');
+    err.code = 'EMAIL_REQUIRED';
     throw err;
   }
   return normalized;
 }
 
 function isGmailAddress(email) {
-  const normalized = normalizeEmailLoose(email);
-  return Boolean(normalized) && normalized.endsWith('@gmail.com');
+  try {
+    assertGmailOnlyForOtp(email);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 module.exports = {

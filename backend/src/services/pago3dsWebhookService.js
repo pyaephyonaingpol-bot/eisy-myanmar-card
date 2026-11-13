@@ -78,7 +78,23 @@ function getWebhookSecret() {
 
 function assertWebhookSecret(req) {
   const expected = getWebhookSecret();
-  if (!expected) return;
+  if (!expected) {
+    let production = false;
+    try {
+      const { isProductionRuntime } = require('./securityFlags');
+      production = Boolean(isProductionRuntime());
+    } catch (_) {
+      production = String(process.env.NODE_ENV || '').toLowerCase() === 'production'
+        || process.env.VERCEL === '1';
+    }
+    if (production) {
+      const err = new Error('Pagocards webhook secret is not configured');
+      err.code = 'PAGO_WEBHOOK_NOT_CONFIGURED';
+      err.status = 503;
+      throw err;
+    }
+    return;
+  }
   const header =
     req.get?.('x-pago-webhook-secret')
     || req.get?.('x-pagocards-secret')

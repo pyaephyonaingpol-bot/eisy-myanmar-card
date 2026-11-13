@@ -26,6 +26,12 @@
  */
 'use strict';
 
+const nodePath = require('path');
+const {
+  PAGO_PROXY_ACCESS_HEADER,
+  resolvePagoProxyAccessKey,
+} = require(nodePath.join(__dirname, 'pagoProxyAccess.cjs'));
+
 const LEGACY_DEV_PROXY_BASE_URL = '';
 const REQUEST_TIMEOUT_MS = 12_000;
 const ATM_PRODUCT_CODE = 'us_493_visa_atm';
@@ -361,6 +367,18 @@ function resolveConfig(options: PagoCardClientOptions = {}): ResolvedPagoConfig 
   };
 }
 
+function pagoAuthHeaders(config: ResolvedPagoConfig): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    publickey: config.apiKey,
+    secretkey: config.secretKey,
+  };
+  const proxyKey = resolvePagoProxyAccessKey();
+  if (proxyKey) headers[PAGO_PROXY_ACCESS_HEADER] = proxyKey;
+  return headers;
+}
+
 async function pagoRequest<T>(
   config: ResolvedPagoConfig,
   method: string,
@@ -368,12 +386,7 @@ async function pagoRequest<T>(
   options: { body?: unknown; idempotencyKey?: string; timeoutMs?: number } = {}
 ): Promise<T> {
   const timeoutMs = resolveRequestTimeout(options.timeoutMs);
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-    'Content-Type': 'application/json',
-    publickey: config.apiKey,
-    secretkey: config.secretKey,
-  };
+  const headers = pagoAuthHeaders(config);
   if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
 
   const requestUrl = joinPagoRequestUrl(config.baseUrl, path);
@@ -706,12 +719,7 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
       });
     }
 
-    const headers: Record<string, string> = {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      publickey: config.apiKey,
-      secretkey: config.secretKey,
-    };
+    const headers = pagoAuthHeaders(config);
 
     const listPath = businessPath('/cards/getallcards');
     const listRequestUrl = joinPagoRequestUrl(config.baseUrl, listPath);
