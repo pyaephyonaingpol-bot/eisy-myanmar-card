@@ -194,80 +194,396 @@ function ensureSupabaseUserWalletInBackground(userId, options = {}) {
   });
 }
 
+const BACKFILL_CHUNK_SIZE = Math.max(
+  10,
+  Math.min(200, parseInt(process.env.SUPABASE_BACKFILL_CHUNK_SIZE || '50', 10) || 50)
+);
+const BACKFILL_UPSERT_CONCURRENCY = Math.max(
+  1,
+  Math.min(20, parseInt(process.env.SUPABASE_BACKFILL_CONCURRENCY || '8', 10) || 8)
+);
+/** Soft budget per serverless continuation so the gateway never emits opaque 504. */
+const BACKFILL_SLICE_BUDGET_MS = Math.max(
+  2000,
+  parseInt(process.env.SUPABASE_BACKFILL_SLICE_BUDGET_MS || '12000', 10) || 12000
+);
+
+let _backfillJob = null; // { status, ...progress }
+let _backfillInFlight = null;
+
+function emptyBackfillJob(overrides = {}) {
+  return {
+    status: 'idle',
+    source: null,
+    total: 0,
+    offset: 0,
+    synced: 0,
+    failed: 0,
+    chunks: 0,
+    chunk_size: BACKFILL_CHUNK_SIZE,
+    concurrency: BACKFILL_UPSERT_CONCURRENCY,
+    started_at: null,
+    updated_at: null,
+    finished_at: null,
+    error: null,
+    ...overrides,
+  };
+}
+
+function getBackfillJobStatus() {
+  return _backfillJob ? { ..._backfillJob, in_flight: Boolean(_backfillInFlight) } : emptyBackfillJob();
+}
+
+function tryWaitUntil(promise) {
+  try {
+    // Optional on Vercel Node runtimes.
+    // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+    const mod = require('@vercel/functions');
+    if (mod && typeof mod.waitUntil === 'function') {
+      mod.waitUntil(promise);
+      return true;
+    }
+  } catch (_) {
+    /* not installed / not on Vercel */
+  }
+  return false;
+}
+
+function walletPayloadFromJoinedRow(row) {
+  const payload = {
+    user_id: String(row.id),
+    email: row.email || null,
+    name: row.name || null,
+    balance_usdt: Number(row.balance_usdt ?? 0),
+    updated_at: nowIso(),
+  };
+  if (row.auth_user_id) payload.auth_user_id = String(row.auth_user_id);
+  if (row.tron_deposit_address && row.tron_derivation_index != null) {
+    payload.tron_deposit_address = row.tron_deposit_address;
+    payload.tron_derivation_index = Number(row.tron_derivation_index);
+    payload.tron_derivation_path = row.tron_derivation_path || null;
+  }
+  return payload;
+}
+
 /**
- * Upsert every Turso user into Supabase user_wallets.
- * Fixes incomplete mirrors (e.g. only first 15 rows present while Turso has 19).
- * Pages through Turso in batches; never relies on PostgREST default max-rows.
+ * Load one Turso page of users + custodial TRC20 address in a single query
+ * (avoids N+1 findById / findCustodial round-trips that caused sync 504s).
  */
-async function backfillAllUserWallets({ pageSize = 100 } = {}) {
+async function loadBackfillChunk(db, { limit, offset }) {
+  return db.all(
+    `SELECT
+        u.id,
+        u.email,
+        u.name,
+        u.balance_usdt,
+        u.auth_user_id,
+        a.address AS tron_deposit_address,
+        a.derivation_index AS tron_derivation_index,
+        a.derivation_path AS tron_derivation_path
+      FROM users u
+      LEFT JOIN user_usdt_wallet_addresses a
+        ON a.user_id = u.id
+       AND a.network = 'TRC20'
+       AND a.address_type = 'custodial'
+      ORDER BY u.id ASC
+      LIMIT ? OFFSET ?`,
+    limit,
+    offset
+  );
+}
+
+async function mapPool(items, concurrency, worker) {
+  const list = Array.isArray(items) ? items : [];
+  const limit = Math.max(1, Number(concurrency) || 1);
+  const results = new Array(list.length);
+  let cursor = 0;
+
+  async function runOne() {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= list.length) return;
+      results[index] = await worker(list[index], index);
+    }
+  }
+
+  const runners = [];
+  for (let i = 0; i < Math.min(limit, list.length); i += 1) {
+    runners.push(runOne());
+  }
+  await Promise.all(runners);
+  return results;
+}
+
+/**
+ * Upsert one pre-loaded Turso row into Supabase (no extra Turso reads).
+ */
+async function upsertPreloadedUserWallet(sb, row) {
+  const payload = walletPayloadFromJoinedRow(row);
+  const result = await upsertUserWalletAdaptive(sb, payload);
+  return Boolean(result?.ok);
+}
+
+/**
+ * Process as many chunks as fit in `budgetMs`, starting at `offset`.
+ * Designed for serverless: never run unbounded until gateway 504.
+ */
+async function backfillUserWalletsSlice({
+  pageSize = BACKFILL_CHUNK_SIZE,
+  offset = 0,
+  budgetMs = BACKFILL_SLICE_BUDGET_MS,
+  concurrency = BACKFILL_UPSERT_CONCURRENCY,
+} = {}) {
   if (!isSupabaseEnabled()) {
-    return { ok: false, skipped: true, reason: 'supabase_disabled', synced: 0, created: 0, total: 0 };
+    return {
+      ok: false,
+      skipped: true,
+      reason: 'supabase_disabled',
+      synced: 0,
+      failed: 0,
+      total: 0,
+      offset: 0,
+      done: true,
+    };
+  }
+
+  const sb = getSupabase();
+  if (!sb) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: 'supabase_client_unavailable',
+      synced: 0,
+      failed: 0,
+      total: 0,
+      offset: 0,
+      done: true,
+    };
   }
 
   const db = require('../db').getDb();
-  const size = Math.max(1, Math.min(500, Number(pageSize) || 100));
-  let offset = 0;
-  let synced = 0;
-  let created = 0;
-  let failed = 0;
-  let total = 0;
+  const size = Math.max(10, Math.min(200, Number(pageSize) || BACKFILL_CHUNK_SIZE));
+  const startOffset = Math.max(0, Number(offset) || 0);
+  const started = Date.now();
 
   const countRow = await db.get('SELECT COUNT(*) AS c FROM users');
-  total = Number(countRow?.c || 0);
+  const total = Number(countRow?.c || 0);
 
-  while (offset < total) {
-    const batch = await db.all(
-      `SELECT id FROM users ORDER BY id ASC LIMIT ? OFFSET ?`,
-      size,
-      offset
-    );
-    if (!batch.length) break;
+  let cursor = startOffset;
+  let synced = 0;
+  let failed = 0;
+  let chunks = 0;
+  let timedOut = false;
 
-    for (const row of batch) {
-      try {
-        const result = await ensureSupabaseUserWallet(row.id, { syncIfExists: true });
-        if (result?.ensured) {
-          synced += 1;
-          if (result.created) created += 1;
-        } else {
-          failed += 1;
-        }
-      } catch (err) {
-        failed += 1;
-        console.warn(`[supabase] backfill user ${row.id}:`, err.message);
-      }
+  while (cursor < total) {
+    if (Date.now() - started >= budgetMs) {
+      timedOut = true;
+      break;
     }
 
-    offset += batch.length;
+    const batch = await loadBackfillChunk(db, { limit: size, offset: cursor });
+    if (!batch.length) break;
+
+    const outcomes = await mapPool(batch, concurrency, async (row) => {
+      try {
+        return await upsertPreloadedUserWallet(sb, row);
+      } catch (err) {
+        console.warn(`[supabase] backfill user ${row.id}:`, err.message);
+        return false;
+      }
+    });
+
+    for (const ok of outcomes) {
+      if (ok) synced += 1;
+      else failed += 1;
+    }
+
+    chunks += 1;
+    cursor += batch.length;
     if (batch.length < size) break;
   }
 
-  return { ok: failed === 0, skipped: false, synced, created, failed, total };
+  const done = !timedOut && cursor >= total;
+  return {
+    ok: failed === 0 && done,
+    skipped: false,
+    synced,
+    failed,
+    total,
+    offset: cursor,
+    chunks,
+    chunk_size: size,
+    concurrency,
+    done,
+    timed_out: timedOut,
+    ms: Date.now() - started,
+  };
 }
 
-let _backfillInFlight = null;
+/**
+ * Full sync — runs slice loops until complete. Prefer the background starter
+ * on HTTP routes so the response returns before the gateway timeout.
+ */
+async function backfillAllUserWallets(options = {}) {
+  const pageSize = options.pageSize || BACKFILL_CHUNK_SIZE;
+  let offset = Math.max(0, Number(options.offset) || 0);
+  let synced = 0;
+  let failed = 0;
+  let total = 0;
+  let chunks = 0;
 
-function backfillAllUserWalletsInBackground(options = {}) {
-  if (!isSupabaseEnabled()) return;
-  if (_backfillInFlight) return _backfillInFlight;
-  _backfillInFlight = backfillAllUserWallets(options)
-    .then((result) => {
-      if (!result.skipped) {
-        console.info(
-          `[supabase] user_wallets backfill: synced=${result.synced}/${result.total}`
-          + ` created=${result.created} failed=${result.failed}`
-        );
+  for (;;) {
+    const slice = await backfillUserWalletsSlice({
+      ...options,
+      pageSize,
+      offset,
+      budgetMs: options.budgetMs || BACKFILL_SLICE_BUDGET_MS,
+    });
+    if (slice.skipped) return slice;
+
+    synced += slice.synced;
+    failed += slice.failed;
+    total = slice.total;
+    chunks += slice.chunks || 0;
+    offset = slice.offset;
+
+    if (slice.done) {
+      return {
+        ok: failed === 0,
+        skipped: false,
+        synced,
+        created: 0,
+        failed,
+        total,
+        chunks,
+        offset,
+        done: true,
+      };
+    }
+  }
+}
+
+function updateBackfillJob(patch) {
+  _backfillJob = {
+    ...(_backfillJob || emptyBackfillJob()),
+    ...patch,
+    updated_at: new Date().toISOString(),
+  };
+  return _backfillJob;
+}
+
+async function runBackfillJobLoop(options = {}) {
+  const source = options.source || 'api';
+  updateBackfillJob({
+    status: 'running',
+    source,
+    started_at: new Date().toISOString(),
+    finished_at: null,
+    error: null,
+    synced: 0,
+    failed: 0,
+    offset: 0,
+    chunks: 0,
+  });
+
+  try {
+    let offset = 0;
+    for (;;) {
+      const slice = await backfillUserWalletsSlice({
+        ...options,
+        offset,
+        pageSize: options.pageSize || BACKFILL_CHUNK_SIZE,
+        budgetMs: options.budgetMs || BACKFILL_SLICE_BUDGET_MS,
+      });
+
+      if (slice.skipped) {
+        updateBackfillJob({
+          status: 'skipped',
+          error: slice.reason || 'skipped',
+          finished_at: new Date().toISOString(),
+          total: slice.total || 0,
+        });
+        return slice;
       }
-      return result;
-    })
+
+      const prev = _backfillJob || emptyBackfillJob();
+      updateBackfillJob({
+        status: slice.done ? 'completed' : 'running',
+        total: slice.total,
+        offset: slice.offset,
+        synced: (prev.synced || 0) + slice.synced,
+        failed: (prev.failed || 0) + slice.failed,
+        chunks: (prev.chunks || 0) + (slice.chunks || 0),
+        finished_at: slice.done ? new Date().toISOString() : null,
+      });
+
+      offset = slice.offset;
+      if (slice.done) {
+        console.info(
+          `[supabase] user_wallets backfill: synced=${_backfillJob.synced}/${_backfillJob.total}`
+          + ` failed=${_backfillJob.failed} chunks=${_backfillJob.chunks}`
+        );
+        return {
+          ok: _backfillJob.failed === 0,
+          skipped: false,
+          ..._backfillJob,
+          done: true,
+        };
+      }
+    }
+  } catch (err) {
+    updateBackfillJob({
+      status: 'failed',
+      error: err.message || String(err),
+      finished_at: new Date().toISOString(),
+    });
+    console.warn('[supabase] user_wallets backfill failed:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Start (or attach to) a background wallet mirror backfill.
+ * Returns immediately with job status — never awaits the full sync on the
+ * HTTP request path (that was returning HTTP 504 on Vercel).
+ */
+function backfillAllUserWalletsInBackground(options = {}) {
+  if (!isSupabaseEnabled()) {
+    updateBackfillJob({
+      status: 'skipped',
+      error: 'supabase_disabled',
+      finished_at: new Date().toISOString(),
+    });
+    return _backfillJob;
+  }
+  if (_backfillInFlight) {
+    return getBackfillJobStatus();
+  }
+
+  updateBackfillJob({
+    status: 'starting',
+    source: options.source || 'background',
+    started_at: new Date().toISOString(),
+  });
+
+  const work = runBackfillJobLoop(options)
     .catch((err) => {
-      console.warn('[supabase] user_wallets backfill failed:', err.message);
+      console.warn('[supabase] background backfill failed:', err.message);
       return null;
     })
     .finally(() => {
       _backfillInFlight = null;
     });
-  return _backfillInFlight;
+
+  _backfillInFlight = work;
+  tryWaitUntil(work);
+  return getBackfillJobStatus();
+}
+
+function resetBackfillJobForTests() {
+  _backfillJob = null;
+  _backfillInFlight = null;
 }
 
 let _directoryWalletCache = null; // { expiresAt, payload }
@@ -534,7 +850,8 @@ async function getUserWalletsMirrorStatus({ includeMissingIds = false, missingSa
     return out;
   }
 
-  // Fast path when counts already match: skip full id scans.
+  // Count-only fast path — never scan every wallet id on the hot mirror-status
+  // request (that full scan was another 504 source during sync checks).
   let supabaseTotal = null;
   try {
     const { count, error: countErr } = await sb
@@ -542,7 +859,7 @@ async function getUserWalletsMirrorStatus({ includeMissingIds = false, missingSa
       .select('user_id', { count: 'exact', head: true });
     if (!countErr && typeof count === 'number') supabaseTotal = count;
   } catch (_) {
-    /* fall through to paged scan */
+    /* fall through */
   }
 
   if (supabaseTotal != null && supabaseTotal >= tursoTotal && tursoTotal >= 0) {
@@ -556,46 +873,56 @@ async function getUserWalletsMirrorStatus({ includeMissingIds = false, missingSa
     };
   }
 
-  const tursoIds = (await db.all('SELECT id FROM users ORDER BY id ASC')).map((r) => String(r.id));
+  // Default: estimate missing from counts only (O(1) PostgREST head).
+  if (!wantIds) {
+    const estimatedMissing = supabaseTotal == null
+      ? tursoTotal
+      : Math.max(0, tursoTotal - supabaseTotal);
+    return {
+      enabled: true,
+      turso_total: tursoTotal,
+      supabase_total: supabaseTotal,
+      missing_count: estimatedMissing,
+      missing_user_ids_sample: undefined,
+      in_sync: estimatedMissing === 0 && supabaseTotal != null,
+      estimate: true,
+    };
+  }
 
+  // Exact missing ids — budgeted scan (admin tooling only).
+  const tursoIds = (await db.all('SELECT id FROM users ORDER BY id ASC')).map((r) => String(r.id));
   const scanned = await fetchAllSupabaseRows(sb, {
     table: 'user_wallets',
     columnsList: ['user_id'],
     orderColumn: 'user_id',
     ascending: true,
+    deadlineMs: Math.max(2000, parseInt(process.env.ADMIN_DIRECTORY_SUPABASE_BUDGET_MS || '8000', 10) || 8000),
+    maxRows: Math.max(tursoTotal + 100, 5000),
   });
   if (scanned.error) {
     return {
       enabled: true,
       turso_total: tursoTotal,
-      supabase_total: null,
+      supabase_total: supabaseTotal,
       missing_count: tursoTotal,
-      missing_user_ids: wantIds ? tursoIds : undefined,
+      missing_user_ids: tursoIds,
       in_sync: false,
       reason: scanned.error.message || String(scanned.error),
     };
   }
-  const supabaseIds = [];
-  for (const row of scanned.rows) supabaseIds.push(String(row.user_id));
-  let exactCount = typeof scanned.total === 'number' ? scanned.total : supabaseTotal;
-
-  const supabaseSet = new Set(supabaseIds);
+  const supabaseSet = new Set(scanned.rows.map((row) => String(row.user_id)));
   const missing = tursoIds.filter((id) => !supabaseSet.has(id));
-  if (exactCount == null) exactCount = supabaseIds.length;
+  const exactCount = typeof scanned.total === 'number' ? scanned.total : (supabaseTotal ?? supabaseSet.size);
 
-  const out = {
+  return {
     enabled: true,
     turso_total: tursoTotal,
     supabase_total: exactCount,
     missing_count: missing.length,
+    missing_user_ids: missing.slice(0, Math.max(sampleLimit, missing.length)),
     in_sync: missing.length === 0 && exactCount >= tursoTotal,
+    truncated: Boolean(scanned.truncated),
   };
-  if (wantIds) {
-    out.missing_user_ids = missing;
-  } else if (sampleLimit > 0 && missing.length) {
-    out.missing_user_ids_sample = missing.slice(0, sampleLimit);
-  }
-  return out;
 }
 
 async function syncDeposit(deposit, user) {
@@ -827,6 +1154,9 @@ module.exports = {
   ensureSupabaseUserWalletInBackground,
   backfillAllUserWallets,
   backfillAllUserWalletsInBackground,
+  backfillUserWalletsSlice,
+  getBackfillJobStatus,
+  resetBackfillJobForTests,
   getUserWalletsMirrorStatus,
   upsertUserWallet,
   syncDeposit,
@@ -842,4 +1172,6 @@ module.exports = {
   listSupabaseUserWallets,
   listSupabaseWalletsByUserIds,
   resetDirectoryWalletCacheForTests,
+  BACKFILL_CHUNK_SIZE,
+  BACKFILL_UPSERT_CONCURRENCY,
 };

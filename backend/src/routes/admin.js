@@ -1605,21 +1605,83 @@ router.get('/users/mirror-status', requirePermission('users'), async (req, res) 
     const mirror = await sync.getUserWalletsMirrorStatus({
       includeMissingIds: String(req.query.include_missing || '').trim() === '1',
     });
-    res.json({ mirror });
+    res.json({
+      mirror,
+      backfill: sync.getBackfillJobStatus(),
+    });
   } catch (err) {
     console.error('[admin/users/mirror-status]', err);
     res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
 
-router.post('/users/backfill-wallets', requirePermission('users'), async (_req, res) => {
+/**
+ * Start a chunked Supabase wallet mirror backfill in the background.
+ * Never awaits the full sync on this request (that returned HTTP 504).
+ */
+router.post('/users/backfill-wallets', requirePermission('users'), async (req, res) => {
+  const started = Date.now();
   try {
     const sync = require('../services/supabaseSyncService');
-    const backfill = await sync.backfillAllUserWallets();
-    const mirror = await sync.getUserWalletsMirrorStatus({ includeMissingIds: false });
-    res.json({ ok: Boolean(backfill?.ok || backfill?.skipped), backfill, mirror });
+    if (!sync.isSupabaseEnabled()) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Supabase is not configured',
+        code: 'SUPABASE_DISABLED',
+      });
+    }
+
+    const pageSize = parseInt(req.body?.page_size || req.body?.chunk_size || '', 10);
+    const job = sync.backfillAllUserWalletsInBackground({
+      source: 'admin-backfill-wallets',
+      pageSize: Number.isFinite(pageSize) ? pageSize : undefined,
+    });
+
+    // Cheap count-only mirror snapshot — do not block on id scans.
+    let mirror = null;
+    try {
+      mirror = await sync.getUserWalletsMirrorStatus({ includeMissingIds: false });
+    } catch (mirrorErr) {
+      console.warn('[admin/users/backfill-wallets] mirror snapshot skipped:', mirrorErr.message);
+    }
+
+    console.info('[admin/users/backfill-wallets] started', {
+      status: job?.status,
+      ms: Date.now() - started,
+    });
+
+    return res.status(202).json({
+      ok: true,
+      started: true,
+      mode: 'background',
+      message: 'Supabase wallet mirror sync started in the background',
+      backfill: job,
+      mirror,
+    });
   } catch (err) {
-    console.error('[admin/users/backfill-wallets]', err);
+    console.error('[admin/users/backfill-wallets]', err.message, { ms: Date.now() - started });
+    res.status(500).json({
+      error: err.message || 'Internal server error',
+      code: 'BACKFILL_FAILED',
+    });
+  }
+});
+
+router.get('/users/backfill-wallets', requirePermission('users'), async (_req, res) => {
+  try {
+    const sync = require('../services/supabaseSyncService');
+    const backfill = sync.getBackfillJobStatus();
+    let mirror = null;
+    if (backfill.status === 'completed' || backfill.status === 'failed' || backfill.status === 'skipped') {
+      try {
+        mirror = await sync.getUserWalletsMirrorStatus({ includeMissingIds: false });
+      } catch (_) {
+        /* optional */
+      }
+    }
+    res.json({ ok: true, backfill, mirror });
+  } catch (err) {
+    console.error('[admin/users/backfill-wallets GET]', err);
     res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
