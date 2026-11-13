@@ -2,7 +2,7 @@
 
 /**
  * Durable card-issue abuse controls (survive serverless cold starts):
- * - Per-user cooldown from last cards_v2.created_at
+ * - Per-user daily limit from cards_v2.created_at (default 1 card / 24h)
  * - Strike ledger in transaction_logs → auto blockUser
  * - HMAC confirm tokens for human confirmation step
  */
@@ -27,8 +27,24 @@ function envInt(name, fallback) {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
+const DAILY_CARD_LIMIT_MESSAGE =
+  'Daily card limit reached. You can only issue 1 card per day.';
+
+/** Rolling 24h window for the durable daily card cap (DB-backed). */
+function cardIssueDailyWindowMs() {
+  return envInt('CARD_ISSUE_DAILY_WINDOW_MS', 24 * 60 * 60 * 1000);
+}
+
+function cardIssueDailyMax() {
+  return envInt('CARD_ISSUE_DAILY_MAX', 1);
+}
+
+/** @deprecated alias — same as daily window (kept for older env docs). */
 function cardIssueCooldownMs() {
-  return envInt('RATE_LIMIT_CARD_ISSUE_WINDOW_MS', 60 * 60 * 1000);
+  return envInt(
+    'RATE_LIMIT_CARD_ISSUE_WINDOW_MS',
+    cardIssueDailyWindowMs()
+  );
 }
 
 function cardIssueConfirmTtlMs() {
@@ -64,15 +80,22 @@ function httpError(message, status, code, extra = {}) {
   return err;
 }
 
+function isCountableCardIssueRow(row) {
+  const status = String(row?.status || '').toLowerCase();
+  if (status === 'terminated' || status === 'cancelled') return false;
+  // Pending placeholders that never became a real card still count toward
+  // spam attempts if they were created via the issue path.
+  return true;
+}
+
 /**
- * Last successful local card row time for this user (any non-cancelled pending/live).
+ * Last successful local card row time for this user (any non-terminated row).
  */
 async function getLastCardIssueAtMs(userId) {
   const rows = await Card.findByUserId(userId);
   let latest = 0;
   for (const row of rows || []) {
-    const status = String(row.status || '').toLowerCase();
-    if (status === 'terminated') continue;
+    if (!isCountableCardIssueRow(row)) continue;
     const ms = parseSqliteTimeMs(row.created_at);
     if (ms > latest) latest = ms;
   }
@@ -80,23 +103,56 @@ async function getLastCardIssueAtMs(userId) {
 }
 
 /**
- * Durable cooldown: at most one successful issue per window (default 1 hour).
+ * Count cards issued for this user inside the rolling daily window.
+ * Uses cards_v2.created_at timestamps (durable across serverless instances).
  */
-async function assertCardIssueCooldown(userId) {
-  const windowMs = cardIssueCooldownMs();
-  const lastAt = await getLastCardIssueAtMs(userId);
-  if (!lastAt) return { ok: true, last_at: null, retry_after_ms: 0 };
-  const elapsed = Date.now() - lastAt;
-  if (elapsed >= windowMs) return { ok: true, last_at: lastAt, retry_after_ms: 0 };
-  const retryAfter = windowMs - elapsed;
+async function countCardsIssuedInWindow(userId, windowMs = cardIssueDailyWindowMs()) {
+  const since = Date.now() - windowMs;
+  const rows = await Card.findByUserId(userId);
+  let count = 0;
+  let latest = 0;
+  for (const row of rows || []) {
+    if (!isCountableCardIssueRow(row)) continue;
+    const ms = parseSqliteTimeMs(row.created_at);
+    if (ms >= since) {
+      count += 1;
+      if (ms > latest) latest = ms;
+    }
+  }
+  return { count, last_at: latest || null };
+}
+
+/**
+ * Durable daily limit: default 1 card per rolling 24 hours.
+ */
+async function assertCardIssueDailyLimit(userId) {
+  const windowMs = cardIssueDailyWindowMs();
+  const max = cardIssueDailyMax();
+  const { count, last_at: lastAt } = await countCardsIssuedInWindow(userId, windowMs);
+  if (count < max) {
+    return { ok: true, count, last_at: lastAt, retry_after_ms: 0 };
+  }
+  const retryAfter = lastAt ? Math.max(0, windowMs - (Date.now() - lastAt)) : windowMs;
   const err = httpError(
-    'You can only request one card per hour. Please wait before trying again.',
+    DAILY_CARD_LIMIT_MESSAGE,
     429,
-    'CARD_ISSUE_COOLDOWN',
-    { retry_after_ms: retryAfter, last_issue_at: new Date(lastAt).toISOString() }
+    'CARD_ISSUE_DAILY_LIMIT',
+    {
+      retry_after_ms: retryAfter,
+      last_issue_at: lastAt ? new Date(lastAt).toISOString() : null,
+      issued_in_window: count,
+      daily_max: max,
+    }
   );
+  err._cardIssueDailyLimit = true;
+  // Backward-compatible flag for older strike handlers.
   err._cardIssueCooldown = true;
   throw err;
+}
+
+/** @deprecated use assertCardIssueDailyLimit */
+async function assertCardIssueCooldown(userId) {
+  return assertCardIssueDailyLimit(userId);
 }
 
 async function countRecentAbuseStrikes(userId) {
@@ -276,9 +332,14 @@ function assertCardIssueBotChallenge(body = {}, userId) {
 module.exports = {
   CONFIRM_ACK,
   CONFIRM_PURPOSE,
+  DAILY_CARD_LIMIT_MESSAGE,
   cardIssueCooldownMs,
+  cardIssueDailyWindowMs,
+  cardIssueDailyMax,
   abuseStrikeLimit,
   getLastCardIssueAtMs,
+  countCardsIssuedInWindow,
+  assertCardIssueDailyLimit,
   assertCardIssueCooldown,
   countRecentAbuseStrikes,
   recordCardIssueAbuseStrike,

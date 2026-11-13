@@ -19,7 +19,9 @@ process.env.AUTH_SECRET = 'test-card-abuse-secret-not-for-prod';
 process.env.RATE_LIMIT_CARD_ISSUE_MAX = '1';
 process.env.CARD_ISSUE_ABUSE_STRIKES = '3';
 process.env.CARD_ISSUE_ABUSE_WINDOW_MS = String(24 * 60 * 60 * 1000);
-process.env.RATE_LIMIT_CARD_ISSUE_WINDOW_MS = String(60 * 60 * 1000);
+process.env.RATE_LIMIT_CARD_ISSUE_WINDOW_MS = String(24 * 60 * 60 * 1000);
+process.env.CARD_ISSUE_DAILY_WINDOW_MS = String(24 * 60 * 60 * 1000);
+process.env.CARD_ISSUE_DAILY_MAX = '1';
 
 const { initDb } = require('../src/db');
 
@@ -30,10 +32,13 @@ const { initDb } = require('../src/db');
   const Card = require('../src/models/Card');
   const {
     CONFIRM_ACK,
+    DAILY_CARD_LIMIT_MESSAGE,
     createCardIssueConfirmToken,
     verifyCardIssueConfirmToken,
     assertCardIssueBotChallenge,
+    assertCardIssueDailyLimit,
     assertCardIssueCooldown,
+    countCardsIssuedInWindow,
     recordCardIssueAbuseStrike,
     countRecentAbuseStrikes,
   } = require('../src/services/cardIssueAbuseService');
@@ -41,6 +46,10 @@ const { initDb } = require('../src/db');
   const { isUserBlocked } = require('../src/lib/userAuthStatus');
 
   assert.strictEqual(CONFIRM_ACK, 'ISSUE_VIRTUAL_CARD');
+  assert.strictEqual(
+    DAILY_CARD_LIMIT_MESSAGE,
+    'Daily card limit reached. You can only issue 1 card per day.'
+  );
   assert.strictEqual(typeof createCardIssueRateLimiter(), 'function');
 
   const user = await User.create({
@@ -85,10 +94,11 @@ const { initDb } = require('../src/db');
     (err) => err.code === 'BOT_CHALLENGE_FAILED'
   );
 
-  // Cooldown: no cards yet → ok
-  await assertCardIssueCooldown(userId);
+  // Daily limit: no cards yet → ok
+  await assertCardIssueDailyLimit(userId);
+  assert.strictEqual((await countCardsIssuedInWindow(userId)).count, 0);
 
-  // Insert a recent card → cooldown must trip
+  // Insert a recent card → second issue within 24h must trip daily limit
   await Card.issue({
     userId,
     cardNumber: '4111111111111111',
@@ -97,9 +107,18 @@ const { initDb } = require('../src/db');
     cardHolderName: 'Abuse Test',
     status: 'active',
   });
+  assert.strictEqual((await countCardsIssuedInWindow(userId)).count, 1);
+  await assert.rejects(
+    () => assertCardIssueDailyLimit(userId),
+    (err) => (
+      err.code === 'CARD_ISSUE_DAILY_LIMIT'
+      && err.message === DAILY_CARD_LIMIT_MESSAGE
+    )
+  );
+  // Deprecated alias still enforces the same daily gate
   await assert.rejects(
     () => assertCardIssueCooldown(userId),
-    (err) => err.code === 'CARD_ISSUE_COOLDOWN'
+    (err) => err.code === 'CARD_ISSUE_DAILY_LIMIT'
   );
 
   // Abuse strikes → auto block on 3rd
@@ -120,12 +139,19 @@ const { initDb } = require('../src/db');
   const userSrc = fs.readFileSync(path.join(__dirname, '../src/routes/user.js'), 'utf8');
   assert.ok(userSrc.includes('/cards/request/challenge'));
   assert.ok(userSrc.includes('assertCardIssueBotChallenge'));
+  assert.ok(userSrc.includes('assertCardIssueDailyLimit'));
   assert.ok(userSrc.includes('recordCardIssueAbuseStrike'));
 
   const dashSrc = fs.readFileSync(path.join(__dirname, '../public/dashboard.js'), 'utf8');
   assert.ok(dashSrc.includes('/api/user/cards/request/challenge'));
   assert.ok(dashSrc.includes('confirm_token'));
   assert.ok(dashSrc.includes('pago_request_confirm'));
+  assert.ok(dashSrc.includes('CARD_ISSUE_DAILY_LIMIT'));
+
+  const abuseSrc = fs.readFileSync(path.join(__dirname, '../src/services/cardIssueAbuseService.js'), 'utf8');
+  assert.ok(abuseSrc.includes('assertCardIssueDailyLimit'));
+  assert.ok(abuseSrc.includes('countCardsIssuedInWindow'));
+  assert.ok(abuseSrc.includes(DAILY_CARD_LIMIT_MESSAGE));
 
   const secSrc = fs.readFileSync(path.join(__dirname, '../src/middleware/security.js'), 'utf8');
   assert.ok(secSrc.includes("envInt('RATE_LIMIT_CARD_ISSUE_MAX', 1)"));
