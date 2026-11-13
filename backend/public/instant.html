@@ -1521,6 +1521,11 @@
               <h2 data-i18n="pago_request_heading">Request a virtual card</h2>
               <p class="hint" data-i18n="pago_request_hint">A Visa card is issued on BIN 404. An optional starting balance (USD 10–2500) is taken from your USDT wallet.</p>
               <form id="pagoCardRequestForm" class="form">
+                <!-- Honeypot for bots — visually hidden, must stay empty -->
+                <div class="field" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
+                  <label for="pagoCardWebsite">Website</label>
+                  <input id="pagoCardWebsite" name="website" type="text" tabindex="-1" autocomplete="off" />
+                </div>
                 <div class="field">
                   <label for="pagoCardFirstName" data-i18n="pago_first_name">First name</label>
                   <input id="pagoCardFirstName" type="text" autocomplete="given-name" required />

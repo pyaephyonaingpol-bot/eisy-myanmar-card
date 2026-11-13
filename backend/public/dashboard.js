@@ -11344,6 +11344,19 @@ const Dashboard = {
     const preview = this.updatePagoIssueSummary();
     if (preview?.short) return;
 
+    // Honeypot — real users never see/fill this field.
+    const honeypot = $('pagoCardWebsite')?.value?.trim();
+    if (honeypot) {
+      this.toast(this.i18nText('pago_request_rejected', 'Request rejected'), 'error');
+      return;
+    }
+
+    const confirmMsg = this.i18nText(
+      'pago_request_confirm',
+      'Issue a virtual card now? Fees will be deducted from your USDT wallet.'
+    );
+    if (!window.confirm(confirmMsg)) return;
+
     const guard = this._pagoCardRequestGuard
       || (this._pagoCardRequestGuard = this._createPagoCardRequestGuard());
     if (!guard.tryStart()) return;
@@ -11356,6 +11369,17 @@ const Dashboard = {
     if (form) form.setAttribute('aria-busy', 'true');
 
     try {
+      const challenge = await Auth.api('POST', '/api/user/cards/request/challenge', {
+        client_intent: 'issue_virtual_card',
+      }, { sensitive: true, timeoutMs: 15000 });
+      const confirmToken = challenge?.confirm_token;
+      const confirmAck = challenge?.confirm_ack;
+      if (!confirmToken || !confirmAck) {
+        throw Object.assign(new Error('Card confirmation failed'), {
+          code: 'CARD_ISSUE_CONFIRM_INVALID',
+        });
+      }
+
       const initial = $('pagoCardInitialLoad')?.value.trim();
       const data = await Auth.api('POST', '/api/user/cards/request', {
         product_code: 'us_404_visa_bin',
@@ -11363,6 +11387,10 @@ const Dashboard = {
         last_name: $('pagoCardLastName')?.value.trim(),
         email: $('pagoCardEmail')?.value.trim(),
         initial_load: initial || undefined,
+        client_intent: 'issue_virtual_card',
+        confirm_token: confirmToken,
+        confirm_ack: confirmAck,
+        website: '',
       }, { sensitive: true, timeoutMs: 26000 });
       const successMsg = data.message
         || this.i18nText('card_issued_ok', 'Your virtual card is ready.');
@@ -11376,6 +11404,19 @@ const Dashboard = {
       }
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
+      if (err.code === 'ACCOUNT_BLOCKED') {
+        this.toast(
+          this.i18nText('account_blocked', 'Your account has been suspended. Contact support.'),
+          'error'
+        );
+      }
+      if (err.code === 'CARD_ISSUE_COOLDOWN' || err.code === 'CARD_ISSUE_USER_RATE_LIMITED') {
+        this.toast(
+          err.message
+            || this.i18nText('pago_request_cooldown', 'You can only request one card per hour.'),
+          'error'
+        );
+      }
       if (err.code === 'INSUFFICIENT_USDT_BALANCE') {
         const warn = $('pagoIssueBalanceWarning');
         if (warn) {

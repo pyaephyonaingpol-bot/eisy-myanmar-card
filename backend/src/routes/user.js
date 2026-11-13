@@ -416,21 +416,30 @@ function sendPagoError(res, err, fallback) {
   const { isCardTimeoutError } = require('../services/pagoCardService');
   const timedOut = isCardTimeoutError(err);
   const code = String(err.code || '');
-  const status = code === 'INSUFFICIENT_USDT_BALANCE'
-    ? 400
-    : code === 'CARD_LIMIT_REACHED' || code === 'RATE_LIMITED'
-      ? 429
-      : code === 'ACCOUNT_BLOCKED' || code === 'GMAIL_ONLY_REQUIRED'
-        ? 403
-        : timedOut
-          ? 504
-          : (err.status || 500);
+  let status = err.status || 500;
+  if (code === 'INSUFFICIENT_USDT_BALANCE' || code === 'INVALID_CLIENT_INTENT') status = 400;
+  else if (
+    code === 'CARD_LIMIT_REACHED'
+    || code === 'RATE_LIMITED'
+    || code === 'CARD_ISSUE_COOLDOWN'
+    || code === 'CARD_ISSUE_USER_RATE_LIMITED'
+    || code === 'CARD_ISSUE_IP_RATE_LIMITED'
+  ) status = 429;
+  else if (
+    code === 'ACCOUNT_BLOCKED'
+    || code === 'GMAIL_ONLY_REQUIRED'
+    || code === 'CARD_ISSUE_CONFIRM_REQUIRED'
+    || code === 'CARD_ISSUE_CONFIRM_INVALID'
+    || code === 'BOT_CHALLENGE_FAILED'
+  ) status = 403;
+  else if (timedOut) status = 504;
   res.status(status).json({
     success: false,
     error: err.message || fallback,
     code: timedOut ? (err.code || 'CARD_REQUEST_TIMEOUT') : (err.code || 'PAGO_ERROR'),
     pago_card_id: err.pago_card_id || undefined,
     detail: err.detail || undefined,
+    retry_after_ms: err.retry_after_ms || undefined,
   });
 }
 
@@ -440,6 +449,42 @@ const {
 } = require('../middleware/security');
 const cardIssueLimiter = createCardIssueRateLimiter();
 const cardIssueIpLimiter = createCardIssueIpRateLimiter();
+
+/**
+ * Step 1 of human confirm: issue a short-lived confirm_token after PIN unlock.
+ * Bots that POST /cards/request directly without this token are rejected.
+ */
+router.post(
+  '/cards/request/challenge',
+  requireAuth,
+  requireSensitive,
+  async (req, res) => {
+    try {
+      setCardsNoStore(res);
+      if (!req.user?.id) {
+        return res.status(401).json({ error: 'Authentication required', code: 'AUTH_REQUIRED' });
+      }
+      const {
+        assertCardIssueCooldown,
+        createCardIssueConfirmToken,
+        CONFIRM_ACK,
+      } = require('../services/cardIssueAbuseService');
+      await assertCardIssueCooldown(req.user.id);
+      const challenge = createCardIssueConfirmToken(req.user.id);
+      return res.json({
+        success: true,
+        confirm_token: challenge.confirm_token,
+        confirm_ack: CONFIRM_ACK,
+        expires_at: challenge.expires_at,
+        expires_in_ms: challenge.expires_in_ms,
+        message: 'Confirm you want to issue a virtual card, then submit with confirm_token.',
+      });
+    } catch (err) {
+      console.error('[user/cards/request/challenge]', err.code || err.message);
+      sendPagoError(res, err, 'Failed to start card request confirmation');
+    }
+  }
+);
 
 router.post(
   '/cards/request',
@@ -452,6 +497,34 @@ router.post(
       setCardsNoStore(res);
       if (!req.user?.id) {
         return res.status(401).json({ error: 'Authentication required', code: 'AUTH_REQUIRED' });
+      }
+      const {
+        assertCardIssueBotChallenge,
+        recordCardIssueAbuseStrike,
+      } = require('../services/cardIssueAbuseService');
+      const { getRequestIp } = require('../middleware/ipBlocklist');
+      try {
+        assertCardIssueBotChallenge(req.body || {}, req.user.id);
+      } catch (challengeErr) {
+        if (
+          challengeErr.code === 'CARD_ISSUE_CONFIRM_INVALID'
+          || challengeErr.code === 'CARD_ISSUE_CONFIRM_REQUIRED'
+          || challengeErr.code === 'BOT_CHALLENGE_FAILED'
+        ) {
+          const abuse = await recordCardIssueAbuseStrike(req.user.id, {
+            reason: challengeErr.code || 'bot_challenge_failed',
+            ip: getRequestIp(req) || req.ip || null,
+            path: String(req.originalUrl || req.url || ''),
+            email: req.user.email || null,
+          });
+          if (abuse.blocked) {
+            return res.status(403).json({
+              error: 'Account suspended due to card request abuse.',
+              code: 'ACCOUNT_BLOCKED',
+            });
+          }
+        }
+        throw challengeErr;
       }
       const {
         issuePagoCardForUser,
@@ -480,6 +553,26 @@ router.post(
         ...payload,
       });
     } catch (err) {
+      if (err.code === 'CARD_ISSUE_COOLDOWN' || err._cardIssueCooldown) {
+        try {
+          const { recordCardIssueAbuseStrike } = require('../services/cardIssueAbuseService');
+          const { getRequestIp } = require('../middleware/ipBlocklist');
+          const abuse = await recordCardIssueAbuseStrike(req.user?.id, {
+            reason: 'card_issue_cooldown_bypass_attempt',
+            ip: getRequestIp(req) || req.ip || null,
+            path: String(req.originalUrl || req.url || ''),
+            email: req.user?.email || null,
+          });
+          if (abuse.blocked) {
+            return res.status(403).json({
+              error: 'Account suspended due to card request abuse.',
+              code: 'ACCOUNT_BLOCKED',
+            });
+          }
+        } catch (strikeErr) {
+          console.warn('[user/cards/request] cooldown strike skipped:', strikeErr.message);
+        }
+      }
       console.error('[user/cards/request]', err.code || err.message);
       sendPagoError(res, err, 'Failed to request a virtual card');
     }
