@@ -313,12 +313,37 @@ async function notifyAdminNewUser(input: {
   return result;
 }
 
+async function notifyAdminSecurityAlert(input: {
+  title?: string;
+  severity?: string;
+  details?: string[];
+  fetchImpl?: typeof fetch;
+  token?: string;
+  chatId?: string;
+} = {}) {
+  const severity = String(input.severity || 'high').toUpperCase();
+  const title = String(input.title || 'Security alert').trim();
+  const details = Array.isArray(input.details)
+    ? input.details.map((line) => `• ${line}`)
+    : [];
+  const lines = [
+    `🚨 *Security alert* (${severity})`,
+    '',
+    title,
+    ...details,
+  ];
+  const result = await sendAdminMessage(lines.join('\n'), input);
+  console.log('[Telegram] Security alert', title);
+  return result;
+}
+
 module.exports = {
   sendAdminMessage,
   notifyAdminDepositRequest,
   notifyAdminCardCreated,
   notifyAdminWithdrawalRequest,
   notifyAdminNewUser,
+  notifyAdminSecurityAlert,
   readToken,
   readChatId,
 };

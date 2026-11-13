@@ -799,10 +799,30 @@ async function loginWithGoogleOAuth({
     throw mapped;
   }
 
-  const email = normalizeEmail(supabaseUser?.email);
-  if (!email) {
+  const emailRaw = normalizeEmail(supabaseUser?.email);
+  if (!emailRaw) {
     const err = new Error('Google account did not provide an email address');
     err.code = 'GOOGLE_EMAIL_REQUIRED';
+    throw err;
+  }
+  // Sign-up + Google OAuth: Gmail only (blocks temp/external domains).
+  let email;
+  try {
+    email = assertGmailOnlyForOtp(emailRaw);
+  } catch (err) {
+    if (err.code === 'GMAIL_ONLY_REQUIRED' || err.code === 'EMAIL_REQUIRED') {
+      try {
+        const { notifyAdminSecurityAlert } = require('./telegram');
+        notifyAdminSecurityAlert({
+          title: 'Blocked non-Gmail Google OAuth attempt',
+          severity: 'high',
+          details: [
+            `Email: ${emailRaw}`,
+            `IP: ${ipAddress || 'unknown'}`,
+          ],
+        });
+      } catch (_) { /* ignore */ }
+    }
     throw err;
   }
 

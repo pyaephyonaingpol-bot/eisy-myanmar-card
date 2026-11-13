@@ -415,11 +415,16 @@ router.get('/card', requireAuth, requireSensitive, async (req, res) => {
 function sendPagoError(res, err, fallback) {
   const { isCardTimeoutError } = require('../services/pagoCardService');
   const timedOut = isCardTimeoutError(err);
-  const status = err.code === 'INSUFFICIENT_USDT_BALANCE'
+  const code = String(err.code || '');
+  const status = code === 'INSUFFICIENT_USDT_BALANCE'
     ? 400
-    : timedOut
-      ? 504
-      : (err.status || 500);
+    : code === 'CARD_LIMIT_REACHED' || code === 'RATE_LIMITED'
+      ? 429
+      : code === 'ACCOUNT_BLOCKED' || code === 'GMAIL_ONLY_REQUIRED'
+        ? 403
+        : timedOut
+          ? 504
+          : (err.status || 500);
   res.status(status).json({
     success: false,
     error: err.message || fallback,
@@ -429,9 +434,15 @@ function sendPagoError(res, err, fallback) {
   });
 }
 
-router.post('/cards/request', requireAuth, requireSensitive, async (req, res) => {
+const { createCardIssueRateLimiter } = require('../middleware/security');
+const cardIssueLimiter = createCardIssueRateLimiter();
+
+router.post('/cards/request', requireAuth, requireSensitive, cardIssueLimiter, async (req, res) => {
   try {
     setCardsNoStore(res);
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Authentication required', code: 'AUTH_REQUIRED' });
+    }
     const {
       issuePagoCardForUser,
       PAGO_PRODUCTS,
@@ -444,7 +455,7 @@ router.post('/cards/request', requireAuth, requireSensitive, async (req, res) =>
       productCode: DEFAULT_ISSUE_PRODUCT,
       firstName: req.body?.first_name,
       lastName: req.body?.last_name,
-      email: req.body?.email,
+      email: req.body?.email || req.user.email,
       initialLoad: req.body?.initial_load,
     }), CARD_CREATE_ROUTE_TIMEOUT_MS, 'Card creation');
     const payload = await getUserCardsPayload(req.user.id);

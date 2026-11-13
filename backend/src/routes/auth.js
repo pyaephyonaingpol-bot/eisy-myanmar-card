@@ -2,8 +2,11 @@ const express = require('express');
 const authService = require('../services/authService');
 const { requireAuth } = require('../middleware/auth');
 const UserSession = require('../models/UserSession');
+const { assertGmailOnlyForOtp, GMAIL_ONLY_OTP_CODE } = require('../lib/gmailOnlyEmail');
+const { createSignupRateLimiter } = require('../middleware/security');
 
 const router = express.Router();
+const signupLimiter = createSignupRateLimiter();
 
 function clientIp(req) {
   return req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
@@ -16,10 +19,26 @@ function deviceInfo(req) {
   };
 }
 
+/** Defense-in-depth: reject non-Gmail before hitting authService / OTP send. */
+function requireGmailBodyEmail(req, res, next) {
+  try {
+    const email = req.body?.email || req.body?.Email || req.user?.email;
+    assertGmailOnlyForOtp(email);
+    return next();
+  } catch (err) {
+    const status = err.code === GMAIL_ONLY_OTP_CODE ? 403 : 400;
+    return res.status(status).json({ error: err.message, code: err.code || 'EMAIL_REQUIRED' });
+  }
+}
+
 // ─── Registration ───────────────────────────────────────────────
 
 function sendOtpRouteError(res, err) {
-  const status = err.code === 'OTP_RESEND_COOLDOWN' ? 429 : 400;
+  const status = err.code === 'OTP_RESEND_COOLDOWN'
+    ? 429
+    : err.code === GMAIL_ONLY_OTP_CODE
+      ? 403
+      : 400;
   res.status(status).json({
     error: err.message,
     code: err.code,
@@ -38,10 +57,10 @@ async function handleRegisterSendOtp(req, res) {
   }
 }
 
-router.post('/register/send-otp', handleRegisterSendOtp);
-router.post('/register-otp', handleRegisterSendOtp); // alias for frontend compatibility
+router.post('/register/send-otp', signupLimiter, requireGmailBodyEmail, handleRegisterSendOtp);
+router.post('/register-otp', signupLimiter, requireGmailBodyEmail, handleRegisterSendOtp); // alias for frontend compatibility
 
-router.post('/register/complete', async (req, res) => {
+router.post('/register/complete', signupLimiter, requireGmailBodyEmail, async (req, res) => {
   try {
     const { email, otp, name, phone, pin } = req.body;
     if (!email || !otp) {
@@ -56,7 +75,11 @@ router.post('/register/complete', async (req, res) => {
     });
     res.json({ success: true, ...result });
   } catch (err) {
-    const status = err.code === 'EMAIL_ALREADY_REGISTERED' || err.code === 'PHONE_ALREADY_REGISTERED' ? 409 : 400;
+    const status = err.code === 'EMAIL_ALREADY_REGISTERED' || err.code === 'PHONE_ALREADY_REGISTERED'
+      ? 409
+      : err.code === GMAIL_ONLY_OTP_CODE
+        ? 403
+        : 400;
     res.status(status).json({ error: err.message, code: err.code });
   }
 });
@@ -74,10 +97,10 @@ async function handleLoginSendOtp(req, res) {
   }
 }
 
-router.post('/login/send-otp', handleLoginSendOtp);
-router.post('/login-otp', handleLoginSendOtp); // alias
+router.post('/login/send-otp', requireGmailBodyEmail, handleLoginSendOtp);
+router.post('/login-otp', requireGmailBodyEmail, handleLoginSendOtp); // alias
 
-router.post('/login/verify', async (req, res) => {
+router.post('/login/verify', requireGmailBodyEmail, async (req, res) => {
   try {
     const { email, otp } = req.body;
     if (!email || !otp) return res.status(400).json({ error: 'email and otp are required' });
@@ -88,11 +111,12 @@ router.post('/login/verify', async (req, res) => {
     });
     res.json({ success: true, ...result });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    const status = err.code === GMAIL_ONLY_OTP_CODE ? 403 : 400;
+    res.status(status).json({ error: err.message, code: err.code });
   }
 });
 
-router.post('/login/pin', async (req, res) => {
+router.post('/login/pin', requireGmailBodyEmail, async (req, res) => {
   try {
     const { email, pin } = req.body;
     if (!email || !pin) return res.status(400).json({ error: 'email and pin are required' });
@@ -158,7 +182,7 @@ router.post('/pin/reset-default', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/pin/reset/send-otp', async (req, res) => {
+router.post('/pin/reset/send-otp', requireGmailBodyEmail, async (req, res) => {
   try {
     const email = req.body?.email || req.user?.email;
     if (!email) return res.status(400).json({ error: 'Email is required' });
@@ -169,7 +193,7 @@ router.post('/pin/reset/send-otp', async (req, res) => {
   }
 });
 
-router.post('/pin/reset/confirm', async (req, res) => {
+router.post('/pin/reset/confirm', requireGmailBodyEmail, async (req, res) => {
   try {
     const { email, otp, pin, confirm_pin, new_pin } = req.body || {};
     const nextPin = pin || new_pin;
@@ -235,7 +259,7 @@ router.post('/biometrics/login', async (req, res) => {
 
 // ─── Google OAuth (Supabase Auth) ────────────────────────────────
 
-router.post('/oauth/google', async (req, res) => {
+router.post('/oauth/google', signupLimiter, async (req, res) => {
   try {
     const accessToken = req.body?.access_token || req.body?.accessToken;
     if (!accessToken) {
@@ -250,13 +274,15 @@ router.post('/oauth/google', async (req, res) => {
   } catch (err) {
     const code = err.code || 'GOOGLE_OAUTH_FAILED';
     const status =
-      code === 'GOOGLE_TOKEN_REQUIRED' ||
-      code === 'GOOGLE_EMAIL_REQUIRED' ||
-      code === 'GOOGLE_NOT_CONFIGURED'
-        ? 400
-        : code === 'GOOGLE_TOKEN_INVALID'
-          ? 401
-          : 400;
+      code === GMAIL_ONLY_OTP_CODE
+        ? 403
+        : code === 'GOOGLE_TOKEN_REQUIRED' ||
+          code === 'GOOGLE_EMAIL_REQUIRED' ||
+          code === 'GOOGLE_NOT_CONFIGURED'
+          ? 400
+          : code === 'GOOGLE_TOKEN_INVALID'
+            ? 401
+            : 400;
     console.warn('[auth] Google OAuth failed:', code, err.message);
     res.status(status).json({ error: err.message || 'Google Sign-In failed', code });
   }

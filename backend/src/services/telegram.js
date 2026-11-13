@@ -65,6 +65,36 @@ function notifyAdminCardCreated(payload) {
   return queueAdminNotify(() => loadTelegramClient().notifyAdminCardCreated(payload));
 }
 
+/**
+ * Immediate admin alert for abuse / auth / proxy incidents.
+ * Falls back to sendAdminMessage so it still works if lib/telegram.ts
+ * has not been redeployed with notifyAdminSecurityAlert yet.
+ */
+function notifyAdminSecurityAlert(payload = {}) {
+  return queueAdminNotify(async () => {
+    try {
+      const client = require('./loadTelegramClient').loadTelegramClient();
+      if (typeof client.notifyAdminSecurityAlert === 'function') {
+        return client.notifyAdminSecurityAlert(payload);
+      }
+    } catch (err) {
+      console.warn('[telegram] security alert client load failed:', err.message);
+    }
+    const severity = String(payload.severity || 'high').toUpperCase();
+    const title = String(payload.title || 'Security alert').trim();
+    const details = Array.isArray(payload.details)
+      ? payload.details.map((line) => `• ${line}`)
+      : [];
+    const message = [
+      `🚨 *Security alert* (${severity})`,
+      '',
+      title,
+      ...details,
+    ].join('\n');
+    return sendAdminMessage(message);
+  });
+}
+
 function notifyAdminWithdrawalRequest(payload) {
   const { loadTelegramClient } = require('./loadTelegramClient');
   return queueAdminNotify(() => loadTelegramClient().notifyAdminWithdrawalRequest(payload));
@@ -286,6 +316,7 @@ module.exports = {
   notifyAdminDepositRequest,
   notifyAdminDepositForUser,
   notifyAdminCardCreated,
+  notifyAdminSecurityAlert,
   notifyAdminWithdrawalRequest,
   notifyAdminWithdrawalForUser,
   notifyAdminNewUser,

@@ -270,6 +270,13 @@ async function refundUsdt(userId, amount, description) {
   });
 }
 
+function maxPagoCardsPerUser() {
+  const raw = process.env.PAGO_MAX_CARDS_PER_USER;
+  if (raw == null || String(raw).trim() === '') return 2;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 2;
+}
+
 async function issuePagoCardForUser({
   userId,
   productCode,
@@ -285,10 +292,55 @@ async function issuePagoCardForUser({
   const user = await User.findById(userId);
   if (!user) throw httpError('User not found', 404, 'USER_NOT_FOUND');
 
+  const { isUserBlocked } = require('../lib/userAuthStatus');
+  if (isUserBlocked(user.auth_status || user.status)) {
+    throw httpError('Account blocked', 403, 'ACCOUNT_BLOCKED');
+  }
+
+  // Cap live cards per user to stop rapid consecutive issuing abuse.
+  const existing = await Card.findByUserId(userId);
+  const liveCount = (existing || []).filter((row) => {
+    const status = String(row.status || '').toLowerCase();
+    if (status === 'terminated' || status === 'pending') return false;
+    if (String(row.card_number || '').startsWith('PENDING-')) return false;
+    return true;
+  }).length;
+  const maxCards = maxPagoCardsPerUser();
+  if (liveCount >= maxCards) {
+    try {
+      const { notifyAdminSecurityAlert } = require('./telegram');
+      notifyAdminSecurityAlert({
+        title: 'Card issue blocked — max cards reached',
+        severity: 'high',
+        details: [
+          `User id: ${userId}`,
+          `Email: ${user.email || 'n/a'}`,
+          `Live cards: ${liveCount}/${maxCards}`,
+        ],
+      });
+    } catch (_) { /* ignore */ }
+    throw httpError(
+      `You already have ${liveCount} card${liveCount === 1 ? '' : 's'}. Maximum is ${maxCards}.`,
+      429,
+      'CARD_LIMIT_REACHED'
+    );
+  }
+
   const names = splitName(firstName, lastName, user.name);
-  const cardEmail = String(email || user.email || '').trim();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cardEmail)) {
+  const cardEmailRaw = String(email || user.email || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cardEmailRaw)) {
     throw httpError('A valid email is required', 400, 'VALIDATION_ERROR');
+  }
+  let cardEmail = cardEmailRaw;
+  try {
+    const { assertGmailOnlyForOtp } = require('../lib/gmailOnlyEmail');
+    cardEmail = assertGmailOnlyForOtp(cardEmailRaw);
+  } catch (err) {
+    throw httpError(
+      err.message || 'Gmail accounts only for virtual cards',
+      403,
+      err.code || 'GMAIL_ONLY_REQUIRED'
+    );
   }
 
   let load = null;

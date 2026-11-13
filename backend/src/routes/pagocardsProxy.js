@@ -4,18 +4,25 @@
  * Reverse proxy: /api/pago/* → Pagocards upstream so Droplet :3000 matches
  * PAGO_CARD_API_BASE_URL=http://HOST:3000/api/pago (no separate nginx required).
  *
+ * SECURITY: Anonymous access is denied. Callers must send
+ * `x-eisy-pago-proxy-key` matching PAGO_PROXY_ACCESS_KEY (or a SHA-256
+ * derivation of PAGO_CARD_SECRET_KEY). The server-side Pagocards client
+ * always attaches this header — browsers / attackers cannot use the Droplet
+ * whitelist as an open card-create relay.
+ *
  * Query strings are forwarded unchanged (e.g. `?pageNum=1`).
  *
- * Pagocards paths (see public docs):
- * - Card transaction history (virtual card spend): upstream
- *   `GET /api/v1/cards/{card_id}/transactions?pageNum=1` (optional `pageNum`, default 1).
- * - Admin ledger (different product surface): `GET /api/admin/transactions` with
- *   `page_number`, `per_page`, `uuid`, `searchterm` — not the per-card endpoint above.
- *
  * Env:
- *   PAGO_PROXY_UPSTREAM_ORIGIN — default https://pagocards.com (override if your docs use another host)
+ *   PAGO_PROXY_UPSTREAM_ORIGIN — default https://pagocards.com
+ *   PAGO_PROXY_ACCESS_KEY — optional explicit shared secret
  */
+
 const express = require('express');
+const path = require('path');
+const {
+  PAGO_PROXY_ACCESS_HEADER,
+  requestHasValidPagoProxyAccess,
+} = require(path.join(__dirname, '../../../lib/pagoProxyAccess.cjs'));
 
 const router = express.Router();
 
@@ -53,6 +60,8 @@ function buildForwardHeaders(req, upstreamUrl) {
     if (!value) continue;
     const lower = key.toLowerCase();
     if (HOP_BY_HOP.has(lower)) continue;
+    // Never forward our proxy gate key to Pagocards.
+    if (lower === PAGO_PROXY_ACCESS_HEADER) continue;
     out[key] = value;
   }
   out.host = upstreamHost;
@@ -69,6 +78,42 @@ function bodyForForward(req) {
   }
   return undefined;
 }
+
+function alertUnauthorizedProxyAttempt(req) {
+  try {
+    const { notifyAdminSecurityAlert } = require('../services/telegram');
+    const method = String(req.method || 'GET').toUpperCase();
+    const url = String(req.originalUrl || req.url || '').slice(0, 200);
+    notifyAdminSecurityAlert({
+      title: 'Unauthorized Pagocards proxy attempt',
+      severity: 'critical',
+      details: [
+        `Method: ${method}`,
+        `Path: \`${url}\``,
+        `IP: ${req.ip || req.socket?.remoteAddress || 'unknown'}`,
+        'Action: blocked (missing/invalid proxy access key)',
+      ],
+    });
+  } catch (err) {
+    console.warn('[pago/proxy] security alert skipped:', err.message);
+  }
+}
+
+router.use((req, res, next) => {
+  if (String(req.method || '').toUpperCase() === 'OPTIONS') return next();
+  if (requestHasValidPagoProxyAccess(req)) return next();
+  console.warn(
+    '[pago/proxy] denied unauthorized request',
+    String(req.method || '').toUpperCase(),
+    String(req.originalUrl || req.url || '').slice(0, 160),
+    req.ip || ''
+  );
+  alertUnauthorizedProxyAttempt(req);
+  return res.status(401).json({
+    error: 'Pagocards proxy authentication required',
+    code: 'PAGO_PROXY_UNAUTHORIZED',
+  });
+});
 
 router.use(async (req, res) => {
   const origin = resolveUpstreamOrigin();
