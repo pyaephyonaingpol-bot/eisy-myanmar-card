@@ -46,7 +46,10 @@ function section(title) {
 section('strict lockdown script exists and covers tables');
 assert.ok(STRICT.includes('FORCE ROW LEVEL SECURITY'), 'forces RLS');
 assert.ok(STRICT.includes('is_own_user_id'), 'own-user helper');
-assert.ok(STRICT.includes('is_own_wallet_row'), 'own-wallet helper');
+assert.ok(STRICT.includes('DROP FUNCTION IF EXISTS public.is_own_wallet_row'), 'drops old auth_user_id helper');
+assert.ok(!STRICT.includes('w.auth_user_id'), 'no auth_user_id column references');
+assert.ok(!STRICT.includes('ADD COLUMN IF NOT EXISTS auth_user_id'), 'does not add auth_user_id');
+assert.ok(STRICT.includes('p_user_id = auth.uid()::text'), 'own-row uses user_id = auth.uid()');
 for (const table of [
   'user_wallets',
   'deposit_requests',

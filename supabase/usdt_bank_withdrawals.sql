@@ -45,12 +45,5 @@ create policy "authenticated_select_own_usdt_bank_withdrawals"
   using (
     user_id is not null
     and auth.uid() is not null
-    and (
-      user_id = auth.uid()::text
-      or exists (
-        select 1 from public.user_wallets w
-        where w.user_id = usdt_bank_withdrawals.user_id
-          and w.auth_user_id = auth.uid()::text
-      )
-    )
+    and user_id = auth.uid()::text
   );

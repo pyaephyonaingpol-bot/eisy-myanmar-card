@@ -216,12 +216,5 @@ CREATE POLICY "authenticated_select_own_user_cards" ON user_cards
   USING (
     user_id IS NOT NULL
     AND auth.uid() IS NOT NULL
-    AND (
-      user_id = auth.uid()::text
-      OR EXISTS (
-        SELECT 1 FROM public.user_wallets w
-        WHERE w.user_id = user_cards.user_id
-          AND w.auth_user_id = auth.uid()::text
-      )
-    )
+    AND user_id = auth.uid()::text
   );
