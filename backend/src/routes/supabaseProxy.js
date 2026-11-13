@@ -3,9 +3,9 @@
 /**
  * Reverse proxy: /supabase/* → NEXT_PUBLIC_SUPABASE_URL (*.supabase.co).
  *
- * Lets the browser (and Google OAuth authorize / callback hops) use
- * https://eisymyanmar.com/supabase instead of the raw project URL, without
- * a Supabase Pro custom domain.
+ * Lets the browser use https://eisymyanmar.com/supabase for API calls instead
+ * of the raw project URL. Google OAuth redirect_uri must remain
+ * https://PROJECT.supabase.co/auth/v1/callback (never rewrite it).
  *
  * Env:
  *   NEXT_PUBLIC_SUPABASE_URL / SUPABASE_URL — upstream origin (required)
@@ -50,10 +50,11 @@ function buildForwardHeaders(req, upstreamUrl) {
     out[key] = value;
   }
   out.host = upstreamUrl.hostname;
-  out['x-forwarded-host'] = String(req.headers['x-forwarded-host'] || req.headers.host || '');
-  out['x-forwarded-proto'] = String(
-    (req.headers['x-forwarded-proto'] || req.protocol || 'https')
-  ).split(',')[0].trim();
+  // Do NOT forward the site Host as X-Forwarded-Host — GoTrue may mint Google
+  // redirect_uri from it and then fail "Unable to exchange external code".
+  delete out['x-forwarded-host'];
+  delete out['x-forwarded-proto'];
+  delete out['x-forwarded-port'];
   out['x-forwarded-for'] = req.ip || req.socket?.remoteAddress || '';
   return out;
 }

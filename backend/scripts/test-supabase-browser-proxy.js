@@ -90,10 +90,11 @@ async function main() {
     );
     assert.ok(rewritten.includes('accounts.google.com'), 'keeps Google host');
     assert.ok(
-      rewritten.includes('redirect_uri=https%3A%2F%2Feisymyanmar.com%2Fsupabase%2Fauth%2Fv1%2Fcallback')
-        || rewritten.includes('redirect_uri=https://eisymyanmar.com/supabase/auth/v1/callback'),
-      'rewrites Google redirect_uri onto site proxy'
+      rewritten.includes('redirect_uri=https%3A%2F%2Fabc.supabase.co%2Fauth%2Fv1%2Fcallback')
+        || rewritten.includes('redirect_uri=https://abc.supabase.co/auth/v1/callback'),
+      'keeps Google redirect_uri on *.supabase.co (required for code exchange)'
     );
+    assert.ok(!rewritten.includes('eisymyanmar.com/supabase/auth/v1/callback'), 'must not rewrite Google redirect_uri');
 
     const loc = rewriteSupabaseProxyLocation(
       'https://abc.supabase.co/auth/v1/callback?code=xyz',
@@ -103,7 +104,17 @@ async function main() {
         proxyPath: '/supabase',
       }
     );
-    assert.strictEqual(loc, 'https://eisymyanmar.com/supabase/auth/v1/callback?code=xyz');
+    assert.strictEqual(loc, 'https://abc.supabase.co/auth/v1/callback?code=xyz', 'auth callback stays on supabase.co');
+
+    const other = rewriteSupabaseProxyLocation(
+      'https://abc.supabase.co/rest/v1/user_wallets',
+      {
+        upstreamOrigin: 'https://abc.supabase.co',
+        publicOrigin: 'https://eisymyanmar.com',
+        proxyPath: '/supabase',
+      }
+    );
+    assert.strictEqual(other, 'https://eisymyanmar.com/supabase/rest/v1/user_wallets');
     console.log('ok');
 
     section('public config uses PUBLIC_BASE_URL/supabase');
@@ -160,10 +171,13 @@ async function main() {
       const location = resp.headers.get('location') || '';
       assert.ok(location.includes('accounts.google.com'), 'forwards Google Location host');
       assert.ok(
-        location.includes('eisymyanmar.com%2Fsupabase%2Fauth%2Fv1%2Fcallback')
-          || location.includes('eisymyanmar.com/supabase/auth/v1/callback'),
-        'rewrites redirect_uri in proxied Location'
+        location.includes('example.supabase.co%2Fauth%2Fv1%2Fcallback')
+          || location.includes('example.supabase.co/auth/v1/callback')
+          || location.includes('127.0.0.1'),
+        'preserves upstream Google redirect_uri (no proxy rewrite)'
       );
+      assert.ok(!location.includes('eisymyanmar.com/supabase/auth/v1/callback'), 'does not rewrite Google redirect_uri');
+      assert.ok(!seenHost.includes('eisymyanmar'), 'does not send site host as upstream Host');
     });
     await new Promise((resolve) => upstream.close(resolve));
     console.log('ok');

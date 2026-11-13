@@ -19,11 +19,14 @@ directory exists (avoids `No Output Directory named "public" found`).
 Static files (`.js`, `.css`, `/assets/**`) are served from `public/` by Vercel CDN.
 Extensionless routes (`/`, `/admin`, `/dashboard`) rewrite to the Express function.
 `/supabase` and `/supabase/*` also rewrite to the Express function, which reverse-proxies to
-`NEXT_PUBLIC_SUPABASE_URL` so Google OAuth authorize/callback can stay on `eisymyanmar.com`
-without a Supabase Pro custom domain. Add this Authorized redirect URI in Google Cloud for the
-same OAuth client Supabase uses:
+`NEXT_PUBLIC_SUPABASE_URL` for same-origin API calls. **Do not** register a proxied Google
+callback — Google's Authorized redirect URI must stay:
 
-`https://eisymyanmar.com/supabase/auth/v1/callback`
+`https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback`
+
+(Rewriting that URI caused `Unable to exchange external code`.) App return URL is
+`https://eisymyanmar.com/auth/callback` in Supabase Auth → Redirect URLs.
+See `backend/docs/GOOGLE_OAUTH.md`.
 
 Deposit QR images use `GET /api/qr?data=…` (PNG) so they do not rely on third-party hosts.
 
