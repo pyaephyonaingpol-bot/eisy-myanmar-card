@@ -136,8 +136,53 @@ function createCardIssueRateLimiter() {
     keyGenerator: (req) => {
       const uid = req.user?.id != null ? String(req.user.id) : '';
       if (uid) return `card-issue:user:${uid}`;
-      return `card-issue:ip:${req.ip || 'unknown'}`;
+      const { getRequestIp } = require('./ipBlocklist');
+      return `card-issue:ip:${getRequestIp(req) || 'unknown'}`;
     },
+    validate: { keyGeneratorIpFallback: false },
+    skip: (req) => String(req.method || '').toUpperCase() === 'OPTIONS',
+  });
+}
+
+/**
+ * Virtual card issue — hard IP cap (independent of user account).
+ * Stops multi-account spam from one IP that bypasses the per-user limiter.
+ * On trip: temporary ban the IP + Telegram alert.
+ */
+function createCardIssueIpRateLimiter() {
+  const { getRequestIp, temporaryBanIp } = require('./ipBlocklist');
+  return rateLimit({
+    windowMs: envInt('RATE_LIMIT_CARD_ISSUE_IP_WINDOW_MS', 60 * 60 * 1000),
+    max: envInt('RATE_LIMIT_CARD_ISSUE_IP_MAX', 3),
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res, _next, options) => {
+      const ip = getRequestIp(req) || 'unknown';
+      const banUntil = temporaryBanIp(ip);
+      try {
+        const { notifyAdminSecurityAlert } = require('../services/telegram');
+        notifyAdminSecurityAlert({
+          title: 'Card issue IP rate limit — temporary ban',
+          severity: 'critical',
+          details: [
+            `IP: ${ip}`,
+            `User id: ${req.user?.id || 'n/a'}`,
+            `Email: ${req.user?.email || 'n/a'}`,
+            `Ban until: ${banUntil ? new Date(banUntil).toISOString() : 'n/a'}`,
+            `Path: ${String(req.originalUrl || req.url || '').slice(0, 160)}`,
+            'Add IP to BLOCKED_IPS for a durable deny across serverless instances.',
+          ],
+        });
+      } catch (err) {
+        console.warn('[rate-limit] card-issue IP alert skipped:', err.message);
+      }
+      return res.status(429).json({
+        error: 'Too many card requests from this network. Try again later.',
+        code: 'CARD_ISSUE_IP_RATE_LIMITED',
+        retry_after_ms: Math.max(0, (banUntil || Date.now()) - Date.now()),
+      });
+    },
+    keyGenerator: (req) => `card-issue-ip:${getRequestIp(req) || 'unknown'}`,
     validate: { keyGeneratorIpFallback: false },
     skip: (req) => String(req.method || '').toUpperCase() === 'OPTIONS',
   });
@@ -150,6 +195,7 @@ module.exports = {
   createKycRateLimiter,
   createSignupRateLimiter,
   createCardIssueRateLimiter,
+  createCardIssueIpRateLimiter,
   isWebhookPath,
   shouldSkipRateLimit,
 };
