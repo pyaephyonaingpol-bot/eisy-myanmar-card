@@ -335,6 +335,10 @@ async function issuePagoCardForUser({
     throw httpError('Account blocked', 403, 'ACCOUNT_BLOCKED');
   }
 
+  // Durable per-user cooldown (DB-backed — survives serverless cold starts).
+  const { assertCardIssueCooldown } = require('./cardIssueAbuseService');
+  await assertCardIssueCooldown(userId);
+
   // Cap live cards per user to stop rapid consecutive issuing abuse.
   const existing = await Card.findByUserId(userId);
   const liveCount = (existing || []).filter((row) => {

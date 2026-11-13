@@ -78,10 +78,17 @@ assert.strictEqual(
   const userSrc = fs.readFileSync(path.join(__dirname, '../src/routes/user.js'), 'utf8');
   assert.ok(userSrc.includes('cardIssueLimiter'));
   assert.ok(userSrc.includes('cardIssueIpLimiter'));
+  assert.ok(userSrc.includes('/cards/request/challenge'));
+  assert.ok(userSrc.includes('assertCardIssueBotChallenge'));
   assert.ok(
     userSrc.includes("'/cards/request',\n  requireAuth,\n  requireSensitive,\n  cardIssueIpLimiter,\n  cardIssueLimiter,")
     || userSrc.includes("'/cards/request', requireAuth, requireSensitive, cardIssueIpLimiter, cardIssueLimiter")
   );
+
+  const abuseSrc = fs.readFileSync(path.join(__dirname, '../src/services/cardIssueAbuseService.js'), 'utf8');
+  assert.ok(abuseSrc.includes('assertCardIssueCooldown'));
+  assert.ok(abuseSrc.includes('recordCardIssueAbuseStrike'));
+  assert.ok(abuseSrc.includes('createCardIssueConfirmToken'));
 
   const authSrc = fs.readFileSync(path.join(__dirname, '../src/routes/auth.js'), 'utf8');
   assert.ok(authSrc.includes('requireGmailBodyEmail'));

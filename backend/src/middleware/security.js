@@ -107,15 +107,35 @@ function createSignupRateLimiter() {
 
 /**
  * Virtual card issue — per authenticated user (falls back to IP).
- * Stops rapid consecutive Pagocards creates after account takeover / free-fee abuse.
+ * Default: 1 request / hour / user. On trip: abuse strike → auto-block.
  */
 function createCardIssueRateLimiter() {
   return rateLimit({
     windowMs: envInt('RATE_LIMIT_CARD_ISSUE_WINDOW_MS', 60 * 60 * 1000),
-    max: envInt('RATE_LIMIT_CARD_ISSUE_MAX', 3),
+    max: envInt('RATE_LIMIT_CARD_ISSUE_MAX', 1),
     standardHeaders: true,
     legacyHeaders: false,
-    handler: (req, res, _next, options) => {
+    handler: async (req, res, _next, options) => {
+      let blocked = false;
+      try {
+        const { getRequestIp } = require('./ipBlocklist');
+        const { recordCardIssueAbuseStrike } = require('../services/cardIssueAbuseService');
+        const result = await recordCardIssueAbuseStrike(req.user?.id, {
+          reason: 'card_issue_user_rate_limit',
+          ip: getRequestIp(req) || req.ip || null,
+          path: String(req.originalUrl || req.url || ''),
+          email: req.user?.email || null,
+        });
+        blocked = Boolean(result?.blocked);
+      } catch (err) {
+        console.warn('[rate-limit] card-issue abuse strike skipped:', err.message);
+      }
+      if (blocked) {
+        return res.status(403).json({
+          error: 'Account suspended due to card request abuse.',
+          code: 'ACCOUNT_BLOCKED',
+        });
+      }
       try {
         const { notifyAdminSecurityAlert } = require('../services/telegram');
         notifyAdminSecurityAlert({
@@ -131,7 +151,10 @@ function createCardIssueRateLimiter() {
       } catch (err) {
         console.warn('[rate-limit] card-issue alert skipped:', err.message);
       }
-      return rateLimitHandler(req, res, _next, options);
+      return res.status(options.statusCode || 429).json({
+        error: 'Too many card requests. You can request one card per hour.',
+        code: 'CARD_ISSUE_USER_RATE_LIMITED',
+      });
     },
     keyGenerator: (req) => {
       const uid = req.user?.id != null ? String(req.user.id) : '';
@@ -156,9 +179,24 @@ function createCardIssueIpRateLimiter() {
     max: envInt('RATE_LIMIT_CARD_ISSUE_IP_MAX', 3),
     standardHeaders: true,
     legacyHeaders: false,
-    handler: (req, res, _next, options) => {
+    handler: async (req, res, _next, options) => {
       const ip = getRequestIp(req) || 'unknown';
       const banUntil = temporaryBanIp(ip);
+      let blocked = false;
+      if (req.user?.id) {
+        try {
+          const { recordCardIssueAbuseStrike } = require('../services/cardIssueAbuseService');
+          const result = await recordCardIssueAbuseStrike(req.user.id, {
+            reason: 'card_issue_ip_rate_limit',
+            ip,
+            path: String(req.originalUrl || req.url || ''),
+            email: req.user?.email || null,
+          });
+          blocked = Boolean(result?.blocked);
+        } catch (err) {
+          console.warn('[rate-limit] card-issue IP abuse strike skipped:', err.message);
+        }
+      }
       try {
         const { notifyAdminSecurityAlert } = require('../services/telegram');
         notifyAdminSecurityAlert({
@@ -175,6 +213,12 @@ function createCardIssueIpRateLimiter() {
         });
       } catch (err) {
         console.warn('[rate-limit] card-issue IP alert skipped:', err.message);
+      }
+      if (blocked) {
+        return res.status(403).json({
+          error: 'Account suspended due to card request abuse.',
+          code: 'ACCOUNT_BLOCKED',
+        });
       }
       return res.status(429).json({
         error: 'Too many card requests from this network. Try again later.',
