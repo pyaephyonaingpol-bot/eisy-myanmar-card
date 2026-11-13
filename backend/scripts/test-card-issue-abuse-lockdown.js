@@ -27,6 +27,7 @@ const {
 const {
   createSignupRateLimiter,
   createCardIssueRateLimiter,
+  createCardIssueIpRateLimiter,
 } = require('../src/middleware/security');
 
 process.env.PAGO_CARD_SECRET_KEY = 'sec-test-key-for-proxy-gate';
@@ -68,6 +69,7 @@ assert.strictEqual(
 
   assert.strictEqual(typeof createSignupRateLimiter(), 'function');
   assert.strictEqual(typeof createCardIssueRateLimiter(), 'function');
+  assert.strictEqual(typeof createCardIssueIpRateLimiter(), 'function');
 
   const proxySrc = fs.readFileSync(path.join(__dirname, '../src/routes/pagocardsProxy.js'), 'utf8');
   assert.ok(proxySrc.includes('PAGO_PROXY_UNAUTHORIZED'));
@@ -75,7 +77,11 @@ assert.strictEqual(
 
   const userSrc = fs.readFileSync(path.join(__dirname, '../src/routes/user.js'), 'utf8');
   assert.ok(userSrc.includes('cardIssueLimiter'));
-  assert.ok(userSrc.includes("'/cards/request', requireAuth, requireSensitive, cardIssueLimiter"));
+  assert.ok(userSrc.includes('cardIssueIpLimiter'));
+  assert.ok(
+    userSrc.includes("'/cards/request',\n  requireAuth,\n  requireSensitive,\n  cardIssueIpLimiter,\n  cardIssueLimiter,")
+    || userSrc.includes("'/cards/request', requireAuth, requireSensitive, cardIssueIpLimiter, cardIssueLimiter")
+  );
 
   const authSrc = fs.readFileSync(path.join(__dirname, '../src/routes/auth.js'), 'utf8');
   assert.ok(authSrc.includes('requireGmailBodyEmail'));
