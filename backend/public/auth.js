@@ -477,6 +477,7 @@ const Auth = {
   async sendPinResetOtp(email) {
     const target = (email || this.user?.email || '').trim();
     if (!target) throw new Error('Email is required to reset your PIN');
+    this.assertGmailOnlyEmail(target);
     return this.api('POST', '/api/auth/pin/reset/send-otp', { email: target });
   },
 
