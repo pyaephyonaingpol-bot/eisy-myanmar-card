@@ -441,6 +441,7 @@ async function issuePagoCardForUser({
         email: cardEmail,
         productCode: product,
         cardHolderName: fields.cardHolderName || `${names.first_name} ${names.last_name}`,
+        trustedCreateRecovery: true,
       });
     } catch (importErr) {
       const wrapped = httpError(
@@ -566,6 +567,38 @@ async function importPagoCardById(userId, pagoCardId, deps = {}) {
   }
   const fields = cardFieldsFromProvider(remote);
   if (!fields.pagoCardId) fields.pagoCardId = id;
+
+  // Prevent claiming orphaned provider cards that belong to another email.
+  const remoteEmail = String(fields.email || remote?.email || '').trim().toLowerCase();
+  const userEmail = String(user?.email || deps.email || '').trim().toLowerCase();
+  if (remoteEmail && userEmail && remoteEmail !== userEmail) {
+    try {
+      const { notifyAdminSecurityAlert } = require('./telegram');
+      notifyAdminSecurityAlert({
+        title: 'Blocked Pagocards sync claim (email mismatch)',
+        severity: 'high',
+        details: [
+          `User id: ${userId}`,
+          `User email: ${userEmail}`,
+          `Remote email: ${remoteEmail}`,
+          `pago_card_id: ${id}`,
+        ],
+      });
+    } catch (_) { /* ignore */ }
+    throw httpError(
+      'This provider card does not match your account email',
+      403,
+      'PAGO_CARD_EMAIL_MISMATCH'
+    );
+  }
+  if (!remoteEmail && !deps.trustedCreateRecovery && !deps.allowUnverifiedImport) {
+    throw httpError(
+      'Cannot import this card without a matching provider email',
+      403,
+      'PAGO_CARD_EMAIL_REQUIRED'
+    );
+  }
+
   return savePagoCardLocally({
     userId,
     fields,

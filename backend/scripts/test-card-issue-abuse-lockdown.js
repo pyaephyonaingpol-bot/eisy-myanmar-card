@@ -93,6 +93,16 @@ assert.strictEqual(
   const tgSrc = fs.readFileSync(path.join(__dirname, '../src/services/telegram.js'), 'utf8');
   assert.ok(tgSrc.includes('notifyAdminSecurityAlert'));
 
+  const adminSrc = fs.readFileSync(path.join(__dirname, '../src/routes/admin.js'), 'utf8');
+  assert.ok(adminSrc.includes('LEGACY_ISSUE_DISABLED'));
+  assert.ok(!/router\.post\('\/issue-card', requireAuth, requireSensitive, async/.test(adminSrc));
+
+  const importSrc = fs.readFileSync(path.join(__dirname, '../src/services/pagoCardService.js'), 'utf8');
+  assert.ok(importSrc.includes('PAGO_CARD_EMAIL_MISMATCH'));
+
+  const webhookSrc = fs.readFileSync(path.join(__dirname, '../src/services/pago3dsWebhookService.js'), 'utf8');
+  assert.ok(webhookSrc.includes('PAGO_WEBHOOK_NOT_CONFIGURED'));
+
   // Client attaches proxy gate key on outbound Pagocards calls.
   process.env.PAGO_CARD_API_KEY = 'pub-test-key';
   process.env.PAGO_CARD_SECRET_KEY = 'sec-test-key-for-proxy-gate';

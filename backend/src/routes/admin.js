@@ -102,87 +102,37 @@ const { adjustMmk, adjustUsdt, formatMmk, formatUsdt } = require('../services/wa
 
 const router = express.Router();
 
-// ─── User self-service issue card (legacy dashboard) ───
-router.post('/issue-card', requireAuth, requireSensitive, async (req, res) => {
+/**
+ * Legacy self-service PAN write endpoint — DISABLED.
+ * Any authenticated user could previously insert/update full card secrets here
+ * before requireAdminAuth. Use POST /api/user/cards/request (Pago) or
+ * POST /api/admin/cards/issue (admin RBAC) instead.
+ */
+router.post('/issue-card', requireAuth, async (req, res) => {
+  console.warn(
+    '[admin/issue-card] blocked legacy self-issue',
+    `user=${req.user?.id || '?'}`,
+    `ip=${req.ip || ''}`
+  );
   try {
-    const db = getDb();
-    const userId = req.body.user_id ? parseInt(req.body.user_id, 10) : req.user.id;
-
-    if (userId !== req.user.id && !req.isAdmin) {
-      return res.status(403).json({ error: 'Can only issue card for your own account' });
-    }
-
-    const { card_number, exp_date, cvv, card_holder_name } = req.body;
-
-    if (!card_number || !exp_date || !cvv) {
-      return res.status(400).json({ error: 'card_number, exp_date, and cvv are required' });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    const holderName = card_holder_name || user.name;
-
-    let card = await Card.findPrimaryByUserId(userId);
-    if (card) {
-      card = await Card.updateCardDetails(card.id, {
-        cardNumber: card_number,
-        expDate: exp_date,
-        cvv,
-        cardHolderName: holderName,
-        status: 'active',
-        adminNotes: 'Updated via dashboard',
-      });
-    } else {
-      card = await Card.issue({
-        userId,
-        cardNumber: card_number,
-        expDate: exp_date,
-        cvv,
-        cardHolderName: holderName,
-        status: 'active',
-        isPrimary: true,
-      });
-    }
-
-    const existingLegacy = await db.get('SELECT id FROM cards WHERE user_id = ?', userId);
-    if (existingLegacy) {
-      await db.run(`
-        UPDATE cards SET card_number = ?, exp_date = ?, cvv = ?, card_holder_name = ? WHERE user_id = ?
-      `, card_number, exp_date, cvv, holderName, userId);
-    } else {
-      await db.run(`
-        INSERT INTO cards (user_id, card_number, exp_date, cvv, card_holder_name) VALUES (?, ?, ?, ?, ?)
-      `, userId, card_number, exp_date, cvv, holderName);
-    }
-
-    await TransactionLog.create({
-      userId,
-      type: 'card_issued',
-      direction: 'neutral',
-      referenceType: 'cards_v2',
-      referenceId: card.id,
-      description: 'Virtual card issued or updated',
-      createdBy: req.isAdmin ? 'admin' : 'user',
-    }).catch(() => {});
-
-    res.json({
-      success: true,
-      message: 'Virtual card issued successfully',
-      card: {
-        id: card.id,
-        user_id: userId,
-        card_number: card.card_number,
-        exp_date: card.exp_date,
-        cvv: card.cvv,
-        card_holder_name: card.card_holder_name,
-        status: card.status,
-      },
+    const { notifyAdminSecurityAlert } = require('../services/telegram');
+    notifyAdminSecurityAlert({
+      title: 'Blocked legacy /api/admin/issue-card',
+      severity: 'critical',
+      details: [
+        `User id: ${req.user?.id || 'n/a'}`,
+        `Email: ${req.user?.email || 'n/a'}`,
+        `IP: ${req.ip || 'unknown'}`,
+        'Endpoint retired — use /api/user/cards/request or admin cards/issue',
+      ],
     });
   } catch (err) {
-    console.error('[admin/issue-card]', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.warn('[admin/issue-card] security alert skipped:', err.message);
   }
+  return res.status(410).json({
+    error: 'This card issue endpoint has been disabled. Request a Pago card from My Cards, or use the admin card issue tools.',
+    code: 'LEGACY_ISSUE_DISABLED',
+  });
 });
 
 // ─── Admin authentication (public login / bootstrap) ───
