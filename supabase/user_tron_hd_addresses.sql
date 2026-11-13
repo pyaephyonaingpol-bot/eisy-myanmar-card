@@ -41,7 +41,8 @@ BEGIN
       AND policyname = 'service_role_user_tron_hd_addresses'
   ) THEN
     CREATE POLICY "service_role_user_tron_hd_addresses"
-      ON user_tron_hd_addresses FOR ALL USING (true) WITH CHECK (true);
+      ON user_tron_hd_addresses FOR ALL TO service_role
+      USING (true) WITH CHECK (true);
   END IF;
 END $$;
 
@@ -69,6 +70,7 @@ BEGIN
       AND policyname = 'service_role_user_tron_deposit_addresses'
   ) THEN
     CREATE POLICY "service_role_user_tron_deposit_addresses"
-      ON user_tron_deposit_addresses FOR ALL USING (true) WITH CHECK (true);
+      ON user_tron_deposit_addresses FOR ALL TO service_role
+      USING (true) WITH CHECK (true);
   END IF;
 END $$;

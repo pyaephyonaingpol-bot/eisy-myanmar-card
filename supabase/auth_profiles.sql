@@ -21,14 +21,22 @@ CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles (LOWER(email));
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "profiles_select_own" ON public.profiles;
-CREATE POLICY "profiles_select_own" ON public.profiles
-  FOR SELECT USING (auth.uid() = id);
+DROP POLICY IF EXISTS "authenticated_select_own_profiles" ON public.profiles;
+CREATE POLICY "authenticated_select_own_profiles" ON public.profiles
+  FOR SELECT TO authenticated
+  USING (auth.uid() = id);
 
 DROP POLICY IF EXISTS "profiles_update_own" ON public.profiles;
-CREATE POLICY "profiles_update_own" ON public.profiles
-  FOR UPDATE USING (auth.uid() = id);
+DROP POLICY IF EXISTS "authenticated_update_own_profiles" ON public.profiles;
+CREATE POLICY "authenticated_update_own_profiles" ON public.profiles
+  FOR UPDATE TO authenticated
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
 
--- Service role / backend sync bypasses RLS via service key.
+DROP POLICY IF EXISTS "service_role_all_profiles" ON public.profiles;
+CREATE POLICY "service_role_all_profiles" ON public.profiles
+  FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
 -- Local wallet rows keep users.id. This column only records the Auth UUID.
 DO $$

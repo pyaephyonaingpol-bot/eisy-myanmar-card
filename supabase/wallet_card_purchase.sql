@@ -393,4 +393,6 @@ GRANT EXECUTE ON FUNCTION finalize_card_purchase_wallet(TEXT, TEXT, TEXT, TEXT, 
 ALTER TABLE wallet_transactions ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "service_role_wallet_transactions" ON wallet_transactions;
-CREATE POLICY "service_role_wallet_transactions" ON wallet_transactions FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "service_role_all_wallet_transactions" ON wallet_transactions;
+CREATE POLICY "service_role_all_wallet_transactions" ON wallet_transactions
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
