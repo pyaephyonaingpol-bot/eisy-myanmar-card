@@ -604,13 +604,16 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
       withCardApiTimeout,
       isCardTimeoutError,
       isCardProviderSoftError,
+      cardSecretsReady,
       CARD_FETCH_TIMEOUT_MS,
     } = require('../services/pagoCardService');
     let timedOut = false;
     let providerUnavailable = false;
+    let providerErrorCode = null;
     const shouldCallProvider = Boolean(row.pago_card_id) && (
       forceRefresh
       || iframeCard
+      || !cardSecretsReady(row)
     );
     if (shouldCallProvider) {
       try {
@@ -625,6 +628,7 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
         if (!isCardProviderSoftError(err)) throw err;
         timedOut = isCardTimeoutError(err);
         providerUnavailable = !timedOut;
+        providerErrorCode = err.code || (timedOut ? 'CARD_REQUEST_TIMEOUT' : 'PAGO_BAD_RESPONSE');
         console.warn('[user/cards/detail] provider fetch soft-fail:', err.code || err.message);
       }
     }
@@ -635,6 +639,7 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
     let metaAfter = rowMeta;
     try { metaAfter = rowAfter?.metadata ? JSON.parse(rowAfter.metadata) : {}; } catch (_) { metaAfter = rowMeta; }
     const panFromDb = readCardPanUrlFromSources(rowAfter || {}, metaAfter) || panFromDbEarly;
+    const secretsReady = cardSecretsReady(rowAfter) || cardSecretsReady(card);
     if (panFromDb && usesPagoPanIframe({
       provider: rowAfter.provider || metaAfter.provider || 'pago',
       product_code: rowAfter.product_code || metaAfter.product_code,
@@ -646,10 +651,17 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
         card_pan_url: panFromDb,
         pan_view: 'iframe',
         pan_url_ready: true,
+        secrets_ready: secretsReady,
       };
       payload.cards = payload.cards.map((item) => (
         Number(item.id) === cardId
-          ? { ...item, card_pan_url: panFromDb, pan_view: 'iframe', pan_url_ready: true }
+          ? {
+            ...item,
+            card_pan_url: panFromDb,
+            pan_view: 'iframe',
+            pan_url_ready: true,
+            secrets_ready: secretsReady,
+          }
           : item
       ));
     } else if (usesPagoPanIframe({
@@ -657,13 +669,17 @@ router.get('/cards/:id', requireAuth, requireSensitive, async (req, res) => {
       product_code: card.product_code,
       card_pan_url: card.card_pan_url,
     })) {
-      card = { ...card, pan_url_ready: false };
+      card = { ...card, pan_url_ready: false, secrets_ready: secretsReady };
+    } else {
+      card = { ...card, secrets_ready: secretsReady };
     }
     res.json({
       card,
       ...payload,
       timed_out: timedOut,
       provider_unavailable: providerUnavailable,
+      provider_error_code: providerErrorCode,
+      secrets_ready: secretsReady,
       pan_url_ready: Boolean(
         panFromDb && usesPagoPanIframe({
           provider: card.provider,
@@ -881,14 +897,24 @@ router.post('/cards/:id/unblock', requireAuth, requireSensitive, async (req, res
     if (!Number.isFinite(cardId) || cardId <= 0) {
       return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
     }
-    const { unblockPagoCard } = require('../services/pagoCardService');
+    const { unblockPagoCard, cardSecretsReady } = require('../services/pagoCardService');
     const result = await unblockPagoCard({ userId: req.user.id, localCardId: cardId });
     const payload = await getUserCardsPayload(req.user.id);
-    const card = payload.cards.find((item) => Number(item.id) === cardId) || null;
+    let card = payload.cards.find((item) => Number(item.id) === cardId) || null;
+    const secretsReady = Boolean(
+      result?.secrets_ready
+      || cardSecretsReady(result?.card)
+      || cardSecretsReady(card)
+    );
+    if (card) card = { ...card, secrets_ready: secretsReady };
     res.json({
       success: true,
-      message: 'Card unblocked. You can use it for purchases again.',
+      message: secretsReady
+        ? 'Card unblocked. You can use it for purchases again.'
+        : 'Card unblocked. Tap the eye icon to reveal card details before adding to a wallet.',
       card,
+      secrets_ready: secretsReady,
+      secrets_soft_fail: Boolean(result?.secrets_soft_fail),
       ...payload,
     });
   } catch (err) {

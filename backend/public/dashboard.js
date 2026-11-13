@@ -5519,11 +5519,25 @@ const Dashboard = {
   },
 
   walletClipboardParts(card) {
+    const number = this.hasFullPagoPanDigits(card)
+      ? String(card?.card_number || '').replace(/\D/g, '')
+      : '';
+    const expiry = this.normalizeWalletExpiry(card?.exp_date)
+      || this.normalizeWalletExpiryFromParts(card?.expiry_month, card?.expiry_year);
+    const cvv = String(card?.cvv || '').replace(/\D/g, '');
     return {
-      number: String(card?.card_number || '').replace(/\D/g, ''),
-      expiry: this.normalizeWalletExpiry(card?.exp_date),
-      cvv: String(card?.cvv || '').replace(/\D/g, ''),
+      number: number.length >= 12 ? number : '',
+      expiry: expiry && expiry !== '—' ? expiry : '',
+      cvv: cvv.length >= 3 ? cvv : '',
     };
+  },
+
+  normalizeWalletExpiryFromParts(month, year) {
+    const m = String(month || '').replace(/\D/g, '').padStart(2, '0').slice(-2);
+    let y = String(year || '').replace(/\D/g, '');
+    if (y.length === 4) y = y.slice(-2);
+    if (!m || Number(m) < 1 || Number(m) > 12 || y.length !== 2) return '';
+    return `${m}/${y}`;
   },
 
   formatWalletClipboard(card) {
@@ -9876,14 +9890,23 @@ const Dashboard = {
 
   updatePagoWalletUi(card) {
     const atmHint = $('pagoWalletAtmHint');
-    if (!atmHint) return;
-    const info = this.pagoWalletInfo || this.fallbackPagoWalletInfo(card || {});
-    const showAtm = Boolean(
-      info.contactless_google_pay
-      || info.google_pay?.contactless_hint
-      || String(card?.product_code || '').toLowerCase().includes('atm')
-    );
-    atmHint.classList.toggle('hidden', !showAtm);
+    if (atmHint) {
+      const info = this.pagoWalletInfo || this.fallbackPagoWalletInfo(card || {});
+      const showAtm = Boolean(
+        info.contactless_google_pay
+        || info.google_pay?.contactless_hint
+        || String(card?.product_code || '').toLowerCase().includes('atm')
+      );
+      atmHint.classList.toggle('hidden', !showAtm);
+    }
+    const status = String(card?.status || '').toLowerCase();
+    const walletBlocked = status === 'frozen' || status === 'terminated' || this.isCardPending?.(card);
+    ['pagoAddAppleWalletBtn', 'pagoAddGooglePayBtn'].forEach((id) => {
+      const btn = $(id);
+      if (!btn || btn.dataset.busy === '1') return;
+      btn.disabled = Boolean(walletBlocked);
+      btn.setAttribute('aria-disabled', walletBlocked ? 'true' : 'false');
+    });
   },
 
   getPagoWalletGuideCopy(target) {
@@ -9948,17 +9971,99 @@ const Dashboard = {
       || this.resolvePagoPanUrl(base)
       || this.resolvePagoPanUrl(local);
     const trustedUrl = url && this.isTrustedPagoPanUrl(url) ? url : null;
+    const pickFullPan = (...candidates) => {
+      for (const value of candidates) {
+        if (this.hasFullPagoPanDigits({ card_number: value })) return value;
+      }
+      return null;
+    };
+    const pickCvv = (...candidates) => {
+      for (const value of candidates) {
+        const digits = String(value || '').replace(/\D/g, '');
+        if (digits.length >= 3) return digits;
+      }
+      return null;
+    };
+    const pickExp = (...candidates) => {
+      for (const value of candidates) {
+        const text = String(value || '').trim();
+        if (text && text !== '—') return text;
+      }
+      return null;
+    };
+    const cardNumber = pickFullPan(fromApi?.card_number, base?.card_number, local?.card_number)
+      || null;
+    const cvv = pickCvv(fromApi?.cvv, base?.cvv, local?.cvv);
+    const expDate = pickExp(fromApi?.exp_date, base?.exp_date, local?.exp_date);
     const merged = {
       ...local,
       ...base,
       ...(fromApi || {}),
+      card_number: cardNumber
+        || (this.hasFullPagoPanDigits(fromApi) ? fromApi.card_number : null)
+        || (this.hasFullPagoPanDigits(base) ? base.card_number : null)
+        || (this.hasFullPagoPanDigits(local) ? local.card_number : null)
+        || fromApi?.card_number
+        || base?.card_number
+        || local?.card_number
+        || null,
+      cvv: cvv || null,
+      exp_date: expDate || null,
       card_pan_url: fromApi?.card_pan_url ?? base.card_pan_url ?? local?.card_pan_url ?? trustedUrl,
       pan_view: fromApi?.pan_view || base.pan_view || local?.pan_view,
       pan_url_ready: Boolean(data?.pan_url_ready || fromApi?.pan_url_ready),
       pan_timed_out: Boolean(data?.timed_out),
       pan_provider_unavailable: Boolean(data?.provider_unavailable),
+      secrets_ready: Boolean(
+        data?.secrets_ready
+        || fromApi?.secrets_ready
+        || this.hasUsablePagoWalletSecrets({
+          card_number: cardNumber,
+          cvv,
+          exp_date: expDate,
+        })
+      ),
+      provider_error_code: data?.provider_error_code || null,
     };
     return merged;
+  },
+
+  hasUsablePagoWalletSecrets(card) {
+    if (!card || this.isCardPending?.(card)) return false;
+    const raw = String(card?.card_number || '').trim();
+    if (!raw || /^SECURE/i.test(raw) || /^PENDING/i.test(raw)) return false;
+    if (!this.hasFullPagoPanDigits(card)) return false;
+    const cvv = String(card?.cvv || '').replace(/\D/g, '');
+    if (cvv.length < 3) return false;
+    const exp = this.normalizeWalletExpiry(card?.exp_date)
+      || this.normalizeWalletExpiryFromParts(card?.expiry_month, card?.expiry_year);
+    return Boolean(exp);
+  },
+
+  setPagoWalletButtonsBusy(on) {
+    ['pagoAddAppleWalletBtn', 'pagoAddGooglePayBtn'].forEach((id) => {
+      const btn = $(id);
+      if (!btn) return;
+      btn.disabled = Boolean(on);
+      btn.setAttribute('aria-busy', on ? 'true' : 'false');
+      if (on) btn.dataset.busy = '1';
+      else delete btn.dataset.busy;
+    });
+  },
+
+  promptPagoRevealForWallet(card) {
+    this.pagoDetailRevealed = false;
+    if (card) this.showPagoCardDetail(card);
+    const revealBtn = $('pagoCardRevealBtn');
+    revealBtn?.classList.add('is-attention');
+    revealBtn?.focus?.();
+    this.toast(
+      this.i18nText(
+        'pago_wallet_need_details',
+        'Reveal or refresh card details before adding to a wallet.'
+      ),
+      'error'
+    );
   },
 
   async ensurePagoCardSecrets(card, { forcePanRefresh = false } = {}) {
@@ -9966,9 +10071,7 @@ const Dashboard = {
     if (
       !forcePanRefresh
       && !iframeMode
-      && card?.card_number
-      && card?.cvv
-      && card?.exp_date
+      && this.hasUsablePagoWalletSecrets(card)
     ) {
       return card;
     }
@@ -9997,19 +10100,50 @@ const Dashboard = {
   },
 
   async openPagoWalletGuide(target) {
+    if (this._pagoWalletBusy) return;
     const selected = this.getSelectedPagoCard();
     if (!selected) {
       this.toast(this.i18nText('pago_wallet_need_details', 'Choose a card first'), 'error');
       return;
     }
+    const status = String(selected.status || '').toLowerCase();
+    if (status === 'frozen') {
+      this.toast(
+        this.i18nText(
+          'pago_wallet_unblock_first',
+          'Unblock the card first, then reveal details before adding to a wallet.'
+        ),
+        'error'
+      );
+      return;
+    }
+    if (status === 'terminated') {
+      this.toast(
+        this.i18nText('pago_wallet_need_details', 'This card cannot be added to a wallet.'),
+        'error'
+      );
+      return;
+    }
 
+    this._pagoWalletBusy = true;
+    this.setPagoWalletButtonsBusy(true);
     try {
-      const card = await this.ensurePagoCardSecrets(selected);
-      if (!card?.card_number || !card?.cvv) {
-        this.toast(
-          this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before adding to a wallet.'),
-          'error'
-        );
+      const card = await this.ensurePagoCardSecrets(selected, { forcePanRefresh: true });
+      if (!this.hasUsablePagoWalletSecrets(card)) {
+        if (this.usesPagoPanIframe(card)) {
+          this.pagoDetailRevealed = true;
+          this._pagoPanRevealBusy = false;
+          this.showPagoCardDetail(card);
+          this.toast(
+            this.i18nText(
+              'pago_wallet_iframe_hint',
+              'Copy the card number and CVV from the secure frame, then add them in your wallet app.'
+            ),
+            'info'
+          );
+          return;
+        }
+        this.promptPagoRevealForWallet(card);
         return;
       }
 
@@ -10029,18 +10163,47 @@ const Dashboard = {
       this.fillPagoWalletFieldValues(card);
       $('pagoWalletModal')?.classList.remove('hidden');
     } catch (err) {
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED') return;
-      this.toast(err.message || 'Could not prepare wallet add', 'error');
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+        this.queueSensitiveAction(() => this.openPagoWalletGuide(target));
+        this.openPinUnlockModal();
+        return;
+      }
+      this.toast(
+        this.cardTimeoutMessage(err) || err.message || 'Could not prepare wallet add',
+        'error'
+      );
+    } finally {
+      this._pagoWalletBusy = false;
+      this.setPagoWalletButtonsBusy(false);
     }
   },
 
   async copyPagoWalletDetails({ silentToast = false } = {}) {
-    const card = this.getSelectedPagoCard();
-    if (!card?.card_number) {
-      this.toast(
-        this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before adding to a wallet.'),
-        'error'
-      );
+    let card = this.getSelectedPagoCard();
+    if (!this.hasUsablePagoWalletSecrets(card)) {
+      try {
+        card = await this.ensurePagoCardSecrets(card, { forcePanRefresh: true });
+      } catch (err) {
+        if (err?.code === 'SENSITIVE_AUTH_REQUIRED') {
+          this.queueSensitiveAction(() => this.copyPagoWalletDetails({ silentToast }));
+          this.openPinUnlockModal();
+          return false;
+        }
+        if (!silentToast) {
+          this.toast(
+            this.cardTimeoutMessage(err)
+              || this.i18nText(
+                'pago_wallet_need_details',
+                'Reveal or refresh card details before adding to a wallet.'
+              ),
+            'error'
+          );
+        }
+        return false;
+      }
+    }
+    if (!this.hasUsablePagoWalletSecrets(card)) {
+      if (!silentToast) this.promptPagoRevealForWallet(card);
       return false;
     }
     this.pagoDetailRevealed = true;
@@ -10071,14 +10234,31 @@ const Dashboard = {
   },
 
   async copyPagoWalletField(field) {
-    const card = this.getSelectedPagoCard();
+    let card = this.getSelectedPagoCard();
+    if (!this.hasUsablePagoWalletSecrets(card)) {
+      try {
+        card = await this.ensurePagoCardSecrets(card, { forcePanRefresh: true });
+      } catch (err) {
+        if (err?.code === 'SENSITIVE_AUTH_REQUIRED') {
+          this.queueSensitiveAction(() => this.copyPagoWalletField(field));
+          this.openPinUnlockModal();
+          return false;
+        }
+        this.toast(
+          this.cardTimeoutMessage(err)
+            || this.i18nText(
+              'pago_wallet_need_details',
+              'Reveal or refresh card details before adding to a wallet.'
+            ),
+          'error'
+        );
+        return false;
+      }
+    }
     const parts = this.walletClipboardParts(card);
     const value = parts[field];
     if (!value) {
-      this.toast(
-        this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before adding to a wallet.'),
-        'error'
-      );
+      this.promptPagoRevealForWallet(card);
       return false;
     }
     const notices = {
@@ -10362,12 +10542,15 @@ const Dashboard = {
         full = await this.ensurePagoCardSecrets(card, { forcePanRefresh: true });
       } catch (err) {
         this._pagoPanRevealBusy = false;
-        if (err?.code !== 'SENSITIVE_AUTH_REQUIRED') {
-          this.toast(
-            this.cardTimeoutMessage(err) || err.message || 'Could not show card details',
-            'error'
-          );
+        if (err?.code === 'SENSITIVE_AUTH_REQUIRED') {
+          this.queueSensitiveAction(() => this.togglePagoCardReveal());
+          this.showPagoCardDetail(card);
+          return;
         }
+        this.toast(
+          this.cardTimeoutMessage(err) || err.message || 'Could not show card details',
+          'error'
+        );
         this.showPagoCardDetail(card);
         return;
       } finally {
@@ -10391,24 +10574,29 @@ const Dashboard = {
 
     let full = card;
     try {
-      if (!this.hasFullPagoPanDigits(card)
-        || !String(card.cvv || '').replace(/\D/g, '').slice(0, 4)
-        || !String(card.exp_date || '').trim()) {
-        full = await this.ensurePagoCardSecrets(card);
+      if (!this.hasUsablePagoWalletSecrets(card)) {
+        full = await this.ensurePagoCardSecrets(card, { forcePanRefresh: true });
       }
     } catch (err) {
-      if (err?.code !== 'SENSITIVE_AUTH_REQUIRED') {
-        this.toast(
-          this.cardTimeoutMessage(err) || err.message || 'Could not show card details',
-          'error'
-        );
+      if (err?.code === 'SENSITIVE_AUTH_REQUIRED') {
+        this.queueSensitiveAction(() => this.togglePagoCardReveal());
+        return;
       }
+      this.toast(
+        this.cardTimeoutMessage(err) || err.message || 'Could not show card details',
+        'error'
+      );
       return;
     }
-    if (!this.hasFullPagoPanDigits(full)
-      || !String(full.cvv || '').replace(/\D/g, '').slice(0, 4)
-      || !String(full.exp_date || '').trim()) {
-      this.toast(this.i18nText('pago_wallet_need_details', 'Reveal or refresh card details before copying.'), 'error');
+    if (!this.hasUsablePagoWalletSecrets(full)) {
+      this.toast(
+        this.i18nText(
+          'pago_wallet_need_details',
+          'Reveal or refresh card details before copying.'
+        ),
+        'error'
+      );
+      this.showPagoCardDetail(full);
       return;
     }
     this.pagoDetailRevealed = true;
@@ -10836,13 +11024,44 @@ const Dashboard = {
     const btn = $('pagoCardUnblockBtn');
     this.setPagoLifecycleBusy(btn, true);
     try {
-      const data = await Auth.api('POST', `/api/user/cards/${cardId}/unblock`, {}, { sensitive: true });
+      const data = await Auth.api('POST', `/api/user/cards/${cardId}/unblock`, {}, {
+        sensitive: true,
+        timeoutMs: 30000,
+      });
       this.toast(data.message || this.i18nText('pago_unblock_done', 'Card unblocked'), 'ok');
-      const updated = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
-      if (updated) this.showPagoCardDetail(updated);
+      let updated = await this.refreshCardsAfterMutation(data, { selectCardId: cardId });
+      if (updated && !this.hasUsablePagoWalletSecrets(updated)) {
+        try {
+          updated = await this.ensurePagoCardSecrets(updated, { forcePanRefresh: true });
+        } catch (refreshErr) {
+          if (refreshErr?.code === 'SENSITIVE_AUTH_REQUIRED') {
+            this.queueSensitiveAction(async () => {
+              const latest = this.getSelectedPagoCard();
+              if (!latest?.id) return;
+              const full = await this.ensurePagoCardSecrets(latest, { forcePanRefresh: true });
+              this.pagoDetailRevealed = this.hasUsablePagoWalletSecrets(full);
+              this.showPagoCardDetail(full);
+            });
+            this.openPinUnlockModal();
+          } else {
+            console.warn('[Dashboard] post-unblock secret refresh:', refreshErr?.code || refreshErr?.message);
+          }
+        }
+      }
+      if (updated) {
+        if (this.hasUsablePagoWalletSecrets(updated)) this.pagoDetailRevealed = true;
+        this.showPagoCardDetail(updated);
+      }
     } catch (err) {
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED') this.openPinUnlockModal();
-      else this.toast(err.message || 'Could not unblock card', 'error');
+      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+        this.queueSensitiveAction(() => this.submitPagoCardUnblock());
+        this.openPinUnlockModal();
+      } else {
+        this.toast(
+          this.cardTimeoutMessage(err) || err.message || 'Could not unblock card',
+          'error'
+        );
+      }
     } finally {
       this.setPagoLifecycleBusy(btn, false);
     }
@@ -10926,6 +11145,8 @@ const Dashboard = {
     if (
       code === 'PAGO_NETWORK'
       || code === 'NETWORK_ERROR'
+      || code === 'PAGO_BAD_RESPONSE'
+      || Number(err?.status) === 502
       || Number(err?.status) === 503
     ) {
       return this.i18nText(
@@ -10934,7 +11155,9 @@ const Dashboard = {
       );
     }
     const msg = String(err?.message || '').toLowerCase();
-    if (/fetch failed|failed to fetch|networkerror/.test(msg)) {
+    if (
+      /fetch failed|failed to fetch|networkerror|non-json|bad gateway|gateway timeout/.test(msg)
+    ) {
       return this.i18nText(
         'pago_network_error',
         'Could not reach Pagocards. Check your connection and tap the eye icon to try again.'
