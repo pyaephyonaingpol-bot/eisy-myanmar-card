@@ -223,7 +223,9 @@ router.post('/usdt', requireAuth, requireSensitive, requireWithdrawalsEnabled, a
       ? 503
       : err.code === 'INSUFFICIENT_USDT_BALANCE'
       ? 402
-      : 400;
+      : err.code === 'DEPOSIT_HISTORY_REQUIRED'
+      ? 403
+      : (err.status && Number.isFinite(err.status) ? err.status : 400);
     res.status(status).json({
       error: err.message || 'Withdrawal failed',
       code: err.code,

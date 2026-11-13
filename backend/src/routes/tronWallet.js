@@ -160,6 +160,7 @@ router.post('/withdraw', requireAuth, requireSensitive, requireWithdrawalsEnable
     console.error('[tron/wallet/withdraw]', err.message, err.code || '');
     const status = (() => {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') return 401;
+      if (err.code === 'DEPOSIT_HISTORY_REQUIRED') return 403;
       if ([
         'WITHDRAW_ADDRESS_REQUIRED',
         'WITHDRAW_ADDRESS_INVALID',

@@ -149,6 +149,23 @@ async function assertUsdtCoversWithdrawal(userId, amountUsdt) {
   }
 }
 
+const DEPOSIT_HISTORY_REQUIRED_MESSAGE =
+  'Withdrawal not allowed. Deposit history is required before making a withdrawal.';
+
+/**
+ * Block USDT withdrawals for accounts with no verified deposit history
+ * (stops drain of credit/admin/P2P balances by fresh accounts).
+ */
+async function assertDepositHistoryForWithdrawal(userId) {
+  const DepositRequest = require('../models/DepositRequest');
+  const ok = await DepositRequest.hasVerifiedUsdtDeposit(userId);
+  if (ok) return;
+  const err = new Error(DEPOSIT_HISTORY_REQUIRED_MESSAGE);
+  err.code = 'DEPOSIT_HISTORY_REQUIRED';
+  err.status = 403;
+  throw err;
+}
+
 function assertFeeLeavesRemainder(breakdown) {
   const amount = Math.round(Number(breakdown.amount_usdt) * 100) / 100;
   const fee = Math.round(Number(breakdown.fee_usdt) * 100) / 100;
@@ -159,6 +176,8 @@ function assertFeeLeavesRemainder(breakdown) {
 }
 
 async function createUsdtCryptoWithdrawalRequest(userId, { network, wallet_address, amount_usdt }) {
+  await assertDepositHistoryForWithdrawal(userId);
+
   const normalizedNetwork = normalizeNetwork(network);
   if (!normalizedNetwork || normalizedNetwork === 'BANK') {
     throw new Error('USDT withdrawals use TRC20 (Tron) only');
@@ -399,6 +418,8 @@ function payoutCurrencySupported(network) {
 }
 
 async function createUsdtBankWithdrawalRequest(userId, body = {}) {
+  await assertDepositHistoryForWithdrawal(userId);
+
   const bank = validateBankDetails(body);
   const requestedAmount = parseFloat(body.amount_usdt);
   if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
@@ -964,6 +985,8 @@ module.exports = {
   parseMmkBankQueueKey,
   normalizeMmkBankPayoutSource,
   assertMmkToUsdtForbidden,
+  assertDepositHistoryForWithdrawal,
+  DEPOSIT_HISTORY_REQUIRED_MESSAGE,
   normalizeNetwork,
   normalizePayoutMethod,
   validateWalletAddress,

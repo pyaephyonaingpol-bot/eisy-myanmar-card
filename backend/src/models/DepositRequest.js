@@ -22,6 +22,29 @@ const DepositRequest = {
     );
   },
 
+  /**
+   * True when the user has at least one completed (VERIFIED) USDT deposit.
+   * Card-issuance rows that skip wallet credit do not count.
+   */
+  async hasVerifiedUsdtDeposit(userId) {
+    const db = getDb();
+    const id = Number(userId);
+    if (!Number.isFinite(id) || id <= 0) return false;
+    const row = await db.get(
+      `SELECT id FROM ${this.TABLE}
+       WHERE user_id = ?
+         AND status = 'VERIFIED'
+         AND LOWER(COALESCE(purpose, '')) != 'card_issuance'
+         AND (
+           purpose = 'usdt_topup'
+           OR UPPER(COALESCE(deposit_currency, '')) = 'USDT'
+         )
+       LIMIT 1`,
+      id
+    );
+    return Boolean(row?.id);
+  },
+
   async create({
     userId, amountMmk, amountUsd, refCode,
     paymentMethod = 'KBZPay', expiresAt,
