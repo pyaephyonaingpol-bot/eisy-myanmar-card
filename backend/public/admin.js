@@ -4934,21 +4934,41 @@
       const btn = $('usersBackfillWalletsBtn');
       if (btn) {
         btn.disabled = true;
-        btn.textContent = 'Syncing…';
+        btn.textContent = 'Starting sync…';
       }
       try {
+        // Background chunked sync — do not await the full job (gateway 504).
         const data = await this.api('POST', '/api/admin/users/backfill-wallets', {});
+        if (data && data.mirror) this.renderUsersMirrorStatus(data.mirror);
+
+        const deadline = Date.now() + 90000;
+        let last = data && data.backfill;
+        while (Date.now() < deadline) {
+          const status = last && last.status;
+          if (status === 'completed' || status === 'failed' || status === 'skipped') break;
+          if (btn && last) {
+            const synced = last.synced != null ? last.synced : 0;
+            const total = last.total != null ? last.total : '?';
+            btn.textContent = 'Syncing… ' + synced + '/' + total;
+          }
+          await new Promise((r) => setTimeout(r, 1200));
+          const poll = await this.api('GET', '/api/admin/users/backfill-wallets');
+          last = poll && poll.backfill;
+          if (poll && poll.mirror) this.renderUsersMirrorStatus(poll.mirror);
+        }
+
         await this.loadUsers({ reset: true, skipMirror: true });
-        this.renderUsersMirrorStatus(data && data.mirror);
-        const m = data && data.mirror;
-        if (m && m.in_sync) {
-          alert('Supabase wallet mirrors are in sync (' + m.supabase_total + ' / ' + m.turso_total + ').');
-        } else if (m) {
-          const missing = typeof m.missing_count === 'number'
-            ? m.missing_count
-            : (m.missing_user_ids && m.missing_user_ids.length) || 0;
-          alert('Backfill finished. Supabase ' + m.supabase_total + ' / Turso ' + m.turso_total
-            + (missing ? ('. Missing: ' + missing) : '.'));
+        await this.loadUsersMirrorStatus();
+
+        if (last && last.status === 'completed') {
+          alert('Supabase wallet mirror sync finished ('
+            + (last.synced || 0) + '/' + (last.total || 0)
+            + (last.failed ? (', failed ' + last.failed) : '')
+            + ').');
+        } else if (last && last.status === 'failed') {
+          alert(last.error || 'Supabase wallet mirror sync failed');
+        } else if (last && (last.status === 'running' || last.status === 'starting')) {
+          alert('Sync is still running in the background. Refresh mirror status in a moment.');
         }
       } catch (err) {
         alert(err.message || 'Backfill failed');
