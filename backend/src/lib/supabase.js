@@ -344,8 +344,12 @@ function getBrowserSupabaseUrl(upstreamUrl, req) {
 }
 
 /**
- * Rewrite Location (and Google OAuth redirect_uri query values) that point at
- * the upstream Supabase host so the browser stays on the site proxy path.
+ * Rewrite Location hosts that point at upstream Supabase onto the site proxy.
+ *
+ * CRITICAL: never rewrite Google OAuth `redirect_uri`. GoTrue must exchange the
+ * Google auth code with redirect_uri = https://PROJECT.supabase.co/auth/v1/callback.
+ * Rewriting it to /supabase/auth/v1/callback causes:
+ *   "Unable to exchange external code: 4/0A…"
  */
 function rewriteSupabaseProxyLocation(location, {
   upstreamOrigin,
@@ -362,26 +366,22 @@ function rewriteSupabaseProxyLocation(location, {
     return raw;
   }
 
-  const rewriteIfSupabase = (value) => {
-    const text = String(value || '').trim();
-    if (!text) return text;
-    try {
-      const u = new URL(text, upstream || publicOrigin);
-      const isUpstream = upstream && u.origin === new URL(upstream).origin;
-      const isSupabaseHost = /\.supabase\.co$/i.test(u.hostname);
-      if (!isUpstream && !isSupabaseHost) return text;
-      return `${publicOrigin}${proxyPath}${u.pathname}${u.search}${u.hash}`;
-    } catch {
-      return text;
-    }
-  };
-
+  // Leave IdP authorize URLs untouched (including redirect_uri query).
+  if (/google\.com$/i.test(url.hostname) || /accounts\.google\./i.test(url.hostname)) {
+    return url.toString();
+  }
   if (url.searchParams.has('redirect_uri')) {
-    url.searchParams.set('redirect_uri', rewriteIfSupabase(url.searchParams.get('redirect_uri')));
+    // Any other IdP Location: still do not rewrite redirect_uri.
+    return url.toString();
   }
 
   const hostIsUpstream = upstream && url.origin === new URL(upstream).origin;
   const hostIsSupabase = /\.supabase\.co$/i.test(url.hostname);
+  // Keep GoTrue's own /auth/v1/callback on *.supabase.co so Google→Supabase
+  // round-trips match the registered OAuth client redirect URI.
+  if ((hostIsUpstream || hostIsSupabase) && /^\/auth\/v1\/callback\/?/i.test(url.pathname)) {
+    return url.toString();
+  }
   if (hostIsUpstream || hostIsSupabase) {
     return `${publicOrigin}${proxyPath}${url.pathname}${url.search}${url.hash}`;
   }

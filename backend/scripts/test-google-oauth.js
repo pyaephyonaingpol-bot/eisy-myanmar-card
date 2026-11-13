@@ -44,8 +44,13 @@ assert.ok(bridge.includes('getAuthClient'), 'dedicated auth client');
 assert.ok(bridge.includes('__EISY_SUPABASE_PUBLIC__'), 'uses baked public config');
 assert.ok(bridge.includes('force'), 'supports forced re-init');
 assert.ok(bridge.includes('pkceExchangeArgs'), 'exchanges the raw PKCE code');
+assert.ok(bridge.includes('mapGoogleOAuthExchangeError') || bridge.includes('Unable to exchange external code'), 'maps GoTrue exchange errors');
 assert.ok(!bridge.includes('exchangeCodeForSession(window.location.href)'), 'callback URL is not the auth code');
 assert.ok(!bridge.includes('Supabase is not configured'), 'bridge avoids generic false-negative text');
+
+const proxyLib = read('backend/src/lib/supabase.js');
+assert.ok(proxyLib.includes('never rewrite Google OAuth'), 'proxy docs warn against redirect_uri rewrite');
+assert.ok(fs.existsSync(path.join(ROOT, 'backend/docs/GOOGLE_OAUTH.md')), 'Google OAuth runbook');
 
 assert.ok(html.includes('supabase-public-config.js'), 'loads baked public config script');
 const baked = read('backend/public/supabase-public-config.js');

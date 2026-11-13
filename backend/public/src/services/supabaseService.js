@@ -9,6 +9,18 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/+esm';
 import { pkceExchangeArgs, readGoogleOAuthCallback } from '../lib/googleOAuthCallback.mjs';
 
+function mapGoogleOAuthExchangeError(err) {
+  const message = String(err?.message || err || 'Google Sign-In failed');
+  if (/unable to exchange external code/i.test(message)) {
+    return new Error(
+      'Google Sign-In failed (OAuth code exchange). In Google Cloud, the Authorized '
+      + 'redirect URI must be https://YOUR_PROJECT.supabase.co/auth/v1/callback — not a '
+      + '/supabase proxy path. See backend/docs/GOOGLE_OAUTH.md'
+    );
+  }
+  return err instanceof Error ? err : new Error(message);
+}
+
 const SupabaseBridge = {
   client: null,
   authClient: null,
@@ -146,8 +158,8 @@ const SupabaseBridge = {
       const sessionResult = await client.auth.getSession();
       const token = sessionResult.data?.session?.access_token;
       if (token) return { accessToken: token, user: sessionResult.data.session.user || null };
-      if (exchanged.error) throw exchanged.error;
-      if (sessionResult.error) throw sessionResult.error;
+      if (exchanged.error) throw mapGoogleOAuthExchangeError(exchanged.error);
+      if (sessionResult.error) throw mapGoogleOAuthExchangeError(sessionResult.error);
       throw new Error('Google Sign-In did not return a session');
     }
     const { data, error } = await client.auth.getSession();

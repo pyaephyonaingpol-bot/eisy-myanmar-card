@@ -637,7 +637,16 @@ const Auth = {
         if (!accessToken) {
           const sessionResult = await client.auth.getSession();
           accessToken = sessionResult.data?.session?.access_token || null;
-          if (!accessToken && exchanged.error) throw exchanged.error;
+          if (!accessToken && exchanged.error) {
+            const msg = String(exchanged.error.message || exchanged.error);
+            if (/unable to exchange external code/i.test(msg)) {
+              throw new Error(
+                'Google Sign-In failed (OAuth code exchange). Google Cloud redirect URI must be '
+                + 'https://YOUR_PROJECT.supabase.co/auth/v1/callback (not /supabase/…).'
+              );
+            }
+            throw exchanged.error;
+          }
           if (!accessToken && sessionResult.error) throw sessionResult.error;
         }
       } else {
