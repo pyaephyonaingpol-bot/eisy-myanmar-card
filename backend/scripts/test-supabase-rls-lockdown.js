@@ -50,6 +50,8 @@ assert.ok(STRICT.includes('DROP FUNCTION IF EXISTS public.is_own_wallet_row'), '
 assert.ok(!STRICT.includes('w.auth_user_id'), 'no auth_user_id column references');
 assert.ok(!STRICT.includes('ADD COLUMN IF NOT EXISTS auth_user_id'), 'does not add auth_user_id');
 assert.ok(STRICT.includes('p_user_id = auth.uid()::text'), 'own-row uses user_id = auth.uid()');
+assert.ok(!STRICT.includes('ALTER TABLE storage.objects'), 'does not ALTER storage.objects');
+assert.ok(!STRICT.includes('ON storage.objects'), 'does not create storage.objects policies');
 for (const table of [
   'user_wallets',
   'deposit_requests',
@@ -87,8 +89,8 @@ assert.ok(!/USING\s*\(\s*true\s*\)\s*;\s*\n\s*END \$\$;\s*\n\s*DO \$\$/s.test(
 ), 'support messages not open authenticated true');
 assert.ok(!SUPPORT.includes('USING (true);\n  END IF;\nEND $$;\n\nDO $$\nBEGIN\n  ALTER PUBLICATION'),
   'removed open authenticated_select_support_messages');
-assert.ok(UPLOADS.includes('TO service_role'), 'uploads write TO service_role');
-assert.ok(UPLOADS.includes('public_select_uploads_bucket'), 'uploads public read retained');
+assert.ok(UPLOADS.includes('TO service_role'), 'optional upload_storage.sql still documents service_role');
+assert.ok(STRICT.includes('Storage RLS is intentionally omitted'), 'lockdown documents storage via Dashboard');
 console.log('ok');
 
 section('docs + legacy pointer');

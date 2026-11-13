@@ -15,8 +15,10 @@ That script:
 4. Allows **authenticated** users to **SELECT their own rows only**
    (`auth.uid()::text = user_id` — no `auth_user_id` column required)
 5. Leaves **anon** with **no** DML policies on money/support tables
-6. Restricts Storage **writes** on `uploads` to service_role (public read kept)
-7. Revokes SECURITY DEFINER wallet RPCs from anon/authenticated
+6. Revokes SECURITY DEFINER wallet RPCs from anon/authenticated
+7. **Does not** alter `storage.objects` (avoids `42501 must be owner of table objects`).
+   Configure Storage RLS in **Dashboard → Storage**, or optionally
+   `supabase/upload_storage.sql` if your role can manage storage.
 
 ## Key usage
 
@@ -39,7 +41,7 @@ ORDER BY 1;
 
 SELECT tablename, policyname, roles, cmd, qual
 FROM pg_policies
-WHERE schemaname IN ('public', 'storage')
+WHERE schemaname = 'public'
 ORDER BY 1, 2;
 ```
 
@@ -48,3 +50,6 @@ expressions that reference `is_own_user_id` / `auth.uid()` / `user_id`.
 
 If a previous run failed with `column w.auth_user_id does not exist`, re-run the
 updated `security_rls_strict_lockdown.sql` (user_id-only helpers).
+
+If a run failed with `must be owner of table objects` (42501), use the current
+script — it no longer touches `storage.objects`.
