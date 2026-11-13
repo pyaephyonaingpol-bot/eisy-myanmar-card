@@ -123,6 +123,9 @@ async function executeFixedFeeTrc20Withdraw(userId, { customerAddress, withdrawA
     throw err;
   }
 
+  const { assertDepositHistoryForWithdrawal } = require('./withdrawalService');
+  await assertDepositHistoryForWithdrawal(userId);
+
   const calc = calculateFixedFeeWithdraw({ customerAddress, withdrawAmount });
   const refCode = await uniqueWithdrawRefCode();
 

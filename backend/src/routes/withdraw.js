@@ -65,6 +65,7 @@ router.post('/', requireAuth, requireSensitive, requireWithdrawalsEnabled, async
     const status = (() => {
       if (err.code === 'WITHDRAWALS_PAUSED' || err.code === 'MASTER_WALLET_TRANSFERS_PAUSED') return 503;
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') return 401;
+      if (err.code === 'DEPOSIT_HISTORY_REQUIRED') return 403;
       if ([
         'WITHDRAW_ADDRESS_REQUIRED',
         'WITHDRAW_ADDRESS_INVALID',
