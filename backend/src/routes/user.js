@@ -434,46 +434,57 @@ function sendPagoError(res, err, fallback) {
   });
 }
 
-const { createCardIssueRateLimiter } = require('../middleware/security');
+const {
+  createCardIssueRateLimiter,
+  createCardIssueIpRateLimiter,
+} = require('../middleware/security');
 const cardIssueLimiter = createCardIssueRateLimiter();
+const cardIssueIpLimiter = createCardIssueIpRateLimiter();
 
-router.post('/cards/request', requireAuth, requireSensitive, cardIssueLimiter, async (req, res) => {
-  try {
-    setCardsNoStore(res);
-    if (!req.user?.id) {
-      return res.status(401).json({ error: 'Authentication required', code: 'AUTH_REQUIRED' });
+router.post(
+  '/cards/request',
+  requireAuth,
+  requireSensitive,
+  cardIssueIpLimiter,
+  cardIssueLimiter,
+  async (req, res) => {
+    try {
+      setCardsNoStore(res);
+      if (!req.user?.id) {
+        return res.status(401).json({ error: 'Authentication required', code: 'AUTH_REQUIRED' });
+      }
+      const {
+        issuePagoCardForUser,
+        PAGO_PRODUCTS,
+        DEFAULT_ISSUE_PRODUCT,
+        withCardApiTimeout,
+        CARD_CREATE_ROUTE_TIMEOUT_MS,
+      } = require('../services/pagoCardService');
+      const result = await withCardApiTimeout(issuePagoCardForUser({
+        userId: req.user.id,
+        productCode: DEFAULT_ISSUE_PRODUCT,
+        firstName: req.body?.first_name,
+        lastName: req.body?.last_name,
+        email: req.body?.email || req.user.email,
+        initialLoad: req.body?.initial_load,
+      }), CARD_CREATE_ROUTE_TIMEOUT_MS, 'Card creation');
+      const payload = await getUserCardsPayload(req.user.id);
+      const card = payload.cards.find((item) => Number(item.id) === Number(result.card?.id)) || null;
+      res.status(201).json({
+        success: true,
+        message: 'Your virtual card is ready.',
+        products: PAGO_PRODUCTS,
+        debited_usdt: result.debited_usdt,
+        pricing: result.pricing || null,
+        card,
+        ...payload,
+      });
+    } catch (err) {
+      console.error('[user/cards/request]', err.code || err.message);
+      sendPagoError(res, err, 'Failed to request a virtual card');
     }
-    const {
-      issuePagoCardForUser,
-      PAGO_PRODUCTS,
-      DEFAULT_ISSUE_PRODUCT,
-      withCardApiTimeout,
-      CARD_CREATE_ROUTE_TIMEOUT_MS,
-    } = require('../services/pagoCardService');
-    const result = await withCardApiTimeout(issuePagoCardForUser({
-      userId: req.user.id,
-      productCode: DEFAULT_ISSUE_PRODUCT,
-      firstName: req.body?.first_name,
-      lastName: req.body?.last_name,
-      email: req.body?.email || req.user.email,
-      initialLoad: req.body?.initial_load,
-    }), CARD_CREATE_ROUTE_TIMEOUT_MS, 'Card creation');
-    const payload = await getUserCardsPayload(req.user.id);
-    const card = payload.cards.find((item) => Number(item.id) === Number(result.card?.id)) || null;
-    res.status(201).json({
-      success: true,
-      message: 'Your virtual card is ready.',
-      products: PAGO_PRODUCTS,
-      debited_usdt: result.debited_usdt,
-      pricing: result.pricing || null,
-      card,
-      ...payload,
-    });
-  } catch (err) {
-    console.error('[user/cards/request]', err.code || err.message);
-    sendPagoError(res, err, 'Failed to request a virtual card');
   }
-});
+);
 
 /**
  * Reconcile provider-issued Pago cards into local cards_v2.

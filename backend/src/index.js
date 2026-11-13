@@ -20,6 +20,7 @@ const {
   createAuthRateLimiter,
   createKycRateLimiter,
 } = require('./middleware/security');
+const { createIpBlocklistMiddleware } = require('./middleware/ipBlocklist');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -33,6 +34,9 @@ app.set('trust proxy', 1);
 
 // Security headers (XSS / clickjacking / MIME sniffing / HSTS)
 app.use(createHelmetMiddleware());
+
+// Deny known spam / abuse IPs before auth and expensive handlers.
+app.use(createIpBlocklistMiddleware());
 
 try {
   // eslint-disable-next-line global-require, import/no-extraneous-dependencies
