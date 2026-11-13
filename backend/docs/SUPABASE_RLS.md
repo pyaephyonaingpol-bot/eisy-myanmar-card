@@ -13,7 +13,7 @@ That script:
 2. Drops open policies (`anon_all_*`, mis-scoped `USING (true)` policies)
 3. Grants **service_role** full access with explicit `TO service_role`
 4. Allows **authenticated** users to **SELECT their own rows only**
-   (`auth.uid()` ↔ `user_wallets.auth_user_id` / `user_id`)
+   (`auth.uid()::text = user_id` — no `auth_user_id` column required)
 5. Leaves **anon** with **no** DML policies on money/support tables
 6. Restricts Storage **writes** on `uploads` to service_role (public read kept)
 7. Revokes SECURITY DEFINER wallet RPCs from anon/authenticated
@@ -44,4 +44,7 @@ ORDER BY 1, 2;
 ```
 
 Expect no `anon` role on wallet/deposit policies, and authenticated `qual`
-expressions that reference `is_own_user_id` / `is_own_wallet_row` / `auth.uid()`.
+expressions that reference `is_own_user_id` / `auth.uid()` / `user_id`.
+
+If a previous run failed with `column w.auth_user_id does not exist`, re-run the
+updated `security_rls_strict_lockdown.sql` (user_id-only helpers).

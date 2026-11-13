@@ -46,31 +46,13 @@ CREATE POLICY "authenticated_select_own_support_messages"
   FOR SELECT
   TO authenticated
   USING (
-    (
-      user_id IS NOT NULL
-      AND auth.uid() IS NOT NULL
-      AND (
-        user_id = auth.uid()::text
-        OR EXISTS (
-          SELECT 1 FROM public.user_wallets w
-          WHERE w.user_id = support_messages.user_id
-            AND w.auth_user_id = auth.uid()::text
-        )
-      )
-    )
+    (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id = auth.uid()::text)
     OR EXISTS (
       SELECT 1 FROM public.support_threads t
       WHERE t.id = support_messages.thread_id
         AND t.user_id IS NOT NULL
         AND auth.uid() IS NOT NULL
-        AND (
-          t.user_id = auth.uid()::text
-          OR EXISTS (
-            SELECT 1 FROM public.user_wallets w
-            WHERE w.user_id = t.user_id
-              AND w.auth_user_id = auth.uid()::text
-          )
-        )
+        AND t.user_id = auth.uid()::text
     )
   );
 

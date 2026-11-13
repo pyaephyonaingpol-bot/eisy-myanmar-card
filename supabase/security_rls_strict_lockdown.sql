@@ -9,14 +9,23 @@
 --   2) Drop open / mis-scoped policies (especially "service_role_*" policies that
 --      omitted `TO service_role` and therefore applied to anon + authenticated).
 --   3) Authenticated users: SELECT (and limited profile UPDATE) of OWN rows only
---      via auth.uid() ↔ user_wallets.auth_user_id / user_id.
+--      via auth.uid()::text = user_id (no auth_user_id column required).
 --   4) Anon: NO table DML on app data (Google OAuth still uses Auth APIs only).
 --   5) service_role: full access for Express / Edge (SUPABASE_SERVICE_ROLE_KEY).
 --
--- Safe to re-run.
+-- Safe to re-run. Does NOT require / create user_wallets.auth_user_id.
 -- =============================================================================
 
--- ─── Helpers ─────────────────────────────────────────────────────────────────
+-- ─── Helpers (user_id only — matches live schemas without auth_user_id) ───────
+-- Drop policies that may still call the old auth_user_id helper, then drop it.
+DO $$
+BEGIN
+  IF to_regclass('public.user_wallets') IS NOT NULL THEN
+    EXECUTE 'DROP POLICY IF EXISTS "authenticated_select_own_user_wallets" ON public.user_wallets';
+  END IF;
+END $$;
+DROP FUNCTION IF EXISTS public.is_own_wallet_row(text, text);
+
 CREATE OR REPLACE FUNCTION public.is_own_user_id(p_user_id text)
 RETURNS boolean
 LANGUAGE sql
@@ -27,45 +36,19 @@ AS $$
   SELECT
     p_user_id IS NOT NULL
     AND auth.uid() IS NOT NULL
-    AND (
-      p_user_id = auth.uid()::text
-      OR EXISTS (
-        SELECT 1
-        FROM public.user_wallets w
-        WHERE w.user_id = p_user_id
-          AND NULLIF(TRIM(w.auth_user_id), '') IS NOT NULL
-          AND w.auth_user_id = auth.uid()::text
-      )
-    );
+    AND p_user_id = auth.uid()::text;
 $$;
 
 COMMENT ON FUNCTION public.is_own_user_id(text) IS
-  'True when p_user_id is the caller auth.uid() or a local wallet user_id linked via auth_user_id.';
-
-CREATE OR REPLACE FUNCTION public.is_own_wallet_row(p_user_id text, p_auth_user_id text)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY INVOKER
-SET search_path = public
-AS $$
-  SELECT
-    auth.uid() IS NOT NULL
-    AND (
-      (p_auth_user_id IS NOT NULL AND p_auth_user_id = auth.uid()::text)
-      OR (p_user_id IS NOT NULL AND p_user_id = auth.uid()::text)
-    );
-$$;
+  'True when p_user_id equals auth.uid()::text (owner column is user_id).';
 
 REVOKE ALL ON FUNCTION public.is_own_user_id(text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.is_own_wallet_row(text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.is_own_user_id(text) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.is_own_wallet_row(text, text) TO authenticated, service_role;
 
 -- ─── Ensure core tables exist (no-op if already applied) ─────────────────────
+-- Do not ADD auth_user_id — many live projects only have user_id.
 CREATE TABLE IF NOT EXISTS public.user_wallets (
   user_id TEXT PRIMARY KEY,
-  auth_user_id TEXT,
   email TEXT,
   name TEXT,
   balance_mmk NUMERIC(18, 2) NOT NULL DEFAULT 0,
@@ -77,7 +60,6 @@ CREATE TABLE IF NOT EXISTS public.user_wallets (
   is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-ALTER TABLE public.user_wallets ADD COLUMN IF NOT EXISTS auth_user_id TEXT;
 
 CREATE TABLE IF NOT EXISTS public.deposit_requests (
   id TEXT PRIMARY KEY,
@@ -521,7 +503,7 @@ END $$;
 -- ─── Authenticated: own-row SELECT only (no client writes on money tables) ───
 CREATE POLICY "authenticated_select_own_user_wallets"
   ON public.user_wallets FOR SELECT TO authenticated
-  USING (public.is_own_wallet_row(user_id, auth_user_id));
+  USING (public.is_own_user_id(user_id));
 
 CREATE POLICY "authenticated_select_own_deposit_requests"
   ON public.deposit_requests FOR SELECT TO authenticated
