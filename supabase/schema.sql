@@ -144,24 +144,30 @@ DROP POLICY IF EXISTS "anon_all_card_applications" ON card_applications;
 DROP POLICY IF EXISTS "anon_all_card_reload_requests" ON card_reload_requests;
 
 -- Service role only (backend uses SUPABASE_SERVICE_ROLE_KEY).
+-- Prefer supabase/security_rls_strict_lockdown.sql for a full emergency apply.
 DROP POLICY IF EXISTS "service_role_user_wallets" ON user_wallets;
-CREATE POLICY "service_role_user_wallets" ON user_wallets
+DROP POLICY IF EXISTS "service_role_all_user_wallets" ON user_wallets;
+CREATE POLICY "service_role_all_user_wallets" ON user_wallets
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "service_role_deposit_requests" ON deposit_requests;
-CREATE POLICY "service_role_deposit_requests" ON deposit_requests
+DROP POLICY IF EXISTS "service_role_all_deposit_requests" ON deposit_requests;
+CREATE POLICY "service_role_all_deposit_requests" ON deposit_requests
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "service_role_card_applications" ON card_applications;
-CREATE POLICY "service_role_card_applications" ON card_applications
+DROP POLICY IF EXISTS "service_role_all_card_applications" ON card_applications;
+CREATE POLICY "service_role_all_card_applications" ON card_applications
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "service_role_card_reload_requests" ON card_reload_requests;
-CREATE POLICY "service_role_card_reload_requests" ON card_reload_requests
+DROP POLICY IF EXISTS "service_role_all_card_reload_requests" ON card_reload_requests;
+CREATE POLICY "service_role_all_card_reload_requests" ON card_reload_requests
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "service_role_orders" ON orders;
-CREATE POLICY "service_role_orders" ON orders
+DROP POLICY IF EXISTS "service_role_all_orders" ON orders;
+CREATE POLICY "service_role_all_orders" ON orders
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- Enable Realtime (run after tables exist):

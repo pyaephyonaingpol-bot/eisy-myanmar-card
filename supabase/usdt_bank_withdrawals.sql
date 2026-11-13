@@ -28,3 +28,29 @@ create index if not exists usdt_bank_withdrawals_status_idx
 
 create index if not exists usdt_bank_withdrawals_user_idx
   on public.usdt_bank_withdrawals (user_id);
+
+alter table public.usdt_bank_withdrawals enable row level security;
+
+drop policy if exists "service_role_all_usdt_bank_withdrawals" on public.usdt_bank_withdrawals;
+create policy "service_role_all_usdt_bank_withdrawals"
+  on public.usdt_bank_withdrawals
+  for all to service_role
+  using (true)
+  with check (true);
+
+drop policy if exists "authenticated_select_own_usdt_bank_withdrawals" on public.usdt_bank_withdrawals;
+create policy "authenticated_select_own_usdt_bank_withdrawals"
+  on public.usdt_bank_withdrawals
+  for select to authenticated
+  using (
+    user_id is not null
+    and auth.uid() is not null
+    and (
+      user_id = auth.uid()::text
+      or exists (
+        select 1 from public.user_wallets w
+        where w.user_id = usdt_bank_withdrawals.user_id
+          and w.auth_user_id = auth.uid()::text
+      )
+    )
+  );

@@ -26,8 +26,10 @@ CREATE INDEX IF NOT EXISTS idx_orders_local_deposit_id ON orders (local_deposit_
 
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "service_role_orders" ON orders
-  FOR ALL
+DROP POLICY IF EXISTS "service_role_orders" ON orders;
+DROP POLICY IF EXISTS "service_role_all_orders" ON orders;
+CREATE POLICY "service_role_all_orders" ON orders
+  FOR ALL TO service_role
   USING (true)
   WITH CHECK (true);
 

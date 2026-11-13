@@ -38,21 +38,41 @@ BEGIN
   END IF;
 END $$;
 
--- Allow authenticated dashboard clients to receive Realtime inserts for their own threads
--- when user_id matches auth uid/email metadata (optional; polling remains the fallback).
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE tablename = 'support_messages' AND policyname = 'authenticated_select_support_messages'
-  ) THEN
-    CREATE POLICY authenticated_select_support_messages
-      ON support_messages
-      FOR SELECT
-      TO authenticated
-      USING (true);
-  END IF;
-END $$;
+-- Authenticated clients may SELECT only their own thread messages (never USING true).
+DROP POLICY IF EXISTS authenticated_select_support_messages ON support_messages;
+DROP POLICY IF EXISTS "authenticated_select_own_support_messages" ON support_messages;
+CREATE POLICY "authenticated_select_own_support_messages"
+  ON support_messages
+  FOR SELECT
+  TO authenticated
+  USING (
+    (
+      user_id IS NOT NULL
+      AND auth.uid() IS NOT NULL
+      AND (
+        user_id = auth.uid()::text
+        OR EXISTS (
+          SELECT 1 FROM public.user_wallets w
+          WHERE w.user_id = support_messages.user_id
+            AND w.auth_user_id = auth.uid()::text
+        )
+      )
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.support_threads t
+      WHERE t.id = support_messages.thread_id
+        AND t.user_id IS NOT NULL
+        AND auth.uid() IS NOT NULL
+        AND (
+          t.user_id = auth.uid()::text
+          OR EXISTS (
+            SELECT 1 FROM public.user_wallets w
+            WHERE w.user_id = t.user_id
+              AND w.auth_user_id = auth.uid()::text
+          )
+        )
+    )
+  );
 
 DO $$
 BEGIN

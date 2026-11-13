@@ -3,6 +3,11 @@
 --
 -- Previous schema used anon_all_* policies which allowed anyone holding the
 -- public anon key (exposed via /api/config/supabase) to READ/WRITE all rows.
+--
+-- Prefer the fuller script for production emergencies:
+--   supabase/security_rls_strict_lockdown.sql
+-- (enables RLS on all mirrors, FORCE RLS, own-row authenticated SELECT,
+--  explicit TO service_role, storage write lockdown, RPC revoke).
 
 ALTER TABLE user_wallets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE deposit_requests ENABLE ROW LEVEL SECURITY;

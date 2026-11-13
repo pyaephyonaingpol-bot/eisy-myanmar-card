@@ -150,3 +150,19 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION debit_usdt_for_scan_pay(TEXT, NUMERIC, TEXT, TEXT, JSONB) TO service_role;
+REVOKE ALL ON FUNCTION debit_usdt_for_scan_pay(TEXT, NUMERIC, TEXT, TEXT, JSONB) FROM PUBLIC;
+REVOKE ALL ON FUNCTION debit_usdt_for_scan_pay(TEXT, NUMERIC, TEXT, TEXT, JSONB) FROM anon;
+REVOKE ALL ON FUNCTION debit_usdt_for_scan_pay(TEXT, NUMERIC, TEXT, TEXT, JSONB) FROM authenticated;
+
+ALTER TABLE wallet_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE usdt_scan_payments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "service_role_all_wallet_transactions" ON wallet_transactions;
+CREATE POLICY "service_role_all_wallet_transactions"
+  ON wallet_transactions FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "service_role_all_usdt_scan_payments" ON usdt_scan_payments;
+CREATE POLICY "service_role_all_usdt_scan_payments"
+  ON usdt_scan_payments FOR ALL TO service_role
+  USING (true) WITH CHECK (true);

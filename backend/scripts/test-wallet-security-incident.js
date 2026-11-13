@@ -150,6 +150,9 @@ async function main() {
   assert.ok(authSrc.includes('isProductionRuntime'), 'auth hardens production admin key');
   const schema = fs.readFileSync(path.join(__dirname, '../../supabase/security_rls_lockdown.sql'), 'utf8');
   assert.ok(schema.includes('DROP POLICY IF EXISTS "anon_all_user_wallets"'), 'RLS lockdown present');
+  const strict = fs.readFileSync(path.join(__dirname, '../../supabase/security_rls_strict_lockdown.sql'), 'utf8');
+  assert.ok(strict.includes('FORCE ROW LEVEL SECURITY'), 'strict RLS force present');
+  assert.ok(strict.includes('TO service_role'), 'strict service_role scope present');
 
   console.log('wallet-security-incident: ok');
   await closeDb().catch(() => {});

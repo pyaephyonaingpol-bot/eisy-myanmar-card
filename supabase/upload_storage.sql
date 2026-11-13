@@ -14,13 +14,17 @@ SET public = EXCLUDED.public;
 
 -- Public read for proof/receipt images (same as legacy /uploads static URLs).
 DROP POLICY IF EXISTS "Public read uploads bucket" ON storage.objects;
-CREATE POLICY "Public read uploads bucket"
+DROP POLICY IF EXISTS "public_select_uploads_bucket" ON storage.objects;
+CREATE POLICY "public_select_uploads_bucket"
 ON storage.objects FOR SELECT
+TO anon, authenticated, service_role
 USING (bucket_id = 'uploads');
 
--- Service role uploads bypass RLS; anon/authenticated insert is denied by default.
+-- Writes must be service_role only (must include TO service_role).
 DROP POLICY IF EXISTS "Service role manage uploads bucket" ON storage.objects;
-CREATE POLICY "Service role manage uploads bucket"
+DROP POLICY IF EXISTS "service_role_manage_uploads_bucket" ON storage.objects;
+CREATE POLICY "service_role_manage_uploads_bucket"
 ON storage.objects FOR ALL
+TO service_role
 USING (bucket_id = 'uploads')
 WITH CHECK (bucket_id = 'uploads');

@@ -199,9 +199,29 @@ GRANT EXECUTE ON FUNCTION assign_card_from_pool(TEXT, NUMERIC, TEXT, JSONB, TEXT
 ALTER TABLE card_pools ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_cards ENABLE ROW LEVEL SECURITY;
 
--- Service-role / server-side access (tighten before exposing anon clients).
+-- Service-role only (must include TO service_role — otherwise anon inherits USING true).
 DROP POLICY IF EXISTS "service_role_card_pools" ON card_pools;
-CREATE POLICY "service_role_card_pools" ON card_pools FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "service_role_all_card_pools" ON card_pools;
+CREATE POLICY "service_role_all_card_pools" ON card_pools
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "service_role_user_cards" ON user_cards;
-CREATE POLICY "service_role_user_cards" ON user_cards FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "service_role_all_user_cards" ON user_cards;
+CREATE POLICY "service_role_all_user_cards" ON user_cards
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "authenticated_select_own_user_cards" ON user_cards;
+CREATE POLICY "authenticated_select_own_user_cards" ON user_cards
+  FOR SELECT TO authenticated
+  USING (
+    user_id IS NOT NULL
+    AND auth.uid() IS NOT NULL
+    AND (
+      user_id = auth.uid()::text
+      OR EXISTS (
+        SELECT 1 FROM public.user_wallets w
+        WHERE w.user_id = user_cards.user_id
+          AND w.auth_user_id = auth.uid()::text
+      )
+    )
+  );
