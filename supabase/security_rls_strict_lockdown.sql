@@ -18,37 +18,9 @@
 -- Configure Storage RLS in the Supabase Dashboard → Storage settings instead.
 -- =============================================================================
 
--- ─── Helpers (user_id only — matches live schemas without auth_user_id) ───────
--- Drop policies that may still call the old auth_user_id helper, then drop it.
-DO $$
-BEGIN
-  IF to_regclass('public.user_wallets') IS NOT NULL THEN
-    EXECUTE 'DROP POLICY IF EXISTS "authenticated_select_own_user_wallets" ON public.user_wallets';
-  END IF;
-END $$;
-DROP FUNCTION IF EXISTS public.is_own_wallet_row(text, text);
-
-CREATE OR REPLACE FUNCTION public.is_own_user_id(p_user_id text)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY INVOKER
-SET search_path = public
-AS $$
-  SELECT
-    p_user_id IS NOT NULL
-    AND auth.uid() IS NOT NULL
-    AND p_user_id = auth.uid()::text;
-$$;
-
-COMMENT ON FUNCTION public.is_own_user_id(text) IS
-  'True when p_user_id equals auth.uid()::text (owner column is user_id).';
-
-REVOKE ALL ON FUNCTION public.is_own_user_id(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.is_own_user_id(text) TO authenticated, service_role;
-
 -- ─── Ensure core tables exist (no-op if already applied) ─────────────────────
 -- Do not ADD auth_user_id — many live projects only have user_id.
+-- Own-row policies use inline user_id::text = auth.uid()::text (no helper fn).
 CREATE TABLE IF NOT EXISTS public.user_wallets (
   user_id TEXT PRIMARY KEY,
   email TEXT,
@@ -494,78 +466,81 @@ BEGIN
   END IF;
 END $$;
 
--- ─── Authenticated: own-row SELECT only (no client writes on money tables) ───
+-- ─── Authenticated: own-row SELECT only (inline auth.uid — no helper fn) ─────
+-- Owner check: user_id::text = auth.uid()::text (works for text or bigint user_id).
 CREATE POLICY "authenticated_select_own_user_wallets"
   ON public.user_wallets FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_deposit_requests"
   ON public.deposit_requests FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_card_applications"
   ON public.card_applications FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_card_reload_requests"
   ON public.card_reload_requests FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_orders"
   ON public.orders FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id::text));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_transaction_logs"
   ON public.transaction_logs FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_usdt_withdrawal_requests"
   ON public.usdt_withdrawal_requests FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_usdt_bank_withdrawals"
   ON public.usdt_bank_withdrawals FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_wallet_transactions"
   ON public.wallet_transactions FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_usdt_scan_payments"
   ON public.usdt_scan_payments FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_user_tron_hd_addresses"
   ON public.user_tron_hd_addresses FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_user_tron_deposit_addresses"
   ON public.user_tron_deposit_addresses FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_support_threads"
   ON public.support_threads FOR SELECT TO authenticated
-  USING (public.is_own_user_id(user_id));
+  USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text);
 
 CREATE POLICY "authenticated_select_own_support_messages"
   ON public.support_messages FOR SELECT TO authenticated
   USING (
-    public.is_own_user_id(user_id)
+    (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text)
     OR EXISTS (
       SELECT 1 FROM public.support_threads t
       WHERE t.id = support_messages.thread_id
-        AND public.is_own_user_id(t.user_id)
+        AND t.user_id IS NOT NULL
+        AND auth.uid() IS NOT NULL
+        AND t.user_id::text = auth.uid()::text
     )
   );
 
 CREATE POLICY "authenticated_select_own_profiles"
   ON public.profiles FOR SELECT TO authenticated
-  USING (auth.uid() = id);
+  USING (auth.uid() IS NOT NULL AND auth.uid() = id);
 
 CREATE POLICY "authenticated_update_own_profiles"
   ON public.profiles FOR UPDATE TO authenticated
-  USING (auth.uid() = id)
-  WITH CHECK (auth.uid() = id);
+  USING (auth.uid() IS NOT NULL AND auth.uid() = id)
+  WITH CHECK (auth.uid() IS NOT NULL AND auth.uid() = id);
 
 DO $$
 BEGIN
@@ -576,13 +551,20 @@ BEGIN
     EXECUTE $p$
       CREATE POLICY "authenticated_select_own_user_cards"
         ON public.user_cards FOR SELECT TO authenticated
-        USING (public.is_own_user_id(user_id))
+        USING (user_id IS NOT NULL AND auth.uid() IS NOT NULL AND user_id::text = auth.uid()::text)
     $p$;
   END IF;
 END $$;
 
 -- card_pools: inventory — no authenticated/anon access (service_role only)
 -- anon: intentionally no policies on any of the above tables
+
+-- Drop leftover helpers from earlier lockdown attempts (after policies that
+-- may have depended on them were replaced above).
+DROP FUNCTION IF EXISTS public.is_own_wallet_row(text, text);
+DROP FUNCTION IF EXISTS public.is_own_user_id(text);
+DROP FUNCTION IF EXISTS public.is_own_user(text);
+DROP FUNCTION IF EXISTS public.is_own_user();
 
 -- ─── SECURITY DEFINER RPCs: service_role only ────────────────────────────────
 DO $$
@@ -618,4 +600,4 @@ END $$;
 --   SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER BY 1;
 --   SELECT tablename, policyname, roles, cmd, qual
 --     FROM pg_policies WHERE schemaname = 'public' ORDER BY 1, 2;
--- Expect: no anon policies on money tables; authenticated policies use is_own_*.
+-- Expect: no anon policies on money tables; authenticated quals use auth.uid() / user_id.

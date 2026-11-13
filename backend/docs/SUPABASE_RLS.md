@@ -46,10 +46,14 @@ ORDER BY 1, 2;
 ```
 
 Expect no `anon` role on wallet/deposit policies, and authenticated `qual`
-expressions that reference `is_own_user_id` / `auth.uid()` / `user_id`.
+expressions that use `user_id::text = auth.uid()::text` (inline — no helper
+functions such as `is_own_user` / `is_own_user_id`).
 
 If a previous run failed with `column w.auth_user_id does not exist`, re-run the
-updated `security_rls_strict_lockdown.sql` (user_id-only helpers).
+current script (user_id only).
 
 If a run failed with `must be owner of table objects` (42501), use the current
 script — it no longer touches `storage.objects`.
+
+If a run failed with `function public.is_own_user(...) does not exist` (42883),
+re-run the current script — policies no longer call helper functions.

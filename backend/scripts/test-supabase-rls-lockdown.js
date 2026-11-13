@@ -45,11 +45,13 @@ function section(title) {
 
 section('strict lockdown script exists and covers tables');
 assert.ok(STRICT.includes('FORCE ROW LEVEL SECURITY'), 'forces RLS');
-assert.ok(STRICT.includes('is_own_user_id'), 'own-user helper');
-assert.ok(STRICT.includes('DROP FUNCTION IF EXISTS public.is_own_wallet_row'), 'drops old auth_user_id helper');
+assert.ok(STRICT.includes('DROP FUNCTION IF EXISTS public.is_own_user_id'), 'drops leftover helpers');
+assert.ok(STRICT.includes('DROP FUNCTION IF EXISTS public.is_own_user'), 'drops is_own_user typo helper');
 assert.ok(!STRICT.includes('w.auth_user_id'), 'no auth_user_id column references');
 assert.ok(!STRICT.includes('ADD COLUMN IF NOT EXISTS auth_user_id'), 'does not add auth_user_id');
-assert.ok(STRICT.includes('p_user_id = auth.uid()::text'), 'own-row uses user_id = auth.uid()');
+assert.ok(!STRICT.includes('CREATE OR REPLACE FUNCTION public.is_own_'), 'no own-row helper functions');
+assert.ok(!/USING\s*\(\s*public\.is_own_user/i.test(STRICT), 'policies do not call is_own_user*');
+assert.ok(STRICT.includes('user_id::text = auth.uid()::text'), 'inline own-row check');
 assert.ok(!STRICT.includes('ALTER TABLE storage.objects'), 'does not ALTER storage.objects');
 assert.ok(!STRICT.includes('ON storage.objects'), 'does not create storage.objects policies');
 for (const table of [
