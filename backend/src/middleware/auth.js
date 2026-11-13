@@ -110,7 +110,18 @@ async function requireAuth(req, res, next) {
 
     const session = await UserSession.findByToken(token);
     if (!session) {
-      return res.status(401).json({ error: 'Invalid or expired session', code: 'SESSION_INVALID' });
+      let code = 'SESSION_INVALID';
+      let error = 'Invalid or expired session';
+      try {
+        const reason = await UserSession.classifyMissingToken(token);
+        if (reason === 'SESSION_SUPERSEDED') {
+          code = 'SESSION_SUPERSEDED';
+          error = 'Your session has expired because you logged in from another device';
+        }
+      } catch (classifyErr) {
+        console.warn('[auth] session classify skipped:', classifyErr.message);
+      }
+      return res.status(401).json({ error, code });
     }
 
     // findByToken already JOINs users — avoid a second User.findById on every request.
@@ -241,7 +252,18 @@ async function requireAdminAuth(req, res, next) {
     if (token) {
       const session = await findAdminSessionByToken(token);
       if (!session) {
-        return res.status(401).json({ error: 'Invalid or expired admin session', code: 'SESSION_INVALID' });
+        let code = 'SESSION_INVALID';
+        let error = 'Invalid or expired admin session';
+        try {
+          const reason = await UserSession.classifyMissingToken(token);
+          if (reason === 'SESSION_SUPERSEDED') {
+            code = 'SESSION_SUPERSEDED';
+            error = 'Your session has expired because you logged in from another device';
+          }
+        } catch (classifyErr) {
+          console.warn('[admin auth] session classify skipped:', classifyErr.message);
+        }
+        return res.status(401).json({ error, code });
       }
 
       // findByToken already JOINs users — avoid a second User.findById on every admin request.

@@ -67,6 +67,68 @@ const UserSession = {
     return Number(result?.changes || 0);
   },
 
+  /**
+   * Keep only the given token active — used for single-session enforcement
+   * after a new login on another device.
+   */
+  async revokeAllExcept(userId, sessionToken) {
+    const db = getDb();
+    const hash = this.hashToken(sessionToken);
+    const result = await db.run(`
+      UPDATE user_sessions
+      SET revoked_at = datetime('now')
+      WHERE user_id = ?
+        AND revoked_at IS NULL
+        AND session_token_hash != ?
+    `, userId, hash);
+    return Number(result?.changes || 0);
+  },
+
+  /**
+   * Classify why findByToken returned null — superseded vs missing/expired.
+   * @returns {'SESSION_SUPERSEDED'|'SESSION_INVALID'|null}
+   */
+  async classifyMissingToken(sessionToken) {
+    if (!sessionToken) return null;
+    const db = getDb();
+    const hash = this.hashToken(sessionToken);
+    const row = await db.get(
+      `SELECT id, user_id, revoked_at, expires_at, created_at
+       FROM user_sessions
+       WHERE session_token_hash = ?
+       LIMIT 1`,
+      hash
+    );
+    if (!row) return 'SESSION_INVALID';
+
+    const revoked = Boolean(row.revoked_at);
+    const expired = !(await db.get(
+      `SELECT 1 AS ok
+       FROM user_sessions
+       WHERE id = ?
+         AND datetime(expires_at) > datetime('now')`,
+      row.id
+    ));
+
+    if (!revoked && !expired) return null; // race: became valid again
+
+    if (revoked) {
+      // Another (newer) active session → kicked by concurrent login.
+      const newer = await db.get(
+        `SELECT id FROM user_sessions
+         WHERE user_id = ?
+           AND revoked_at IS NULL
+           AND datetime(expires_at) > datetime('now')
+           AND datetime(created_at) >= datetime(?)
+         LIMIT 1`,
+        row.user_id,
+        row.created_at || '1970-01-01'
+      );
+      if (newer) return 'SESSION_SUPERSEDED';
+    }
+    return 'SESSION_INVALID';
+  },
+
   async touch(sessionToken, expiresAt) {
     const db = getDb();
     const hash = this.hashToken(sessionToken);
