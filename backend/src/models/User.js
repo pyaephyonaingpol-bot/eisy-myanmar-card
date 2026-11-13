@@ -230,12 +230,17 @@ const User = {
     offset = 0,
     q = '',
     status = '',
+    sort = 'created_at_desc',
   } = {}) {
     const db = getDb();
     const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 10000);
     const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
     const query = String(q || '').trim();
     const authStatus = String(status || '').trim().toLowerCase();
+    const orderAsc = sort === 'created_at_asc';
+    const orderSql = orderAsc
+      ? 'ORDER BY created_at ASC, id ASC'
+      : 'ORDER BY created_at DESC, id DESC';
 
     const where = [];
     const params = [];
@@ -269,7 +274,7 @@ const User = {
       `SELECT id, email, name, balance_usdt, auth_status, created_at, auth_user_id
        FROM users
        ${whereSql}
-       ORDER BY created_at DESC, id DESC
+       ${orderSql}
        LIMIT ? OFFSET ?`,
       ...params,
       safeLimit,
@@ -283,6 +288,7 @@ const User = {
       limit: safeLimit,
       offset: safeOffset,
       has_more: safeOffset + users.length < total,
+      sort: orderAsc ? 'created_at_asc' : 'created_at_desc',
     };
   },
 

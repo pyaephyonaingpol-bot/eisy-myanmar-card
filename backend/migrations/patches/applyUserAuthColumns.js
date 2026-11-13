@@ -37,6 +37,12 @@ async function applyUserAuthColumns(db, columnExists) {
     CREATE INDEX IF NOT EXISTS idx_users_auth_status
     ON users (auth_status);
   `);
+
+  // Filtered + ordered admin /users list (status + created_at DESC).
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_users_auth_status_created_at
+    ON users (auth_status, created_at DESC, id DESC);
+  `);
 }
 
 module.exports = { applyUserAuthColumns };

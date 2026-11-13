@@ -1526,18 +1526,20 @@ router.post('/balance/adjust', requirePermission('balance_adjust'), async (req, 
 });
 
 router.get('/users', requirePermission('users'), async (req, res) => {
+  const started = Date.now();
   try {
-    // Union of Turso users and every Supabase wallet, paged in this API.
-    // A PostgREST max-rows cap (for example 15) must not hide the rest.
-    // Supabase scan is time-budgeted inside listAdminUserDirectory so this
-    // handler returns before the Vercel gateway emits opaque HTTP 504.
+    // Default: indexed Turso LIMIT/OFFSET (fast). Opt-in orphans=1 for the
+    // budgeted Turso∪Supabase union used by mirror tooling — never the hot path.
     const { listAdminUserDirectory } = require('../services/adminUserDirectory');
+    const includeOrphans = String(req.query.orphans || req.query.include_orphans || '')
+      .trim() === '1';
     const page = await listAdminUserDirectory({
       limit: req.query.limit,
       offset: req.query.offset,
       q: req.query.q,
       status: req.query.status,
       sort: req.query.sort,
+      includeOrphans,
     });
 
     const wantMirror = String(req.query.mirror || '').trim() === '1'
@@ -1563,6 +1565,13 @@ router.get('/users', requirePermission('users'), async (req, res) => {
       }
     }
 
+    console.info('[admin/users] ok', {
+      mode: page.mode,
+      total: page.total,
+      count: page.count,
+      ms: Date.now() - started,
+    });
+
     res.json({
       users: page.users,
       total: page.total,
@@ -1571,15 +1580,22 @@ router.get('/users', requirePermission('users'), async (req, res) => {
       offset: page.offset,
       has_more: page.has_more,
       truncated: page.has_more,
+      mode: page.mode || 'registry',
       q: String(req.query.q || '').trim() || null,
       status: String(req.query.status || '').trim() || null,
       sort: page.sort || 'created_at_desc',
+      supabase_enriched: page.supabase_enriched || false,
+      supabase_error: page.supabase_error || null,
       mirror,
       backfill,
     });
   } catch (err) {
-    console.error('[admin/users]', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[admin/users]', err.message, { ms: Date.now() - started });
+    const status = err.code === 'DIRECTORY_TIMEOUT' ? 504 : 500;
+    res.status(status).json({
+      error: err.message || 'Internal server error',
+      code: err.code || 'ADMIN_USERS_FAILED',
+    });
   }
 });
 
