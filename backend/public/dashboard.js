@@ -1677,15 +1677,23 @@ const Dashboard = {
       reason = sessionStorage.getItem('eisy_logout_notice') || '';
       if (reason) sessionStorage.removeItem('eisy_logout_notice');
     } catch (_) { /* ignore */ }
-    if (reason !== 'inactive') {
-      el.classList.add('hidden');
+    if (reason === 'inactive') {
+      el.textContent = this.i18nText(
+        'session_idle_notice',
+        'You were signed out after 20 minutes of inactivity. Please sign in again.'
+      );
+      el.classList.remove('hidden');
       return;
     }
-    el.textContent = this.i18nText(
-      'session_idle_notice',
-      'You were signed out after 20 minutes of inactivity. Please sign in again.'
-    );
-    el.classList.remove('hidden');
+    if (reason === 'superseded') {
+      el.textContent = this.i18nText(
+        'session_superseded_notice',
+        'Your session has expired because you logged in from another device'
+      );
+      el.classList.remove('hidden');
+      return;
+    }
+    el.classList.add('hidden');
   },
 
   saveWalletCache(data) {

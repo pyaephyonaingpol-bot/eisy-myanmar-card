@@ -400,6 +400,13 @@ async function createSession({ userId, ipAddress, deviceName, devicePlatform }) 
     devicePlatform,
     expiresAt: sessionExpiresAt(),
   });
+  // Single-session policy: any prior device sessions are invalidated immediately.
+  const revokedOthers = await UserSession.revokeAllExcept(userId, sessionToken);
+  if (revokedOthers > 0) {
+    console.info(
+      `[auth] single-session: revoked ${revokedOthers} prior session(s) for user ${userId}`
+    );
+  }
   return { sessionToken, session };
 }
 

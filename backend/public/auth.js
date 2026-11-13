@@ -267,6 +267,21 @@ const Auth = {
           err.code = data.code;
           err.status = res.status;
           err.response = data;
+          if (
+            res.status === 401
+            && (data.code === 'SESSION_SUPERSEDED' || data.code === 'SESSION_INVALID')
+            && this.sessionToken
+          ) {
+            try {
+              if (data.code === 'SESSION_SUPERSEDED') {
+                sessionStorage.setItem('eisy_logout_notice', 'superseded');
+              }
+            } catch (_) { /* ignore */ }
+            this.clear();
+            window.dispatchEvent(new CustomEvent('eisy:session-end', {
+              detail: { reason: data.code === 'SESSION_SUPERSEDED' ? 'superseded' : 'invalid' },
+            }));
+          }
           console.error('[Auth.api] Request failed:', err.message, data);
           throw err;
         }
@@ -867,8 +882,17 @@ const Auth = {
         return true;
       }
     } catch (err) {
-      if (err.status === 401 || err.code === 'SESSION_INVALID') {
-        console.warn('[Auth] Session expired — clearing stored credentials');
+      if (
+        err.status === 401
+        || err.code === 'SESSION_INVALID'
+        || err.code === 'SESSION_SUPERSEDED'
+      ) {
+        console.warn('[Auth] Session expired — clearing stored credentials', err.code || '');
+        try {
+          if (err.code === 'SESSION_SUPERSEDED') {
+            sessionStorage.setItem('eisy_logout_notice', 'superseded');
+          }
+        } catch (_) { /* ignore */ }
         this.clear();
       } else {
         console.warn('[Auth] Session restore skipped (transient error):', err.message);
