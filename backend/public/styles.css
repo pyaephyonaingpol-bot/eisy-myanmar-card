@@ -7270,6 +7270,20 @@ html[data-admin-pipeline="instant"] .sidebar-brand-title {
   letter-spacing: 0.08em;
 }
 
+.pago-tx-open-row {
+  margin: 0.85rem 0 0;
+}
+
+.pago-tx-open-row .btn {
+  width: 100%;
+}
+
+.pago-tx-modal-box {
+  max-width: min(560px, 100%);
+  max-height: min(88vh, 720px);
+  overflow: auto;
+}
+
 .pago-tx-panel {
   margin: 0 0 1.1rem;
   padding: 1rem 1.05rem 0.35rem;

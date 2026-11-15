@@ -4,10 +4,12 @@ const CARD_CACHE_KEY = (window.Eisy && window.Eisy.storageKeys && window.Eisy.st
 const Dashboard = {
   pollTimer: null,
   cardsPollTimer: null,
-  /** Local 3DS re-read while the card is open. Never calls the provider. */
-  PAGO_3DS_POLL_MS: 15000,
-  /** Stop the local re-read after two minutes. Refresh Code starts a provider scan. */
-  PAGO_3DS_POLL_LIMIT_MS: 120000,
+  /** Local 3DS re-read while the card is open (webhook-stored codes). */
+  PAGO_3DS_POLL_MS: 5000,
+  /** Keep polling while the card detail stays open (covers long checkout waits). */
+  PAGO_3DS_POLL_LIMIT_MS: 300000,
+  /** Every N local polls, also ask the API to scan Pagocards for OTP fields. */
+  PAGO_3DS_PROVIDER_EVERY: 6,
   /** Bumped on card mutations so in-flight GET /cards cannot overwrite fresher state. */
   _cardsEpoch: 0,
   currentCard: null,
@@ -9587,6 +9589,11 @@ const Dashboard = {
     $('pagoCardCopyNumberBtn')?.addEventListener('click', () => this.copyPagoCard());
     $('pago3dsCopyBtn')?.addEventListener('click', () => this.copyPago3dsCode());
     $('pago3dsRefreshBtn')?.addEventListener('click', () => this.refreshPago3dsCode());
+    $('pagoTxOpenBtn')?.addEventListener('click', () => this.openPagoTxModal());
+    $('pagoTxModalClose')?.addEventListener('click', () => this.closePagoTxModal());
+    $('pagoTxModal')?.addEventListener('click', (e) => {
+      if (e.target === $('pagoTxModal')) this.closePagoTxModal();
+    });
     $('pagoTxRefreshBtn')?.addEventListener('click', () => {
       const card = this.getSelectedPagoCard();
       if (card) this.loadPagoCardTransactions(card.id).catch(() => {});
@@ -9650,17 +9657,19 @@ const Dashboard = {
   },
 
   /**
-   * While the card detail is open, re-read codes already stored by the webhook.
-   * This does not call Pago. It stops itself after PAGO_3DS_POLL_LIMIT_MS.
-   * A live provider scan happens only when the user taps Refresh Code.
+   * While the card detail is open, re-read stored 3DS codes often so a webhook
+   * (or email) arrival shows on screen without tapping Refresh. Periodically
+   * also asks the API to scan Pagocards transaction/detail payloads for OTPs.
    */
   startPago3dsPoll(cardId) {
     this.stopPago3dsPoll();
     if (!cardId) return;
-    const limitMs = this.PAGO_3DS_POLL_LIMIT_MS || 120000;
-    const everyMs = this.PAGO_3DS_POLL_MS || 15000;
+    const limitMs = this.PAGO_3DS_POLL_LIMIT_MS || 300000;
+    const everyMs = this.PAGO_3DS_POLL_MS || 5000;
+    const providerEvery = Math.max(2, Number(this.PAGO_3DS_PROVIDER_EVERY) || 6);
     this._pago3dsPollCardId = String(cardId);
     this._pago3dsPollUntil = Date.now() + limitMs;
+    this._pago3dsPollTicks = 0;
     this._pago3dsPollTimer = setInterval(() => {
       if (Date.now() >= this._pago3dsPollUntil) {
         this.stopPago3dsPoll();
@@ -9673,8 +9682,27 @@ const Dashboard = {
         this.stopPago3dsPoll();
         return;
       }
-      this.loadPago3dsEvents(cardId, { silent: true, refresh: false }).catch(() => {});
+      this._pago3dsPollTicks = (this._pago3dsPollTicks || 0) + 1;
+      const refresh = this._pago3dsPollTicks % providerEvery === 0;
+      this.loadPago3dsEvents(cardId, { silent: true, refresh }).catch(() => {});
     }, everyMs);
+  },
+
+  openPagoTxModal() {
+    const card = this.getSelectedPagoCard?.() || null;
+    const modal = $('pagoTxModal');
+    if (!modal || !card) return;
+    const line = $('pagoTxCardLine');
+    if (line) {
+      const brand = card.brand || card.product_code || 'Card';
+      line.textContent = `${brand} · •••• ${card.last4 || '????'}`;
+    }
+    modal.classList.remove('hidden');
+    this.loadPagoCardTransactions(card.id).catch(() => {});
+  },
+
+  closePagoTxModal() {
+    $('pagoTxModal')?.classList.add('hidden');
   },
 
   refreshPago3dsCode() {
@@ -9710,7 +9738,8 @@ const Dashboard = {
       const path = `/api/user/cards/${cardId}/3ds${refresh ? '?refresh=1' : ''}`;
       const data = await Auth.api('GET', path, null, {
         sensitive: true,
-        timeoutMs: refresh ? 25000 : 8000,
+        // Local store reads stay snappy; provider refresh gets a larger budget.
+        timeoutMs: refresh ? 18000 : 6000,
       });
       if (this._pago3dsRequestId !== requestId) return data;
       const events = Array.isArray(data.events) ? data.events : [];
@@ -10823,15 +10852,13 @@ const Dashboard = {
         this.pago3dsEvents = [];
         this.pago3dsKnownIds = this._pago3dsSeenByCard?.[nextId] || new Set();
         this.renderPago3dsPanel([]);
-        this.renderPagoCardTransactions([], {
-          message: this.i18nText('pago_tx_loading', 'Loading transactions…'),
-        });
+        this.closePagoTxModal();
       }
       panel.dataset.cardId = nextId;
       this.startPago3dsPoll(card.id);
       this.renderPago3dsPanel(this.pago3dsEvents || []);
+      // Local webhook store first; provider scan rides the poll cadence.
       this.loadPago3dsEvents(card.id, { silent: true, refresh: false }).catch(() => {});
-      this.loadPagoCardTransactions(card.id).catch(() => {});
     }
     panel.classList.remove('hidden');
 
@@ -11711,7 +11738,11 @@ const Dashboard = {
 
       let data;
       try {
-        data = await Auth.api('GET', '/api/user/cards', null, { sensitive: true, timeoutMs: 16000 });
+        // Local Turso list only — provider reconcile is a separate POST /cards/sync.
+        data = await Auth.api('GET', '/api/user/cards', null, {
+          sensitive: true,
+          timeoutMs: 10000,
+        });
       } catch (err) {
         // Back-compat: older servers returned 404 for empty card lists
         if (err.status === 404 && Array.isArray(err.response?.cards)) {

@@ -249,19 +249,15 @@ async function handlePagocardsWebhook(body, req = null) {
   }
 
   if (!duplicate && localCard?.user_id && event.otp) {
-    try {
-      const { notifyUserPush } = require('./webPushService');
-      notifyUserPush(localCard.user_id, {
-        title: '3DS verification code',
-        body: event.merchantName
-          ? `${event.otp} for ${event.merchantName}`
-          : `Your code is ${event.otp}`,
-        url: '/#cards',
-        tag: 'eisy-3ds',
-      }).catch((err) => console.warn('[push] 3ds:', err.message));
-    } catch (err) {
-      console.warn('[push] 3ds skipped:', err.message);
-    }
+    deliver3dsNotifications({
+      userId: localCard.user_id,
+      otp: event.otp,
+      merchantName: event.merchantName,
+      transactionAmount: event.transactionAmount,
+      transactionCurrency: event.transactionCurrency,
+      eventId: event.eventId || row?.event_id,
+      last4: localCard.last4 || localCard.last_four,
+    }).catch((err) => console.warn('[pago3ds] deliver skipped:', err.message));
   } else if (!duplicate && cardUpdated && localCard?.user_id && event.localStatus) {
     try {
       const { notifyUserPush } = require('./webPushService');
@@ -306,6 +302,63 @@ async function handlePagocardsWebhook(body, req = null) {
 function isPagoConfigError(err) {
   const code = String(err?.code || '');
   return code === 'PAGO_NOT_CONFIGURED' || code === 'PAGO_NO_FETCH';
+}
+
+/**
+ * Push + email a fresh 3DS OTP so the cardholder sees it on-screen (via
+ * polling / toast) and in their inbox without tapping Refresh.
+ */
+async function deliver3dsNotifications({
+  userId,
+  otp,
+  merchantName = null,
+  transactionAmount = null,
+  transactionCurrency = null,
+  eventId = null,
+  last4 = null,
+} = {}) {
+  const code = String(otp || '').trim();
+  const uid = Number(userId);
+  if (!code || !Number.isFinite(uid) || uid <= 0) return { push: false, email: false };
+
+  try {
+    const { notifyUserPush } = require('./webPushService');
+    notifyUserPush(uid, {
+      title: '3DS verification code',
+      body: merchantName ? `${code} for ${merchantName}` : `Your code is ${code}`,
+      url: '/#cards',
+      tag: 'eisy-3ds',
+    }).catch((err) => console.warn('[push] 3ds:', err.message));
+  } catch (err) {
+    console.warn('[push] 3ds skipped:', err.message);
+  }
+
+  let emailQueued = false;
+  try {
+    const User = require('../models/User');
+    const user = await User.findById(uid);
+    const email = String(user?.email || '').trim();
+    if (email) {
+      const { dispatch3dsCodeEmail } = require('./emailService');
+      dispatch3dsCodeEmail({
+        email,
+        userName: user?.name || null,
+        otp: code,
+        merchantName,
+        transactionAmount,
+        transactionCurrency,
+        last4,
+        eventId,
+      });
+      emailQueued = true;
+    } else {
+      console.warn('[pago3ds] no email on user', uid, '— skipping 3DS mail');
+    }
+  } catch (err) {
+    console.warn('[pago3ds] email skipped:', err.message);
+  }
+
+  return { push: true, email: emailQueued };
 }
 
 /** Drop PAN / CVV if an OTP field sits on the same object as card secrets. */
@@ -409,7 +462,19 @@ async function refreshCard3dsFromProvider({
           expiresAt,
           renewExpiry: true,
         });
-        if (!saved.duplicate) summary.imported += 1;
+        if (!saved.duplicate) {
+          summary.imported += 1;
+          if (userId && event.otp) {
+            deliver3dsNotifications({
+              userId,
+              otp: event.otp,
+              merchantName: event.merchantName,
+              transactionAmount: event.transactionAmount,
+              transactionCurrency: event.transactionCurrency,
+              eventId: event.eventId || saved.row?.event_id,
+            }).catch((err) => console.warn('[pago3ds] deliver refreshed otp:', err.message));
+          }
+        }
       } catch (err) {
         console.warn('[pago3ds] store refreshed otp skipped:', err.message);
       }
@@ -455,6 +520,7 @@ module.exports = {
   listUser3dsEvents,
   markUser3dsSeen,
   toPublicEvent,
+  deliver3dsNotifications,
   loadPagocardsWebhookLib,
   resetPagocardsWebhookLibCache,
   OTP_TTL_MINUTES,
