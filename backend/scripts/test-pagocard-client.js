@@ -13,6 +13,7 @@ const {
   PagoCardError,
   createPagoCardClient,
   truncateUsd,
+  joinPagoRequestUrl,
 } = loadPagoCardClient();
 
 function clientWith(handler) {
@@ -61,6 +62,24 @@ const sampleCard = {
 (async () => {
   assert.strictEqual(truncateUsd(55.175678), 55.17);
   assert.strictEqual(truncateUsd(10), 10);
+
+  {
+    // Query strings must stay as ?pageNum=… — never %3F in the pathname.
+    const joined = joinPagoRequestUrl(
+      'http://167.99.179.130:3000/api/pago',
+      '/api/v1/cards/card_abc/transactions?pageNum=1'
+    );
+    assert.strictEqual(
+      joined,
+      'http://167.99.179.130:3000/api/pago/cards/card_abc/transactions?pageNum=1'
+    );
+    assert.ok(!joined.includes('%3F'), 'query marker must not be pathname-encoded');
+    const noQs = joinPagoRequestUrl(
+      'http://167.99.179.130:3000/api/pago',
+      '/api/v1/cards/card_abc'
+    );
+    assert.strictEqual(noQs, 'http://167.99.179.130:3000/api/pago/cards/card_abc');
+  }
 
   {
     let called = false;
@@ -368,6 +387,13 @@ const sampleCard = {
         email: 'ada@example.com',
       });
       assert.strictEqual(calls[0], 'http://proxy.test/api/pago/cards');
+      calls.length = 0;
+      await fallback.listCardTransactions('card_tx_1', 1);
+      assert.strictEqual(
+        calls[0],
+        'http://proxy.test/api/pago/cards/card_tx_1/transactions?pageNum=1'
+      );
+      assert.ok(!String(calls[0]).includes('%3F'), 'transactions URL keeps a real query string');
       delete process.env.PAGO_CARD_PROXY_HOST;
       await assert.rejects(
         () => createPagoCardClient({ fetchImpl }).createVirtualCard({
