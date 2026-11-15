@@ -2454,7 +2454,7 @@ const Dashboard = {
       try {
         const bal = await (window.EisyServices?.usdtWallet?.getBalance
           ? window.EisyServices.usdtWallet.getBalance()
-          : Auth.api('GET', '/api/user/usdt-wallet/balance', null, { sensitive: true, timeoutMs: 6000 }));
+          : Auth.api('GET', '/api/user/usdt-wallet/balance', null, { sensitive: true, timeoutMs: 15000 }));
         this.walletUsdt = bal.available_usdt ?? bal.balance_usdt;
         this.walletUsdtLocked = bal.locked_usdt ?? bal.balance_usdt_locked ?? 0;
         this.syncUsdtWalletBalancesFromPayload({
@@ -2474,7 +2474,7 @@ const Dashboard = {
       try {
         const data = await (window.EisyServices?.usdtWallet?.getOverview
           ? window.EisyServices.usdtWallet.getOverview()
-          : Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true, timeoutMs: 15000 }));
+          : Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true, timeoutMs: 25000 }));
         this._usdtWalletCache = data;
         this.walletUsdt = data.balance_usdt ?? data.available_usdt;
         this.walletUsdtLocked = data.balance_usdt_locked ?? data.locked_usdt ?? 0;
@@ -2515,7 +2515,8 @@ const Dashboard = {
             ? window.EisyServices.usdtWallet.getPlatformWallet()
             : Auth.api('GET', '/api/user/wallet', null, {
               sensitive: true,
-              timeoutMs: 8000,
+              timeoutMs: 20000,
+              force: true,
             }));
           this.walletUsdt = wallet.balance_usdt;
           this.walletUsdtLocked = wallet.balance_usdt_locked || 0;
@@ -9417,6 +9418,38 @@ const Dashboard = {
     } catch (_) {}
   },
 
+  async _fetchWalletPayload(opts = {}) {
+    const timeoutMs = opts.fast ? 15000 : 25000;
+    const maxAttempts = Math.max(1, Math.min(4, Number(opts.retries) || 3));
+    let lastErr = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await Auth.api(
+          'GET',
+          '/api/user/wallet' + (opts.fast ? '?fast=1' : ''),
+          null,
+          {
+            sensitive: true,
+            timeoutMs,
+            // Bypass GET dedupe on retries so a hung first attempt cannot block recovery.
+            force: Boolean(opts.force) || attempt > 1,
+            skipDedupe: attempt > 1,
+          }
+        );
+      } catch (err) {
+        lastErr = err;
+        const retryable = err?.code === 'REQUEST_TIMEOUT' || err?.code === 'NETWORK_ERROR';
+        if (!retryable || attempt >= maxAttempts) break;
+        const waitMs = Math.min(2500, 400 * (2 ** (attempt - 1)));
+        console.warn(
+          `[Dashboard] wallet fetch attempt ${attempt}/${maxAttempts} failed (${err.code}); retry in ${waitMs}ms`
+        );
+        await new Promise((r) => setTimeout(r, waitMs));
+      }
+    }
+    throw lastErr || new Error('Balance unavailable');
+  },
+
   async loadWallet(opts = {}) {
     if (!Auth.isLoggedIn()) return;
     const force = Boolean(opts.force);
@@ -9446,10 +9479,7 @@ const Dashboard = {
       }
 
       try {
-        const data = await Auth.api('GET', '/api/user/wallet' + (opts.fast ? '?fast=1' : ''), null, {
-          sensitive: true,
-          timeoutMs: opts.fast ? 8000 : 12000,
-        });
+        const data = await this._fetchWalletPayload(opts);
         this.renderWalletBalances(data);
         this.walletUsdt = data.balance_usdt;
         this.walletUsdtLocked = data.balance_usdt_locked || 0;
@@ -9472,7 +9502,8 @@ const Dashboard = {
           return;
         }
 
-        if (this.renderWalletBalancesFromCache()) {
+        // Prefer any known balance (memory or session cache) over a timeout banner.
+        if (this.renderWalletBalancesFromCache() || this.applyCachedWallet()) {
           console.warn('[Dashboard] wallet load failed — showing cached balance:', err.message);
           return;
         }

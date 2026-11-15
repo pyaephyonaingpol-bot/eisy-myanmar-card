@@ -372,38 +372,64 @@ async function fetchIncomingUsdtTransfers({
   }
 
   const url = `${getTronFullHost()}/v1/accounts/${encodeURIComponent(address)}/transactions/trc20?${params.toString()}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
-  try {
-    const response = await fetch(url, {
-      headers: tronApiHeaders(),
-      signal: controller.signal,
-    });
-    let payload = null;
+  const attemptTimeoutMs = Math.max(
+    2000,
+    parseInt(process.env.TRONGRID_TRANSFER_TIMEOUT_MS || '10000', 10) || 10000
+  );
+  const maxAttempts = Math.max(
+    1,
+    Math.min(4, parseInt(process.env.TRONGRID_TRANSFER_RETRIES || '3', 10) || 3)
+  );
+
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), attemptTimeoutMs);
     try {
-      payload = await response.json();
-    } catch {
-      payload = null;
+      const response = await fetch(url, {
+        headers: tronApiHeaders(),
+        signal: controller.signal,
+      });
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+      if (response.status === 429 || response.status >= 500) {
+        const message = payload?.Error || payload?.error || `TronGrid HTTP ${response.status}`;
+        const err = new Error(message);
+        err.code = response.status === 429 ? 'TRON_RATE_LIMITED' : 'TRONGRID_HTTP_ERROR';
+        err.status = response.status;
+        throw err;
+      }
+      if (!response.ok) {
+        const message = payload?.Error || payload?.error || `TronGrid HTTP ${response.status}`;
+        const err = new Error(message);
+        err.code = 'TRONGRID_HTTP_ERROR';
+        err.status = response.status;
+        throw err;
+      }
+      const rows = Array.isArray(payload?.data) ? payload.data : [];
+      return rows.filter((row) => String(row?.type || '').toLowerCase() === 'transfer');
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        lastErr = new Error(`TronGrid request timed out after ${attemptTimeoutMs}ms`);
+        lastErr.code = 'TRONGRID_TIMEOUT';
+      } else {
+        lastErr = err;
+      }
+      const retryable = lastErr.code === 'TRONGRID_TIMEOUT'
+        || lastErr.code === 'TRON_RATE_LIMITED'
+        || (Number(lastErr.status) >= 500);
+      if (!retryable || attempt >= maxAttempts) break;
+      const waitMs = Math.min(2000, 250 * (2 ** (attempt - 1)));
+      await new Promise((r) => setTimeout(r, waitMs));
+    } finally {
+      clearTimeout(timer);
     }
-    if (!response.ok) {
-      const message = payload?.Error || payload?.error || `TronGrid HTTP ${response.status}`;
-      const err = new Error(message);
-      err.code = 'TRONGRID_HTTP_ERROR';
-      err.status = response.status;
-      throw err;
-    }
-    const rows = Array.isArray(payload?.data) ? payload.data : [];
-    return rows.filter((row) => String(row?.type || '').toLowerCase() === 'transfer');
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      const timed = new Error('TronGrid request timed out');
-      timed.code = 'TRONGRID_TIMEOUT';
-      throw timed;
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
   }
+  throw lastErr || new Error('TronGrid request failed');
 }
 
 async function listPendingTronOrders() {

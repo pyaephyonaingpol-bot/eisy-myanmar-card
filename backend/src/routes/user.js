@@ -343,13 +343,41 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
     ensureSupabaseUserWalletInBackground(req.user.id);
 
     // ?fast=1 paints the saved balance without waiting on TronGrid.
-    // The dashboard follows up with a normal wallet read that still scans.
+    // Non-fast still credits HD deposits, but never blocks the response longer
+    // than WALLET_HD_SCAN_BUDGET_MS — TronGrid hangs must not surface as
+    // client "Balance timed out".
     const fast = req.query.fast === '1' || req.query.fast === 'true';
+    const WALLET_HD_SCAN_BUDGET_MS = Math.max(
+      1000,
+      parseInt(process.env.WALLET_HD_SCAN_BUDGET_MS || '3500', 10) || 3500
+    );
     let hdScan = { skipped: true, reason: fast ? 'fast' : 'not_run', credited: 0 };
     if (!fast) {
       const { scanUserHdDepositsBestEffort } = require('../services/hdDepositCreditService');
-      hdScan = await scanUserHdDepositsBestEffort(req.user.id);
-      if (hdScan && Number(hdScan.credited) > 0) {
+      const scanPromise = scanUserHdDepositsBestEffort(req.user.id);
+      hdScan = await Promise.race([
+        scanPromise,
+        new Promise((resolve) => {
+          setTimeout(
+            () => resolve({ skipped: true, reason: 'budget', credited: 0 }),
+            WALLET_HD_SCAN_BUDGET_MS
+          );
+        }),
+      ]);
+      // Keep scanning in the background if the budget elapsed first.
+      if (hdScan?.reason === 'budget') {
+        scanPromise
+          .then((result) => {
+            if (Number(result?.credited) > 0) {
+              console.info(
+                `[user/wallet] background HD scan credited ${result.credited} for user ${req.user.id}`
+              );
+            }
+          })
+          .catch((err) => {
+            console.warn('[user/wallet] background HD scan failed:', err.message);
+          });
+      } else if (hdScan && Number(hdScan.credited) > 0) {
         user = await User.findById(req.user.id);
       }
     }

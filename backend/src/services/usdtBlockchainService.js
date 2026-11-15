@@ -80,9 +80,44 @@ async function fetchJson(url, options = {}, timeoutMs = 15000) {
       throw err;
     }
     return await res.json();
+  } catch (err) {
+    if (err.name === 'AbortError' || err.code === 'ABORT_ERR') {
+      const timed = new Error(`Blockchain request timed out after ${timeoutMs}ms`);
+      timed.code = 'BLOCKCHAIN_TIMEOUT';
+      throw timed;
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function fetchJsonWithRetry(url, options = {}, {
+  timeoutMs = 15000,
+  retries = 3,
+  label = 'blockchain',
+} = {}) {
+  const maxAttempts = Math.max(1, Math.min(5, Number(retries) || 1));
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await fetchJson(url, options, timeoutMs);
+    } catch (err) {
+      lastErr = err;
+      const status = Number(err.status) || 0;
+      const retryable = err.code === 'BLOCKCHAIN_TIMEOUT'
+        || status === 429
+        || status >= 500
+        || /fetch failed|network|ECONNRESET|ETIMEDOUT/i.test(String(err.message || ''));
+      if (!retryable || attempt >= maxAttempts) break;
+      const waitMs = Math.min(2000, 300 * (2 ** (attempt - 1)));
+      console.warn(
+        `[usdt-blockchain] ${label} attempt ${attempt}/${maxAttempts} failed (${err.code || err.status || err.message}); retry in ${waitMs}ms`
+      );
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+  throw lastErr || new Error(`${label} request failed`);
 }
 
 async function verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt) {
@@ -91,7 +126,15 @@ async function verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt) {
 
   let data;
   try {
-    data = await fetchJson(`${TRONSCAN_API}/api/transaction-info?hash=${encodeURIComponent(hash)}`);
+    data = await fetchJsonWithRetry(
+      `${TRONSCAN_API}/api/transaction-info?hash=${encodeURIComponent(hash)}`,
+      {},
+      {
+        timeoutMs: Math.max(5000, parseInt(process.env.TRONSCAN_TIMEOUT_MS || '20000', 10) || 20000),
+        retries: Math.max(1, parseInt(process.env.TRONSCAN_RETRIES || '3', 10) || 3),
+        label: 'tronscan-tx',
+      }
+    );
   } catch (err) {
     if (err.status === 404) {
       return { ok: false, status: 'invalid', message: 'Transaction pending on blockchain or invalid TxHash.' };
@@ -217,9 +260,19 @@ async function verifyUsdtTransaction({
 
 async function fetchTrc20UsdtBalance(address) {
   const url = `${TRONSCAN_API}/api/account?address=${encodeURIComponent(address)}`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error('Tronscan request failed');
-  const json = await response.json();
+  const timeoutMs = Math.max(
+    5000,
+    parseInt(process.env.TRONSCAN_BALANCE_TIMEOUT_MS || '20000', 10) || 20000
+  );
+  const retries = Math.max(
+    1,
+    parseInt(process.env.TRONSCAN_BALANCE_RETRIES || '3', 10) || 3
+  );
+  const json = await fetchJsonWithRetry(url, { headers: { Accept: 'application/json' } }, {
+    timeoutMs,
+    retries,
+    label: 'tronscan-balance',
+  });
   const tokens = json?.trc20token_balances || json?.tokens || [];
   const usdt = tokens.find((t) => {
     const id = String(t.tokenId || t.token_id || t.contract_address || '').toUpperCase();
@@ -244,7 +297,13 @@ async function fetchUsdtOnChainBalance(network, address) {
     const balanceUsdt = await fetchTrc20UsdtBalance(addr);
     return { ok: true, network: 'TRC20', address: addr, balance_usdt: balanceUsdt };
   } catch (err) {
-    return { ok: false, network: net, address: addr, error: err.message };
+    return {
+      ok: false,
+      network: net,
+      address: addr,
+      error: err.message,
+      code: err.code || 'ONCHAIN_BALANCE_FAILED',
+    };
   }
 }
 

@@ -17,7 +17,8 @@ assert.ok(dash.includes('ensureSessionUser'), 'ensureSessionUser helper required
 assert.ok(dash.includes('applySessionUserToUI'), 'applySessionUserToUI helper required');
 assert.ok(dash.includes('setHomeWalletBalanceDisplay'), 'home wallet display helper required');
 assert.ok(dash.includes('renderWalletBalancesFromCache'), 'cached wallet render required');
-assert.ok(dash.includes("setHomeWalletBalanceDisplay('Loading…')"), 'loading state before wallet fetch');
+assert.ok(dash.includes('setBalanceLoading(true)'), 'loading state before wallet fetch');
+assert.ok(dash.includes('_fetchWalletPayload'), 'wallet fetch retries on timeout');
 assert.ok(dash.includes('Balance timed out'), 'timeout fallback message required');
 assert.ok(dash.includes('clearTimeout(hydrationSafety)'), 'hydration safety timeout required');
 assert.ok(dash.includes('if (Auth.needsPinUnlock())'), 'PIN gate before wallet fetch');

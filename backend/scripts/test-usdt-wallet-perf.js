@@ -41,7 +41,7 @@ async function main() {
 
   const readSvc = read('src/services/supabaseWalletReadService.js');
   assert.ok(readSvc.includes("'15000'"), 'supabase wallet cache TTL default 15s');
-  assert.ok(readSvc.includes("'1500'"), 'supabase wallet read timeout default 1.5s');
+  assert.ok(readSvc.includes("'4000'"), 'supabase wallet read timeout default 4s');
   assert.ok(readSvc.includes(".eq('email', wantedEmail)"), 'email lookup prefers eq');
 
   const dash = read('public/dashboard.js');
