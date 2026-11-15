@@ -434,6 +434,140 @@ async function sendWithdrawalProofEmail({
   }
 }
 
+function build3dsCodeHtml({
+  otp,
+  userName,
+  merchantName,
+  amountLabel,
+  last4,
+}) {
+  const greeting = userName ? `Hi ${escapeHtml(userName)},` : 'Hi,';
+  const merchant = merchantName ? escapeHtml(merchantName) : null;
+  const amount = amountLabel ? escapeHtml(amountLabel) : null;
+  const cardBit = last4 ? `•••• ${escapeHtml(String(last4))}` : null;
+  return `
+    <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#111">
+      <p style="font-size:16px;font-weight:700;margin:0 0 8px">Eisy Myanmar</p>
+      <p style="font-size:15px;line-height:1.5;margin:0 0 8px">${greeting}</p>
+      <p style="font-size:15px;line-height:1.5;margin:0">Your 3D Secure verification code${cardBit ? ` for card ${cardBit}` : ''}:</p>
+      <p style="font-size:32px;font-weight:700;letter-spacing:6px;margin:16px 0">${escapeHtml(otp)}</p>
+      ${merchant || amount ? `<p style="font-size:14px;color:#333;margin:0 0 8px">${[merchant, amount].filter(Boolean).join(' · ')}</p>` : ''}
+      <p style="font-size:13px;color:#555;margin:0">Enter this code at the merchant checkout. It expires in about 15 minutes. If you did not make this purchase, contact support.</p>
+    </div>
+  `.trim();
+}
+
+function build3dsCodeText({
+  otp,
+  userName,
+  merchantName,
+  amountLabel,
+  last4,
+}) {
+  return [
+    'Eisy Myanmar',
+    userName ? `Hi ${userName},` : 'Hi,',
+    '',
+    `Your 3D Secure verification code${last4 ? ` for card •••• ${last4}` : ''}:`,
+    String(otp),
+    merchantName || amountLabel
+      ? [merchantName, amountLabel].filter(Boolean).join(' · ')
+      : null,
+    '',
+    'Enter this code at the merchant checkout. It expires in about 15 minutes.',
+  ].filter((line) => line != null).join('\n');
+}
+
+/**
+ * Email a Pagocards 3DS OTP to the cardholder.
+ * Uses Resend idempotency keyed by eventId so webhook retries do not spam.
+ */
+async function send3dsCodeEmail({
+  email,
+  userName,
+  otp,
+  merchantName,
+  transactionAmount,
+  transactionCurrency,
+  last4,
+  eventId,
+} = {}) {
+  const toAddress = normalizeRecipientEmail(email);
+  const code = String(otp || '').trim();
+  if (!toAddress || !toAddress.includes('@')) {
+    return { sent: false, provider: 'none', reason: 'invalid_email' };
+  }
+  if (!code) {
+    return { sent: false, provider: 'none', reason: 'missing_otp' };
+  }
+
+  const amountLabel = transactionAmount
+    ? `${transactionAmount}${transactionCurrency ? ` ${transactionCurrency}` : ''}`
+    : '';
+  const subject = merchantName
+    ? `3DS code for ${merchantName}`
+    : 'Your 3D Secure verification code';
+  const html = build3dsCodeHtml({
+    otp: code,
+    userName,
+    merchantName,
+    amountLabel,
+    last4,
+  });
+  const text = build3dsCodeText({
+    otp: code,
+    userName,
+    merchantName,
+    amountLabel,
+    last4,
+  });
+
+  if (!getResendApiKey()) {
+    console.warn('[Eisy Myanmar] RESEND_API_KEY not set — 3DS email logged only');
+    console.log(`[Eisy Myanmar] 3DS code (console) to=${toAddress} code=${code} merchant=${merchantName || '-'}`);
+    return { sent: false, provider: 'console', reason: 'resend_not_configured' };
+  }
+
+  const payload = {
+    from: getFromAddress(),
+    to: [toAddress],
+    subject,
+    html,
+    text,
+  };
+  const idempotencyKey = eventId
+    ? crypto.createHash('sha256').update(`3ds|${eventId}|${code}`).digest('hex').slice(0, 32)
+    : '';
+
+  try {
+    const result = await postResendEmail(payload, {
+      timeoutMs: RESEND_OTP_TIMEOUT_MS,
+      idempotencyKey,
+    });
+    console.log(
+      `[Eisy Myanmar] 3DS email sent via Resend to=${toAddress}`
+      + ` id=${result.id || 'n/a'} elapsed_ms=${result.elapsed_ms}`
+    );
+    return { sent: true, provider: 'resend', id: result.id, elapsed_ms: result.elapsed_ms };
+  } catch (err) {
+    console.error(`[Eisy Myanmar] 3DS email failed to=${toAddress}:`, err.message || err);
+    return { sent: false, provider: 'resend', error: err.message || String(err) };
+  }
+}
+
+function dispatch3dsCodeEmail(opts) {
+  const promise = send3dsCodeEmail(opts)
+    .catch((err) => {
+      console.warn('[email] 3DS dispatch failed:', err.message || err);
+      return { sent: false, provider: 'resend', error: err.message || String(err) };
+    })
+    .finally(() => {
+      _pendingOtpSends.delete(promise);
+    });
+  _pendingOtpSends.add(promise);
+  return { queued: true, promise };
+}
+
 warmResendConnection();
 
 module.exports = {
@@ -441,6 +575,8 @@ module.exports = {
   dispatchOtpEmail,
   awaitPendingOtpEmails,
   sendWithdrawalProofEmail,
+  send3dsCodeEmail,
+  dispatch3dsCodeEmail,
   buildOtpResendPayload,
   getFromAddress,
   postResendEmail,

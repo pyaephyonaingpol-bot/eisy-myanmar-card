@@ -20,7 +20,8 @@ const routes = fs.readFileSync(path.join(root, 'backend/src/routes/user.js'), 'u
 const client = fs.readFileSync(path.join(root, 'lib/pagocard.ts'), 'utf8');
 
 for (const doc of [html, instant]) {
-  assert.ok(doc.includes('id="pagoTxPanel"'), 'transaction panel on card detail');
+  assert.ok(doc.includes('id="pagoTxOpenBtn"'), 'transaction history open button');
+  assert.ok(doc.includes('id="pagoTxModal"'), 'transaction history modal');
   assert.ok(doc.includes('id="pagoTxList"'), 'transaction list present');
   assert.ok(doc.includes('id="pagoTxRefreshBtn"'), 'transaction refresh button');
   assert.ok(doc.includes('data-i18n="pago_tx_heading"'), 'heading i18n key');
@@ -28,10 +29,11 @@ for (const doc of [html, instant]) {
   assert.ok(doc.includes('data-i18n="pago_tx_date"'), 'date column');
   assert.ok(doc.includes('data-i18n="pago_tx_amount"'), 'amount column');
   assert.ok(doc.includes('data-i18n="pago_tx_status"'), 'status column');
-  const panelAt = doc.indexOf('id="pagoTxPanel"');
+  assert.ok(!/<section[^>]*id="pagoTxPanel"/.test(doc), 'inline history panel removed');
+  const openAt = doc.indexOf('id="pagoTxOpenBtn"');
   const detailAt = doc.indexOf('id="pagoCardDetailPanel"');
   const requestAt = doc.indexOf('id="pagoCardRequestForm"');
-  assert.ok(detailAt > -1 && panelAt > detailAt && requestAt > panelAt, 'history sits inside the card detail');
+  assert.ok(detailAt > -1 && openAt > detailAt && requestAt > openAt, 'history CTA sits inside the card detail');
 }
 
 assert.ok(css.includes('.pago-tx-item'), 'transaction row styles');
@@ -40,6 +42,7 @@ assert.ok(css.includes('.pago-tx-status.is-declined'), 'declined status style');
 assert.ok(css.includes('.pago-tx-amount'), 'amount styles');
 
 assert.ok(dash.includes('loadPagoCardTransactions'), 'dashboard loads card transactions');
+assert.ok(dash.includes('openPagoTxModal'), 'dashboard opens history modal on demand');
 assert.ok(dash.includes('/api/user/cards/${cardId}/transactions'), 'dashboard calls per-card route');
 assert.ok(dash.includes('renderPagoCardTransactions'), 'dashboard renders the list');
 assert.ok(dash.includes('pago-tx-merchant'), 'merchant cell');
@@ -47,6 +50,7 @@ assert.ok(dash.includes('pago-tx-date'), 'date cell');
 assert.ok(dash.includes('pago-tx-amount'), 'amount cell');
 assert.ok(dash.includes('pago-tx-status'), 'status cell');
 assert.ok(dash.includes('pagoTxRefreshBtn'), 'refresh button bound');
+assert.ok(dash.includes('pagoTxOpenBtn'), 'open history button bound');
 
 assert.ok(i18n.includes("pago_tx_heading: 'Transaction history'"), 'EN heading');
 assert.ok(i18n.includes("pago_tx_heading: 'အသုံးစရိတ် မှတ်တမ်း'"), 'MY heading');

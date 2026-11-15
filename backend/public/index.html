@@ -66,7 +66,7 @@
       #pageProfile .summary-grid { grid-template-columns: 1fr; }
     }
   </style>
-  <link rel="stylesheet" href="/styles.css?v=20261011p2pRoute-4b8560dfd2" />
+  <link rel="stylesheet" href="/styles.css?v=20261116pago3dsTxModal" />
   <link rel="stylesheet" href="/android-scroll-fix.css?v=20261011supportMobile" />
   <script src="/src/lib/storageKeys.js?v=20260817m2"></script>
   <script>
@@ -274,6 +274,27 @@
           <button type="button" class="btn btn-secondary" id="pagoWithdrawCancel" data-i18n="btn_cancel">Cancel</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <div id="pagoTxModal" class="modal hidden" role="dialog" aria-labelledby="pagoTxModalTitle" aria-modal="true">
+    <div class="modal-box pago-tx-modal-box">
+      <div class="modal-header-row">
+        <h3 id="pagoTxModalTitle" data-i18n="pago_tx_heading">Transaction history</h3>
+        <button type="button" id="pagoTxModalClose" class="proof-lightbox-close" data-i18n-aria="btn_close" aria-label="Close" style="position:static">×</button>
+      </div>
+      <p id="pagoTxCardLine" class="pago-topup-card-line">—</p>
+      <div class="pago-tx-head">
+        <p class="pago-tx-meta hint" id="pagoTxMeta" data-i18n="pago_tx_loading">Loading transactions…</p>
+        <button type="button" class="btn btn-secondary btn-sm" id="pagoTxRefreshBtn" data-i18n="pago_tx_refresh">Refresh</button>
+      </div>
+      <div class="pago-tx-columns" aria-hidden="true">
+        <span data-i18n="pago_tx_merchant">Merchant</span>
+        <span data-i18n="pago_tx_date">Date</span>
+        <span data-i18n="pago_tx_amount">Amount</span>
+        <span data-i18n="pago_tx_status">Status</span>
+      </div>
+      <ul class="pago-tx-list" id="pagoTxList"></ul>
     </div>
   </div>
 
@@ -1498,20 +1519,9 @@
                 </div>
               </section>
 
-              <section class="pago-tx-panel" id="pagoTxPanel" aria-labelledby="pagoTxHeading">
-                <div class="pago-tx-head">
-                  <h3 id="pagoTxHeading" data-i18n="pago_tx_heading">Transaction history</h3>
-                  <button type="button" class="btn btn-secondary btn-sm" id="pagoTxRefreshBtn" data-i18n="pago_tx_refresh">Refresh</button>
-                </div>
-                <p class="pago-tx-meta hint" id="pagoTxMeta" data-i18n="pago_tx_loading">Loading transactions…</p>
-                <div class="pago-tx-columns" aria-hidden="true">
-                  <span data-i18n="pago_tx_merchant">Merchant</span>
-                  <span data-i18n="pago_tx_date">Date</span>
-                  <span data-i18n="pago_tx_amount">Amount</span>
-                  <span data-i18n="pago_tx_status">Status</span>
-                </div>
-                <ul class="pago-tx-list" id="pagoTxList"></ul>
-              </section>
+              <div class="pago-tx-open-row">
+                <button type="button" class="btn btn-secondary" id="pagoTxOpenBtn" data-i18n="pago_tx_open">View transaction history</button>
+              </div>
               </div>
             </section>
 
@@ -2053,7 +2063,7 @@
   <script defer src="/api-config.js?v=20260817m2"></script>
   <script defer src="/supabase-public-config.js?v=20260907googleFix"></script>
   <script type="module" src="/supabaseBridge.js?v=20261115oauthFirstLogin"></script>
-  <script defer src="/i18n.js?v=20261029pwaInstall"></script>
+  <script defer src="/i18n.js?v=20261116pago3dsTxModal"></script>
   <script defer src="/auth.js?v=20261115oauthFirstLogin"></script>
   <script defer src="/src/services/apiClient.js?v=20260817m2"></script>
   <script defer src="/src/services/depositApi.js?v=20260828tron"></script>
@@ -2078,7 +2088,7 @@
   <script defer src="/pushNotifications.js?v=20261008pushLock"></script>
   <script defer src="/src/services/p2pApi.js?v=20261011p2pRoute-ac84cfff67"></script>
   <script defer src="/src/lib/p2pEscrowFlow.js?v=20261011p2pRoute-9d2f027157"></script>
-  <script defer src="/dashboard.js?v=20261115walletTimeout"></script>
+  <script defer src="/dashboard.js?v=20261116pago3dsTxModal"></script>
   <script defer src="/contactInfo.js?v=20261109support"></script>
   <script defer src="/supportChat.js?v=20261011p2pRoute-c3c6aa7af1"></script>
   <script>window.$ = window.$ || ((id) => document.getElementById(id));</script>
