@@ -60,7 +60,12 @@ const idxTx = routes.indexOf("router.get('/cards/:id/transactions'");
 const idxId = routes.indexOf("router.get('/cards/:id'");
 assert.ok(idxTx > idxId, 'transactions route is more specific than card detail');
 
-assert.ok(client.includes('/transactions?pageNum='), 'Pago client uses documented transactions path');
+assert.ok(client.includes('/transactions'), 'Pago client uses documented transactions path');
+assert.ok(client.includes('pageNum='), 'Pago client sends pageNum query');
+assert.ok(
+  client.includes('percent-encodes') || client.includes('%3F') || client.includes('URL.search'),
+  'joinPagoRequestUrl documents query-string handling'
+);
 
 const { normalizePagoCardTransactions } = require('../src/services/pagoCardService');
 

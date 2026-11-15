@@ -7,8 +7,9 @@
  * proxy so Pago Card sees the whitelisted server IP.
  * Env: PAGO_CARD_API_BASE_URL or PAGO_CARD_PROXY_HOST; whitelist Droplet IPv4 at Pagocards.
  * A trailing slash on the env value is removed. /api/pago is not repeated.
- * Paths such as /api/v1/cards are appended once, so the proxy receives
- * /api/pago/api/v1/cards.
+ * When the base ends with `/api/pago`, a leading `/api/v1` on the request path
+ * is stripped so the proxy receives `/api/pago/cards/...` (it re-adds `/api/v1`
+ * upstream). Query strings (e.g. `?pageNum=1`) are applied via `URL.search`.
  *
  * Card numbers and CVVs are returned to the caller when the provider includes
  * them. This module does not log request headers. A non-JSON upstream body is
@@ -210,9 +211,16 @@ function proxyHostForLog(baseUrl: string): string {
  * Join proxy base + request path without duplicating `/api/v1` after `/api/pago`.
  * Example: base `http://host/api/pago` + path `/api/v1/cards/x` → `http://host/api/pago/cards/x`
  * (proxy maps `/api/pago` → upstream already at `/api/v1`).
+ *
+ * Query strings must be applied via `URL.search` — assigning `?pageNum=1` onto
+ * `pathname` percent-encodes `?` (`%3F`) and 404s the Pagocards transactions route.
  */
 function joinPagoRequestUrl(baseUrl: string, path: string): string {
-  const p = path.startsWith('/') ? path : `/${path}`;
+  const raw = String(path || '');
+  const qIndex = raw.indexOf('?');
+  const pathOnly = (qIndex >= 0 ? raw.slice(0, qIndex) : raw) || '/';
+  const search = qIndex >= 0 ? raw.slice(qIndex + 1) : '';
+  const p = pathOnly.startsWith('/') ? pathOnly : `/${pathOnly}`;
   try {
     const base = new URL(baseUrl);
     const pathname = base.pathname.replace(/\/+$/, '');
@@ -223,9 +231,12 @@ function joinPagoRequestUrl(baseUrl: string, path: string): string {
     /** Must concatenate path segments — `new URL('/cards', base)` would drop `/api/pago`. */
     const joined = `${pathname}${rel}`.replace(/\/{2,}/g, '/');
     base.pathname = joined;
+    // Clear any leftover search from the base URL, then apply the request query.
+    base.search = '';
+    if (search) base.search = search.startsWith('?') ? search : `?${search}`;
     return base.href;
   } catch {
-    return `${baseUrl}${p}`;
+    return search ? `${baseUrl}${p}?${search}` : `${baseUrl}${p}`;
   }
 }
 
@@ -910,10 +921,11 @@ function createPagoCardClient(options: PagoCardClientOptions = {}) {
     const page = Number.isFinite(Number(pageNum)) && Number(pageNum) > 0
       ? Math.floor(Number(pageNum))
       : 1;
+    // Keep pageNum in the path string — joinPagoRequestUrl splits search correctly.
     return pagoRequest(
       config,
       'GET',
-      businessPath(`/cards/${encodeURIComponent(id)}/transactions?pageNum=${page}`),
+      `${businessPath(`/cards/${encodeURIComponent(id)}/transactions`)}?pageNum=${page}`,
       { timeoutMs: requestTimeoutMs }
     );
   }
