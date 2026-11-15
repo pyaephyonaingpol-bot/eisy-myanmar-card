@@ -816,6 +816,8 @@ const Dashboard = {
     const boot = async () => {
       if (this.isGoogleOAuthCallback()) {
         await this.handleGoogleOAuthCallback();
+        // Paint logged-in UI immediately — do not fall through to a login screen.
+        finishBoot();
         return;
       }
       // Paint immediately from cached session; revalidate in the background.
@@ -869,7 +871,14 @@ const Dashboard = {
 
   isGoogleOAuthCallback() {
     const path = String(window.location.pathname || '').replace(/\/+$/, '') || '/';
-    return path === '/auth/callback';
+    if (path === '/auth/callback') return true;
+    // Also catch Site URL / redirect mismatches that land on / with ?code=
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      return Boolean(params.get('code') || params.get('error') || params.get('error_description'));
+    } catch (_) {
+      return false;
+    }
   },
 
   async handleGoogleOAuthCallback() {
@@ -878,9 +887,13 @@ const Dashboard = {
     try {
       const data = await Auth.completeGoogleOAuth();
       this.log('Signed in with Google', 'ok');
-      // Clean OAuth params from the URL without a full reload.
+      // Clean OAuth params from the URL without a full reload — after session is set
+      // so refreshAuthUI (via finishBoot) sees Auth.isLoggedIn().
       const portal = this.readLastPortal();
-      history.replaceState(null, '', portal === 'instant' || !portal ? '/' : `/${portal}`);
+      const cleanPath = portal === 'instant' || !portal ? '/' : `/${portal}`;
+      history.replaceState(null, '', cleanPath);
+      // Ensure auth gate flips to dashboard before any deferred UI.
+      this.refreshAuthUI();
       if (data?.needs_pin_setup || data?.has_pin === false || !data?.user?.has_pin) {
         // Defer until dashboard chrome is visible.
         setTimeout(() => {

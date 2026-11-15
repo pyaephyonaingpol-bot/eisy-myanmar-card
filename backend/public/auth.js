@@ -577,6 +577,29 @@ const Auth = {
     return data;
   },
 
+  _supabaseAuthClientOptions(cfg) {
+    return {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+        flowType: 'pkce',
+        // Shared across bridge + Auth so the PKCE verifier survives redirect.
+        storageKey: 'eisy-supabase-auth',
+      },
+    };
+  },
+
+  async waitForSupabaseBridge(timeoutMs = 2500) {
+    if (window.SupabaseBridge?.getOAuthAccessToken) return window.SupabaseBridge;
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      await new Promise((r) => setTimeout(r, 40));
+      if (window.SupabaseBridge?.getOAuthAccessToken) return window.SupabaseBridge;
+    }
+    return window.SupabaseBridge || null;
+  },
+
   /** Start Google OAuth via Supabase (redirects to Google, then /auth/callback). */
   async loginWithGoogle() {
     const cfg = await this.getSupabasePublicConfig();
@@ -584,17 +607,14 @@ const Auth = {
       throw new Error(this.supabaseConfigError(cfg));
     }
 
+    const redirectTo = `${window.location.origin}/auth/callback`;
+
     // Prefer the shared bridge when ready; otherwise create a dedicated auth client.
-    const bridge = window.SupabaseBridge;
+    const bridge = await this.waitForSupabaseBridge(800);
     if (bridge?.signInWithGoogle) {
       try {
-        const data = await bridge.signInWithGoogle({
-          redirectTo: `${window.location.origin}/auth/callback`,
-        });
-        if (data?.url) {
-          window.location.assign(data.url);
-        }
-        return data;
+        // Bridge navigates itself after PKCE verifier is persisted.
+        return await bridge.signInWithGoogle({ redirectTo });
       } catch (err) {
         // Fall through to a direct client if the bridge path fails spuriously.
         console.warn('[Auth] bridge Google sign-in failed, retrying direct client:', err?.message || err);
@@ -602,19 +622,11 @@ const Auth = {
     }
 
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/+esm');
-    const client = createClient(cfg.url, cfg.anonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: false,
-        flowType: 'pkce',
-        storageKey: 'eisy-supabase-auth',
-      },
-    });
+    const client = createClient(cfg.url, cfg.anonKey, this._supabaseAuthClientOptions(cfg));
     const { data, error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo,
         skipBrowserRedirect: true,
         queryParams: { access_type: 'offline', prompt: 'select_account' },
       },
@@ -626,65 +638,71 @@ const Auth = {
     return data;
   },
 
-  /** Finish Google OAuth on /auth/callback and create an app session. */
-  async completeGoogleOAuth() {
+  /**
+   * Recover a Supabase access token from the OAuth callback URL (PKCE) or
+   * from an already-persisted session (first-try recovery after a race).
+   */
+  async recoverGoogleAccessToken() {
     const cfg = await this.getSupabasePublicConfig();
     if (!cfg?.enabled || !cfg.url || !cfg.anonKey) {
       throw new Error(this.supabaseConfigError(cfg));
     }
 
-    let accessToken = null;
-    const bridge = window.SupabaseBridge;
+    const bridge = await this.waitForSupabaseBridge(2500);
     if (bridge?.getOAuthAccessToken) {
       try {
         const result = await bridge.getOAuthAccessToken();
-        accessToken = result?.accessToken || null;
+        if (result?.accessToken) return result.accessToken;
       } catch (err) {
-        console.warn('[Auth] bridge OAuth session exchange failed, retrying direct client:', err?.message || err);
+        console.warn('[Auth] bridge OAuth session exchange failed, trying direct client:', err?.message || err);
       }
     }
 
-    if (!accessToken) {
-      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/+esm');
-      const client = createClient(cfg.url, cfg.anonKey, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: false,
-          flowType: 'pkce',
-          storageKey: 'eisy-supabase-auth',
-        },
-      });
-      const callbackUrl = new URL(window.location.href);
-      const callbackError = callbackUrl.searchParams.get('error_description') || callbackUrl.searchParams.get('error');
-      if (callbackError) throw new Error(callbackError);
-      const code = callbackUrl.searchParams.get('code');
-      const flowId = callbackUrl.searchParams.get('sb_flow_id');
-      if (code) {
-        const exchanged = await client.auth.exchangeCodeForSession(code, flowId ? { flowId } : undefined);
-        accessToken = exchanged.data?.session?.access_token || null;
-        if (!accessToken) {
-          const sessionResult = await client.auth.getSession();
-          accessToken = sessionResult.data?.session?.access_token || null;
-          if (!accessToken && exchanged.error) {
-            const msg = String(exchanged.error.message || exchanged.error);
-            if (/unable to exchange external code/i.test(msg)) {
-              throw new Error(
-                'Google Sign-In failed (OAuth code exchange). Google Cloud redirect URI must be '
-                + 'https://YOUR_PROJECT.supabase.co/auth/v1/callback (not /supabase/…).'
-              );
-            }
-            throw exchanged.error;
-          }
-          if (!accessToken && sessionResult.error) throw sessionResult.error;
-        }
-      } else {
-        const { data, error } = await client.auth.getSession();
-        if (error) throw error;
-        accessToken = data?.session?.access_token || null;
-      }
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/+esm');
+    const client = createClient(cfg.url, cfg.anonKey, this._supabaseAuthClientOptions(cfg));
+    const callbackUrl = new URL(window.location.href);
+    const callbackError = callbackUrl.searchParams.get('error_description')
+      || callbackUrl.searchParams.get('error');
+    if (callbackError) throw new Error(callbackError);
+
+    // Prefer an existing session (code already exchanged by bridge / prior attempt).
+    // Same storageKey as the bridge — session should be visible here.
+    const existing = await client.auth.getSession();
+    if (existing.data?.session?.access_token) {
+      return existing.data.session.access_token;
     }
 
+    const code = callbackUrl.searchParams.get('code');
+    const flowId = callbackUrl.searchParams.get('sb_flow_id');
+    if (!code) {
+      throw new Error('Google Sign-In did not return a session — please try again');
+    }
+
+    const exchanged = await client.auth.exchangeCodeForSession(
+      code,
+      flowId ? { flowId } : undefined
+    );
+    const token = exchanged.data?.session?.access_token
+      || (await client.auth.getSession()).data?.session?.access_token
+      || null;
+    if (token) return token;
+    if (exchanged.error) {
+      const msg = String(exchanged.error.message || exchanged.error);
+      if (/unable to exchange external code/i.test(msg)) {
+        throw new Error(
+          'Google Sign-In failed (OAuth code exchange). Google Cloud redirect URI must be '
+          + 'https://YOUR_PROJECT.supabase.co/auth/v1/callback (not /supabase/…).'
+        );
+      }
+      throw exchanged.error;
+    }
+
+    throw new Error('Google Sign-In did not return a session — please try again');
+  },
+
+  /** Finish Google OAuth on /auth/callback and create an app session. */
+  async completeGoogleOAuth() {
+    const accessToken = await this.recoverGoogleAccessToken();
     if (!accessToken) {
       throw new Error('Google Sign-In did not return a session — please try again');
     }

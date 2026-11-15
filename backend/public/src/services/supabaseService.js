@@ -149,12 +149,15 @@ const SupabaseBridge = {
     const callback = readGoogleOAuthCallback(window.location.href);
     if (callback.errorMessage) throw new Error(callback.errorMessage);
     const exchangeArgs = pkceExchangeArgs(callback);
+
     if (exchangeArgs) {
       const exchanged = await client.auth.exchangeCodeForSession(...exchangeArgs);
       const exchangedToken = exchanged.data?.session?.access_token;
       if (!exchanged.error && exchangedToken) {
         return { accessToken: exchangedToken, user: exchanged.data.session.user || null };
       }
+      // One-time code may already have been consumed by a racing client —
+      // recover from the persisted Supabase session instead of failing the login.
       const sessionResult = await client.auth.getSession();
       const token = sessionResult.data?.session?.access_token;
       if (token) return { accessToken: token, user: sessionResult.data.session.user || null };
@@ -162,6 +165,7 @@ const SupabaseBridge = {
       if (sessionResult.error) throw mapGoogleOAuthExchangeError(sessionResult.error);
       throw new Error('Google Sign-In did not return a session');
     }
+
     const { data, error } = await client.auth.getSession();
     if (error) throw error;
     const token = data?.session?.access_token;

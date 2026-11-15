@@ -20,7 +20,7 @@ async function main() {
   console.log('== loginWithGoogleOAuth verifies token & creates session ==');
   await initDb();
 
-  const email = `google.oauth.${Date.now()}@example.com`;
+  const email = `google.oauth.${Date.now()}@gmail.com`;
   const fakeSupabaseUser = {
     id: 'supabase-google-user-1',
     email,
