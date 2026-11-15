@@ -30,11 +30,20 @@ console.log('\n== Frontend OAuth helpers ==');
 const authJs = read('backend/public/auth.js');
 assert.ok(authJs.includes('loginWithGoogle'), 'Auth.loginWithGoogle');
 assert.ok(authJs.includes('completeGoogleOAuth'), 'Auth.completeGoogleOAuth');
+assert.ok(authJs.includes('recoverGoogleAccessToken'), 'Auth.recoverGoogleAccessToken');
+assert.ok(authJs.includes('waitForSupabaseBridge'), 'waits for bridge before PKCE exchange');
+assert.ok(authJs.includes("storageKey: 'eisy-supabase-auth'"), 'shared Supabase auth storageKey');
 assert.ok(authJs.includes('getSupabasePublicConfig'), 'reads public Supabase config');
 assert.ok(authJs.includes('supabaseConfigError'), 'typed config errors');
 assert.ok(!authJs.includes('Supabase is not configured'), 'no generic false-negative banner text');
 assert.ok(authJs.includes('/api/auth/oauth/google'), 'exchanges via backend');
 assert.ok(authJs.includes('/auth/callback'), 'redirectTo callback');
+// Direct fallback must prefer getSession before re-exchanging a one-time code.
+const recoverIdx = authJs.indexOf('async recoverGoogleAccessToken');
+const recoverBlock = authJs.slice(recoverIdx, recoverIdx + 2200);
+const getSessionIdx = recoverBlock.indexOf('client.auth.getSession()');
+const exchangeIdx = recoverBlock.indexOf('client.auth.exchangeCodeForSession');
+assert.ok(getSessionIdx > 0 && exchangeIdx > getSessionIdx, 'fallback getSession before re-exchange');
 
 const bridge = read('backend/public/src/services/supabaseService.js');
 assert.ok(bridge.includes('signInWithOAuth'), 'signInWithOAuth call');
@@ -47,12 +56,15 @@ assert.ok(bridge.includes('pkceExchangeArgs'), 'exchanges the raw PKCE code');
 assert.ok(bridge.includes('mapGoogleOAuthExchangeError') || bridge.includes('Unable to exchange external code'), 'maps GoTrue exchange errors');
 assert.ok(!bridge.includes('exchangeCodeForSession(window.location.href)'), 'callback URL is not the auth code');
 assert.ok(!bridge.includes('Supabase is not configured'), 'bridge avoids generic false-negative text');
+assert.ok(bridge.includes('One-time code may already have been consumed'), 'recovers session after raced exchange');
+assert.ok(bridge.includes("storageKey: 'eisy-supabase-auth'"), 'bridge uses shared storageKey');
 
 const proxyLib = read('backend/src/lib/supabase.js');
 assert.ok(proxyLib.includes('never rewrite Google OAuth'), 'proxy docs warn against redirect_uri rewrite');
 assert.ok(fs.existsSync(path.join(ROOT, 'backend/docs/GOOGLE_OAUTH.md')), 'Google OAuth runbook');
 
 assert.ok(html.includes('supabase-public-config.js'), 'loads baked public config script');
+assert.ok(html.includes('oauthFirstLogin') || html.includes('auth.js?v='), 'auth script cache-bust');
 const baked = read('backend/public/supabase-public-config.js');
 assert.ok(baked.includes('__EISY_SUPABASE_PUBLIC__'), 'baked config global');
 
@@ -60,10 +72,18 @@ const dash = read('backend/public/dashboard.js');
 assert.ok(dash.includes('handleGoogleOAuthCallback'), 'callback handler');
 assert.ok(dash.includes('data-google-auth'), 'binds Google buttons');
 assert.ok(dash.includes('isGoogleOAuthCallback'), 'detects callback path');
+assert.ok(dash.includes("params.get('code')"), 'detects ?code= outside /auth/callback');
 assert.ok(dash.includes('if (supportForm) supportForm.onsubmit'), 'missing support form cannot abort init');
+const oauthBoot = dash.indexOf('await this.handleGoogleOAuthCallback()');
+assert.ok(oauthBoot > 0, 'boot awaits Google callback');
+assert.ok(dash.slice(oauthBoot, oauthBoot + 280).includes('finishBoot()'), 'finishBoot after Google success');
 const bootCall = dash.indexOf('boot()');
 const dashboardBind = dash.indexOf('this.bindDashboardForms();');
 assert.ok(bootCall > 0 && dashboardBind > bootCall, 'Google callback starts before hub form binds');
+
+const nextShim = read('app/auth/callback/route.ts');
+assert.ok(nextShim.includes('/auth/callback'), 'Next callback shim points at SPA path');
+assert.ok(nextShim.includes('Do not rely on this file as the live handler'), 'Next shim documents Express SPA');
 console.log('ok');
 
 console.log('\n== Backend route + service ==');
