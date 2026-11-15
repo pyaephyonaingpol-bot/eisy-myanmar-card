@@ -13,7 +13,7 @@ const { getSupabase, isSupabaseEnabled } = require('../lib/supabase');
 
 // Align with SPA wallet TTL (~20s) so overview/balance polls hit memory, not PostgREST.
 const ROW_CACHE_TTL_MS = parseInt(process.env.SUPABASE_WALLET_CACHE_TTL_MS || '15000', 10);
-const SUPABASE_READ_TIMEOUT_MS = parseInt(process.env.SUPABASE_WALLET_READ_TIMEOUT_MS || '1500', 10);
+const SUPABASE_READ_TIMEOUT_MS = parseInt(process.env.SUPABASE_WALLET_READ_TIMEOUT_MS || '4000', 10);
 const _rowCache = new Map(); // key → { expiresAt, row }
 
 function withTimeout(promise, ms, label = 'operation') {

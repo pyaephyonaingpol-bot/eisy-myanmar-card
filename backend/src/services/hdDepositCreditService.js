@@ -12,7 +12,11 @@ const { isTronDepositEnabled } = require('./securityFlags');
 
 const USDT_TRC20_CONTRACT = process.env.USDT_TRC20_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const SCAN_INTERVAL_MS = Math.max(5000, parseInt(process.env.TRON_HD_SCAN_INTERVAL_MS || '20000', 10) || 20000);
-const READ_SCAN_TIMEOUT_MS = Math.max(1000, parseInt(process.env.TRON_HD_READ_SCAN_TIMEOUT_MS || '6000', 10) || 6000);
+/** Per-user on-read TronGrid budget (kept under client wallet timeouts). */
+const READ_SCAN_TIMEOUT_MS = Math.max(
+  1500,
+  parseInt(process.env.TRON_HD_READ_SCAN_TIMEOUT_MS || '8000', 10) || 8000
+);
 
 const lastUserScanAt = new Map();
 const userScanInflight = new Map();

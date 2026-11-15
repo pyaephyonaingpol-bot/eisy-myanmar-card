@@ -20,8 +20,13 @@ const DEFAULT_FEE_LIMIT = Number(process.env.TRON_USDT_FEE_LIMIT_SUN) || 100_000
 const TRX_LOW_THRESHOLD = Number(process.env.MASTER_TRX_LOW_THRESHOLD) || 30;
 /** Max wait for a single balance provider (TronGrid / Tronscan / TronWeb). */
 const BALANCE_FETCH_TIMEOUT_MS = Math.max(
-  3000,
-  parseInt(process.env.MASTER_WALLET_BALANCE_TIMEOUT_MS || '12000', 10) || 12000
+  5000,
+  parseInt(process.env.MASTER_WALLET_BALANCE_TIMEOUT_MS || '20000', 10) || 20000
+);
+/** Retries per provider before moving to the next Tron API. */
+const BALANCE_PROVIDER_RETRIES = Math.max(
+  1,
+  Math.min(4, parseInt(process.env.MASTER_WALLET_BALANCE_RETRIES || '2', 10) || 2)
 );
 
 function getTrxLowThreshold() {
@@ -500,25 +505,44 @@ async function getMasterWalletInfo() {
   ];
 
   for (const provider of providers) {
-    try {
-      const bal = await provider(address);
-      const trxBalance = Number(bal.trx) || 0;
-      const usdtBalance = Number(bal.usdt) || 0;
-      const trxLowThreshold = getTrxLowThreshold();
-      return {
-        address,
-        usdtBalance,
-        trxBalance,
-        trxLowThreshold,
-        trxLow: trxBalance < trxLowThreshold,
-        contract: USDT_TRC20_CONTRACT,
-        source: bal.source,
-      };
-    } catch (err) {
-      console.warn(`[tron] balance via ${provider.name} failed:`, err.code || '', err.message);
-      errors.push({ provider: provider.name, code: err.code, message: err.message });
-      // Keep trying other providers unless the address itself is invalid.
-      if (err.code === 'MASTER_ADDRESS_INVALID') throw err;
+    let providerErr = null;
+    for (let attempt = 1; attempt <= BALANCE_PROVIDER_RETRIES; attempt += 1) {
+      try {
+        const bal = await provider(address);
+        const trxBalance = Number(bal.trx) || 0;
+        const usdtBalance = Number(bal.usdt) || 0;
+        const trxLowThreshold = getTrxLowThreshold();
+        return {
+          address,
+          usdtBalance,
+          trxBalance,
+          trxLowThreshold,
+          trxLow: trxBalance < trxLowThreshold,
+          contract: USDT_TRC20_CONTRACT,
+          source: bal.source,
+          attempts: attempt,
+        };
+      } catch (err) {
+        providerErr = err;
+        console.warn(
+          `[tron] balance via ${provider.name} attempt ${attempt}/${BALANCE_PROVIDER_RETRIES} failed:`,
+          err.code || '',
+          err.message
+        );
+        if (err.code === 'MASTER_ADDRESS_INVALID') throw err;
+        const retryable = err.code === 'TRON_TIMEOUT'
+          || err.code === 'TRON_RATE_LIMITED'
+          || Number(err.status) >= 500;
+        if (!retryable || attempt >= BALANCE_PROVIDER_RETRIES) break;
+        await new Promise((r) => setTimeout(r, 300 * attempt));
+      }
+    }
+    if (providerErr) {
+      errors.push({
+        provider: provider.name,
+        code: providerErr.code,
+        message: providerErr.message,
+      });
     }
   }
 
