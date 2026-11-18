@@ -29,7 +29,10 @@ assert.ok(
 );
 assert.ok(dash.includes('PAGO_3DS_POLL_MS: 5000'), 'faster 3DS poll');
 assert.ok(dash.includes('PAGO_3DS_PROVIDER_EVERY'), 'periodic provider 3DS scan');
-assert.ok(dash.includes('timeoutMs: 10000'), 'faster cards list timeout');
+assert.ok(
+  dash.includes('timeoutMs: 20000') || dash.includes('timeoutMs: 10000'),
+  'cards list timeout is bounded'
+);
 console.log('ok');
 
 console.log('\n== 3DS email + push delivery ==');

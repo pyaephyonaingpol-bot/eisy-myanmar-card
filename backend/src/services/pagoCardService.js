@@ -34,9 +34,13 @@ const MIN_CARD_REMAINING_USD = 5;
 const CARD_CREATE_TIMEOUT_MS = parseInt(process.env.CARD_CREATE_TIMEOUT_MS || '15000', 10);
 const CARD_CREATE_ROUTE_TIMEOUT_MS = parseInt(process.env.CARD_CREATE_ROUTE_TIMEOUT_MS || '22000', 10);
 /** One card details / list call. */
-const CARD_FETCH_TIMEOUT_MS = parseInt(process.env.CARD_FETCH_TIMEOUT_MS || '12000', 10);
-/** Whole provider sync while loading My Cards. */
-const CARD_SYNC_BUDGET_MS = parseInt(process.env.CARD_SYNC_BUDGET_MS || '12000', 10);
+const CARD_FETCH_TIMEOUT_MS = parseInt(process.env.CARD_FETCH_TIMEOUT_MS || '8000', 10);
+/**
+ * Soft budget for whole-provider sync while loading My Cards.
+ * Kept short so login /cards never waits on a slow Pagocards round-trip;
+ * remaining work continues in the background after the response.
+ */
+const CARD_SYNC_BUDGET_MS = parseInt(process.env.CARD_SYNC_BUDGET_MS || '6000', 10);
 
 function withCardApiTimeout(promise, ms, label = 'Card request') {
   const timeoutMs = Math.max(1000, Number(ms) || CARD_FETCH_TIMEOUT_MS);
@@ -56,6 +60,70 @@ function withCardApiTimeout(promise, ms, label = 'Card request') {
     }),
     timeout,
   ]);
+}
+
+/**
+ * Like withCardApiTimeout, but never rejects for budget — resolves
+ * `{ timed_out: true, deferred: true }` and lets `promise` keep running.
+ * Use for login-critical card sync so the SPA is not stuck on 408/504.
+ */
+function withCardApiSoftBudget(promise, ms, label = 'Card sync') {
+  const rawMs = Number(ms);
+  const timeoutMs = Number.isFinite(rawMs) && rawMs > 0
+    ? Math.floor(rawMs)
+    : Math.max(1000, CARD_SYNC_BUDGET_MS);
+  const tracked = Promise.resolve(promise).then(
+    (value) => ({ ok: true, value }),
+    (err) => ({ ok: false, err })
+  );
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve({
+        timed_out: true,
+        deferred: true,
+        imported: 0,
+        updated: 0,
+        message: `${label} deferred — continuing in background`,
+      });
+      tracked
+        .then((outcome) => {
+          if (outcome.ok) {
+            const v = outcome.value || {};
+            if (Number(v.imported) > 0 || Number(v.updated) > 0) {
+              console.info(
+                `[pago] ${label} finished after soft budget: imported=${v.imported || 0} updated=${v.updated || 0}`
+              );
+            }
+          } else {
+            console.warn(`[pago] ${label} background failed:`, outcome.err?.code || outcome.err?.message);
+          }
+        })
+        .catch(() => {});
+    }, timeoutMs);
+
+    tracked.then((outcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (outcome.ok) {
+        resolve(outcome.value);
+      } else if (isCardTimeoutError(outcome.err)) {
+        resolve({
+          timed_out: true,
+          deferred: false,
+          imported: 0,
+          updated: 0,
+          error_code: outcome.err?.code || 'CARD_REQUEST_TIMEOUT',
+        });
+      } else {
+        reject(outcome.err);
+      }
+    });
+  });
 }
 
 function isCardTimeoutError(err) {
@@ -1506,6 +1574,7 @@ module.exports = {
   CARD_FETCH_TIMEOUT_MS,
   CARD_SYNC_BUDGET_MS,
   withCardApiTimeout,
+  withCardApiSoftBudget,
   isCardTimeoutError,
   isCardProviderSoftError,
   isPagoRetrieveFailure,
