@@ -1,11 +1,15 @@
 /**
- * Development OTP exposure — never enable in production.
- * Set DEV_SHOW_OTP=false to hide OTP from API responses (console still logs in dev).
+ * Development OTP exposure — never enable in production / Vercel.
+ * Set DEV_SHOW_OTP=true explicitly for local testing only.
  */
 function isDevOtpExposed() {
-  if (process.env.NODE_ENV === 'production') return false;
-  if (process.env.DEV_SHOW_OTP === 'false') return false;
-  return true;
+  const nodeEnv = String(process.env.NODE_ENV || '').toLowerCase();
+  if (nodeEnv === 'production') return false;
+  if (process.env.VERCEL === '1' || process.env.VERCEL_ENV === 'production') return false;
+  // Opt-in only (was previously on by default in non-production).
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.DEV_SHOW_OTP || '').trim().toLowerCase()
+  );
 }
 
 function devOtpPayload(otp) {

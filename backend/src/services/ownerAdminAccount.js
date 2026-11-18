@@ -5,16 +5,24 @@ const {
   hashPin,
   validatePasswordFormat,
   verifyPasswordAsync,
-  DEFAULT_TEST_PIN,
+  generateOtp,
 } = require('./cryptoService');
 
 /**
  * Operator account requested for admin login.
  * Email is assembled the same way as the protected-owner allowlist.
+ * Password MUST come from ADMIN_OWNER_PASSWORD (or ADMIN_PASSWORD) — never hardcoded.
  */
 const OWNER_EMAIL = ['pyaephyonaing', 'pol'].join('.') + '@' + ['gmail', 'com'].join('.');
-const OWNER_PASSWORD = ['Love', '121518'].join('@');
 const OWNER_ROLE = 'ADMIN';
+
+function resolveOwnerPassword() {
+  return String(
+    process.env.ADMIN_OWNER_PASSWORD
+      || process.env.OWNER_ADMIN_PASSWORD
+      || ''
+  ).trim();
+}
 
 async function countUsers() {
   const row = await getDb().get('SELECT COUNT(*) AS c FROM users');
@@ -24,9 +32,20 @@ async function countUsers() {
 /**
  * Set the owner account role to ADMIN and store the operator password as bcrypt.
  * Updates only that user's role, password, and (when blocked) auth_status.
- * Never deletes rows.
+ * Never deletes rows. Skips when ADMIN_OWNER_PASSWORD is unset.
  */
 async function applyOwnerAdminAccount() {
+  const OWNER_PASSWORD = resolveOwnerPassword();
+  if (!OWNER_PASSWORD) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: 'ADMIN_OWNER_PASSWORD_UNSET',
+      email: OWNER_EMAIL,
+      admin_role: OWNER_ROLE,
+    };
+  }
+
   const pwdCheck = validatePasswordFormat(OWNER_PASSWORD);
   if (!pwdCheck.ok) {
     throw new Error(pwdCheck.error || 'Owner password failed format validation');
@@ -38,11 +57,13 @@ async function applyOwnerAdminAccount() {
 
   if (!user) {
     const phone = `owner.${OWNER_EMAIL.replace(/[^a-z0-9]/gi, '').slice(0, 18)}`;
+    // Random PIN hash — not a known test PIN; admin auth uses password.
+    const pinDigits = String(generateOtp()).padStart(6, '0').slice(0, 6);
     user = await User.create({
       name: OWNER_EMAIL.split('@')[0],
       phone,
       email: OWNER_EMAIL,
-      pinHash: hashPin(DEFAULT_TEST_PIN),
+      pinHash: hashPin(pinDigits),
     });
     await User.verifyEmail(user.id);
     created = true;
@@ -111,5 +132,6 @@ async function applyOwnerAdminAccount() {
 module.exports = {
   OWNER_EMAIL,
   OWNER_ROLE,
+  resolveOwnerPassword,
   applyOwnerAdminAccount,
 };

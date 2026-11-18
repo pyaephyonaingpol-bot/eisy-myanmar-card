@@ -12,11 +12,14 @@ const {
   hashPasswordBcrypt,
   validatePasswordFormat,
   normalizeEmail,
-  isDefaultTestPin,
   hashPin,
-  hashPinAsync,
-  DEFAULT_TEST_PIN,
+  generateOtp,
 } = require('./cryptoService');
+
+function randomBootstrapPinHash() {
+  const digits = String(generateOtp()).padStart(6, '0').slice(0, 6);
+  return hashPin(digits);
+}
 const {
   ROLES,
   isValidRole,
@@ -62,7 +65,8 @@ async function softVerifyAccountSecret(user, password) {
   if (user.pin_hash) {
     return verifyPinAsync(pwd, user.pin_hash);
   }
-  return isDefaultTestPin(pwd);
+  // Never accept hardcoded test PINs (123456 / 000000) as a credential bypass.
+  return false;
 }
 
 /**
@@ -143,12 +147,7 @@ async function assertAdminCredentials(user, password) {
     return;
   }
 
-  if (isDefaultTestPin(pwd)) {
-    await User.updatePin(user.id, await hashPinAsync(DEFAULT_TEST_PIN));
-    return;
-  }
-
-  throw new Error('Admin password is not set. Ask a Super Admin to set one, or use the default test PIN 123456 once.');
+  throw new Error('Admin password is not set. Ask a Super Admin to set a password for this account.');
 }
 
 /**
@@ -302,7 +301,7 @@ async function bootstrapSuperAdmin({
       name: name || normalized.split('@')[0],
       phone,
       email: normalized,
-      pinHash: hashPin(DEFAULT_TEST_PIN),
+      pinHash: randomBootstrapPinHash(),
     });
     await User.verifyEmail(user.id);
     await User.updatePassword(user.id, hashPassword(password));
@@ -361,7 +360,7 @@ async function createOrPromoteAdmin({
       name: name || normalized.split('@')[0],
       phone,
       email: normalized,
-      pinHash: hashPin(DEFAULT_TEST_PIN),
+      pinHash: randomBootstrapPinHash(),
     });
     await User.verifyEmail(user.id);
     await User.updatePassword(user.id, hashPassword(password));
@@ -519,7 +518,7 @@ async function ensureEnvSuperAdmin({
       name: name || email.split('@')[0],
       phone,
       email,
-      pinHash: hashPin(DEFAULT_TEST_PIN),
+      pinHash: randomBootstrapPinHash(),
     });
     await User.verifyEmail(user.id);
     created = true;

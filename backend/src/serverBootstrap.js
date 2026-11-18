@@ -28,13 +28,20 @@ async function runDeferredServerTasks(source = 'boot') {
   try {
     const { applyOwnerAdminAccount } = require('./services/ownerAdminAccount');
     const owner = await applyOwnerAdminAccount();
-    console.log(
-      '[bootstrap/deferred] owner account set:',
-      owner.email,
-      owner.admin_role,
-      `created=${owner.created}`,
-      `users=${owner.users_before}->${owner.users_after}`
-    );
+    if (owner?.skipped) {
+      console.log(
+        '[bootstrap/deferred] owner account skipped:',
+        owner.reason || 'ADMIN_OWNER_PASSWORD unset'
+      );
+    } else {
+      console.log(
+        '[bootstrap/deferred] owner account set:',
+        owner.email,
+        owner.admin_role,
+        `created=${owner.created}`,
+        `users=${owner.users_before}->${owner.users_after}`
+      );
+    }
   } catch (err) {
     console.warn('[bootstrap/deferred] owner account ensure failed:', err.message);
   }

@@ -72,14 +72,11 @@ function isDefaultAdminApiKey() {
  */
 function adminDevBypassEnabled() {
   if (isProductionRuntime()) return false;
-  if (String(process.env.ADMIN_DEV_BYPASS || '').toLowerCase() === 'true') {
-    return !String(process.env.ADMIN_API_KEY || '').trim();
+  // Explicit opt-in only — never auto-enable when ADMIN_API_KEY is unset.
+  if (String(process.env.ADMIN_DEV_BYPASS || '').toLowerCase() !== 'true') {
+    return false;
   }
-  // Legacy local default: bypass only when explicitly not disabled AND no key.
-  // Prefer ADMIN_DEV_BYPASS=true going forward.
-  return process.env.ADMIN_DEV_BYPASS !== 'false'
-    && !String(process.env.ADMIN_API_KEY || '').trim()
-    && String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
+  return !String(process.env.ADMIN_API_KEY || '').trim();
 }
 
 function attachApiKeyAdmin(req) {

@@ -12,7 +12,6 @@ const { syncUserWalletById, ensureSupabaseUserWalletInBackground } = require('./
 const {
   hashPin, hashPinAsync, verifyPin, verifyPinAsync, generateOtp, generateSessionToken,
   createPinToken, validatePinFormat, normalizeEmail, hashToken,
-  isDefaultTestPin, DEFAULT_TEST_PIN,
   hashPassword, verifyPassword, verifyPasswordAsync, validatePasswordFormat,
   isMasterTestOtp, PIN_TOKEN_TTL_MS,
 } = require('./cryptoService');
@@ -339,15 +338,11 @@ async function loginWithPin({ email, pin, ipAddress, deviceName, devicePlatform 
   assertUserNotBlocked(user, { action: 'log in' });
 
   if (!user.pin_hash) {
-    if (!isDefaultTestPin(pin)) {
-      const err = new Error('PIN not set for this account. Use email OTP login or the default test PIN 123456.');
-      err.code = 'PIN_NOT_SET';
-      throw err;
-    }
-    const pinHash = await hashPinAsync(DEFAULT_TEST_PIN);
-    await User.updatePin(user.id, pinHash);
-    user.pin_hash = pinHash;
-  } else if (!(await verifyPinAsync(pin, user.pin_hash))) {
+    const err = new Error('PIN not set for this account. Log in with email OTP, then set a PIN in Settings.');
+    err.code = 'PIN_NOT_SET';
+    throw err;
+  }
+  if (!(await verifyPinAsync(pin, user.pin_hash))) {
     const err = new Error('Invalid PIN');
     err.code = 'INVALID_PIN';
     throw err;
@@ -442,18 +437,11 @@ async function verifyPinCode(userId, pin) {
   if (!user) throw new Error('User not found');
 
   if (!user.pin_hash) {
-    if (!isDefaultTestPin(pin)) {
-      throw new Error('PIN not set up yet. Use 123456 or 000000 for testing, or set a PIN in Settings.');
-    }
-    await User.updatePin(userId, hashPin(DEFAULT_TEST_PIN));
-    await TransactionLog.create({
-      userId,
-      type: 'pin_set',
-      description: 'Default test PIN applied on first unlock',
-      createdBy: 'user',
-      metadata: { default_test_pin: true },
-    });
-  } else if (!verifyPin(pin, user.pin_hash)) {
+    const err = new Error('PIN not set up yet. Set a 6-digit PIN in Settings after email OTP login.');
+    err.code = 'PIN_NOT_SET';
+    throw err;
+  }
+  if (!verifyPin(pin, user.pin_hash)) {
     throw new Error('Invalid PIN');
   }
 
@@ -471,29 +459,11 @@ async function verifyPinCode(userId, pin) {
   };
 }
 
-async function resetPinToDefault(userId) {
-  const { isProductionRuntime } = require('./securityFlags');
-  if (isProductionRuntime()) {
-    const err = new Error('Default PIN reset is disabled. Use email OTP to reset your PIN.');
-    err.code = 'PIN_RESET_EMAIL_REQUIRED';
-    throw err;
-  }
-
-  await User.updatePin(userId, hashPin(DEFAULT_TEST_PIN));
-  await TransactionLog.create({
-    userId,
-    type: 'pin_set',
-    description: 'Security PIN reset to default test PIN (123456)',
-    createdBy: 'user',
-    metadata: { default_test_pin: true, reset: true },
-  });
-
-  return {
-    pin_token: createPinToken(userId),
-    message: 'PIN reset to 123456 — sensitive access unlocked',
-    has_pin: true,
-    ...pinTokenMeta(),
-  };
+async function resetPinToDefault(_userId) {
+  // Hardcoded default PIN reset (123456 / 000000) is permanently disabled.
+  const err = new Error('Default PIN reset is disabled. Use email OTP to reset your PIN.');
+  err.code = 'PIN_RESET_EMAIL_REQUIRED';
+  throw err;
 }
 
 async function sendPinResetOtp(email, ipAddress) {
