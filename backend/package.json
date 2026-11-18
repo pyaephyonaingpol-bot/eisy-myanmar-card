@@ -105,6 +105,7 @@
     "@libsql/linux-x64-gnu": "^0.5.29",
     "@scure/bip32": "^1.7.0",
     "@scure/bip39": "^1.6.0",
+    "@sentry/node": "^11.14.0",
     "@supabase/supabase-js": "^2.112.1",
     "@upstash/ratelimit": "^2.2.1",
     "@upstash/redis": "^1.41.0",
