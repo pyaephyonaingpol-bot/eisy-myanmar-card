@@ -219,6 +219,55 @@ const Auth = {
 
   _apiInflight: {},
 
+  /**
+   * Default client fetch timeout. Kept under Vercel maxDuration (60s) so the
+   * SPA can wait for slow card/wallet routes without premature 408s.
+   * Override per-call with opts.timeoutMs, or globally via window.__EISY_API_TIMEOUT_MS.
+   */
+  DEFAULT_API_TIMEOUT_MS: 45000,
+
+  _resolveTimeoutMs(opts = {}) {
+    if (Number.isFinite(opts.timeoutMs)) return Math.max(1000, opts.timeoutMs);
+    const globalMs = Number(typeof window !== 'undefined' ? window.__EISY_API_TIMEOUT_MS : NaN);
+    if (Number.isFinite(globalMs) && globalMs >= 1000) return globalMs;
+    return this.DEFAULT_API_TIMEOUT_MS || 45000;
+  },
+
+  _normalizeFetchError(err, { method, path, timeoutMs, timedOut, abortedByCaller }) {
+    if (timedOut) {
+      const timeoutErr = new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+      timeoutErr.code = 'REQUEST_TIMEOUT';
+      timeoutErr.status = 408;
+      timeoutErr.path = path;
+      timeoutErr.method = method;
+      console.warn('[Auth.api] Timeout:', method, path, `(${timeoutMs}ms)`);
+      return timeoutErr;
+    }
+    if (abortedByCaller || err?.name === 'AbortError') {
+      const abortErr = new Error('Request cancelled');
+      abortErr.code = 'REQUEST_ABORTED';
+      abortErr.status = 499;
+      abortErr.path = path;
+      abortErr.method = method;
+      return abortErr;
+    }
+    const rawMsg = String(err?.message || '');
+    if (
+      !err?.code
+      && (err?.name === 'TypeError' || /fetch failed|failed to fetch|networkerror|load failed/i.test(rawMsg))
+    ) {
+      const netErr = new Error('Could not reach the server. Check your connection and try again.');
+      netErr.code = 'NETWORK_ERROR';
+      netErr.status = 0;
+      netErr.cause = err;
+      netErr.path = path;
+      netErr.method = method;
+      console.warn('[Auth.api] Network error:', method, path, rawMsg);
+      return netErr;
+    }
+    return err;
+  },
+
   async api(method, path, body, opts = {}) {
     if (window.__EISY_DEBUG_API) console.log(`[Auth.api] ${method} ${path}`, body || '');
     const m = String(method || 'GET').toUpperCase();
@@ -229,13 +278,25 @@ const Auth = {
       return this._apiInflight[dedupeKey];
     }
 
-    const timeoutMs = Number.isFinite(opts.timeoutMs)
-      ? Math.max(1000, opts.timeoutMs)
-      : 25000;
+    const timeoutMs = this._resolveTimeoutMs(opts);
+    const externalSignal = opts.signal || null;
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     let timer = null;
+    let timedOut = false;
+    let abortedByCaller = false;
+
+    const onExternalAbort = () => {
+      abortedByCaller = true;
+      try { controller?.abort(); } catch (_) { /* ignore */ }
+    };
+    if (externalSignal) {
+      if (externalSignal.aborted) onExternalAbort();
+      else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    }
+
     if (controller) {
       timer = setTimeout(() => {
+        timedOut = true;
         try {
           controller.abort();
         } catch (_) { /* ignore */ }
@@ -287,31 +348,38 @@ const Auth = {
         }
         return data;
       } catch (err) {
-        if (err?.name === 'AbortError' || controller?.signal?.aborted) {
-          const timeoutErr = new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
-          timeoutErr.code = 'REQUEST_TIMEOUT';
-          timeoutErr.status = 408;
-          console.error('[Auth.api] Timeout:', m, path);
-          throw timeoutErr;
-        }
-        const rawMsg = String(err?.message || '');
         if (
-          !err?.code
-          && (err?.name === 'TypeError' || /fetch failed|failed to fetch|networkerror|load failed/i.test(rawMsg))
+          timedOut
+          || abortedByCaller
+          || err?.name === 'AbortError'
+          || controller?.signal?.aborted
         ) {
-          const netErr = new Error('Could not reach the server. Check your connection and try again.');
-          netErr.code = 'NETWORK_ERROR';
-          netErr.status = 0;
-          netErr.cause = err;
-          console.error('[Auth.api] Network error:', m, path, rawMsg);
-          throw netErr;
+          throw this._normalizeFetchError(err, {
+            method: m,
+            path,
+            timeoutMs,
+            timedOut: timedOut && !abortedByCaller,
+            abortedByCaller,
+          });
         }
-        if (!err.message?.includes('HTTP')) {
+        const normalized = this._normalizeFetchError(err, {
+          method: m,
+          path,
+          timeoutMs,
+          timedOut: false,
+          abortedByCaller: false,
+        });
+        if (normalized !== err && !String(err?.message || '').includes('HTTP')) {
+          /* already logged inside helper for network */
+        } else if (!err.message?.includes('HTTP')) {
           console.error('[Auth.api] Network or unexpected error:', err);
         }
-        throw err;
+        throw normalized;
       } finally {
         if (timer) clearTimeout(timer);
+        if (externalSignal) {
+          try { externalSignal.removeEventListener('abort', onExternalAbort); } catch (_) { /* ignore */ }
+        }
       }
     })();
 
@@ -321,6 +389,9 @@ const Auth = {
         if (this._apiInflight[dedupeKey] === run) delete this._apiInflight[dedupeKey];
       });
     }
+    // Soft-handle so fire-and-forget callers do not trigger unhandledrejection;
+    // awaiters still receive the rejection.
+    run.catch(() => {});
     return run;
   },
 
@@ -332,20 +403,75 @@ const Auth = {
     }
     if (opts.sensitive && this.biometricToken) h['X-Biometric-Token'] = this.biometricToken;
 
-    const res = await fetch(path, { method: 'POST', headers: h, body: formData });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      let message = data.error || `HTTP ${res.status}`;
-      if (res.status === 413) {
-        message = data.error
-          || 'Upload too large — please use smaller photos (each under 1MB after compression).';
-      }
-      const err = new Error(message);
-      err.code = data.code || (res.status === 413 ? 'PAYLOAD_TOO_LARGE' : undefined);
-      err.status = res.status;
-      throw err;
+    const timeoutMs = this._resolveTimeoutMs(opts);
+    const externalSignal = opts.signal || null;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    let timer = null;
+    let timedOut = false;
+    let abortedByCaller = false;
+    const onExternalAbort = () => {
+      abortedByCaller = true;
+      try { controller?.abort(); } catch (_) { /* ignore */ }
+    };
+    if (externalSignal) {
+      if (externalSignal.aborted) onExternalAbort();
+      else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
     }
-    return data;
+    if (controller) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        try { controller.abort(); } catch (_) { /* ignore */ }
+      }, timeoutMs);
+    }
+
+    try {
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: h,
+        body: formData,
+        signal: controller?.signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        let message = data.error || `HTTP ${res.status}`;
+        if (res.status === 413) {
+          message = data.error
+            || 'Upload too large — please use smaller photos (each under 1MB after compression).';
+        }
+        const err = new Error(message);
+        err.code = data.code || (res.status === 413 ? 'PAYLOAD_TOO_LARGE' : undefined);
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    } catch (err) {
+      if (
+        timedOut
+        || abortedByCaller
+        || err?.name === 'AbortError'
+        || controller?.signal?.aborted
+      ) {
+        throw this._normalizeFetchError(err, {
+          method: 'POST',
+          path,
+          timeoutMs,
+          timedOut: timedOut && !abortedByCaller,
+          abortedByCaller,
+        });
+      }
+      throw this._normalizeFetchError(err, {
+        method: 'POST',
+        path,
+        timeoutMs,
+        timedOut: false,
+        abortedByCaller: false,
+      });
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (externalSignal) {
+        try { externalSignal.removeEventListener('abort', onExternalAbort); } catch (_) { /* ignore */ }
+      }
+    }
   },
 
   authPayload(data) {

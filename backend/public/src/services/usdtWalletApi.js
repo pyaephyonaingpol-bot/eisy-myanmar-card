@@ -34,7 +34,7 @@
       return withRetries(
         (attempt) => api().request('GET', '/api/user/usdt-wallet', null, {
           sensitive: true,
-          timeoutMs: 25000,
+          timeoutMs: 45000,
           force: attempt > 1,
           skipDedupe: attempt > 1,
         }),
@@ -42,11 +42,15 @@
       );
     },
     getPlatformWallet(opts = {}) {
-      const q = opts.fresh ? '?fresh=1' : '';
+      // Default to fast Turso balances; pass fresh:true for Supabase re-read.
+      const params = new URLSearchParams();
+      if (opts.fresh) params.set('fresh', '1');
+      if (opts.fast !== false && !opts.fresh) params.set('fast', '1');
+      const q = params.toString() ? `?${params}` : '';
       return withRetries(
         (attempt) => api().request('GET', `/api/user/wallet${q}`, null, {
           sensitive: true,
-          timeoutMs: 20000,
+          timeoutMs: opts.fresh ? 45000 : 20000,
           force: attempt > 1,
           skipDedupe: attempt > 1,
         }),
@@ -57,7 +61,7 @@
       return withRetries(
         (attempt) => api().request('GET', '/api/user/usdt-wallet/transactions', null, {
           sensitive: true,
-          timeoutMs: 20000,
+          timeoutMs: 30000,
           force: attempt > 1,
           skipDedupe: attempt > 1,
         }),
@@ -69,7 +73,7 @@
       return withRetries(
         (attempt) => api().request('GET', `/api/user/usdt-wallet/balance${q}`, null, {
           sensitive: true,
-          timeoutMs: 15000,
+          timeoutMs: 25000,
           force: attempt > 1,
           skipDedupe: attempt > 1,
         }),
@@ -77,15 +81,15 @@
       );
     },
     linkAddress(body) {
-      return api().request('POST', '/api/user/usdt-wallet/link', body, { timeoutMs: 15000 });
+      return api().request('POST', '/api/user/usdt-wallet/link', body, { timeoutMs: 20000 });
     },
     unlinkAddress(id) {
-      return api().request('DELETE', `/api/user/usdt-wallet/link/${id}`, null, { timeoutMs: 15000 });
+      return api().request('DELETE', `/api/user/usdt-wallet/link/${id}`, null, { timeoutMs: 20000 });
     },
     getLinkedBalance(id) {
       return withRetries(
         (attempt) => api().request('GET', `/api/user/usdt-wallet/linked/${id}/balance`, null, {
-          timeoutMs: 30000,
+          timeoutMs: 45000,
           force: attempt > 1,
           skipDedupe: attempt > 1,
         }),
@@ -95,7 +99,7 @@
     transfer(body) {
       return api().request('POST', '/api/user/usdt-wallet/transfer', body, {
         sensitive: true,
-        timeoutMs: 20000,
+        timeoutMs: 30000,
       });
     },
   };

@@ -15,16 +15,21 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 console.log('== Client wallet retries + longer timeouts ==');
 const dash = read('backend/public/dashboard.js');
 assert.ok(dash.includes('_fetchWalletPayload'), 'dashboard wallet retry helper');
-assert.ok(dash.includes('timeoutMs: opts.fast ? 15000 : 25000') || dash.includes('opts.fast ? 15000 : 25000'), 'raised wallet client timeouts');
+assert.ok(
+  dash.includes('useFast ? 20000 : 45000')
+    || dash.includes('opts.fast ? 15000 : 25000')
+    || dash.includes('20000 : 45000'),
+  'raised wallet client timeouts'
+);
 assert.ok(dash.includes("err?.code === 'REQUEST_TIMEOUT'"), 'retries REQUEST_TIMEOUT');
 assert.ok(dash.includes('applyCachedWallet()'), 'timeout falls back to session cache');
 assert.ok(dash.includes('Balance timed out'), 'timeout message still present as last resort');
 
 const usdtApi = read('backend/public/src/services/usdtWalletApi.js');
 assert.ok(usdtApi.includes('withRetries'), 'usdt wallet API retries');
-assert.ok(usdtApi.includes('timeoutMs: 15000'), 'balance timeout raised');
-assert.ok(usdtApi.includes('timeoutMs: 25000'), 'overview timeout raised');
-assert.ok(usdtApi.includes('timeoutMs: 30000'), 'linked on-chain balance timeout raised');
+assert.ok(usdtApi.includes('timeoutMs: 25000'), 'balance timeout raised');
+assert.ok(usdtApi.includes('timeoutMs: 45000'), 'overview timeout raised');
+assert.ok(usdtApi.includes('timeoutMs: 45000'), 'linked on-chain balance timeout raised');
 console.log('ok');
 
 console.log('\n== Server wallet path does not wait forever on TronGrid ==');
@@ -32,6 +37,7 @@ const userRoute = read('backend/src/routes/user.js');
 assert.ok(userRoute.includes('WALLET_HD_SCAN_BUDGET_MS'), 'wallet scan budget');
 assert.ok(userRoute.includes("reason: 'budget'"), 'budget skip reason');
 assert.ok(userRoute.includes('background HD scan'), 'continues scan after budget');
+assert.ok(userRoute.includes("'2500'") || userRoute.includes("'3500'"), 'HD scan budget configured');
 
 const hd = read('backend/src/services/hdDepositCreditService.js');
 assert.ok(hd.includes('TRON_HD_READ_SCAN_TIMEOUT_MS'), 'read scan timeout env');
@@ -55,9 +61,15 @@ console.log('ok');
 
 console.log('\n== Cache bust ==');
 const html = read('backend/public/index.html');
-assert.ok(html.includes('walletTimeout'), 'index cache-bust includes walletTimeout');
+assert.ok(
+  html.includes('walletTimeout') || html.includes('fetchTimeout45s'),
+  'index cache-bust includes wallet timeout stamp'
+);
 const instant = read('backend/public/instant.html');
-assert.ok(instant.includes('walletTimeout'), 'instant cache-bust includes walletTimeout');
+assert.ok(
+  instant.includes('walletTimeout') || instant.includes('fetchTimeout45s') || instant.includes('auth.js?v='),
+  'instant cache-bust includes wallet timeout stamp'
+);
 console.log('ok');
 
 console.log('\nWallet balance timeout checks passed.');

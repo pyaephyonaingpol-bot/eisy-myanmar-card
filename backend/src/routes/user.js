@@ -347,9 +347,10 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
     // than WALLET_HD_SCAN_BUDGET_MS — TronGrid hangs must not surface as
     // client "Balance timed out".
     const fast = req.query.fast === '1' || req.query.fast === 'true';
+    // Keep under typical client budgets so /wallet returns before SPA AbortController fires.
     const WALLET_HD_SCAN_BUDGET_MS = Math.max(
       1000,
-      parseInt(process.env.WALLET_HD_SCAN_BUDGET_MS || '3500', 10) || 3500
+      parseInt(process.env.WALLET_HD_SCAN_BUDGET_MS || '2500', 10) || 2500
     );
     let hdScan = { skipped: true, reason: fast ? 'fast' : 'not_run', credited: 0 };
     if (!fast) {
@@ -415,7 +416,16 @@ router.get('/wallet', requireAuth, requireSensitive, async (req, res) => {
     });
   } catch (err) {
     console.error('[user/wallet]', err);
-    res.status(500).json({ error: 'Internal server error' });
+    try {
+      const { captureError } = require('../services/errorMonitor');
+      captureError(err, {
+        source: 'user/wallet',
+        path: '/api/user/wallet',
+        userId: req.user?.id,
+        severity: 'high',
+      });
+    } catch (_) { /* ignore */ }
+    res.status(500).json({ error: 'Internal server error', code: 'WALLET_INTERNAL_ERROR' });
   }
 });
 
