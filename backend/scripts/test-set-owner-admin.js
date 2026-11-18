@@ -16,6 +16,9 @@ process.env.NODE_ENV = 'test';
 delete process.env.DATABASE_AUTH_TOKEN;
 delete process.env.ADMIN_EMAIL;
 delete process.env.ADMIN_PASSWORD;
+// Fixture password for this test only — never hardcode in application source.
+const OWNER_FIXTURE_PASSWORD = 'OwnerTest#Pass9';
+process.env.ADMIN_OWNER_PASSWORD = OWNER_FIXTURE_PASSWORD;
 
 const { initDb, closeDb, getDb } = require('../src/db');
 const User = require('../src/models/User');
@@ -62,7 +65,7 @@ const { roleHasPermission } = require('../src/lib/adminRoles');
   assert.strictEqual(Number(fresh.balance_usdt), 88.25);
   assert.strictEqual(Number(fresh.balance_mmk), 1500);
   assert.ok(String(fresh.password_hash).startsWith('$2'), 'password hash is bcrypt');
-  assert.strictEqual(await verifyPasswordAsync(['Love', '121518'].join('@'), fresh.password_hash), true);
+  assert.strictEqual(await verifyPasswordAsync(OWNER_FIXTURE_PASSWORD, fresh.password_hash), true);
   assert.strictEqual(await verifyPasswordAsync('not-the-password', fresh.password_hash), false);
 
   const otherFresh = await User.findById(other.id);
@@ -79,7 +82,7 @@ const { roleHasPermission } = require('../src/lib/adminRoles');
 
   const session = await loginAdmin({
     email: OWNER_EMAIL,
-    password: ['Love', '121518'].join('@'),
+    password: OWNER_FIXTURE_PASSWORD,
     ipAddress: '127.0.0.1',
   });
   assert.ok(session.sessionToken, 'owner can log in');

@@ -967,8 +967,8 @@
 
       <div id="devOtpBanner" class="dev-otp-banner hidden" role="alert">
         <strong>Dev OTP</strong>
-        <span id="devOtpCode" class="dev-otp-code">000000</span>
-        <span id="devOtpHint" class="dev-otp-hint">Auto-filled for testing</span>
+        <span id="devOtpCode" class="dev-otp-code"></span>
+        <span id="devOtpHint" class="dev-otp-hint">Dev OTP (local only)</span>
       </div>
 
       <div id="authTabs" class="tabs auth-tabs" role="tablist" aria-label="Account">
@@ -1007,7 +1007,7 @@
             <p id="loginOtpResendStatus" class="hint otp-resend-status" role="status" aria-live="polite"></p>
           </form>
           <form id="loginVerifyForm" class="hidden" style="margin-top:1rem">
-            <div class="field"><label for="loginOtp">6-digit OTP</label><input id="loginOtp" name="otp" maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" required /></div>
+            <div class="field"><label for="loginOtp">6-digit OTP</label><input id="loginOtp" name="otp" maxlength="6" placeholder="Enter code" inputmode="numeric" autocomplete="one-time-code" required /></div>
             <button type="submit" id="loginVerify" class="btn btn-primary">Verify &amp; Login with OTP</button>
           </form>
         </div>
@@ -1052,7 +1052,7 @@
         </form>
         <p class="hint">Use a <strong>new email</strong> (not <code>demo@eisy.myanmar</code> — that account exists; use Login tab).</p>
         <form id="registerCompleteForm" class="hidden" style="margin-top:1rem">
-          <div class="field"><label for="regOtp">Email OTP</label><input id="regOtp" name="otp" maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" required /></div>
+          <div class="field"><label for="regOtp">Email OTP</label><input id="regOtp" name="otp" maxlength="6" placeholder="Enter code" inputmode="numeric" autocomplete="one-time-code" required /></div>
           <button type="submit" id="registerComplete" class="btn btn-primary">Create Account</button>
         </form>
       </div>

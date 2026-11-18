@@ -8,18 +8,26 @@ const AUTH_SECRET = firstEnv('AUTH_SECRET', 'JWT_SECRET') || DEV_AUTH_SECRET;
 // Default: 15 minutes. Override with PIN_TOKEN_TTL_HOURS (fractional hours allowed).
 const PIN_TOKEN_TTL_HOURS = parseFloat(process.env.PIN_TOKEN_TTL_HOURS || '0.25', 10);
 const PIN_TOKEN_TTL_MS = Math.max(1, PIN_TOKEN_TTL_HOURS) * 60 * 60 * 1000;
-const DEFAULT_TEST_PINS = ['123456', '000000'];
+/** @deprecated Never accept these as login bypasses. Kept only for legacy test fixtures. */
+const DEFAULT_TEST_PINS = Object.freeze(['123456', '000000']);
+/** @deprecated Do not auto-apply as a user PIN. */
 const DEFAULT_TEST_PIN = '123456';
 // Master test OTP only when explicitly configured — never a hardcoded production backdoor.
 const MASTER_TEST_OTP = process.env.MASTER_TEST_OTP || '';
+
+function isProductionLikeRuntime() {
+  const nodeEnv = String(process.env.NODE_ENV || '').toLowerCase();
+  if (nodeEnv === 'production') return true;
+  if (process.env.VERCEL === '1' || process.env.VERCEL_ENV === 'production') return true;
+  return false;
+}
 
 function isUsingDefaultAuthSecret() {
   return !firstEnv('AUTH_SECRET', 'JWT_SECRET') || firstEnv('AUTH_SECRET', 'JWT_SECRET') === DEV_AUTH_SECRET;
 }
 
 if (isUsingDefaultAuthSecret()) {
-  const nodeEnv = String(process.env.NODE_ENV || '').toLowerCase();
-  if (nodeEnv === 'production' || process.env.VERCEL === '1') {
+  if (isProductionLikeRuntime()) {
     console.error(
       '[security] CRITICAL: AUTH_SECRET is unset or still the default. '
       + 'PIN tokens for withdrawals can be forged. Set a strong AUTH_SECRET immediately.'
@@ -29,14 +37,26 @@ if (isUsingDefaultAuthSecret()) {
   }
 }
 
-function isDefaultTestPin(pin) {
-  return DEFAULT_TEST_PINS.includes(String(pin));
+/**
+ * Legacy helper — always false in production/Vercel.
+ * Local/test may enable with ALLOW_DEFAULT_TEST_PIN=true (discouraged).
+ */
+function isDefaultTestPin(_pin) {
+  // Hardcoded 123456 / 000000 must never unlock accounts.
+  return false;
+}
+
+/** Explicit local-only opt-in for scripts that still need a known fixture PIN. */
+function allowDefaultTestPinFixtures() {
+  if (isProductionLikeRuntime()) return false;
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.ALLOW_DEFAULT_TEST_PIN || '').trim().toLowerCase()
+  );
 }
 
 function isMasterTestOtp(otp) {
   if (!MASTER_TEST_OTP) return false;
-  const nodeEnv = String(process.env.NODE_ENV || '').toLowerCase();
-  if (nodeEnv === 'production' || process.env.VERCEL === '1') {
+  if (isProductionLikeRuntime()) {
     // Explicit opt-in required in production (discouraged).
     if (String(process.env.ALLOW_MASTER_TEST_OTP || '').toLowerCase() !== 'true') {
       return false;
@@ -215,7 +235,9 @@ module.exports = {
   DEFAULT_TEST_PIN,
   MASTER_TEST_OTP,
   isDefaultTestPin,
+  allowDefaultTestPinFixtures,
   isMasterTestOtp,
   isUsingDefaultAuthSecret,
+  isProductionLikeRuntime,
   DEV_AUTH_SECRET,
 };
