@@ -107,6 +107,22 @@ async function runCron(request: NextRequest) {
       err && typeof err === 'object' && 'preflight' in err
         ? (err as { preflight?: unknown }).preflight
         : undefined;
+    try {
+      const { captureError } = require(
+        path.join(process.cwd(), 'backend/src/services/errorMonitor.js'),
+      ) as { captureError: (e: unknown, ctx?: object) => void };
+      captureError(err, {
+        source: 'app/api/cron',
+        title: 'TRON deposit ops cron failed',
+        path: '/api/cron/tron-deposit-ops',
+        status,
+        code,
+        severity: status >= 500 ? 'high' : 'medium',
+        tags: { kind: 'cron_error' },
+      });
+    } catch {
+      /* ignore monitor failures */
+    }
     return NextResponse.json(
       { ok: false, success: false, error: message, code, preflight },
       { status },

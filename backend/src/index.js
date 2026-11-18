@@ -7,6 +7,18 @@ const fs = require('fs');
 const { getUploadRoot } = require('./paths');
 const { createCorsOptions } = require('./corsOptions');
 const { initDb, closeDb } = require('./db');
+const {
+  initErrorMonitor,
+  installProcessHandlers,
+  createExpressErrorHandler,
+  createSlowRequestMonitor,
+  captureError,
+  flush: flushErrorMonitor,
+} = require('./services/errorMonitor');
+
+// Sentry / structured error monitor — init before routes so early failures are captured.
+initErrorMonitor();
+installProcessHandlers();
 
 const depositRoutes = require('./routes/deposit');
 const adminRoutes = require('./routes/admin');
@@ -75,6 +87,9 @@ app.use(express.urlencoded({ extended: true, limit: '55mb' }));
 
 // API rate limiting (webhooks skipped inside limiter)
 app.use('/api', createApiRateLimiter());
+
+// Flag slow API/proxy requests for performance monitoring (Sentry breadcrumb / log)
+app.use(createSlowRequestMonitor());
 
 function sendHtmlFile(res, filePath) {
   if (!fs.existsSync(filePath)) {
@@ -434,6 +449,7 @@ app.get('/health/user-mirror', async (req, res) => {
 });
 
 app.use('/api/config', require('./routes/config'));
+app.use('/api/client-errors', require('./routes/clientErrors'));
 app.use('/api/qr', require('./routes/qr'));
 app.use('/api/auth', createAuthRateLimiter(), authRoutes);
 app.use('/api/deposit', depositRoutes);
@@ -465,6 +481,9 @@ app.use((req, res) => {
   res.status(404).send('Page not found');
 });
 
+// Central Express error handler (must be after routes)
+app.use(createExpressErrorHandler());
+
 let server = null;
 let shuttingDown = false;
 
@@ -480,6 +499,7 @@ async function shutdown(signal) {
     }
   });
 
+  await flushErrorMonitor(2000).catch(() => {});
   await closeDb().catch(() => {});
 
   if (signal) {
@@ -561,6 +581,7 @@ async function start() {
 if (require.main === module && !process.env.VERCEL) {
   start().catch(async (err) => {
     console.error('Failed to start server:', err.message || err);
+    captureError(err, { source: 'boot', title: 'Server failed to start', severity: 'critical' });
     await shutdown();
     process.exit(1);
   });

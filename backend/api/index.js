@@ -69,6 +69,15 @@ module.exports = async (req, res) => {
     await bootstrap();
   } catch (err) {
     console.error('[vercel] bootstrap failed:', err);
+    try {
+      const { captureError } = require('../src/services/errorMonitor');
+      captureError(err, {
+        source: 'vercel',
+        title: 'Vercel bootstrap failed',
+        severity: 'critical',
+        path: req.url || '/api',
+      });
+    } catch (_) { /* ignore */ }
     res.statusCode = 500;
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({
