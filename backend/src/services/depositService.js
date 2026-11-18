@@ -245,6 +245,8 @@ async function createUsdtDepositRequest(userId, {
     const resolved = await resolveUserTrc20DepositAddress(userId, sharedGateway);
     depositAddress = resolved.address;
     addressSource = resolved.source;
+    const { assertHdDepositAddressSource } = require('./tronDepositAddressService');
+    assertHdDepositAddressSource(addressSource, { context: 'createUsdtDeposit' });
   }
 
   if (!depositAddress) {
@@ -343,13 +345,18 @@ async function createUsdtDepositRequest(userId, {
  * Find any deposit that already recorded this TxID / TxHash
  * (pending or verified). Used to block reuse before credit.
  */
+function normalizeStoredTxHash(txHash) {
+  const { normalizeTxHash } = require('./usdtBlockchainService');
+  return normalizeTxHash(txHash);
+}
+
 async function findDepositByTxHash(txHash) {
   const db = getDb();
-  const hash = String(txHash || '').trim();
+  const hash = normalizeStoredTxHash(txHash);
   if (!hash) return null;
   return db.get(`
     SELECT * FROM deposit_requests_v2
-    WHERE tx_hash = ? OR txn_id = ? OR kpay_transaction_id = ?
+    WHERE lower(tx_hash) = ? OR lower(txn_id) = ? OR lower(kpay_transaction_id) = ?
     ORDER BY CASE WHEN status = 'VERIFIED' THEN 0 ELSE 1 END, id ASC
     LIMIT 1
   `, hash, hash, hash);
@@ -357,18 +364,18 @@ async function findDepositByTxHash(txHash) {
 
 async function findVerifiedDepositByTxHash(txHash) {
   const db = getDb();
-  const hash = String(txHash || '').trim();
+  const hash = normalizeStoredTxHash(txHash);
   if (!hash) return null;
   return db.get(`
     SELECT * FROM deposit_requests_v2
     WHERE status = 'VERIFIED'
-      AND (tx_hash = ? OR txn_id = ? OR kpay_transaction_id = ?)
+      AND (lower(tx_hash) = ? OR lower(txn_id) = ? OR lower(kpay_transaction_id) = ?)
     LIMIT 1
   `, hash, hash, hash);
 }
 
 async function assertTxHashAvailable(txHash, depositId) {
-  const hash = String(txHash || '').trim();
+  const hash = normalizeStoredTxHash(txHash);
   if (!hash) return;
   const existing = await findDepositByTxHash(hash);
   if (existing && Number(existing.id) !== Number(depositId)) {
@@ -423,7 +430,7 @@ async function submitAndAutoVerifyUsdtDeposit(depositId, {
     throw new Error(`Cannot submit proof for status: ${deposit.status}`);
   }
 
-  const hash = String(txHash).trim();
+  const hash = normalizeStoredTxHash(txHash);
   if (!hash) {
     throw new Error('TxHash is required');
   }
@@ -457,6 +464,10 @@ async function submitAndAutoVerifyUsdtDeposit(depositId, {
   const network = deposit.usdt_network || metadata.usdt_network || 'TRC20';
   const expectedAddress = metadata.deposit_address;
   const expectedAmount = Number(deposit.amount_usd ?? metadata.amount_usdt ?? 0);
+  const { assertHdDepositAddressSource } = require('./tronDepositAddressService');
+  assertHdDepositAddressSource(metadata.deposit_address_source, {
+    context: 'submitAndAutoVerifyUsdtDeposit',
+  });
 
   if (isUsdtVerificationBypassEnabled()) {
     console.warn('[deposit] TEMP: bypassing USDT blockchain verification — auto-approving deposit');

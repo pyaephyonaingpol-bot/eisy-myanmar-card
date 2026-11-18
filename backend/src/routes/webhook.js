@@ -185,10 +185,36 @@ router.get('/pagocards', (_req, res) => {
   });
 });
 
+function isProductionLikeEnv() {
+  return String(process.env.NODE_ENV || '').toLowerCase() === 'production'
+    || process.env.VERCEL === '1';
+}
+
+/**
+ * Deposit webhook auth.
+ * Production/Vercel: DEPOSIT_WEBHOOK_SECRET is required (fail closed if unset).
+ * Local/test: secret optional; when set, header must match.
+ */
 function depositWebhookUnauthorized(req) {
-  const secret = process.env.DEPOSIT_WEBHOOK_SECRET || '';
-  if (!secret) return false;
+  const secret = String(process.env.DEPOSIT_WEBHOOK_SECRET || '').trim();
+  if (!secret) {
+    return isProductionLikeEnv();
+  }
   const header = req.get('x-deposit-webhook-secret') || '';
+  return header !== secret;
+}
+
+/**
+ * Tron push webhook auth.
+ * Production/Vercel: TRON_WEBHOOK_SECRET is required.
+ * Local/test: optional for TronGrid-style callbacks.
+ */
+function tronWebhookUnauthorized(req) {
+  const secret = String(process.env.TRON_WEBHOOK_SECRET || '').trim();
+  if (!secret) {
+    return isProductionLikeEnv();
+  }
+  const header = req.get('x-tron-webhook-secret') || '';
   return header !== secret;
 }
 
@@ -219,7 +245,8 @@ function depositCreditResponse(result) {
  * Incoming USDT deposit webhook.
  * Register: https://YOUR_DOMAIN/api/webhook/deposit
  * TronGrid-style bodies are accepted: transaction_id, to, value, token_info.
- * Optional secret: DEPOSIT_WEBHOOK_SECRET via header x-deposit-webhook-secret.
+ * Secret: DEPOSIT_WEBHOOK_SECRET via header x-deposit-webhook-secret
+ * (required in production / Vercel).
  * The transfer is always checked on-chain. Body flags cannot skip that check.
  * A confirmed transfer credits the custodial-address owner once (net after fee).
  */
@@ -290,23 +317,18 @@ router.post('/deposit', async (req, res) => {
 /**
  * Tron push webhook. Same credit path as /api/webhook/deposit.
  * Register: https://YOUR_DOMAIN/api/webhook/tron
- * On-chain verification is required. DEPOSIT_WEBHOOK_SECRET is not required
- * here so a TronGrid callback can post; set TRON_WEBHOOK_SECRET to require
- * header x-tron-webhook-secret.
+ * On-chain verification is required. Production requires TRON_WEBHOOK_SECRET
+ * via header x-tron-webhook-secret.
  */
 router.post('/tron', async (req, res) => {
   try {
-    const secret = String(process.env.TRON_WEBHOOK_SECRET || '').trim();
-    if (secret) {
-      const header = req.get('x-tron-webhook-secret') || '';
-      if (header !== secret) {
-        return res.status(401).json({
-          ok: false,
-          credited: false,
-          error: 'Invalid webhook secret',
-          code: 'TRON_WEBHOOK_UNAUTHORIZED',
-        });
-      }
+    if (tronWebhookUnauthorized(req)) {
+      return res.status(401).json({
+        ok: false,
+        credited: false,
+        error: 'Invalid or missing webhook secret',
+        code: 'TRON_WEBHOOK_UNAUTHORIZED',
+      });
     }
 
     const { parseTronDepositNotices, creditDepositNotice } = require('../services/hdDepositCreditService');

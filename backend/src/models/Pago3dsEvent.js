@@ -209,23 +209,62 @@ const Pago3dsEvent = {
     );
   },
 
+  /**
+   * Mark a 3DS event as seen for the authenticated user.
+   * Orphan rows (user_id IS NULL) may only be claimed when the linked card
+   * (local_card_id / pago_card_id) belongs to that user.
+   */
   async markSeen(id, userId) {
     const db = getDb();
+    const uid = Number(userId);
+    if (!Number.isFinite(uid) || uid <= 0) return null;
+
+    const row = await this.findById(id);
+    if (!row) return null;
+
+    if (row.user_id != null && Number(row.user_id) === uid) {
+      if (!row.seen_at) {
+        await db.run(
+          `UPDATE ${TABLE} SET seen_at = datetime('now') WHERE id = ? AND user_id = ? AND seen_at IS NULL`,
+          id,
+          uid
+        );
+      }
+      return this.findById(id);
+    }
+
+    if (row.user_id != null) {
+      // Owned by someone else — do not leak OTP.
+      return null;
+    }
+
+    // Orphan claim: linked card must belong to the caller.
+    const Card = require('./Card');
+    let owned = false;
+    if (row.local_card_id) {
+      const card = await Card.findById(row.local_card_id);
+      owned = Boolean(card && Number(card.user_id) === uid);
+    }
+    if (!owned && row.pago_card_id) {
+      const card = await Card.findByPagoCardId(row.pago_card_id);
+      owned = Boolean(card && Number(card.user_id) === uid);
+    }
+    if (!owned) {
+      return null;
+    }
+
     await db.run(
       `
       UPDATE ${TABLE}
-      SET seen_at = datetime('now')
-      WHERE id = ? AND (user_id = ? OR user_id IS NULL) AND seen_at IS NULL
+      SET user_id = ?,
+          seen_at = COALESCE(seen_at, datetime('now'))
+      WHERE id = ? AND user_id IS NULL
     `,
-      id,
-      userId
+      uid,
+      id
     );
-    const row = await this.findById(id);
-    if (row && row.user_id == null && userId) {
-      await db.run(`UPDATE ${TABLE} SET user_id = ? WHERE id = ?`, userId, id);
-      return this.findById(id);
-    }
-    return row && (row.user_id == null || Number(row.user_id) === Number(userId)) ? row : null;
+    const claimed = await this.findById(id);
+    return claimed && Number(claimed.user_id) === uid ? claimed : null;
   },
 };
 

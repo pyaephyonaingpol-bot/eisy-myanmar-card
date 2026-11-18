@@ -20,14 +20,19 @@ function isDevelopmentMode() {
   return process.env.NODE_ENV === 'development';
 }
 
-function isMockTxHash(txHash) {
+/** Canonical form for storage + uniqueness — trim + lowercase. */
+function normalizeTxHash(txHash) {
   const normalized = String(txHash || '').trim().toLowerCase();
-  return MOCK_TX_HASHES.has(normalized);
+  return normalized || '';
+}
+
+function isMockTxHash(txHash) {
+  return MOCK_TX_HASHES.has(normalizeTxHash(txHash));
 }
 
 function verifyMockUsdtTransaction({ network, txHash, expectedAddress, expectedAmountUsdt }) {
   const net = String(network || 'TRC20').toUpperCase();
-  const hash = String(txHash).trim();
+  const hash = normalizeTxHash(txHash);
   const amountUsdt = Number(expectedAmountUsdt);
 
   console.log('[DEV MODE] Accepting mock USDT transaction hash');
@@ -121,7 +126,7 @@ async function fetchJsonWithRetry(url, options = {}, {
 }
 
 async function verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt) {
-  const hash = String(txHash).trim();
+  const hash = normalizeTxHash(txHash);
   const expectedTo = normalizeTronAddress(expectedAddress);
 
   let data;
@@ -152,13 +157,24 @@ async function verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt) {
   }
 
   const confirmations = data.confirmations != null ? Number(data.confirmations) : null;
-  if (MIN_CONFIRMATIONS > 0 && Number.isFinite(confirmations) && confirmations < MIN_CONFIRMATIONS) {
-    return {
-      ok: false,
-      status: 'pending',
-      message: `Waiting for confirmations (${confirmations}/${MIN_CONFIRMATIONS}).`,
-      confirmations,
-    };
+  if (MIN_CONFIRMATIONS > 0) {
+    // Fail closed when the explorer omits confirmations — do not treat as final.
+    if (!Number.isFinite(confirmations)) {
+      return {
+        ok: false,
+        status: 'pending',
+        message: `Waiting for confirmations (unknown/${MIN_CONFIRMATIONS}).`,
+        confirmations: null,
+      };
+    }
+    if (confirmations < MIN_CONFIRMATIONS) {
+      return {
+        ok: false,
+        status: 'pending',
+        message: `Waiting for confirmations (${confirmations}/${MIN_CONFIRMATIONS}).`,
+        confirmations,
+      };
+    }
   }
 
   if (data.contractRet && data.contractRet !== 'SUCCESS') {
@@ -229,14 +245,14 @@ async function verifyUsdtTransaction({
       message: 'USDT deposits use TRC20 (Tron) only.',
     };
   }
-  if (!txHash || !String(txHash).trim()) {
+  if (!txHash || !normalizeTxHash(txHash)) {
     return { ok: false, status: 'invalid', message: 'TxHash is required.' };
   }
   if (!expectedAddress) {
     return { ok: false, status: 'invalid', message: 'Platform deposit address not configured.' };
   }
 
-  const hash = String(txHash).trim();
+  const hash = normalizeTxHash(txHash);
 
   if (process.env.NODE_ENV === 'production' && isMockTxHash(hash)) {
     return {
@@ -255,7 +271,7 @@ async function verifyUsdtTransaction({
     });
   }
 
-  return verifyTrc20Usdt(txHash, expectedAddress, expectedAmountUsdt);
+  return verifyTrc20Usdt(hash, expectedAddress, expectedAmountUsdt);
 }
 
 async function fetchTrc20UsdtBalance(address) {
@@ -313,6 +329,7 @@ module.exports = {
   amountWithinTolerance,
   isDevelopmentMode,
   isMockTxHash,
+  normalizeTxHash,
   USDT_TRC20_CONTRACT,
   MIN_CONFIRMATIONS,
 };

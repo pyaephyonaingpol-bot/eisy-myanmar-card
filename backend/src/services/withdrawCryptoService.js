@@ -27,8 +27,10 @@ const {
 const FIXED_WITHDRAW_FEE_USDT = Number(process.env.WITHDRAW_FIXED_FEE_USDT || 2);
 const WITHDRAW_PERCENT = 2;
 
+/** Ledger/debit precision is 2dp (shared with usdtLedgerService). */
 function roundUsdt(value) {
-  return Math.round(Number(value) * 1e6) / 1e6;
+  const { roundUsdt: round2 } = require('../lib/usdtAmount');
+  return round2(value);
 }
 
 function getFixedWithdrawFeeUsdt() {

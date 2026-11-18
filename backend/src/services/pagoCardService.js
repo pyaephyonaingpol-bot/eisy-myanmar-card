@@ -28,6 +28,11 @@ const ATM_PRODUCT_CODE = 'us_493_visa_atm';
 const MIN_INITIAL_LOAD = 10;
 const MAX_INITIAL_LOAD = 2500;
 const MIN_TOP_UP = 5;
+const {
+  roundUsdt,
+  assertUsdtAmount,
+  MAX_CARD_TOPUP_USDT,
+} = require('../lib/usdtAmount');
 /** Pagocards rule: at least this USD must stay on the card after withdraw. */
 const MIN_CARD_REMAINING_USD = 5;
 /** Upstream create call. The route backstop is a few seconds longer so a timeout can refund. */
@@ -164,11 +169,9 @@ function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Round to 2dp (ledger precision). Name kept for call-site compatibility. */
 function truncateUsd(amount) {
-  const value = Number(amount);
-  if (!Number.isFinite(value)) return value;
-  const sign = value < 0 ? -1 : 1;
-  return sign * (Math.trunc(Math.abs(value) * 100) / 100);
+  return roundUsdt(amount);
 }
 
 function httpError(message, status, code, extra) {
@@ -906,9 +909,19 @@ async function topUpPagoCard({ userId, localCardId, amountUsd }, deps = {}) {
 
   const settings = await getCardPricingSettings();
   const minTopUp = Math.max(MIN_TOP_UP, Number(settings.minimum_usdt_reload) || MIN_TOP_UP);
+  let normalizedAmount;
+  try {
+    normalizedAmount = assertUsdtAmount(amountUsd, {
+      min: minTopUp,
+      max: MAX_CARD_TOPUP_USDT,
+      field: 'Top-up amount',
+    });
+  } catch (err) {
+    throw httpError(err.message || 'Invalid top-up amount', 400, err.code || 'VALIDATION_ERROR');
+  }
   let pricing;
   try {
-    pricing = calculateCardReloadPricingUsdt(amountUsd, {
+    pricing = calculateCardReloadPricingUsdt(normalizedAmount, {
       ...settings,
       minimum_usdt_reload: minTopUp,
     });

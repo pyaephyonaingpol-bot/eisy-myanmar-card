@@ -71,7 +71,8 @@ function parseOneTronDepositNotice(body) {
   ).trim();
   if (contract && contract !== USDT_TRC20_CONTRACT) return null;
 
-  const txHash = String(
+  const { normalizeTxHash } = require('./usdtBlockchainService');
+  const txHash = normalizeTxHash(
     body.tx_hash
     || body.txHash
     || body.txn_id
@@ -80,7 +81,7 @@ function parseOneTronDepositNotice(body) {
     || body.txID
     || body.txId
     || ''
-  ).trim();
+  );
   if (!txHash) return null;
 
   const toAddress = String(
@@ -248,9 +249,12 @@ async function creditInboundHdDepositsForRows(rows, {
       continue;
     }
 
+    const { normalizeTxHash, verifyUsdtTransaction } = require('./usdtBlockchainService');
     for (const transfer of transfers || []) {
       scanned += 1;
-      const txId = String(transfer?.transaction_id || transfer?.txHash || transfer?.tx_hash || '').trim();
+      const txId = normalizeTxHash(
+        transfer?.transaction_id || transfer?.txHash || transfer?.tx_hash || ''
+      );
       const to = String(transfer?.to || transfer?.to_address || '').trim();
       if (!txId || to !== address) {
         skipped += 1;
@@ -286,7 +290,20 @@ async function creditInboundHdDepositsForRows(rows, {
           createdBy: 'tron-indexer',
           adminNote: 'TRON HD inbound USDT auto-credit',
           verifyTransfer: async (params) => {
-            if (String(params.txHash || '').trim() !== txId) {
+            const isProd = String(process.env.NODE_ENV || '').toLowerCase() === 'production'
+              || process.env.VERCEL === '1';
+            if (isProd) {
+              // Re-fetch via Tronscan so missing confirmations fail closed.
+              return verifyUsdtTransaction({
+                network: 'TRC20',
+                txHash: params.txHash || txId,
+                expectedAddress: params.expectedAddress || address,
+                expectedAmountUsdt: params.expectedAmountUsdt != null
+                  ? params.expectedAmountUsdt
+                  : amountUsdt,
+              });
+            }
+            if (String(params.txHash || '').trim().toLowerCase() !== txId) {
               return { ok: false, message: 'Transaction hash does not match the TronGrid transfer' };
             }
             if (String(params.expectedAddress || '').trim() !== address) {

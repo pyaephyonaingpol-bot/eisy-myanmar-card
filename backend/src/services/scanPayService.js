@@ -7,12 +7,17 @@ const { syncUserWalletById } = require('./supabaseSyncService');
 const { getSupabase, isSupabaseEnabled } = require('../lib/supabase');
 const { invalidateUserWalletCache } = require('./supabaseWalletReadService');
 
-const MIN_SCAN_PAY_USDT = 0.01;
-const MAX_SCAN_PAY_USDT = 50000;
+const {
+  roundUsdt,
+  assertUsdtAmount,
+  MAX_INTERNAL_TRANSFER_USDT,
+} = require('../lib/usdtAmount');
 
-function roundUsdt(value) {
-  return Math.round((Number(value) || 0) * 100) / 100;
-}
+const MIN_SCAN_PAY_USDT = 0.01;
+const MAX_SCAN_PAY_USDT = Math.max(
+  1,
+  Number(process.env.MAX_SCAN_PAY_USDT || MAX_INTERNAL_TRANSFER_USDT) || MAX_INTERNAL_TRANSFER_USDT
+);
 
 function buildRefCode() {
   return `SP${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
@@ -286,17 +291,23 @@ async function executeScanPay(userId, {
     try { parsed = parsePaymentQrPayload(qrPayload); } catch (_) { parsed = null; }
   }
 
-  const amount = roundUsdt(
-    amountUsdt != null ? amountUsdt : (parsed?.amount_usdt != null ? parsed.amount_usdt : NaN)
-  );
-  if (!Number.isFinite(amount) || amount < MIN_SCAN_PAY_USDT) {
-    const err = new Error(`Enter a valid amount (min ${MIN_SCAN_PAY_USDT} USDT)`);
-    err.code = 'INVALID_AMOUNT';
-    throw err;
-  }
-  if (amount > MAX_SCAN_PAY_USDT) {
-    const err = new Error(`Maximum Scan Pay amount is ${MAX_SCAN_PAY_USDT} USDT`);
-    err.code = 'AMOUNT_TOO_LARGE';
+  let amount;
+  try {
+    amount = assertUsdtAmount(
+      amountUsdt != null ? amountUsdt : (parsed?.amount_usdt != null ? parsed.amount_usdt : NaN),
+      {
+        min: MIN_SCAN_PAY_USDT,
+        max: MAX_SCAN_PAY_USDT,
+        field: 'Scan Pay amount',
+      }
+    );
+  } catch (err) {
+    if (err.code === 'AMOUNT_TOO_LARGE') {
+      err.message = `Maximum Scan Pay amount is ${MAX_SCAN_PAY_USDT} USDT`;
+    } else if (err.code === 'AMOUNT_TOO_SMALL' || err.code === 'INVALID_AMOUNT') {
+      err.message = `Enter a valid amount (min ${MIN_SCAN_PAY_USDT} USDT)`;
+      err.code = 'INVALID_AMOUNT';
+    }
     throw err;
   }
 

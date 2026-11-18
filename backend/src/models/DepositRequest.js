@@ -88,7 +88,9 @@ const DepositRequest = {
     screenshotOriginalName, screenshotMimeType, userNote,
   }) {
     const db = getDb();
-    const hash = txHash || txnId || kpayTransactionId || null;
+    const { normalizeTxHash } = require('../services/usdtBlockchainService');
+    const rawHash = txHash || txnId || kpayTransactionId || null;
+    const hash = rawHash ? normalizeTxHash(rawHash) : null;
     try {
       await db.run(`
         UPDATE ${this.TABLE}
@@ -152,7 +154,9 @@ const DepositRequest = {
     txHash,
   } = {}) {
     const db = getDb();
-    const hash = (txHash || txnId || null) ? String(txHash || txnId).trim() || null : null;
+    const { normalizeTxHash } = require('../services/usdtBlockchainService');
+    const rawHash = txHash || txnId || null;
+    const hash = rawHash ? normalizeTxHash(rawHash) || null : null;
     const result = await db.run(`
       UPDATE ${this.TABLE}
       SET status = 'VERIFIED',

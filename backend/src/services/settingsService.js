@@ -945,12 +945,16 @@ function resolveCardReloadFeeUsd(topUpUsd, settings = {}) {
 function calculateCardReloadPricingUsdt(topUpUsdt, settings) {
   const topUp = parseFloat(topUpUsdt);
   const minTopUp = settings.minimum_usdt_reload ?? settings.minimum_initial_deposit_usd ?? 5;
+  const { MAX_CARD_TOPUP_USDT } = require('../lib/usdtAmount');
 
   if (!Number.isFinite(topUp) || topUp <= 0) {
     throw new Error('Top-up amount must be a positive number');
   }
   if (topUp < minTopUp) {
     throw new Error(`Minimum USDT top-up is $${minTopUp.toFixed(2)}`);
+  }
+  if (topUp > MAX_CARD_TOPUP_USDT) {
+    throw new Error(`Maximum USDT top-up is $${Number(MAX_CARD_TOPUP_USDT).toFixed(2)}`);
   }
 
   const topUpUsd = roundUsd(topUp);
