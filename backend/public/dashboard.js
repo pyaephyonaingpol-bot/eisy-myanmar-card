@@ -11316,35 +11316,75 @@ const Dashboard = {
     }
   },
 
-  async syncPagoCardsFromProvider({ pagoCardId = null, silent = true } = {}) {
+  /**
+   * Reconcile orphaned Pago cards. Prefer background mode so login never waits
+   * on the provider; a follow-up local GET refreshes the UI when imports land.
+   */
+  async syncPagoCardsFromProvider({
+    pagoCardId = null,
+    silent = true,
+    background = true,
+  } = {}) {
     if (!Auth.isLoggedIn() || Auth.needsPinUnlock()) return null;
-    try {
-      const body = pagoCardId ? { pago_card_id: pagoCardId } : {};
-      const data = await Auth.api('POST', '/api/user/cards/sync', body, {
-        sensitive: true,
-        timeoutMs: 16000,
-      });
-      if (Array.isArray(data.cards)) {
-        this.applyCardsPayload(data, {
-          selectCardId: data.card?.id || null,
-          markFresh: true,
+    if (this._cardSyncInflight && !pagoCardId) {
+      return this._cardSyncInflight;
+    }
+    const run = (async () => {
+      try {
+        const body = pagoCardId
+          ? { pago_card_id: pagoCardId }
+          : (background ? { background: true } : {});
+        const data = await Auth.api('POST', '/api/user/cards/sync', body, {
+          sensitive: true,
+          // Background ack is fast; foreground sync uses the raised Auth default (45s).
+          timeoutMs: background && !pagoCardId ? 20000 : 45000,
+          force: true,
+          skipDedupe: true,
         });
-      }
-      if (!silent && data.timed_out) {
-        this.toast(this.i18nText('pago_timeout', 'Card service timed out. Please try again.'), 'error');
-      } else if (!silent && data.message) this.toast(data.message, 'ok');
-      return data;
-    } catch (err) {
-      if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
-        if (!silent) this.openPinUnlockModal();
+        if (Array.isArray(data.cards)) {
+          this.applyCardsPayload(data, {
+            selectCardId: data.card?.id || null,
+            markFresh: true,
+          });
+        }
+        // Deferred/background sync: refresh local list shortly after Pago finishes.
+        if ((data.deferred || data.timed_out) && !pagoCardId) {
+          clearTimeout(this._cardSyncRefreshTimer);
+          this._cardSyncRefreshTimer = setTimeout(() => {
+            if (!Auth.isLoggedIn() || Auth.needsPinUnlock()) return;
+            this.loadAllCards({
+              preserveSelection: true,
+              silent: true,
+              forceRefresh: true,
+              reconcilePago: false,
+            }).catch(() => {});
+          }, 4000);
+        }
+        if (!silent && data.timed_out && !data.deferred) {
+          this.toast(this.i18nText('pago_timeout', 'Card service timed out. Please try again.'), 'error');
+        } else if (!silent && data.message && !data.deferred) {
+          this.toast(data.message, 'ok');
+        }
+        return data;
+      } catch (err) {
+        if (err.code === 'SENSITIVE_AUTH_REQUIRED') {
+          if (!silent) this.openPinUnlockModal();
+          return null;
+        }
+        console.warn('[Dashboard] pago sync failed:', err.message);
+        if (!silent) {
+          this.toast(this.cardTimeoutMessage(err) || err.message || 'Could not sync cards from Pago', 'error');
+        }
         return null;
       }
-      console.warn('[Dashboard] pago sync failed:', err.message);
-      if (!silent) {
-        this.toast(this.cardTimeoutMessage(err) || err.message || 'Could not sync cards from Pago', 'error');
-      }
-      return null;
+    })();
+    if (!pagoCardId) {
+      this._cardSyncInflight = run.finally(() => {
+        if (this._cardSyncInflight === run) this._cardSyncInflight = null;
+      });
+      return this._cardSyncInflight;
     }
+    return run;
   },
 
   quotePagoIssue(initialRaw) {
@@ -11716,10 +11756,9 @@ const Dashboard = {
       return;
     }
 
-    // Pull orphaned Pago cards (provider-created, missing locally) before listing.
-    if (reconcilePago || (!this.allCards.length && forceRefresh)) {
-      await this.syncPagoCardsFromProvider({ silent: true });
-    }
+    const shouldReconcile = Boolean(
+      reconcilePago || (!this.allCards.length && forceRefresh)
+    );
 
     // Never drop refreshes while a request is in flight — queue and replay
     if (this._cardsLoading) {
@@ -11733,7 +11772,7 @@ const Dashboard = {
         preserveSelection: queued.preserveSelection || preserveSelection,
         silent: queued.silent && silent,
         forceRefresh: queued.forceRefresh || forceRefresh,
-        reconcilePago: queued.reconcilePago || reconcilePago,
+        reconcilePago: queued.reconcilePago || reconcilePago || shouldReconcile,
       };
       return;
     }
@@ -11754,15 +11793,27 @@ const Dashboard = {
 
       let data;
       try {
-        // Local Turso list only — provider reconcile is a separate POST /cards/sync.
+        // Local Turso list only — never await Pago before paint (login 408 fix).
         data = await Auth.api('GET', '/api/user/cards', null, {
           sensitive: true,
-          timeoutMs: 10000,
+          timeoutMs: 20000,
+          force: Boolean(forceRefresh),
+          skipDedupe: Boolean(forceRefresh),
         });
       } catch (err) {
         // Back-compat: older servers returned 404 for empty card lists
         if (err.status === 404 && Array.isArray(err.response?.cards)) {
           data = { cards: err.response.cards, active_index: err.response.active_index || 0 };
+        } else if (err.code === 'REQUEST_TIMEOUT' || err.code === 'NETWORK_ERROR') {
+          // Prefer cache over a hard fail during login hydration.
+          if (this.applyCachedCardsIfAvailable()) {
+            console.warn('[Dashboard] cards GET timed out — using cache:', err.message);
+            if (shouldReconcile) {
+              this.syncPagoCardsFromProvider({ silent: true, background: true }).catch(() => {});
+            }
+            return;
+          }
+          throw err;
         } else {
           throw err;
         }
@@ -11813,6 +11864,10 @@ const Dashboard = {
           showOutput('viewCardOutput', { message: 'No cards yet — request a virtual card below.' });
         }
         if (this._scheduleCardsPoll) this._scheduleCardsPoll();
+        // Empty list: kick background Pago import without blocking hydration.
+        if (shouldReconcile) {
+          this.syncPagoCardsFromProvider({ silent: true, background: true }).catch(() => {});
+        }
         return;
       }
 
@@ -11834,6 +11889,11 @@ const Dashboard = {
 
       if (!silent) {
         showOutput('viewCardOutput', { cards: this.allCards.length, active: this.allCards[this.activeCardIndex] });
+      }
+
+      // Local list painted — reconcile with Pago in the background (non-blocking).
+      if (shouldReconcile) {
+        this.syncPagoCardsFromProvider({ silent: true, background: true }).catch(() => {});
       }
     } catch (err) {
       if (err.code === 'SENSITIVE_AUTH_REQUIRED') {

@@ -143,24 +143,28 @@ router.get('/cards', requireAuth, requireSensitive, async (req, res) => {
     const wantSync = String(req.query?.sync || req.query?.reconcile || '').trim() === '1'
       || String(req.query?.sync || '').toLowerCase() === 'true';
 
+    // Always return local Turso rows first — never block login paint on Pagocards.
     let payload = await getUserCardsPayload(req.user.id);
     let providerTimedOut = false;
-    // Local rows return immediately. Provider import runs only for ?sync=1
-    // so an empty list does not sit on the Pago timeout during dashboard paint.
+    let syncDeferred = false;
+    // Optional ?sync=1 uses a soft budget; leftover Pago work continues in background.
     if (wantSync) {
       try {
         const {
           syncPagoCardsForUser,
-          withCardApiTimeout,
+          withCardApiSoftBudget,
           CARD_SYNC_BUDGET_MS,
         } = require('../services/pagoCardService');
-        const synced = await withCardApiTimeout(
+        const synced = await withCardApiSoftBudget(
           syncPagoCardsForUser(req.user.id, {}),
-          CARD_SYNC_BUDGET_MS + 1500,
+          CARD_SYNC_BUDGET_MS,
           'Card fetch'
         );
         providerTimedOut = Boolean(synced?.timed_out);
-        payload = await getUserCardsPayload(req.user.id);
+        syncDeferred = Boolean(synced?.deferred);
+        if (!syncDeferred) {
+          payload = await getUserCardsPayload(req.user.id);
+        }
       } catch (err) {
         const { isCardTimeoutError } = require('../services/pagoCardService');
         if (isCardTimeoutError(err)) providerTimedOut = true;
@@ -175,6 +179,7 @@ router.get('/cards', requireAuth, requireSensitive, async (req, res) => {
       ...payload,
       card: payload.cards.length ? payload.cards[payload.active_index] : null,
       provider_timed_out: providerTimedOut,
+      sync_deferred: syncDeferred,
     });
   } catch (err) {
     console.error('[user/cards]', err);
@@ -639,26 +644,69 @@ router.post(
 router.post('/cards/sync', requireAuth, requireSensitive, async (req, res) => {
   try {
     setCardsNoStore(res);
+    const background = req.body?.background === true
+      || req.body?.async === true
+      || String(req.query?.background || '').trim() === '1';
     const {
       syncPagoCardsForUser,
-      withCardApiTimeout,
+      withCardApiSoftBudget,
       CARD_SYNC_BUDGET_MS,
     } = require('../services/pagoCardService');
-    const result = await withCardApiTimeout(syncPagoCardsForUser(req.user.id, {
-      pagoCardId: req.body?.pago_card_id || req.body?.card_id || null,
-    }), CARD_SYNC_BUDGET_MS + 1500, 'Card fetch');
-    const payload = await getUserCardsPayload(req.user.id);
-    const message = result.timed_out
-      ? 'Card sync timed out. Showing cards saved so far.'
-      : result.imported > 0
-        ? `Imported ${result.imported} card${result.imported === 1 ? '' : 's'} from Pago Card.`
-        : (result.updated > 0
-          ? 'Card details refreshed from Pago Card.'
-          : 'No new Pago cards to import.');
+
+    // Local list is always available immediately for the SPA.
+    let payload = await getUserCardsPayload(req.user.id);
+    const pagoCardId = req.body?.pago_card_id || req.body?.card_id || null;
+
+    // Pure background mode: acknowledge and reconcile without holding the HTTP request.
+    if (background && !pagoCardId) {
+      syncPagoCardsForUser(req.user.id, {})
+        .then((result) => {
+          if (Number(result?.imported) > 0 || Number(result?.updated) > 0) {
+            console.info(
+              `[user/cards/sync] background done user=${req.user.id} imported=${result.imported || 0} updated=${result.updated || 0}`
+            );
+          }
+        })
+        .catch((err) => {
+          console.warn('[user/cards/sync] background failed:', err.code || err.message);
+        });
+      return res.json({
+        success: true,
+        message: 'Card sync started in the background.',
+        timed_out: false,
+        deferred: true,
+        imported: 0,
+        updated: 0,
+        ...payload,
+        card: payload.cards.length ? payload.cards[payload.active_index] : null,
+      });
+    }
+
+    const result = await withCardApiSoftBudget(
+      syncPagoCardsForUser(req.user.id, { pagoCardId }),
+      // Explicit single-card import may need a bit longer; list sync stays short.
+      pagoCardId ? CARD_SYNC_BUDGET_MS + 4000 : CARD_SYNC_BUDGET_MS,
+      'Card sync'
+    );
+
+    if (!result?.deferred) {
+      payload = await getUserCardsPayload(req.user.id);
+    }
+
+    const message = result.deferred
+      ? 'Card sync is still running in the background. Showing saved cards.'
+      : result.timed_out
+        ? 'Card sync timed out. Showing cards saved so far.'
+        : result.imported > 0
+          ? `Imported ${result.imported} card${result.imported === 1 ? '' : 's'} from Pago Card.`
+          : (result.updated > 0
+            ? 'Card details refreshed from Pago Card.'
+            : 'No new Pago cards to import.');
     res.json({
       success: true,
       message,
       timed_out: Boolean(result.timed_out),
+      deferred: Boolean(result.deferred),
       imported: result.imported || 0,
       updated: result.updated || 0,
       ...payload,
@@ -666,7 +714,23 @@ router.post('/cards/sync', requireAuth, requireSensitive, async (req, res) => {
     });
   } catch (err) {
     console.error('[user/cards/sync]', err.code || err.message);
-    sendPagoError(res, err, 'Failed to sync Pago cards');
+    // Prefer local cards over a hard failure when the provider is slow/down.
+    try {
+      const payload = await getUserCardsPayload(req.user.id);
+      return res.status(200).json({
+        success: true,
+        message: 'Card sync unavailable. Showing saved cards.',
+        timed_out: true,
+        deferred: false,
+        imported: 0,
+        updated: 0,
+        provider_error: err.code || err.message,
+        ...payload,
+        card: payload.cards.length ? payload.cards[payload.active_index] : null,
+      });
+    } catch (_) {
+      sendPagoError(res, err, 'Failed to sync Pago cards');
+    }
   }
 });
 
