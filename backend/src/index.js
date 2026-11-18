@@ -31,9 +31,11 @@ const {
   createApiRateLimiter,
   createAuthRateLimiter,
   createKycRateLimiter,
+  createMoneyMutationRateLimiter,
   createPagoProxyRateLimiter,
   createSupabaseProxyRateLimiter,
 } = require('./middleware/security');
+const moneyMutationLimiter = createMoneyMutationRateLimiter();
 const { createIpBlocklistMiddleware } = require('./middleware/ipBlocklist');
 
 const app = express();
@@ -452,9 +454,9 @@ app.use('/api/config', require('./routes/config'));
 app.use('/api/client-errors', require('./routes/clientErrors'));
 app.use('/api/qr', require('./routes/qr'));
 app.use('/api/auth', createAuthRateLimiter(), authRoutes);
-app.use('/api/deposit', depositRoutes);
-app.use('/api/tron/orders', require('./routes/tronOrders'));
-app.use('/api/tron/wallet', require('./routes/tronWallet'));
+app.use('/api/deposit', moneyMutationLimiter, depositRoutes);
+app.use('/api/tron/orders', moneyMutationLimiter, require('./routes/tronOrders'));
+app.use('/api/tron/wallet', moneyMutationLimiter, require('./routes/tronWallet'));
 app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/sweep', require('./routes/sweep'));
 app.use('/api/admin', adminRoutes);
@@ -462,9 +464,9 @@ app.use('/api/user', userRoutes);
 app.use('/api/settings', require('./routes/publicSettings'));
 app.use('/api/support', supportRoutes);
 app.use('/api/kyc', createKycRateLimiter(), require('./routes/kyc'));
-app.use('/api/p2p', require('./routes/p2p'));
-app.use('/api/withdrawal', require('./routes/withdrawal'));
-app.use('/api/withdraw', require('./routes/withdraw'));
+app.use('/api/p2p', moneyMutationLimiter, require('./routes/p2p'));
+app.use('/api/withdrawal', moneyMutationLimiter, require('./routes/withdrawal'));
+app.use('/api/withdraw', moneyMutationLimiter, require('./routes/withdraw'));
 app.use('/api/sweep', require('./routes/sweep'));
 app.use('/api/cron', require('./routes/cron'));
 // Pagocards reverse proxy — forwards /api/pago/* to PAGO_PROXY_UPSTREAM_ORIGIN (default https://pagocards.com)

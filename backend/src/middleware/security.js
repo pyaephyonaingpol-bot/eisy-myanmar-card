@@ -150,6 +150,32 @@ function createCardApiRateLimiter() {
 }
 
 /**
+ * Financial mutation routes (withdraw / deposit submit / P2P / transfer / topup).
+ * Stricter than the broad /api bucket. Only POST/PUT/PATCH/DELETE count.
+ */
+function createMoneyMutationRateLimiter() {
+  return createSlidingWindowMiddleware({
+    name: 'money',
+    windowMs: envInt('RATE_LIMIT_MONEY_WINDOW_MS', 15 * 60 * 1000),
+    limit: envInt('RATE_LIMIT_MONEY_MAX', 40),
+    skip: (req) => {
+      if (skipOptionsOnly(req)) return true;
+      const method = String(req.method || '').toUpperCase();
+      return !['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+    },
+    keyGenerator: (req) => ipOrUserKey(req, 'money'),
+    handler: (req, res, result) => {
+      const retryAfterMs = Math.max(0, (result.reset || Date.now()) - Date.now());
+      return res.status(429).json({
+        error: 'Too many financial requests. Please try again later.',
+        code: 'MONEY_RATE_LIMITED',
+        retry_after_ms: retryAfterMs,
+      });
+    },
+  });
+}
+
+/**
  * Pagocards reverse proxy (/api/pago) — keyed by IP + optional proxy key fingerprint.
  * Protects the Droplet whitelist from volumetric abuse even with a valid access key.
  */
@@ -332,6 +358,7 @@ module.exports = {
   createKycRateLimiter,
   createSignupRateLimiter,
   createCardApiRateLimiter,
+  createMoneyMutationRateLimiter,
   createPagoProxyRateLimiter,
   createSupabaseProxyRateLimiter,
   createCardIssueRateLimiter,

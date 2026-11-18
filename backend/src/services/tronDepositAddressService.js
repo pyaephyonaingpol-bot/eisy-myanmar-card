@@ -233,11 +233,32 @@ async function ensureUserTronDepositAddress(userId, { syncSupabase = true } = {}
   };
 }
 
+function isProductionLikeEnv() {
+  return String(process.env.NODE_ENV || '').toLowerCase() === 'production'
+    || process.env.VERCEL === '1';
+}
+
+/**
+ * Production (and Vercel) must use unique HD custodial addresses only.
+ * Shared-gateway fallback is allowed in local/test so fixtures can run without a seed.
+ */
+function assertHdDepositAddressSource(source, { context = 'deposit' } = {}) {
+  if (String(source || '').trim() === 'hd') return;
+  if (!isProductionLikeEnv()) return;
+  const err = new Error(
+    `Deposit address must be an HD custodial address (${context}); shared gateway is disabled in production`
+  );
+  err.code = 'TRON_HD_ADDRESS_REQUIRED';
+  err.status = 503;
+  throw err;
+}
+
 /**
  * Resolve the TRC20 deposit address for a user.
- * Prefers HD; falls back to sharedGatewayFn() when HD is disabled/unavailable.
+ * Prefers HD; falls back to sharedGatewayFn() only outside production when HD is unavailable.
  */
 async function resolveUserTrc20DepositAddress(userId, sharedGatewayFn) {
+  let hdError = null;
   try {
     const assigned = await ensureUserTronDepositAddress(userId);
     if (assigned?.address) {
@@ -250,10 +271,22 @@ async function resolveUserTrc20DepositAddress(userId, sharedGatewayFn) {
     }
   } catch (err) {
     if (err.code === 'TRON_HD_NOT_CONFIGURED' || err.code === 'TRON_HD_MNEMONIC_INVALID') {
-      console.warn('[tron/hd] falling back to shared gateway:', err.message);
+      hdError = err;
+      console.warn('[tron/hd] HD address unavailable:', err.message);
     } else {
       throw err;
     }
+  }
+
+  if (isProductionLikeEnv()) {
+    const err = new Error(
+      hdError?.message
+        || 'HD deposit addresses are required in production (shared gateway disabled)'
+    );
+    err.code = 'TRON_HD_ADDRESS_REQUIRED';
+    err.status = 503;
+    err.cause = hdError || undefined;
+    throw err;
   }
 
   const shared = typeof sharedGatewayFn === 'function'
@@ -264,6 +297,7 @@ async function resolveUserTrc20DepositAddress(userId, sharedGatewayFn) {
     err.code = 'TRON_DEPOSIT_ADDRESS_MISSING';
     throw err;
   }
+  console.warn('[tron/hd] falling back to shared gateway (non-production only)');
   return { address: shared, source: 'shared', index: null, path: null };
 }
 
@@ -373,6 +407,8 @@ async function resyncHdDepositAddresses({
 module.exports = {
   ensureUserTronDepositAddress,
   resolveUserTrc20DepositAddress,
+  assertHdDepositAddressSource,
+  isProductionLikeEnv,
   syncTronDepositAddressToSupabase,
   resyncHdDepositAddresses,
 };

@@ -134,10 +134,12 @@ async function creditTronOrderWallet(order, txHash) {
     return { ok: false, reason: 'user_mismatch' };
   }
 
-  await assertTxHashAvailable(txHash, deposit.id);
+  const { normalizeTxHash } = require('./usdtBlockchainService');
+  const hash = normalizeTxHash(txHash);
+  await assertTxHashAvailable(hash, deposit.id);
 
   const result = await creditDepositAndVerify(deposit, {
-    txnId: txHash,
+    txnId: hash,
     createdBy: 'tron-indexer',
     adminNote: `TRON TRC20 auto-verified — order ${order.order_id}`,
   });
@@ -198,8 +200,13 @@ async function createTronOrder(userId, { amount_usdt, amount } = {}) {
 
   const sb = assertSupabaseConfigured();
   const resolvedAddress = await (async () => {
-    const { resolveUserTrc20DepositAddress } = require('./tronDepositAddressService');
-    return resolveUserTrc20DepositAddress(userId, getGatewayDepositAddress);
+    const {
+      resolveUserTrc20DepositAddress,
+      assertHdDepositAddressSource,
+    } = require('./tronDepositAddressService');
+    const resolved = await resolveUserTrc20DepositAddress(userId, getGatewayDepositAddress);
+    assertHdDepositAddressSource(resolved.source, { context: 'createTronOrder' });
+    return resolved;
   })();
   const depositAddress = resolvedAddress.address;
   const orderId = generateBusinessOrderId();
@@ -525,8 +532,9 @@ async function verifyPendingTronOrders() {
     for (const order of orders) {
       const orderCreatedMs = new Date(order.created_at).getTime();
       const orderAddress = normalizeTronAddress(order.deposit_address);
+      const { normalizeTxHash } = require('./usdtBlockchainService');
       const match = transfers.find((transfer) => {
-        const txId = String(transfer?.transaction_id || '').trim();
+        const txId = normalizeTxHash(transfer?.transaction_id || '');
         if (!txId || usedTransactionIds.has(txId)) return false;
 
         const toAddress = normalizeTronAddress(transfer?.to);
@@ -545,7 +553,7 @@ async function verifyPendingTronOrders() {
 
       if (!match) continue;
 
-      const txId = String(match.transaction_id);
+      const txId = normalizeTxHash(match.transaction_id);
       usedTransactionIds.add(txId);
 
       let creditResult;

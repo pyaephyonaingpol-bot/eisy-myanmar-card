@@ -6,10 +6,11 @@ const TransactionLog = require('../models/TransactionLog');
 const UsdtInternalTransfer = require('../models/UsdtInternalTransfer');
 const { formatUsdt } = require('./walletService');
 const { syncUserWalletById } = require('./supabaseSyncService');
-
-function roundUsdt(value) {
-  return Math.round((Number(value) || 0) * 100) / 100;
-}
+const {
+  roundUsdt,
+  assertUsdtAmount,
+  MAX_INTERNAL_TRANSFER_USDT,
+} = require('../lib/usdtAmount');
 
 function generateJournalId(prefix = 'USDT') {
   return `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
@@ -815,10 +816,15 @@ async function transferUsdtInternal(fromUserId, toUserId, amountUsdt, {
     throw new Error('Cannot transfer USDT to yourself');
   }
 
-  const amount = roundUsdt(amountUsdt);
-  const fee = roundUsdt(feeUsdt);
+  const amount = assertUsdtAmount(amountUsdt, {
+    min: 0.01,
+    max: MAX_INTERNAL_TRANSFER_USDT,
+    field: 'Transfer amount',
+  });
+  const fee = feeUsdt
+    ? assertUsdtAmount(feeUsdt, { min: 0, allowZero: true, field: 'Transfer fee' })
+    : 0;
   const totalDebit = roundUsdt(amount + fee);
-  if (amount <= 0) throw new Error('Transfer amount must be positive');
 
   const toUser = await User.findById(toUserId);
   if (!toUser) throw new Error('Recipient not found');

@@ -491,16 +491,30 @@ const {
   createCardIssueRateLimiter,
   createCardIssueIpRateLimiter,
   createCardApiRateLimiter,
+  createMoneyMutationRateLimiter,
 } = require('../middleware/security');
 const cardIssueLimiter = createCardIssueRateLimiter();
 const cardIssueIpLimiter = createCardIssueIpRateLimiter();
 const cardApiLimiter = createCardApiRateLimiter();
+const moneyMutationLimiter = createMoneyMutationRateLimiter();
 
-/** Sliding-window guard on every /cards* path (user id or IP). */
+/**
+ * Sliding-window guard on /cards* and /card* (includes legacy /card/reload).
+ * Money mutations under usdt-wallet also get the dedicated money limiter.
+ */
 router.use((req, res, next) => {
   const p = String(req.path || '');
-  if (!p.startsWith('/cards')) return next();
-  return cardApiLimiter(req, res, next);
+  if (p.startsWith('/usdt-wallet')) {
+    return moneyMutationLimiter(req, res, next);
+  }
+  if (!(p.startsWith('/cards') || p.startsWith('/card'))) return next();
+  // Card money paths: apply both card-api and money limiters.
+  return cardApiLimiter(req, res, (err) => {
+    if (err) return next(err);
+    const method = String(req.method || '').toUpperCase();
+    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return next();
+    return moneyMutationLimiter(req, res, next);
+  });
 });
 
 /**

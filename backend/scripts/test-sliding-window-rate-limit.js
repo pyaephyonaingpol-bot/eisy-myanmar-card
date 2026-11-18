@@ -100,27 +100,34 @@ async function testWiring() {
   const security = fs.readFileSync(path.join(root, 'src/middleware/security.js'), 'utf8');
   assert.ok(security.includes('createSlidingWindowMiddleware'), 'security uses sliding window');
   assert.ok(security.includes('createCardApiRateLimiter'), 'card API limiter exported');
+  assert.ok(security.includes('createMoneyMutationRateLimiter'), 'money limiter exported');
   assert.ok(security.includes('createPagoProxyRateLimiter'), 'pago proxy limiter exported');
   assert.ok(security.includes('createSupabaseProxyRateLimiter'), 'supabase proxy limiter exported');
   assert.ok(security.includes('CARD_API_RATE_LIMITED'), 'card API 429 code');
+  assert.ok(security.includes('MONEY_RATE_LIMITED'), 'money 429 code');
   assert.ok(security.includes('PAGO_PROXY_RATE_LIMITED'), 'pago proxy 429 code');
 
   const indexSrc = fs.readFileSync(path.join(root, 'src/index.js'), 'utf8');
   assert.ok(indexSrc.includes('createPagoProxyRateLimiter()'), 'pago proxy limited in index');
   assert.ok(indexSrc.includes('createSupabaseProxyRateLimiter()'), 'supabase proxy limited in index');
+  assert.ok(indexSrc.includes('moneyMutationLimiter'), 'money limiter wired in index');
 
   const userSrc = fs.readFileSync(path.join(root, 'src/routes/user.js'), 'utf8');
   assert.ok(userSrc.includes('createCardApiRateLimiter'), 'user routes import card API limiter');
   assert.ok(userSrc.includes('cardApiLimiter'), 'user routes apply card API limiter');
+  assert.ok(userSrc.includes("p.startsWith('/card')"), 'legacy /card/reload limited');
+  assert.ok(userSrc.includes('createMoneyMutationRateLimiter'), 'user money limiter');
 
   const {
     createApiRateLimiter,
     createCardApiRateLimiter,
+    createMoneyMutationRateLimiter,
     createPagoProxyRateLimiter,
     createSupabaseProxyRateLimiter,
   } = require('../src/middleware/security');
   assert.strictEqual(typeof createApiRateLimiter(), 'function');
   assert.strictEqual(typeof createCardApiRateLimiter(), 'function');
+  assert.strictEqual(typeof createMoneyMutationRateLimiter(), 'function');
   assert.strictEqual(typeof createPagoProxyRateLimiter(), 'function');
   assert.strictEqual(typeof createSupabaseProxyRateLimiter(), 'function');
 
