@@ -61,6 +61,10 @@ const Dashboard = {
       .finally(() => {
         if (this._inflight[key] === pending) delete this._inflight[key];
       });
+    // Prevent unhandledrejection when callers fire-and-forget (still rejects for await).
+    pending.catch((err) => {
+      console.warn(`[Dashboard] inflight:${key}`, err?.code || err?.message || err);
+    });
     pending._generation = generation;
     this._inflight[key] = pending;
     return pending;
@@ -2476,7 +2480,7 @@ const Dashboard = {
       try {
         const data = await (window.EisyServices?.usdtWallet?.getOverview
           ? window.EisyServices.usdtWallet.getOverview()
-          : Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true, timeoutMs: 25000 }));
+          : Auth.api('GET', '/api/user/usdt-wallet', null, { sensitive: true, timeoutMs: 45000 }));
         this._usdtWalletCache = data;
         this.walletUsdt = data.balance_usdt ?? data.available_usdt;
         this.walletUsdtLocked = data.balance_usdt_locked ?? data.locked_usdt ?? 0;
@@ -9421,14 +9425,20 @@ const Dashboard = {
   },
 
   async _fetchWalletPayload(opts = {}) {
-    const timeoutMs = opts.fast ? 15000 : 25000;
+    // Prefer ?fast=1 for soft loads. force/full runs HD deposit scan with a longer client budget.
+    const useFast = opts.full === true
+      ? false
+      : (opts.fast === true || (opts.fast == null && !opts.force));
+    const timeoutMs = Number.isFinite(opts.timeoutMs)
+      ? opts.timeoutMs
+      : (useFast ? 20000 : 45000);
     const maxAttempts = Math.max(1, Math.min(4, Number(opts.retries) || 3));
     let lastErr = null;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
         return await Auth.api(
           'GET',
-          '/api/user/wallet' + (opts.fast ? '?fast=1' : ''),
+          '/api/user/wallet' + (useFast ? '?fast=1' : ''),
           null,
           {
             sensitive: true,
@@ -9436,10 +9446,12 @@ const Dashboard = {
             // Bypass GET dedupe on retries so a hung first attempt cannot block recovery.
             force: Boolean(opts.force) || attempt > 1,
             skipDedupe: attempt > 1,
+            signal: opts.signal,
           }
         );
       } catch (err) {
         lastErr = err;
+        if (err?.code === 'REQUEST_ABORTED') break;
         const retryable = err?.code === 'REQUEST_TIMEOUT' || err?.code === 'NETWORK_ERROR';
         if (!retryable || attempt >= maxAttempts) break;
         const waitMs = Math.min(2500, 400 * (2 ** (attempt - 1)));
@@ -9455,6 +9467,10 @@ const Dashboard = {
   async loadWallet(opts = {}) {
     if (!Auth.isLoggedIn()) return;
     const force = Boolean(opts.force);
+    // Soft loads default to fast Turso balances; force+full does HD scan.
+    if (opts.fast == null && opts.full == null && !force) {
+      opts = { ...opts, fast: true };
+    }
     if (!force && this._isFresh('wallet')) {
       if (this.renderWalletBalancesFromCache()) {
         this.updatePagoIssueSummary();
