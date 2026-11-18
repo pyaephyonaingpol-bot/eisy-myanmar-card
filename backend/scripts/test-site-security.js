@@ -161,6 +161,9 @@ async function testMiddleware() {
     createApiRateLimiter,
     createAuthRateLimiter,
     createKycRateLimiter,
+    createCardApiRateLimiter,
+    createPagoProxyRateLimiter,
+    createSupabaseProxyRateLimiter,
     isWebhookPath,
   } = require('../src/middleware/security');
 
@@ -168,8 +171,17 @@ async function testMiddleware() {
   assert.strictEqual(typeof createApiRateLimiter(), 'function');
   assert.strictEqual(typeof createAuthRateLimiter(), 'function');
   assert.strictEqual(typeof createKycRateLimiter(), 'function');
+  assert.strictEqual(typeof createCardApiRateLimiter(), 'function');
+  assert.strictEqual(typeof createPagoProxyRateLimiter(), 'function');
+  assert.strictEqual(typeof createSupabaseProxyRateLimiter(), 'function');
   assert.ok(isWebhookPath({ originalUrl: '/api/webhook/stripe' }));
   assert.ok(!isWebhookPath({ originalUrl: '/api/auth/login' }));
+
+  const secSrc = require('fs').readFileSync(
+    require('path').join(__dirname, '../src/middleware/security.js'),
+    'utf8'
+  );
+  assert.ok(secSrc.includes('createSlidingWindowMiddleware'), 'API limiters use sliding window');
   console.log('ok');
 }
 

@@ -1,12 +1,17 @@
 /**
  * Express site security: Helmet headers + rate limiting.
  * Aligned with common UK/fintech API hardening practices.
+ *
+ * Broad / auth / KYC / proxy / card-API limiters use a sliding-window
+ * algorithm (Upstash Redis when configured, otherwise in-memory).
+ * Card-issue abuse limiters keep express-rate-limit + strike handlers.
  */
 
 'use strict';
 
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { createSlidingWindowMiddleware } = require('./slidingWindowRateLimit');
 
 function envInt(name, fallback) {
   const raw = process.env[name];
@@ -24,6 +29,10 @@ function isWebhookPath(req) {
 function shouldSkipRateLimit(req) {
   if (String(req.method || '').toUpperCase() === 'OPTIONS') return true;
   return isWebhookPath(req);
+}
+
+function skipOptionsOnly(req) {
+  return String(req.method || '').toUpperCase() === 'OPTIONS';
 }
 
 /**
@@ -50,58 +59,141 @@ function createHelmetMiddleware() {
   });
 }
 
-function rateLimitHandler(_req, res) {
+function rateLimitHandler(_req, res, result = {}) {
+  const retryAfterMs = Math.max(0, (result.reset || Date.now()) - Date.now());
   res.status(429).json({
     error: 'Too many requests. Please try again later.',
     code: 'RATE_LIMITED',
+    retry_after_ms: retryAfterMs,
   });
 }
 
-/** Broad API protection against volumetric abuse. */
+function ipOrUserKey(req, prefix) {
+  const uid = req.user?.id != null ? String(req.user.id) : '';
+  if (uid) return `${prefix}:user:${uid}`;
+  try {
+    const { getRequestIp } = require('./ipBlocklist');
+    return `${prefix}:ip:${getRequestIp(req) || req.ip || 'unknown'}`;
+  } catch {
+    return `${prefix}:ip:${req.ip || 'unknown'}`;
+  }
+}
+
+/** Broad API protection against volumetric abuse (sliding window). */
 function createApiRateLimiter() {
-  return rateLimit({
+  return createSlidingWindowMiddleware({
+    name: 'api',
     windowMs: envInt('RATE_LIMIT_WINDOW_MS', 15 * 60 * 1000),
-    max: envInt('RATE_LIMIT_API_MAX', 300),
-    standardHeaders: true,
-    legacyHeaders: false,
-    handler: rateLimitHandler,
+    limit: envInt('RATE_LIMIT_API_MAX', 300),
     skip: shouldSkipRateLimit,
+    keyGenerator: (req) => ipOrUserKey(req, 'api'),
+    handler: rateLimitHandler,
   });
 }
 
 /** Stricter limits on auth / OTP / PIN (brute-force resistance). */
 function createAuthRateLimiter() {
-  return rateLimit({
+  return createSlidingWindowMiddleware({
+    name: 'auth',
     windowMs: envInt('RATE_LIMIT_AUTH_WINDOW_MS', 15 * 60 * 1000),
-    max: envInt('RATE_LIMIT_AUTH_MAX', 25),
-    standardHeaders: true,
-    legacyHeaders: false,
+    limit: envInt('RATE_LIMIT_AUTH_MAX', 25),
+    skip: skipOptionsOnly,
+    keyGenerator: (req) => ipOrUserKey(req, 'auth'),
     handler: rateLimitHandler,
-    skip: (req) => String(req.method || '').toUpperCase() === 'OPTIONS',
   });
 }
 
 /** KYC upload / submit — expensive + sensitive. */
 function createKycRateLimiter() {
-  return rateLimit({
+  return createSlidingWindowMiddleware({
+    name: 'kyc',
     windowMs: envInt('RATE_LIMIT_KYC_WINDOW_MS', 60 * 60 * 1000),
-    max: envInt('RATE_LIMIT_KYC_MAX', 20),
-    standardHeaders: true,
-    legacyHeaders: false,
+    limit: envInt('RATE_LIMIT_KYC_MAX', 20),
+    skip: skipOptionsOnly,
+    keyGenerator: (req) => ipOrUserKey(req, 'kyc'),
     handler: rateLimitHandler,
-    skip: (req) => String(req.method || '').toUpperCase() === 'OPTIONS',
   });
 }
 
 /** Signup / OTP send — tighter than general auth to stop temp-mail spam. */
 function createSignupRateLimiter() {
-  return rateLimit({
+  return createSlidingWindowMiddleware({
+    name: 'signup',
     windowMs: envInt('RATE_LIMIT_SIGNUP_WINDOW_MS', 60 * 60 * 1000),
-    max: envInt('RATE_LIMIT_SIGNUP_MAX', 8),
-    standardHeaders: true,
-    legacyHeaders: false,
+    limit: envInt('RATE_LIMIT_SIGNUP_MAX', 8),
+    skip: skipOptionsOnly,
+    keyGenerator: (req) => ipOrUserKey(req, 'signup'),
     handler: rateLimitHandler,
-    skip: (req) => String(req.method || '').toUpperCase() === 'OPTIONS',
+  });
+}
+
+/**
+ * User card API paths that hit Pagocards (detail / tx / 3DS / topup / sync).
+ * Separate from card-issue abuse limits — stops spam refresh / proxy burn.
+ */
+function createCardApiRateLimiter() {
+  return createSlidingWindowMiddleware({
+    name: 'card-api',
+    windowMs: envInt('RATE_LIMIT_CARD_API_WINDOW_MS', 60 * 1000),
+    limit: envInt('RATE_LIMIT_CARD_API_MAX', 60),
+    skip: skipOptionsOnly,
+    keyGenerator: (req) => ipOrUserKey(req, 'card-api'),
+    handler: (req, res, result) => {
+      const retryAfterMs = Math.max(0, (result.reset || Date.now()) - Date.now());
+      return res.status(429).json({
+        error: 'Too many card API requests. Please slow down.',
+        code: 'CARD_API_RATE_LIMITED',
+        retry_after_ms: retryAfterMs,
+      });
+    },
+  });
+}
+
+/**
+ * Pagocards reverse proxy (/api/pago) — keyed by IP + optional proxy key fingerprint.
+ * Protects the Droplet whitelist from volumetric abuse even with a valid access key.
+ */
+function createPagoProxyRateLimiter() {
+  return createSlidingWindowMiddleware({
+    name: 'pago-proxy',
+    windowMs: envInt('RATE_LIMIT_PAGO_PROXY_WINDOW_MS', 60 * 1000),
+    limit: envInt('RATE_LIMIT_PAGO_PROXY_MAX', 120),
+    skip: skipOptionsOnly,
+    keyGenerator: (req) => {
+      const { getRequestIp } = require('./ipBlocklist');
+      const ip = getRequestIp(req) || req.ip || 'unknown';
+      const keyHdr = String(
+        req.headers['x-eisy-pago-proxy-key']
+          || req.headers['x-pago-proxy-key']
+          || ''
+      ).trim().slice(0, 24);
+      return keyHdr ? `pago-proxy:${ip}:${keyHdr}` : `pago-proxy:${ip}`;
+    },
+    handler: (req, res, result) => {
+      const retryAfterMs = Math.max(0, (result.reset || Date.now()) - Date.now());
+      return res.status(429).json({
+        error: 'Too many Pagocards proxy requests. Please try again later.',
+        code: 'PAGO_PROXY_RATE_LIMITED',
+        retry_after_ms: retryAfterMs,
+      });
+    },
+  });
+}
+
+/**
+ * Supabase same-origin browser proxy (/supabase) — IP sliding window.
+ */
+function createSupabaseProxyRateLimiter() {
+  return createSlidingWindowMiddleware({
+    name: 'supabase-proxy',
+    windowMs: envInt('RATE_LIMIT_SUPABASE_PROXY_WINDOW_MS', 60 * 1000),
+    limit: envInt('RATE_LIMIT_SUPABASE_PROXY_MAX', 200),
+    skip: skipOptionsOnly,
+    keyGenerator: (req) => {
+      const { getRequestIp } = require('./ipBlocklist');
+      return `supabase-proxy:${getRequestIp(req) || req.ip || 'unknown'}`;
+    },
+    handler: rateLimitHandler,
   });
 }
 
@@ -164,7 +256,7 @@ function createCardIssueRateLimiter() {
       return `card-issue:ip:${getRequestIp(req) || 'unknown'}`;
     },
     validate: { keyGeneratorIpFallback: false },
-    skip: (req) => String(req.method || '').toUpperCase() === 'OPTIONS',
+    skip: skipOptionsOnly,
   });
 }
 
@@ -229,7 +321,7 @@ function createCardIssueIpRateLimiter() {
     },
     keyGenerator: (req) => `card-issue-ip:${getRequestIp(req) || 'unknown'}`,
     validate: { keyGeneratorIpFallback: false },
-    skip: (req) => String(req.method || '').toUpperCase() === 'OPTIONS',
+    skip: skipOptionsOnly,
   });
 }
 
@@ -239,6 +331,9 @@ module.exports = {
   createAuthRateLimiter,
   createKycRateLimiter,
   createSignupRateLimiter,
+  createCardApiRateLimiter,
+  createPagoProxyRateLimiter,
+  createSupabaseProxyRateLimiter,
   createCardIssueRateLimiter,
   createCardIssueIpRateLimiter,
   isWebhookPath,
