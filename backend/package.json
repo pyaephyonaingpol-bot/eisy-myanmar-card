@@ -106,6 +106,8 @@
     "@scure/bip32": "^1.7.0",
     "@scure/bip39": "^1.6.0",
     "@supabase/supabase-js": "^2.112.1",
+    "@upstash/ratelimit": "^2.2.1",
+    "@upstash/redis": "^1.41.0",
     "bcryptjs": "^2.4.3",
     "browser-image-compression": "^2.0.2",
     "compression": "^1.8.0",

@@ -475,9 +475,18 @@ function sendPagoError(res, err, fallback) {
 const {
   createCardIssueRateLimiter,
   createCardIssueIpRateLimiter,
+  createCardApiRateLimiter,
 } = require('../middleware/security');
 const cardIssueLimiter = createCardIssueRateLimiter();
 const cardIssueIpLimiter = createCardIssueIpRateLimiter();
+const cardApiLimiter = createCardApiRateLimiter();
+
+/** Sliding-window guard on every /cards* path (user id or IP). */
+router.use((req, res, next) => {
+  const p = String(req.path || '');
+  if (!p.startsWith('/cards')) return next();
+  return cardApiLimiter(req, res, next);
+});
 
 /**
  * Step 1 of human confirm: issue a short-lived confirm_token after PIN unlock.

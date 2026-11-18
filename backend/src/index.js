@@ -19,6 +19,8 @@ const {
   createApiRateLimiter,
   createAuthRateLimiter,
   createKycRateLimiter,
+  createPagoProxyRateLimiter,
+  createSupabaseProxyRateLimiter,
 } = require('./middleware/security');
 const { createIpBlocklistMiddleware } = require('./middleware/ipBlocklist');
 
@@ -450,10 +452,11 @@ app.use('/api/withdraw', require('./routes/withdraw'));
 app.use('/api/sweep', require('./routes/sweep'));
 app.use('/api/cron', require('./routes/cron'));
 // Pagocards reverse proxy — forwards /api/pago/* to PAGO_PROXY_UPSTREAM_ORIGIN (default https://pagocards.com)
-  app.use('/api/pago', require('./routes/pagocardsProxy'));
+  // Sliding-window rate limit (IP + proxy-key fingerprint) before expensive upstream fetches.
+  app.use('/api/pago', createPagoProxyRateLimiter(), require('./routes/pagocardsProxy'));
 
   // Supabase same-origin proxy — /supabase/* → NEXT_PUBLIC_SUPABASE_URL (Google OAuth stays on eisymyanmar.com)
-  app.use('/supabase', require('./routes/supabaseProxy'));
+  app.use('/supabase', createSupabaseProxyRateLimiter(), require('./routes/supabaseProxy'));
 
 app.use((req, res) => {
   if (req.path.startsWith('/api')) {
