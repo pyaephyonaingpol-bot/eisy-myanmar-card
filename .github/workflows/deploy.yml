@@ -1,13 +1,14 @@
-# SSH deploy to a DigitalOcean Droplet on every push to main.
+# SSH deploy to a DigitalOcean Droplet whenever code lands on main
+# (push or merge). Pulls latest code, installs deps, builds, restarts PM2.
 #
-# Required GitHub repository secrets:
+# Required GitHub repository secrets (Settings → Secrets and variables → Actions):
 #   SSH_HOST          — Droplet IP or hostname
 #   SSH_USER          — SSH user (e.g. root or deploy)
 #   SSH_PRIVATE_KEY   — Private key (PEM) authorized on the Droplet
 #
-# Optional secrets:
-#   DEPLOY_PATH       — App directory on the server (default: ~/eisy-myanmar-card)
-#   PM2_APP_NAME      — PM2 process name (default: eisy-backend)
+# Optional:
+#   DEPLOY_PATH       — App directory on the Droplet
+#                       (default: $HOME/eisy-myanmar-card)
 
 name: Deploy to DigitalOcean
 
@@ -15,6 +16,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 concurrency:
   group: digitalocean-deploy-main
@@ -22,7 +24,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: SSH deploy (git pull, build, PM2)
+    name: SSH deploy (git pull, build, pm2 restart all)
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -35,6 +37,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script_stop: true
+          command_timeout: 20m
           script: |
             set -euo pipefail
 
@@ -43,45 +46,36 @@ jobs:
               APP_DIR="$HOME/eisy-myanmar-card"
             fi
 
-            PM2_APP_NAME="${{ secrets.PM2_APP_NAME }}"
-            if [ -z "${PM2_APP_NAME}" ]; then
-              PM2_APP_NAME="eisy-backend"
-            fi
-
             echo "==> Deploying into ${APP_DIR}"
-            mkdir -p "${APP_DIR}"
+            if [ ! -d "${APP_DIR}" ]; then
+              echo "ERROR: ${APP_DIR} does not exist. Clone the repo on the Droplet first:"
+              echo "  git clone <repo-url> ${APP_DIR}"
+              exit 1
+            fi
             cd "${APP_DIR}"
 
             if [ ! -d .git ]; then
-              echo "ERROR: ${APP_DIR} is not a git repository. Clone the repo on the Droplet first."
+              echo "ERROR: ${APP_DIR} is not a git repository."
               exit 1
             fi
 
-            echo "==> Updating code from origin/main"
+            echo "==> Pulling latest code from origin/main"
+            git fetch origin main
             git checkout main
-            git pull origin main
+            git pull --ff-only origin main
 
             echo "==> Installing root dependencies"
             npm install
 
-            echo "==> Building (portal HTML, public assets)"
+            echo "==> Building project (portal HTML, public assets)"
             npm run build
 
             echo "==> Installing backend dependencies"
             npm install --prefix backend
 
-            echo "==> Restarting PM2: ${PM2_APP_NAME}"
-            if pm2 describe "${PM2_APP_NAME}" >/dev/null 2>&1; then
-              pm2 restart "${PM2_APP_NAME}" --update-env
-            else
-              cd backend
-              if [ -f server.js ]; then
-                pm2 start server.js --name "${PM2_APP_NAME}"
-              else
-                pm2 start src/index.js --name "${PM2_APP_NAME}"
-              fi
-            fi
-
+            echo "==> Restarting all PM2 processes"
+            pm2 restart all
             pm2 save
-            pm2 status "${PM2_APP_NAME}"
+            pm2 status
+
             echo "==> Deploy complete"
