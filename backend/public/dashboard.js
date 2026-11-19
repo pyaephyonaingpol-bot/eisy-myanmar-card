@@ -9754,8 +9754,11 @@ const Dashboard = {
       const path = `/api/user/cards/${cardId}/3ds${refresh ? '?refresh=1' : ''}`;
       const data = await Auth.api('GET', path, null, {
         sensitive: true,
-        // Local store reads stay snappy; provider refresh gets a larger budget.
-        timeoutMs: refresh ? 18000 : 6000,
+        // Local Turso reads need headroom under load; provider refresh can hit
+        // two Pagocards GETs (≈12s each, parallel) plus DB writes.
+        timeoutMs: refresh ? 45000 : 20000,
+        // Background poll / silent open must not Telegram-storm on slow paths.
+        suppressErrorReport: silent,
       });
       if (this._pago3dsRequestId !== requestId) return data;
       const events = Array.isArray(data.events) ? data.events : [];

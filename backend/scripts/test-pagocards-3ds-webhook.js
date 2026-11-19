@@ -52,6 +52,8 @@ const pollBody = dash.slice(pollStart, pollEnd);
 assert.ok(pollBody.includes('PAGO_3DS_PROVIDER_EVERY') || pollBody.includes('providerEvery'), 'background poll may periodically scan Pago');
 assert.ok(pollBody.includes('_pago3dsPollUntil'), 'background poll stops after a time limit');
 assert.ok(dash.includes('PAGO_3DS_POLL_MS: 5000'), '3DS poll is fast enough for live checkout');
+assert.ok(dash.includes('timeoutMs: refresh ? 45000 : 20000'), '3DS client timeouts have Turso/Pago headroom');
+assert.ok(dash.includes('suppressErrorReport: silent'), 'silent 3DS polls suppress error reports');
 const openLoad = dash.slice(dash.indexOf('showPagoCardDetail(card)'), dash.indexOf('panel.classList.remove(\'hidden\')'));
 assert.ok(openLoad.includes('refresh: false'), 'opening a card starts with a local store read');
 assert.ok(!openLoad.includes('loadPagoCardTransactions'), 'opening a card does not fetch transaction history');

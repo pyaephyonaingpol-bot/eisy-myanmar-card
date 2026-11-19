@@ -43,11 +43,25 @@
       || p.indexOf('/api/config/monitoring') !== -1;
   }
 
+  function isExpectedSoftTimeout(payload) {
+    const code = String(payload?.code || '');
+    if (code !== 'REQUEST_TIMEOUT' && code !== 'REQUEST_ABORTED' && code !== 'NETWORK_ERROR') {
+      return false;
+    }
+    const path = String(payload?.path || '');
+    // Background 3DS polling / mark-seen — expected under Turso/Pago latency.
+    if (/\/api\/user\/cards\/[^/]+\/3ds/.test(path)) return true;
+    if (/\/api\/user\/cards\/3ds\//.test(path)) return true;
+    return false;
+  }
+
   function shouldSkipServerIngest(payload) {
     if (!payload) return true;
     if (isCascadePath(payload.path)) return true;
     if (payload.code === 'BOOTSTRAP_FAILED') return true;
     if (/bootstrap failed/i.test(String(payload.message || ''))) return true;
+    if (payload.suppressErrorReport) return true;
+    if (isExpectedSoftTimeout(payload)) return true;
     return false;
   }
 
@@ -78,9 +92,10 @@
       message: String(e.message || extra?.message || 'Client error').slice(0, 400),
       code: e.code || extra?.code || null,
       status: e.status || extra?.status || null,
-      path: extra?.path || null,
-      method: extra?.method || null,
+      path: extra?.path || e.path || null,
+      method: extra?.method || e.method || null,
       source: extra?.source || 'client',
+      suppressErrorReport: Boolean(e.suppressErrorReport || extra?.suppressErrorReport),
       stack: String(e.stack || '').split('\n').slice(0, 6).join('\n').slice(0, 1500),
       href: String(global.location?.href || '').slice(0, 300),
       userAgent: String(global.navigator?.userAgent || '').slice(0, 200),
@@ -126,9 +141,25 @@
     global.addEventListener('unhandledrejection', (event) => {
       const reason = event?.reason;
       const err = reason instanceof Error ? reason : new Error(String(reason || 'Unhandled rejection'));
+      const code = String(err.code || '');
+      // Auth.api already soft-handles + may report timeouts; do not double-alert.
+      if (
+        code === 'REQUEST_TIMEOUT'
+        || code === 'REQUEST_ABORTED'
+        || code === 'NETWORK_ERROR'
+        || err.suppressErrorReport
+        || isExpectedSoftTimeout({ code, path: err.path })
+      ) {
+        try { event?.preventDefault?.(); } catch (_) { /* ignore */ }
+        return;
+      }
       captureClientError(err, {
         source: 'unhandledrejection',
-        code: 'UNHANDLED_REJECTION',
+        code: code || 'UNHANDLED_REJECTION',
+        path: err.path || null,
+        method: err.method || null,
+        status: err.status || null,
+        suppressErrorReport: Boolean(err.suppressErrorReport),
       });
     });
   }
@@ -138,34 +169,41 @@
     if (!Auth || typeof Auth.api !== 'function' || Auth.__eisyErrorMonitorPatched) return;
     Auth.__eisyErrorMonitorPatched = true;
     const original = Auth.api.bind(Auth);
-    Auth.api = async function monitoredApi(method, path, body, opts) {
-      try {
-        return await original(method, path, body, opts);
-      } catch (err) {
-        const status = Number(err?.status || 0);
-        const code = String(err?.code || '');
-        const apiPath = String(path || '').slice(0, 200);
-        // Never ingest failures of the ingest/monitoring endpoints themselves.
-        if (isCascadePath(apiPath) || code === 'BOOTSTRAP_FAILED') {
+    Auth.api = function monitoredApi(method, path, body, opts) {
+      const run = (async () => {
+        try {
+          return await original(method, path, body, opts);
+        } catch (err) {
+          const status = Number(err?.status || 0);
+          const code = String(err?.code || '');
+          const apiPath = String(path || err?.path || '').slice(0, 200);
+          // Never ingest failures of the ingest/monitoring endpoints themselves.
+          if (isCascadePath(apiPath) || code === 'BOOTSTRAP_FAILED' || err?.suppressErrorReport) {
+            throw err;
+          }
+          if (
+            code === 'REQUEST_TIMEOUT'
+            || code === 'NETWORK_ERROR'
+            || status >= 500
+            || status === 408
+            || status === 503
+          ) {
+            captureClientError(err, {
+              source: 'auth.api',
+              method: String(method || 'GET').toUpperCase(),
+              path: apiPath,
+              status,
+              code,
+              suppressErrorReport: Boolean(err?.suppressErrorReport || opts?.suppressErrorReport),
+            });
+          }
           throw err;
         }
-        if (
-          code === 'REQUEST_TIMEOUT'
-          || code === 'NETWORK_ERROR'
-          || status >= 500
-          || status === 408
-          || status === 503
-        ) {
-          captureClientError(err, {
-            source: 'auth.api',
-            method: String(method || 'GET').toUpperCase(),
-            path: apiPath,
-            status,
-            code,
-          });
-        }
-        throw err;
-      }
+      })();
+      // Soft-handle so fire-and-forget callers do not trigger unhandledrejection
+      // after this wrapper rethrows (Auth.api already soft-handles its inner run).
+      run.catch(() => {});
+      return run;
     };
   }
 

@@ -26,6 +26,7 @@ assert.ok(auth.includes('_normalizeFetchError'), 'normalized abort/timeout error
 assert.ok(auth.includes("code = 'REQUEST_ABORTED'"), 'caller abort distinct from timeout');
 assert.ok(auth.includes('opts.signal'), 'external AbortSignal supported');
 assert.ok(auth.includes('run.catch(() => {})'), 'soft-handle avoids unhandledrejection');
+assert.ok(auth.includes('suppressErrorReport'), 'Auth.api can suppress error reports');
 assert.ok(/async apiForm[\s\S]*AbortController/.test(auth), 'apiForm uses AbortController');
 assert.ok(!/:\s*25000\s*;/.test(auth.split('DEFAULT_API_TIMEOUT_MS')[0]), 'old 25s default removed from timeout path');
 console.log('ok');
