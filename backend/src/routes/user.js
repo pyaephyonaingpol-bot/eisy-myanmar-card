@@ -1015,9 +1015,12 @@ router.get('/cards/:id/3ds', requireAuth, requireSensitive, async (req, res) => 
     if (!Number.isFinite(cardId) || cardId <= 0) {
       return res.status(400).json({ error: 'Invalid card id', code: 'INVALID_CARD_ID' });
     }
-    const payload = await getUserCardsPayload(req.user.id);
-    const card = payload.cards.find((item) => Number(item.id) === cardId);
-    if (!card) return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
+    // Single-row ownership check — avoid listing every cards_v2 row on each poll.
+    const row = await Card.findById(cardId);
+    if (!row || Number(row.user_id) !== Number(req.user.id)) {
+      return res.status(404).json({ error: 'Card not found', code: 'CARD_NOT_FOUND' });
+    }
+    const card = mapCardForClient(row);
 
     const wantsRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
     const {
@@ -1027,11 +1030,37 @@ router.get('/cards/:id/3ds', requireAuth, requireSensitive, async (req, res) => 
 
     let provider = null;
     if (wantsRefresh) {
-      provider = await refreshCard3dsFromProvider({
-        userId: req.user.id,
-        localCardId: cardId,
-        pagoCardId: card.pago_card_id || null,
-      });
+      // Cap Pagocards pull so Turso list still returns before SPA client timeout.
+      const refreshBudgetMs = Math.max(
+        3000,
+        parseInt(process.env.PAGO_3DS_REFRESH_BUDGET_MS || '12000', 10) || 12000
+      );
+      try {
+        provider = await Promise.race([
+          refreshCard3dsFromProvider({
+            userId: req.user.id,
+            localCardId: cardId,
+            pagoCardId: card.pago_card_id || null,
+          }),
+          new Promise((resolve) => {
+            setTimeout(() => {
+              resolve({
+                provider_checked: false,
+                imported: 0,
+                error: 'PAGO_3DS_REFRESH_BUDGET',
+                timed_out: true,
+              });
+            }, refreshBudgetMs);
+          }),
+        ]);
+      } catch (err) {
+        console.warn('[user/cards/3ds] provider refresh skipped:', err.code || err.message);
+        provider = {
+          provider_checked: false,
+          imported: 0,
+          error: err.code || err.message || 'PAGO_REFRESH_FAILED',
+        };
+      }
     }
 
     const events = await listUser3dsEvents(req.user.id, {
@@ -1048,6 +1077,7 @@ router.get('/cards/:id/3ds', requireAuth, requireSensitive, async (req, res) => 
       events,
       provider_checked: Boolean(provider?.provider_checked),
       provider_imported: provider?.imported || 0,
+      provider_timed_out: Boolean(provider?.timed_out),
     });
   } catch (err) {
     console.error('[user/cards/3ds]', err.code || err.message);

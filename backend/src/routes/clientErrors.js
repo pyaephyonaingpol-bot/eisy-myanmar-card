@@ -37,15 +37,20 @@ router.post('/', ingestLimiter, (req, res) => {
   const path = String(body.path || '').slice(0, 200) || null;
   const source = String(body.source || 'client').slice(0, 60);
 
-  // Drop cascade noise: reporting that monitoring/client-errors themselves failed
-  // (or that serverless bootstrap failed) just amplifies outages.
+  // Drop cascade / expected soft noise so SPA polls do not Telegram-storm.
   if (
     code === 'BOOTSTRAP_FAILED'
     || /bootstrap failed/i.test(message)
+    || body.suppressErrorReport
     || (path && (
       path.includes('/api/client-errors')
       || path.includes('/api/config/monitoring')
     ))
+    || (
+      (code === 'REQUEST_TIMEOUT' || code === 'REQUEST_ABORTED' || code === 'NETWORK_ERROR')
+      && path
+      && (/\/api\/user\/cards\/[^/]+\/3ds/.test(path) || /\/api\/user\/cards\/3ds\//.test(path))
+    )
   ) {
     console.warn('[client-errors] skipped cascade ingest', { code, path: path || null });
     return res.status(204).end();

@@ -328,6 +328,7 @@ const Auth = {
           err.code = data.code;
           err.status = res.status;
           err.response = data;
+          if (opts.suppressErrorReport) err.suppressErrorReport = true;
           if (
             res.status === 401
             && (data.code === 'SESSION_SUPERSEDED' || data.code === 'SESSION_INVALID')
@@ -354,13 +355,15 @@ const Auth = {
           || err?.name === 'AbortError'
           || controller?.signal?.aborted
         ) {
-          throw this._normalizeFetchError(err, {
+          const normalized = this._normalizeFetchError(err, {
             method: m,
             path,
             timeoutMs,
             timedOut: timedOut && !abortedByCaller,
             abortedByCaller,
           });
+          if (opts.suppressErrorReport) normalized.suppressErrorReport = true;
+          throw normalized;
         }
         const normalized = this._normalizeFetchError(err, {
           method: m,
@@ -369,6 +372,7 @@ const Auth = {
           timedOut: false,
           abortedByCaller: false,
         });
+        if (opts.suppressErrorReport) normalized.suppressErrorReport = true;
         if (normalized !== err && !String(err?.message || '').includes('HTTP')) {
           /* already logged inside helper for network */
         } else if (!err.message?.includes('HTTP')) {
