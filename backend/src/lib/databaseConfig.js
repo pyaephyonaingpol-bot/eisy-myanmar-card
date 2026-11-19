@@ -56,6 +56,13 @@ function getDatabaseConfig() {
 
   // Remote Turso / LibSQL (preferred for Vercel production)
   if (url && isRemoteDatabaseUrl(url)) {
+    if (!authToken && isVercel) {
+      const err = new Error(
+        'DATABASE_AUTH_TOKEN (or TURSO_AUTH_TOKEN) is required when DATABASE_URL is a remote Turso/LibSQL URL on Vercel'
+      );
+      err.code = 'DATABASE_AUTH_TOKEN_MISSING';
+      throw err;
+    }
     return {
       mode: 'libsql',
       driver: 'libsql',
