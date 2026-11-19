@@ -28,9 +28,9 @@ function envIsSet(...names) {
 const ENV_ALIAS_GROUPS = [
   ['TRON_PRO_API_KEY', 'TRONGRID_API_KEY', 'TRON_API_KEY'],
   ['TRON_FULL_HOST', 'TRONGRID_FULL_HOST'],
-  // Turso is not used. Do NOT alias TURSO_* into DATABASE_* (leftover Vercel
-  // Turso secrets must not become the active DB URL).
-  ['DATABASE_URL', 'LIBSQL_URL'],
+  // Turso / LibSQL — Vercel may set TURSO_* only; mirror onto DATABASE_* for older readers.
+  ['DATABASE_URL', 'TURSO_DATABASE_URL', 'LIBSQL_URL'],
+  ['DATABASE_AUTH_TOKEN', 'TURSO_AUTH_TOKEN', 'LIBSQL_AUTH_TOKEN'],
   ['MASTER_PRIVATE_KEY', 'MASTER_WALLET_PRIVATE_KEY', 'TRON_MASTER_PRIVATE_KEY'],
   ['MASTER_WALLET_ADDRESS', 'TRON_MASTER_WALLET', 'MASTER_TRON_ADDRESS', 'TRON_MASTER_ADDRESS'],
   ['CENTRAL_WALLET_ADDRESS', 'SWEEP_DESTINATION_ADDRESS', 'TRON_CENTRAL_WALLET'],
@@ -46,7 +46,7 @@ const ENV_ALIAS_GROUPS = [
 
 /**
  * After .env files load, copy each resolved alias onto empty sibling keys so
- * code paths that read TRONGRID_* or DATABASE_* still work when Vercel only sets TRON_API_KEY.
+ * code paths that read DATABASE_* still work when Vercel only sets TURSO_*.
  */
 function normalizePlatformEnvAliases() {
   for (const group of ENV_ALIAS_GROUPS) {
@@ -81,13 +81,11 @@ function tronGridRequestHeaders(extra = {}) {
 }
 
 function databaseUrl() {
-  // Local file URLs only in practice — remote Turso URLs are ignored by databaseConfig.
-  return firstEnv('DATABASE_URL', 'LIBSQL_URL');
+  return firstEnv('DATABASE_URL', 'TURSO_DATABASE_URL', 'LIBSQL_URL');
 }
 
-/** @deprecated Turso auth tokens are unused; always returns empty. */
 function databaseAuthToken() {
-  return '';
+  return firstEnv('DATABASE_AUTH_TOKEN', 'TURSO_AUTH_TOKEN', 'LIBSQL_AUTH_TOKEN');
 }
 
 module.exports = {

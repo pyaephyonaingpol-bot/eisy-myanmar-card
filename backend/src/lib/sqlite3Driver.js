@@ -19,9 +19,9 @@ async function openSqliteFile(filePath) {
     ({ open } = require(wrapperId));
   } catch (err) {
     const wrapped = new Error(
-      'Native sqlite3 is not installed. Default driver is embedded LibSQL (file DB). '
-      + 'For local sqlite3: npm install sqlite3 sqlite --prefix backend && SQLITE_DRIVER=sqlite3. '
-      + `Original: ${err.message}`
+      'Native sqlite3 is not installed. Use LibSQL/Turso (default) with DATABASE_URL=libsql://… '
+      + '+ TURSO_AUTH_TOKEN, or for local sqlite3: npm install sqlite3 sqlite --prefix backend '
+      + `&& SQLITE_DRIVER=sqlite3. Original: ${err.message}`
     );
     wrapped.code = 'SQLITE3_MISSING';
     wrapped.cause = err;

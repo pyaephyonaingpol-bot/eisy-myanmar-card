@@ -1,13 +1,13 @@
 /**
- * Run migrations against the local embedded LibSQL/SQLite file database.
+ * Run migrations against local SQLite/LibSQL file or remote Turso.
  *
  * Usage:
  *   npm run migrate
  *
- * Optional:
- *   DATABASE_URL=file:./data/eisy.db
- *
- * Turso / remote libsql:// URLs are ignored — this app does not use Turso.
+ * Turso:
+ *   DATABASE_URL=libsql://your-db.turso.io   (or TURSO_DATABASE_URL)
+ *   TURSO_AUTH_TOKEN=your-token             (or DATABASE_AUTH_TOKEN)
+ *   npm run migrate
  */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 require('dotenv').config();

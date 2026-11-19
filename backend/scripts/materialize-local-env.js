@@ -3,8 +3,7 @@
 
 /**
  * Write gitignored repo `.env` from Cloud Agent / shell secrets (never prints values).
- * Uses Vercel-first variable names (TRON_API_KEY, …).
- * Database is always a local embedded file — Turso is not used or required.
+ * Uses Vercel-first variable names (TRON_API_KEY, TURSO_*, DATABASE_*, …).
  * Usage: node backend/scripts/materialize-local-env.js
  */
 const crypto = require('crypto');
@@ -13,6 +12,8 @@ const path = require('path');
 
 const {
   firstEnv,
+  databaseUrl,
+  databaseAuthToken,
   tronApiKey,
   tronFullHost,
   normalizePlatformEnvAliases,
@@ -28,6 +29,19 @@ const ENV_LOCAL_PATH = path.join(REPO_ROOT, '.env.local');
 /** Primary local override path for backend dev + smoke scripts (see loadEnv.js). */
 const BACKEND_ENV_LOCAL_PATH = path.join(BACKEND_DIR, '.env.local');
 
+async function verifyTursoConnection(url, authToken) {
+  if (!url || !authToken) return { ok: false, reason: 'missing_url_or_token' };
+  if (/^file:/i.test(url)) return { ok: true, skipped: true };
+  try {
+    const { createClient } = require('@libsql/client');
+    const client = createClient({ url, authToken });
+    await client.execute('SELECT 1 AS ok');
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message || String(err) };
+  }
+}
+
 function dotenvLine(key, value) {
   const v = String(value ?? '');
   if (/[\s#"'\\]/.test(v)) {
@@ -36,17 +50,19 @@ function dotenvLine(key, value) {
   return `${key}=${v}`;
 }
 
-function resolvedLocalDatabaseUrl() {
-  const configured = firstEnv('DATABASE_URL', 'LIBSQL_URL');
-  if (configured && /^file:/i.test(configured)) return configured;
-  // Ignore leftover Turso / remote URLs — local file only.
+function resolvedDatabaseUrl() {
+  const u = databaseUrl();
+  if (u) return u;
   return 'file:./data/eisy.db';
 }
 
-/** Vercel-first names written to .env (no Turso auth token). */
+/** Vercel-first names written to .env */
 const entries = [
   ['NODE_ENV', firstEnv('NODE_ENV') || 'development'],
-  ['DATABASE_URL', resolvedLocalDatabaseUrl()],
+  ['DATABASE_URL', resolvedDatabaseUrl()],
+  ['DATABASE_AUTH_TOKEN', databaseAuthToken()],
+  ['TURSO_DATABASE_URL', firstEnv('TURSO_DATABASE_URL')],
+  ['TURSO_AUTH_TOKEN', firstEnv('TURSO_AUTH_TOKEN')],
   ['TRON_HD_ENABLED', firstEnv('TRON_HD_ENABLED') || 'true'],
   ['TRON_HD_MNEMONIC', firstEnv('TRON_HD_MNEMONIC')],
   ['TRON_API_KEY', tronApiKey()],
@@ -63,6 +79,13 @@ const entries = [
 
 async function main() {
   const missing = [];
+  const url = resolvedDatabaseUrl();
+  const token = databaseAuthToken();
+  const isRemote = /^libsql:/i.test(url) || (/^https?:/i.test(url) && /turso|libsql/i.test(url));
+  if (isRemote && !token) {
+    missing.push('TURSO_AUTH_TOKEN (or DATABASE_AUTH_TOKEN / LIBSQL_AUTH_TOKEN) for remote Turso URL');
+  }
+
   const hdMnemonic = firstEnv('TRON_HD_MNEMONIC');
   const hdSeedHex = firstEnv('TRON_HD_SEED_HEX');
   const masterKey = firstEnv('MASTER_PRIVATE_KEY', 'MASTER_WALLET_PRIVATE_KEY', 'TRON_MASTER_PRIVATE_KEY');
@@ -89,7 +112,18 @@ async function main() {
     `[materialize-local-env] Wrote ${targets.length} files (${n} keys):`,
     targets.map((p) => path.relative(REPO_ROOT, p)).join(', '),
   );
-  console.log('[materialize-local-env] Database: local file only (Turso not used)');
+
+  if (isRemote && token) {
+    const tursoCheck = await verifyTursoConnection(url, token);
+    if (tursoCheck.ok) {
+      console.log('[materialize-local-env] Turso connectivity: OK');
+    } else {
+      console.error('[materialize-local-env] Turso connectivity FAILED:', tursoCheck.reason);
+      missing.push('valid TURSO_AUTH_TOKEN / DATABASE_AUTH_TOKEN for Turso (current token rejected)');
+    }
+  } else {
+    console.log('[materialize-local-env] Database: local file (no Turso verify)');
+  }
 
   const mnemonic = firstEnv('TRON_HD_MNEMONIC');
   if (mnemonic) {

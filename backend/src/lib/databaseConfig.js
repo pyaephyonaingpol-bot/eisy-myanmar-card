@@ -1,10 +1,13 @@
 const path = require('path');
 const { isVercel, ensureDir } = require('../paths');
-const { firstEnv } = require('./envAliases');
+const { databaseUrl, databaseAuthToken } = require('./envAliases');
 
-function readConfiguredDatabaseUrl() {
-  // Prefer an explicit local file URL only. Remote Turso / LibSQL HTTP URLs are ignored.
-  return firstEnv('DATABASE_URL', 'LIBSQL_URL');
+function readDatabaseUrl() {
+  return databaseUrl();
+}
+
+function readDatabaseAuthToken() {
+  return databaseAuthToken();
 }
 
 function isRemoteDatabaseUrl(url) {
@@ -26,14 +29,14 @@ function isTursoLikeUrl(url) {
 
 /**
  * Driver selection:
- * - Default: embedded @libsql/client against a local file (no Turso cloud)
+ * - Default: @libsql/client (file locally; Turso remote when URL + token set)
  * - Legacy override: SQLITE_DRIVER=sqlite3 (optional; not supported on Vercel)
  */
 function resolveDriver() {
   const forced = String(process.env.SQLITE_DRIVER || '').trim().toLowerCase();
   if (forced === 'sqlite3' || forced === 'sqlite') {
     if (isVercel) {
-      console.warn('[db] SQLITE_DRIVER=sqlite3 is ignored on Vercel — using embedded LibSQL file');
+      console.warn('[db] SQLITE_DRIVER=sqlite3 is ignored on Vercel — using LibSQL');
       return 'libsql';
     }
     return 'sqlite3';
@@ -55,34 +58,41 @@ function resolveLocalDatabasePath(configuredUrl) {
 }
 
 /**
- * Primary DB is always a local embedded SQLite/LibSQL file.
- * Turso cloud is not used — leftover TURSO_* / remote DATABASE_URL env vars are ignored.
+ * Prefer remote Turso/LibSQL when DATABASE_URL / TURSO_DATABASE_URL is a remote URL
+ * and an auth token is available. Otherwise use an embedded local file DB.
+ *
+ * On Vercel, a remote URL without a token fails fast (DATABASE_AUTH_TOKEN_MISSING)
+ * so operators get a clear signal — light API paths still answer during bootstrap
+ * failure to avoid SPA /api/client-errors cascades.
  */
 function getDatabaseConfig() {
-  const configuredUrl = readConfiguredDatabaseUrl();
-  const tursoUrl = firstEnv('TURSO_DATABASE_URL');
+  const url = readDatabaseUrl();
+  const authToken = readDatabaseAuthToken();
   const driver = resolveDriver();
 
-  let warning = null;
-  let effectiveUrl = configuredUrl;
-
-  const configuredIsRemote = Boolean(
-    configuredUrl && isTursoLikeUrl(configuredUrl) && !isFileDatabaseUrl(configuredUrl)
-  );
-  const leftoverTurso = Boolean(tursoUrl);
-
-  if (configuredIsRemote || leftoverTurso) {
-    warning = 'Turso / remote LibSQL env is configured but ignored — this app uses a local embedded DB file only. '
-      + 'Remove TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, DATABASE_AUTH_TOKEN, and any libsql:// DATABASE_URL from env.';
-    console.warn('[db]', warning);
-    // Drop remote URLs only; keep an explicit local file: DATABASE_URL.
-    if (configuredIsRemote || !isFileDatabaseUrl(configuredUrl || '')) {
-      effectiveUrl = '';
+  if (url && isRemoteDatabaseUrl(url) && !isFileDatabaseUrl(url)) {
+    if (!authToken) {
+      const err = new Error(
+        'TURSO_AUTH_TOKEN (or DATABASE_AUTH_TOKEN / LIBSQL_AUTH_TOKEN) is required when '
+        + 'DATABASE_URL / TURSO_DATABASE_URL is a remote libsql:// Turso URL'
+      );
+      err.code = 'DATABASE_AUTH_TOKEN_MISSING';
+      throw err;
     }
+    return {
+      mode: 'libsql',
+      driver: 'libsql',
+      url,
+      authToken,
+      persistent: true,
+      turso: true,
+      warning: null,
+      filePath: null,
+    };
   }
 
-  const filePath = resolveLocalDatabasePath(effectiveUrl && isFileDatabaseUrl(effectiveUrl) ? effectiveUrl : '');
-  const persistent = !isVercel || Boolean(effectiveUrl && isFileDatabaseUrl(effectiveUrl));
+  const filePath = resolveLocalDatabasePath(url);
+  const persistent = !isVercel || isFileDatabaseUrl(url);
 
   if (driver === 'sqlite3') {
     return {
@@ -90,14 +100,19 @@ function getDatabaseConfig() {
       driver: 'sqlite3',
       filePath,
       persistent: true,
-      warning,
+      turso: false,
+      warning: null,
     };
   }
 
-  if (isVercel && !persistent) {
-    warning = (warning ? `${warning} ` : '')
-      + 'Vercel uses ephemeral /tmp LibSQL — data does not survive cold starts. '
-      + 'Run the durable API on the Droplet (PM2) or set DATABASE_URL=file:/path/on/persistent/volume.';
+  let warning = null;
+  if (isVercel && !isFileDatabaseUrl(url || '')) {
+    const isProd = process.env.VERCEL_ENV === 'production';
+    warning = isProd
+      ? 'No Turso DATABASE_URL on Vercel production — using ephemeral /tmp LibSQL. '
+        + 'Set DATABASE_URL or TURSO_DATABASE_URL (libsql://…) plus TURSO_AUTH_TOKEN '
+        + '(or DATABASE_AUTH_TOKEN) for persistent data.'
+      : 'No remote DATABASE_URL — using ephemeral /tmp LibSQL file DB for this preview.';
   }
 
   return {
@@ -106,38 +121,54 @@ function getDatabaseConfig() {
     url: `file:${filePath}`,
     authToken: undefined,
     persistent,
+    turso: false,
     warning,
     filePath,
   };
 }
 
 function getDatabaseInfo() {
-  const config = getDatabaseConfig();
-  if (config.mode === 'libsql') {
+  try {
+    const config = getDatabaseConfig();
+    if (config.mode === 'libsql') {
+      return {
+        mode: config.mode,
+        driver: config.driver,
+        url: String(config.url || '').replace(/\/\/[^@]+@/, '//***@'),
+        filePath: config.filePath || null,
+        persistent: config.persistent,
+        warning: config.warning,
+        turso: Boolean(config.turso),
+      };
+    }
     return {
       mode: config.mode,
       driver: config.driver,
-      url: String(config.url || '').replace(/\/\/[^@]+@/, '//***@'),
-      filePath: config.filePath || null,
+      filePath: config.filePath,
       persistent: config.persistent,
       warning: config.warning,
       turso: false,
     };
+  } catch (err) {
+    // Safe for bootstrap diagnostics when remote URL is set without a token.
+    return {
+      mode: null,
+      driver: null,
+      url: null,
+      filePath: null,
+      persistent: null,
+      warning: null,
+      turso: isTursoLikeUrl(readDatabaseUrl()),
+      error_code: err?.code || null,
+      error_message: String(err?.message || err).slice(0, 400),
+    };
   }
-  return {
-    mode: config.mode,
-    driver: config.driver,
-    filePath: config.filePath,
-    persistent: config.persistent,
-    warning: config.warning,
-    turso: false,
-  };
 }
 
 module.exports = {
-  readDatabaseUrl: readConfiguredDatabaseUrl,
-  readDatabaseAuthToken: () => '',
-  resolveLocalDatabasePath: () => resolveLocalDatabasePath(readConfiguredDatabaseUrl()),
+  readDatabaseUrl,
+  readDatabaseAuthToken,
+  resolveLocalDatabasePath: () => resolveLocalDatabasePath(readDatabaseUrl()),
   getDatabaseConfig,
   getDatabaseInfo,
   isRemoteDatabaseUrl,
