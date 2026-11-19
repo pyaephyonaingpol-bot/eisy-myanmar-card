@@ -61,10 +61,17 @@ const CHECKS = [
     hint: 'TronGrid rate limits without a key',
   },
   {
-    id: 'DATABASE',
-    label: 'Local database (embedded LibSQL/SQLite file)',
-    ok: () => true,
-    hint: 'Turso is unused — app opens a local file DB. Durable data lives on the Droplet/PM2 host.',
+    id: 'DATABASE_URL',
+    label: 'DATABASE_URL / TURSO_DATABASE_URL (+ auth token for Turso)',
+    ok: () => {
+      const url = firstEnv('DATABASE_URL', 'TURSO_DATABASE_URL', 'LIBSQL_URL');
+      if (!url) return true; // local file DB fallback is fine for Droplet
+      if (/^libsql:\/\//i.test(url) || (/^https?:/i.test(url) && /turso|libsql/i.test(url))) {
+        return envIsSet('DATABASE_AUTH_TOKEN', 'TURSO_AUTH_TOKEN', 'LIBSQL_AUTH_TOKEN');
+      }
+      return true;
+    },
+    hint: 'Remote Turso needs TURSO_AUTH_TOKEN (or DATABASE_AUTH_TOKEN). Local file:… needs no token.',
   },
 ];
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Vercel serverless bootstrap — no Turso dependency.
+ * Vercel serverless bootstrap — Turso when configured; cascade-safe on failure.
  * Run: node backend/scripts/test-vercel-bootstrap.js
  */
 'use strict';
@@ -15,49 +15,6 @@ process.chdir(path.join(__dirname, '..'));
 
 function section(title) {
   console.log(`\n== ${title} ==`);
-}
-
-function testLightPathHelpers() {
-  section('isBootstrapLightPath');
-  const {
-    isBootstrapLightPath,
-    redactUrl,
-    safeBootstrapDiagnostics,
-  } = require('../src/lib/vercelBootstrap');
-
-  assert.strictEqual(isBootstrapLightPath('/api/config/monitoring'), true);
-  assert.strictEqual(isBootstrapLightPath('/api/client-errors?x=1'), true);
-  assert.strictEqual(isBootstrapLightPath('/api/tron/wallet/address'), false);
-  assert.strictEqual(
-    redactUrl('libsql://user:secret@host.turso.io/db'),
-    'libsql://***@host.turso.io/db'
-  );
-
-  const diag = safeBootstrapDiagnostics(new Error('boot boom'));
-  assert.strictEqual(diag.error_message, 'boot boom');
-  assert.strictEqual(diag.turso, false);
-  console.log('ok');
-}
-
-function testWiring() {
-  section('Entry + client cascade guards wired (no Turso)');
-  const apiSrc = fs.readFileSync(path.join(__dirname, '../api/index.js'), 'utf8');
-  assert.ok(apiSrc.includes('BOOTSTRAP_FAILED'));
-  assert.ok(apiSrc.includes('isBootstrapLightPath'));
-  assert.ok(apiSrc.includes('turso: false'));
-  assert.ok(!/BACKEND_URL|NEXT_PUBLIC_API_URL/.test(apiSrc), 'not an HTTP proxy to Droplet');
-
-  const clientSrc = fs.readFileSync(path.join(__dirname, '../public/errorMonitor.js'), 'utf8');
-  assert.ok(clientSrc.includes('shouldSkipServerIngest'));
-  assert.ok(clientSrc.includes('BOOTSTRAP_FAILED'));
-
-  const ingestSrc = fs.readFileSync(path.join(__dirname, '../src/routes/clientErrors.js'), 'utf8');
-  assert.ok(ingestSrc.includes('skipped cascade ingest'));
-
-  const dbCfg = fs.readFileSync(path.join(__dirname, '../src/lib/databaseConfig.js'), 'utf8');
-  assert.ok(dbCfg.includes('Turso / remote LibSQL'));
-  assert.ok(!dbCfg.includes('DATABASE_AUTH_TOKEN_MISSING'));
-  console.log('ok');
 }
 
 function clearDbRelatedCache() {
@@ -76,44 +33,96 @@ function clearDbRelatedCache() {
   }
 }
 
-function testTursoIgnored() {
-  section('Remote Turso DATABASE_URL is ignored');
+function testLightPathHelpers() {
+  section('isBootstrapLightPath + diagnostics');
+  const {
+    isBootstrapLightPath,
+    redactUrl,
+    safeBootstrapDiagnostics,
+  } = require('../src/lib/vercelBootstrap');
+
+  assert.strictEqual(isBootstrapLightPath('/api/config/monitoring'), true);
+  assert.strictEqual(isBootstrapLightPath('/api/client-errors?x=1'), true);
+  assert.strictEqual(isBootstrapLightPath('/api/tron/wallet/address'), false);
+  assert.strictEqual(
+    redactUrl('libsql://user:secret@host.turso.io/db'),
+    'libsql://***@host.turso.io/db'
+  );
+
+  const diag = safeBootstrapDiagnostics(new Error('boot boom'));
+  assert.strictEqual(diag.error_message, 'boot boom');
+  assert.ok('has_database_url' in diag);
+  assert.ok('has_database_auth_token' in diag);
+  console.log('ok');
+}
+
+function testWiring() {
+  section('Entry + client cascade guards wired');
+  const apiSrc = fs.readFileSync(path.join(__dirname, '../api/index.js'), 'utf8');
+  assert.ok(apiSrc.includes('BOOTSTRAP_FAILED'));
+  assert.ok(apiSrc.includes('isBootstrapLightPath'));
+  assert.ok(apiSrc.includes('hasDatabaseUrl') || apiSrc.includes('has_database_url'));
+  assert.ok(!/BACKEND_URL|NEXT_PUBLIC_API_URL/.test(apiSrc), 'not an HTTP proxy to Droplet');
+
+  const clientSrc = fs.readFileSync(path.join(__dirname, '../public/errorMonitor.js'), 'utf8');
+  assert.ok(clientSrc.includes('shouldSkipServerIngest'));
+  assert.ok(clientSrc.includes('BOOTSTRAP_FAILED'));
+
+  const ingestSrc = fs.readFileSync(path.join(__dirname, '../src/routes/clientErrors.js'), 'utf8');
+  assert.ok(ingestSrc.includes('skipped cascade ingest'));
+
+  const dbCfg = fs.readFileSync(path.join(__dirname, '../src/lib/databaseConfig.js'), 'utf8');
+  assert.ok(dbCfg.includes('DATABASE_AUTH_TOKEN_MISSING'));
+  assert.ok(dbCfg.includes('TURSO_AUTH_TOKEN'));
+  console.log('ok');
+}
+
+function testTursoConfig() {
+  section('Turso remote config requires auth token');
   const prev = {
     DATABASE_URL: process.env.DATABASE_URL,
     TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL,
     TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
     DATABASE_AUTH_TOKEN: process.env.DATABASE_AUTH_TOKEN,
+    LIBSQL_AUTH_TOKEN: process.env.LIBSQL_AUTH_TOKEN,
     VERCEL: process.env.VERCEL,
     VERCEL_ENV: process.env.VERCEL_ENV,
   };
 
   process.env.VERCEL = '1';
   process.env.VERCEL_ENV = 'preview';
-  process.env.DATABASE_URL = 'libsql://missing-db-example.turso.io';
-  process.env.TURSO_DATABASE_URL = 'libsql://also-ignored.turso.io';
-  process.env.TURSO_AUTH_TOKEN = 'should-not-matter';
-  process.env.DATABASE_AUTH_TOKEN = 'should-not-matter';
+  process.env.TURSO_DATABASE_URL = 'libsql://demo-db.turso.io';
+  delete process.env.DATABASE_URL;
+  delete process.env.TURSO_AUTH_TOKEN;
+  delete process.env.DATABASE_AUTH_TOKEN;
+  delete process.env.LIBSQL_AUTH_TOKEN;
 
   clearDbRelatedCache();
   const { getDatabaseConfig, getDatabaseInfo, isTursoLikeUrl } = require('../src/lib/databaseConfig');
   assert.strictEqual(isTursoLikeUrl('libsql://x.turso.io'), true);
-  const cfg = getDatabaseConfig();
-  assert.strictEqual(cfg.mode, 'libsql');
-  assert.ok(String(cfg.url).startsWith('file:'));
-  assert.strictEqual(cfg.authToken, undefined);
-  assert.ok(/Turso|ignored/i.test(String(cfg.warning || '')));
-  const info = getDatabaseInfo();
-  assert.strictEqual(info.turso, false);
 
-  // Explicit local file URL must win even when leftover TURSO_* vars remain.
-  const localFile = path.join(os.tmpdir(), `eisy-keep-file-${Date.now()}.db`);
-  process.env.DATABASE_URL = `file:${localFile}`;
+  let threw = null;
+  try {
+    getDatabaseConfig();
+  } catch (err) {
+    threw = err;
+  }
+  assert.ok(threw, 'missing token must throw');
+  assert.strictEqual(threw.code, 'DATABASE_AUTH_TOKEN_MISSING');
+
+  const info = getDatabaseInfo();
+  assert.strictEqual(info.turso, true);
+  assert.strictEqual(info.error_code, 'DATABASE_AUTH_TOKEN_MISSING');
+
+  process.env.TURSO_AUTH_TOKEN = 'test-token-value';
   clearDbRelatedCache();
   const { getDatabaseConfig: getCfg2 } = require('../src/lib/databaseConfig');
-  const cfg2 = getCfg2();
-  assert.strictEqual(cfg2.filePath, localFile);
-  assert.strictEqual(cfg2.persistent, true);
-  assert.ok(/Turso|ignored/i.test(String(cfg2.warning || '')));
+  const cfg = getCfg2();
+  assert.strictEqual(cfg.mode, 'libsql');
+  assert.strictEqual(cfg.turso, true);
+  assert.strictEqual(cfg.url, 'libsql://demo-db.turso.io');
+  assert.strictEqual(cfg.authToken, 'test-token-value');
+  assert.strictEqual(cfg.persistent, true);
 
   for (const [key, value] of Object.entries(prev)) {
     if (value === undefined) delete process.env[key];
@@ -123,8 +132,8 @@ function testTursoIgnored() {
   console.log('ok');
 }
 
-async function testBootWithoutTurso() {
-  section('Vercel handler boots with Turso env present (ignored)');
+async function testDegradedLightPaths() {
+  section('Light paths stay up when Turso token missing');
   const prev = {
     DATABASE_URL: process.env.DATABASE_URL,
     TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL,
@@ -136,18 +145,16 @@ async function testBootWithoutTurso() {
     VERCEL_ENV: process.env.VERCEL_ENV,
   };
 
-  const tmpDb = path.join(os.tmpdir(), `eisy-no-turso-${Date.now()}.db`);
   process.env.VERCEL = '1';
   process.env.VERCEL_ENV = 'preview';
-  process.env.DATABASE_URL = `file:${tmpDb}`;
-  process.env.TURSO_DATABASE_URL = 'libsql://should-be-ignored.turso.io';
-  process.env.TURSO_AUTH_TOKEN = 'ignored';
-  process.env.DATABASE_AUTH_TOKEN = 'ignored';
+  process.env.DATABASE_URL = 'libsql://missing-token.turso.io';
+  delete process.env.TURSO_DATABASE_URL;
+  delete process.env.TURSO_AUTH_TOKEN;
+  delete process.env.DATABASE_AUTH_TOKEN;
   delete process.env.LIBSQL_URL;
   delete process.env.LIBSQL_AUTH_TOKEN;
 
   clearDbRelatedCache();
-  // Force a clean db module for this file path
   delete require.cache[require.resolve('../src/db')];
   delete require.cache[require.resolve('../src/index')];
 
@@ -179,11 +186,67 @@ async function testBootWithoutTurso() {
   });
   assert.strictEqual(ingest.status, 204);
 
-  // Boots successfully without Turso — auth required, not BOOTSTRAP_FAILED.
+  const wallet = await fetch(`http://127.0.0.1:${port}/api/tron/wallet/address`);
+  assert.strictEqual(wallet.status, 503);
+  const walletBody = await wallet.json();
+  assert.strictEqual(walletBody.code, 'BOOTSTRAP_FAILED');
+  assert.strictEqual(walletBody.diagnostics?.error_code, 'DATABASE_AUTH_TOKEN_MISSING');
+  assert.strictEqual(walletBody.diagnostics?.has_database_url, true);
+  assert.strictEqual(walletBody.diagnostics?.has_database_auth_token, false);
+
+  await new Promise((resolve) => server.close(resolve));
+
+  for (const [key, value] of Object.entries(prev)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  clearDbRelatedCache();
+  console.log('ok');
+}
+
+async function testFileBootStillWorks() {
+  section('Local file DB still boots without Turso');
+  const prev = {
+    DATABASE_URL: process.env.DATABASE_URL,
+    TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL,
+    TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
+    DATABASE_AUTH_TOKEN: process.env.DATABASE_AUTH_TOKEN,
+    LIBSQL_URL: process.env.LIBSQL_URL,
+    LIBSQL_AUTH_TOKEN: process.env.LIBSQL_AUTH_TOKEN,
+    VERCEL: process.env.VERCEL,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+  };
+
+  const tmpDb = path.join(os.tmpdir(), `eisy-file-${Date.now()}.db`);
+  process.env.VERCEL = '1';
+  process.env.VERCEL_ENV = 'preview';
+  process.env.DATABASE_URL = `file:${tmpDb}`;
+  delete process.env.TURSO_DATABASE_URL;
+  delete process.env.TURSO_AUTH_TOKEN;
+  delete process.env.DATABASE_AUTH_TOKEN;
+  delete process.env.LIBSQL_URL;
+  delete process.env.LIBSQL_AUTH_TOKEN;
+
+  clearDbRelatedCache();
+  delete require.cache[require.resolve('../src/db')];
+  delete require.cache[require.resolve('../src/index')];
+
+  const appHandler = require('../api/index.js');
+  const server = http.createServer((req, res) => {
+    Promise.resolve(appHandler(req, res)).catch((err) => {
+      console.error(err);
+      res.statusCode = 500;
+      res.end('fail');
+    });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  const mon = await fetch(`http://127.0.0.1:${port}/api/config/monitoring`);
+  assert.strictEqual(mon.status, 200);
+
   const wallet = await fetch(`http://127.0.0.1:${port}/api/tron/wallet/address`);
   assert.notStrictEqual(wallet.status, 503);
-  const walletText = await wallet.text();
-  assert.ok(!/BOOTSTRAP_FAILED/.test(walletText));
 
   await new Promise((resolve) => server.close(resolve));
 
@@ -199,9 +262,10 @@ async function testBootWithoutTurso() {
 async function main() {
   testLightPathHelpers();
   testWiring();
-  testTursoIgnored();
-  await testBootWithoutTurso();
-  console.log('\nVercel bootstrap (no Turso) checks passed.');
+  testTursoConfig();
+  await testDegradedLightPaths();
+  await testFileBootStillWorks();
+  console.log('\nVercel bootstrap (Turso + cascade-safe) checks passed.');
 }
 
 main().catch((err) => {

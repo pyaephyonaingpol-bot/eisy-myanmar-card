@@ -8,9 +8,10 @@
  * - Retired card-provider webhooks return 410
  *
  * Note: This is NOT an HTTP proxy to the DigitalOcean Droplet. The Express app
- * runs in-process on Vercel with an embedded local LibSQL file DB (no Turso).
- * Durable persistence on serverless is ephemeral (/tmp); use the Droplet/PM2
- * deploy for a lasting SQLite file.
+ * runs in-process on Vercel. Set DATABASE_URL or TURSO_DATABASE_URL (libsql://)
+ * plus TURSO_AUTH_TOKEN (or DATABASE_AUTH_TOKEN) for persistent Turso data.
+ * Without those, an ephemeral /tmp file DB is used. Light paths stay up when
+ * bootstrap fails so SPA /api/client-errors does not cascade.
  */
 require('../src/lib/loadEnv');
 const { initDb, getDb } = require('../src/db');
@@ -69,7 +70,17 @@ async function bootstrap() {
       hasMerchantId: Boolean(process.env.BINANCE_MERCHANT_ID || process.env.BINANCE_PAY_MERCHANT_ID),
       hasAdminEmail: Boolean(String(process.env.ADMIN_EMAIL || '').trim()),
       hasAdminPassword: Boolean(String(process.env.ADMIN_PASSWORD || '').trim()),
-      turso: false,
+      hasDatabaseUrl: Boolean(
+        process.env.DATABASE_URL
+        || process.env.TURSO_DATABASE_URL
+        || process.env.LIBSQL_URL
+      ),
+      hasDatabaseAuthToken: Boolean(
+        process.env.DATABASE_AUTH_TOKEN
+        || process.env.TURSO_AUTH_TOKEN
+        || process.env.LIBSQL_AUTH_TOKEN
+      ),
+      turso: Boolean(dbInfo?.turso),
       db_mode: dbInfo?.mode || null,
       db_persistent: dbInfo?.persistent ?? null,
       db_file: dbInfo?.filePath || null,
@@ -224,7 +235,9 @@ function sendBootstrapFailure(res, err, diagnostics, req) {
     path,
     // Safe, non-secret diagnostics for operators / Vercel logs correlation
     diagnostics: {
-      turso: false,
+      turso: Boolean(diagnostics.turso),
+      has_database_url: diagnostics.has_database_url,
+      has_database_auth_token: diagnostics.has_database_auth_token,
       db_mode: diagnostics.db_mode,
       db_persistent: diagnostics.db_persistent,
       db_file: diagnostics.db_file || null,
@@ -254,7 +267,9 @@ module.exports = async (req, res) => {
           path: normalizePath(req.url || '/api'),
           tags: { kind: 'vercel_bootstrap' },
           extra: {
-            turso: false,
+            turso: Boolean(diagnostics.turso),
+            has_database_url: diagnostics.has_database_url,
+            has_database_auth_token: diagnostics.has_database_auth_token,
             db_mode: diagnostics.db_mode,
             db_persistent: diagnostics.db_persistent,
             error_code: diagnostics.error_code,

@@ -1,10 +1,14 @@
 /**
- * Verify the local embedded LibSQL/SQLite database opens and migrates.
+ * Verify database connectivity (Turso remote or local LibSQL file).
  * Usage (from backend/):
  *   npm run db:test
  *
- * Optional: DATABASE_URL=file:./data/eisy.db
- * Turso / remote libsql:// URLs are ignored by databaseConfig.
+ * Turso:
+ *   DATABASE_URL=libsql://…   (or TURSO_DATABASE_URL)
+ *   TURSO_AUTH_TOKEN=…        (or DATABASE_AUTH_TOKEN)
+ *
+ * Local file:
+ *   DATABASE_URL=file:./data/eisy.db   (or leave unset)
  */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 require('dotenv').config();
@@ -15,8 +19,8 @@ const { initDb, closeDb, getDatabaseInfo } = require('../src/db');
   const info = getDatabaseInfo();
   console.log('[db:test] Target:', info);
 
-  if (info.turso) {
-    console.error('[db:test] Unexpected turso=true — Turso must not be used.');
+  if (info.error_code) {
+    console.error('[db:test] Config error:', info.error_code, info.error_message);
     process.exit(1);
   }
 

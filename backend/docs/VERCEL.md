@@ -48,10 +48,12 @@ Paste **bare values only** into the Vercel env UI (never commit `.env` files). F
 | `BINANCE_API_KEY` | Binance Pay Certificate SN / API key |
 | `BINANCE_SECRET_KEY` | HMAC-SHA512 secret |
 | `BINANCE_MERCHANT_ID` | Merchant id (stored on deposit metadata) |
+| `DATABASE_URL` or `TURSO_DATABASE_URL` | Turso LibSQL URL (`libsql://…`) — preferred for persistent production data |
+| `TURSO_AUTH_TOKEN` (or `DATABASE_AUTH_TOKEN`) | Turso auth token — **required** with a remote `libsql://` URL |
 | `PUBLIC_BASE_URL` | Canonical site URL (e.g. `https://eisymyanmar.com`) — also used as the browser Supabase proxy origin |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (bare `https://….supabase.co` only — no `KEY=` prefix / markdown). Server + `/supabase` proxy upstream; **not** what the browser uses when the proxy is on |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **Required for the browser bridge** (`createClient` via `GET /api/config/supabase`) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for server-side Storage uploads + local-DB→Supabase dual-write |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for server-side Storage uploads + Turso→Supabase dual-write |
 | `SUPABASE_UPLOAD_BUCKET` | Storage bucket name (default `uploads`; run `supabase/upload_storage.sql`) |
 | `SUPABASE_UPLOAD_STORAGE` | Set `false` to force local `/uploads` disk only |
 | `SUPABASE_BROWSER_PROXY` | Default `true`. Browser gets `PUBLIC_BASE_URL/supabase` instead of `*.supabase.co` |
@@ -69,12 +71,12 @@ Aliases accepted: `BINANCE_PAY_API_KEY`, `BINANCE_PAY_API_SECRET`, `BINANCE_PAY_
 
 ## Database (Vercel-compatible)
 
-**Turso is not used.** The app opens an embedded LibSQL/SQLite **file** DB only — no `libsql://` remote URL and no DB auth token.
+The app uses **`@libsql/client`**. Prefer **Turso** on Vercel for persistent data.
 
 | Environment | Driver | Connection |
 |-------------|--------|------------|
-| Vercel (default) | LibSQL `file:/tmp/…` | Ephemeral (cold starts reset data) |
-| Droplet / PM2 | LibSQL `file:backend/data/eisy.db` | Durable on disk (**production source of truth**) |
+| Vercel + Turso URL + auth token | LibSQL / Turso | Persistent remote DB (**recommended**) |
+| Vercel without remote URL | LibSQL `file:/tmp/…` | Ephemeral (preview / fallback) |
 | Local default | LibSQL `file:backend/data/eisy.db` | Persistent on disk |
 | Local override | Native `sqlite3` | `SQLITE_DRIVER=sqlite3` + optional deps |
 
@@ -84,19 +86,24 @@ Root `package.json` lists serverless runtime deps (**no `sqlite3`**). Install:
 npm install
 ```
 
-Native `sqlite3` is an **optional** backend dependency for local legacy mode only and is excluded from the Vercel function bundle. `@libsql/linux-x64-gnu` is listed explicitly so Vercel’s Linux runtime can open the embedded LibSQL file client.
+Native `sqlite3` is an **optional** backend dependency for local legacy mode only and is excluded from the Vercel function bundle. `@libsql/linux-x64-gnu` is listed explicitly so Vercel’s Linux runtime can open LibSQL file/remote clients.
 
-### Remove leftover Turso env vars (Vercel)
+### Turso setup (production)
 
-Delete these if present — they are ignored by the app and are not required:
+Set **both** a URL and a token in Vercel → Project → Environment Variables (Production + Preview as needed):
 
-- `TURSO_DATABASE_URL`
-- `TURSO_AUTH_TOKEN`
-- `DATABASE_AUTH_TOKEN`
-- `LIBSQL_AUTH_TOKEN`
-- Any `DATABASE_URL` / `LIBSQL_URL` whose value starts with `libsql://` (or is a remote Turso URL)
+1. **URL** (either name works; aliases are mirrored at boot):
+   - `DATABASE_URL=libsql://your-db-name-org.turso.io`
+   - **or** `TURSO_DATABASE_URL=libsql://your-db-name-org.turso.io`
+2. **Auth token** (either name works):
+   - `TURSO_AUTH_TOKEN=…`
+   - **or** `DATABASE_AUTH_TOKEN=…`
+   - **or** `LIBSQL_AUTH_TOKEN=…`
+3. Redeploy
 
-Optional local-only override: `DATABASE_URL=file:/path/to/eisy.db`.
+If a remote URL is set **without** a token, bootstrap fails with `DATABASE_AUTH_TOKEN_MISSING` (503 on real APIs). Light paths (`/api/config/monitoring`, `/api/client-errors`, `/health`) still answer so the SPA does not cascade-report forever.
+
+Optional local-only override: `DATABASE_URL=file:/path/to/eisy.db` (no token).
 
 ## Fee logic (deposit create + webhook credit)
 
