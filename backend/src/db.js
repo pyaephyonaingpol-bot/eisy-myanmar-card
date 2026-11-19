@@ -29,68 +29,37 @@ async function initDb() {
     console.error('[db] config failed:', {
       code: err.code,
       message: err.message,
-      hasDatabaseUrl: Boolean(
-        process.env.DATABASE_URL
-        || process.env.TURSO_DATABASE_URL
-        || process.env.LIBSQL_URL
-      ),
-      hasDatabaseAuthToken: Boolean(
-        process.env.DATABASE_AUTH_TOKEN
-        || process.env.TURSO_AUTH_TOKEN
-        || process.env.LIBSQL_AUTH_TOKEN
-      ),
+      turso: false,
     });
     throw err;
   }
 
   if (config.mode === 'libsql') {
     const { createClient } = require('@libsql/client');
-    const fetchTimeoutMs = Math.max(
-      2000,
-      parseInt(process.env.LIBSQL_FETCH_TIMEOUT_MS || '15000', 10) || 15000
-    );
     const concurrency = Math.max(
       1,
       Math.min(32, parseInt(process.env.LIBSQL_CONCURRENCY || '8', 10) || 8)
     );
+    // Embedded file DB only — no remote Turso / libsql:// client.
     const clientOpts = {
       url: config.url,
-      authToken: config.authToken,
       intMode: 'number',
       concurrency,
     };
-    // Bound each Turso HTTP round-trip so a hung connection cannot sit until
-    // the Vercel gateway emits opaque HTTP 504.
-    if (typeof globalThis.fetch === 'function' && !String(config.url).startsWith('file:')) {
-      clientOpts.fetch = (input, init = {}) => {
-        const timeout = AbortSignal.timeout(fetchTimeoutMs);
-        const signal = init.signal
-          ? AbortSignal.any([init.signal, timeout])
-          : timeout;
-        return globalThis.fetch(input, { ...init, signal });
-      };
-    }
     try {
       const client = createClient(clientOpts);
       db = createLibsqlDb(client);
     } catch (err) {
       err.code = err.code || 'LIBSQL_CLIENT_INIT_FAILED';
-      console.error('[db] LibSQL client init failed:', {
+      console.error('[db] LibSQL file client init failed:', {
         code: err.code,
         message: String(err.message || err).slice(0, 400),
-        url: String(config.url || '').replace(/\/\/[^@]+@/, '//***@').slice(0, 120),
-        hasAuthToken: Boolean(config.authToken),
+        filePath: config.filePath || null,
+        url: String(config.url || '').slice(0, 120),
       });
       throw err;
     }
-    if (String(config.url).startsWith('file:')) {
-      console.log('[db] Connected to LibSQL file database:', config.filePath || config.url);
-    } else {
-      console.log('[db] Connected to persistent LibSQL / Turso database', {
-        concurrency,
-        fetchTimeoutMs,
-      });
-    }
+    console.log('[db] Connected to LibSQL file database:', config.filePath || config.url);
   } else if (config.mode === 'sqlite-file') {
     db = await openLegacySqlite3(config.filePath);
     console.log('[db] Using legacy native SQLite file:', config.filePath);

@@ -1,13 +1,10 @@
 const path = require('path');
 const { isVercel, ensureDir } = require('../paths');
-const { databaseUrl, databaseAuthToken } = require('./envAliases');
+const { firstEnv } = require('./envAliases');
 
-function readDatabaseUrl() {
-  return databaseUrl();
-}
-
-function readDatabaseAuthToken() {
-  return databaseAuthToken();
+function readConfiguredDatabaseUrl() {
+  // Prefer an explicit local file URL only. Remote Turso / LibSQL HTTP URLs are ignored.
+  return firstEnv('DATABASE_URL', 'LIBSQL_URL');
 }
 
 function isRemoteDatabaseUrl(url) {
@@ -18,16 +15,25 @@ function isFileDatabaseUrl(url) {
   return /^file:/i.test(url);
 }
 
+function isTursoLikeUrl(url) {
+  const u = String(url || '');
+  if (!u) return false;
+  if (/turso\.io/i.test(u)) return true;
+  if (/^libsql:/i.test(u)) return true;
+  if (/^https?:\/\//i.test(u) && /libsql|turso/i.test(u)) return true;
+  return isRemoteDatabaseUrl(u);
+}
+
 /**
  * Driver selection:
- * - Default (local + Vercel): @libsql/client — Vercel-compatible, no native sqlite3
+ * - Default: embedded @libsql/client against a local file (no Turso cloud)
  * - Legacy override: SQLITE_DRIVER=sqlite3 (optional; not supported on Vercel)
  */
 function resolveDriver() {
   const forced = String(process.env.SQLITE_DRIVER || '').trim().toLowerCase();
   if (forced === 'sqlite3' || forced === 'sqlite') {
     if (isVercel) {
-      console.warn('[db] SQLITE_DRIVER=sqlite3 is ignored on Vercel — using LibSQL');
+      console.warn('[db] SQLITE_DRIVER=sqlite3 is ignored on Vercel — using embedded LibSQL file');
       return 'libsql';
     }
     return 'sqlite3';
@@ -35,10 +41,9 @@ function resolveDriver() {
   return 'libsql';
 }
 
-function resolveLocalDatabasePath() {
-  const url = readDatabaseUrl();
-  if (isFileDatabaseUrl(url)) {
-    const raw = url.replace(/^file:/i, '');
+function resolveLocalDatabasePath(configuredUrl) {
+  if (configuredUrl && isFileDatabaseUrl(configuredUrl)) {
+    const raw = configuredUrl.replace(/^file:/i, '');
     return path.isAbsolute(raw) ? raw : path.join(process.cwd(), raw);
   }
 
@@ -49,52 +54,50 @@ function resolveLocalDatabasePath() {
   return path.join(dataDir, 'eisy.db');
 }
 
+/**
+ * Primary DB is always a local embedded SQLite/LibSQL file.
+ * Turso cloud is not used — leftover TURSO_* / remote DATABASE_URL env vars are ignored.
+ */
 function getDatabaseConfig() {
-  const url = readDatabaseUrl();
-  const authToken = readDatabaseAuthToken();
+  const configuredUrl = readConfiguredDatabaseUrl();
+  const tursoUrl = firstEnv('TURSO_DATABASE_URL');
   const driver = resolveDriver();
 
-  // Remote Turso / LibSQL (preferred for Vercel production)
-  if (url && isRemoteDatabaseUrl(url)) {
-    if (!authToken && isVercel) {
-      const err = new Error(
-        'DATABASE_AUTH_TOKEN (or TURSO_AUTH_TOKEN) is required when DATABASE_URL is a remote Turso/LibSQL URL on Vercel'
-      );
-      err.code = 'DATABASE_AUTH_TOKEN_MISSING';
-      throw err;
+  let warning = null;
+  let effectiveUrl = configuredUrl;
+
+  const configuredIsRemote = Boolean(
+    configuredUrl && isTursoLikeUrl(configuredUrl) && !isFileDatabaseUrl(configuredUrl)
+  );
+  const leftoverTurso = Boolean(tursoUrl);
+
+  if (configuredIsRemote || leftoverTurso) {
+    warning = 'Turso / remote LibSQL env is configured but ignored — this app uses a local embedded DB file only. '
+      + 'Remove TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, DATABASE_AUTH_TOKEN, and any libsql:// DATABASE_URL from env.';
+    console.warn('[db]', warning);
+    // Drop remote URLs only; keep an explicit local file: DATABASE_URL.
+    if (configuredIsRemote || !isFileDatabaseUrl(configuredUrl || '')) {
+      effectiveUrl = '';
     }
-    return {
-      mode: 'libsql',
-      driver: 'libsql',
-      url,
-      authToken: authToken || undefined,
-      persistent: true,
-      warning: null,
-    };
   }
 
-  const filePath = resolveLocalDatabasePath();
-  const persistent = !isVercel || isFileDatabaseUrl(url);
+  const filePath = resolveLocalDatabasePath(effectiveUrl && isFileDatabaseUrl(effectiveUrl) ? effectiveUrl : '');
+  const persistent = !isVercel || Boolean(effectiveUrl && isFileDatabaseUrl(effectiveUrl));
 
-  // Legacy local-only native sqlite3
   if (driver === 'sqlite3') {
     return {
       mode: 'sqlite-file',
       driver: 'sqlite3',
       filePath,
       persistent: true,
-      warning: null,
+      warning,
     };
   }
 
-  // Default: LibSQL embedded file (local) or ephemeral /tmp on Vercel without DATABASE_URL
-  let warning = null;
-  if (isVercel && !(url && isRemoteDatabaseUrl(url))) {
-    const isProd = process.env.VERCEL_ENV === 'production';
-    warning = isProd
-      ? 'DATABASE_URL is not set on Vercel production — using ephemeral /tmp LibSQL. '
-        + 'Set DATABASE_URL (libsql://…) + DATABASE_AUTH_TOKEN (Turso) for persistent fintech data.'
-      : 'DATABASE_URL is not set — using ephemeral /tmp LibSQL file DB for this preview.';
+  if (isVercel && !persistent) {
+    warning = (warning ? `${warning} ` : '')
+      + 'Vercel uses ephemeral /tmp LibSQL — data does not survive cold starts. '
+      + 'Run the durable API on the Droplet (PM2) or set DATABASE_URL=file:/path/on/persistent/volume.';
   }
 
   return {
@@ -118,6 +121,7 @@ function getDatabaseInfo() {
       filePath: config.filePath || null,
       persistent: config.persistent,
       warning: config.warning,
+      turso: false,
     };
   }
   return {
@@ -126,15 +130,17 @@ function getDatabaseInfo() {
     filePath: config.filePath,
     persistent: config.persistent,
     warning: config.warning,
+    turso: false,
   };
 }
 
 module.exports = {
-  readDatabaseUrl,
-  readDatabaseAuthToken,
-  resolveLocalDatabasePath,
+  readDatabaseUrl: readConfiguredDatabaseUrl,
+  readDatabaseAuthToken: () => '',
+  resolveLocalDatabasePath: () => resolveLocalDatabasePath(readConfiguredDatabaseUrl()),
   getDatabaseConfig,
   getDatabaseInfo,
   isRemoteDatabaseUrl,
+  isTursoLikeUrl,
   resolveDriver,
 };

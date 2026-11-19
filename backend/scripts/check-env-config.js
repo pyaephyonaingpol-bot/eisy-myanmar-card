@@ -52,10 +52,9 @@ const GROUPS = [
     ],
   },
   {
-    title: 'Database',
+    title: 'Database (local file — Turso not used)',
     keys: [
-      ['DATABASE_URL', ['DATABASE_URL', 'TURSO_DATABASE_URL', 'LIBSQL_URL']],
-      ['DATABASE_AUTH_TOKEN', ['DATABASE_AUTH_TOKEN', 'TURSO_AUTH_TOKEN', 'LIBSQL_AUTH_TOKEN']],
+      ['DATABASE_URL (optional file:…)', ['DATABASE_URL', 'LIBSQL_URL']],
     ],
   },
 ];
@@ -100,6 +99,8 @@ console.log('Notes:');
 console.log('- Put secrets in Vercel / Cursor Cloud env UIs — never commit .env files.');
 console.log('- Paste BARE values only (no KEY=value text, no markdown links).');
 console.log('- Prefer a dedicated TRON_HD_MNEMONIC; do not reuse MASTER_PRIVATE_KEY as HD seed long-term.');
+console.log('- Turso is NOT used. Remove TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, DATABASE_AUTH_TOKEN,');
+console.log('  and any libsql:// DATABASE_URL from Vercel — leftover Turso vars are ignored.');
 console.log('- Re-check after updating secrets: node backend/scripts/check-env-config.js');
 
 process.exit(missingCritical ? 1 : 0);

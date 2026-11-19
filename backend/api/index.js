@@ -8,8 +8,9 @@
  * - Retired card-provider webhooks return 410
  *
  * Note: This is NOT an HTTP proxy to the DigitalOcean Droplet. The Express app
- * runs in-process on Vercel. Persistent data requires DATABASE_URL (Turso) +
- * DATABASE_AUTH_TOKEN in Vercel Project Settings.
+ * runs in-process on Vercel with an embedded local LibSQL file DB (no Turso).
+ * Durable persistence on serverless is ephemeral (/tmp); use the Droplet/PM2
+ * deploy for a lasting SQLite file.
  */
 require('../src/lib/loadEnv');
 const { initDb, getDb } = require('../src/db');
@@ -57,6 +58,10 @@ async function bootstrap() {
     await ensureDemoUser();
     scheduleDeferredServerTasks('vercel-bootstrap');
 
+    let dbInfo = null;
+    try {
+      dbInfo = require('../src/lib/databaseConfig').getDatabaseInfo();
+    } catch (_) { /* ignore */ }
     console.log('[vercel] Express serverless handler ready (core)', {
       env: process.env.VERCEL_ENV || process.env.NODE_ENV,
       hasBinanceKey: Boolean(process.env.BINANCE_API_KEY || process.env.BINANCE_PAY_API_KEY),
@@ -64,16 +69,10 @@ async function bootstrap() {
       hasMerchantId: Boolean(process.env.BINANCE_MERCHANT_ID || process.env.BINANCE_PAY_MERCHANT_ID),
       hasAdminEmail: Boolean(String(process.env.ADMIN_EMAIL || '').trim()),
       hasAdminPassword: Boolean(String(process.env.ADMIN_PASSWORD || '').trim()),
-      hasDatabaseUrl: Boolean(
-        process.env.DATABASE_URL
-        || process.env.TURSO_DATABASE_URL
-        || process.env.LIBSQL_URL
-      ),
-      hasDatabaseAuthToken: Boolean(
-        process.env.DATABASE_AUTH_TOKEN
-        || process.env.TURSO_AUTH_TOKEN
-        || process.env.LIBSQL_AUTH_TOKEN
-      ),
+      turso: false,
+      db_mode: dbInfo?.mode || null,
+      db_persistent: dbInfo?.persistent ?? null,
+      db_file: dbInfo?.filePath || null,
     });
   })().catch((err) => {
     ready = null;
@@ -225,10 +224,10 @@ function sendBootstrapFailure(res, err, diagnostics, req) {
     path,
     // Safe, non-secret diagnostics for operators / Vercel logs correlation
     diagnostics: {
-      has_database_url: diagnostics.has_database_url,
-      has_database_auth_token: diagnostics.has_database_auth_token,
+      turso: false,
       db_mode: diagnostics.db_mode,
       db_persistent: diagnostics.db_persistent,
+      db_file: diagnostics.db_file || null,
       db_warning: diagnostics.db_warning,
       error_code: diagnostics.error_code,
       vercel_env: diagnostics.vercel_env,
@@ -255,9 +254,9 @@ module.exports = async (req, res) => {
           path: normalizePath(req.url || '/api'),
           tags: { kind: 'vercel_bootstrap' },
           extra: {
-            has_database_url: diagnostics.has_database_url,
-            has_database_auth_token: diagnostics.has_database_auth_token,
+            turso: false,
             db_mode: diagnostics.db_mode,
+            db_persistent: diagnostics.db_persistent,
             error_code: diagnostics.error_code,
           },
         });

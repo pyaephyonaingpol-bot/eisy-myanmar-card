@@ -13,7 +13,7 @@ function normalizePath(url) {
 }
 
 /**
- * Routes that must stay available when Turso/DB bootstrap fails so the SPA
+ * Routes that must stay available when DB bootstrap fails so the SPA
  * does not cascade-report into /api/client-errors forever.
  */
 function isBootstrapLightPath(url) {
@@ -39,25 +39,14 @@ function safeBootstrapDiagnostics(err) {
     db = null;
   }
 
-  const hasDatabaseUrl = Boolean(
-    process.env.DATABASE_URL
-    || process.env.TURSO_DATABASE_URL
-    || process.env.LIBSQL_URL
-  );
-  const hasDatabaseAuthToken = Boolean(
-    process.env.DATABASE_AUTH_TOKEN
-    || process.env.TURSO_AUTH_TOKEN
-    || process.env.LIBSQL_AUTH_TOKEN
-  );
-
   return {
     vercel_env: process.env.VERCEL_ENV || null,
     node_env: process.env.NODE_ENV || null,
-    has_database_url: hasDatabaseUrl,
-    has_database_auth_token: hasDatabaseAuthToken,
+    turso: false,
     db_mode: db?.mode || null,
     db_driver: db?.driver || null,
     db_persistent: db?.persistent ?? null,
+    db_file: db?.filePath || null,
     db_url: db?.url ? redactUrl(db.url) : null,
     db_warning: db?.warning || null,
     error_code: err?.code || err?.name || null,

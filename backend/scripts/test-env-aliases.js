@@ -2,7 +2,8 @@
 'use strict';
 
 /**
- * Vercel-style env alias normalization (TRON_PRO_API_KEY / TRONGRID_API_KEY / TRON_API_KEY, TURSO_* vs DATABASE_*).
+ * Vercel-style env alias normalization.
+ * Turso vars must NOT be copied onto DATABASE_* (Turso is unused).
  * Run: node backend/scripts/test-env-aliases.js
  */
 const assert = require('assert');
@@ -48,8 +49,9 @@ try {
   assert.strictEqual(process.env.TRON_PRO_API_KEY, 'vercel-tron-key');
   assert.strictEqual(process.env.TRONGRID_API_KEY, 'vercel-tron-key');
   assert.strictEqual(process.env.TRON_API_KEY, 'vercel-tron-key');
-  assert.strictEqual(process.env.DATABASE_URL, 'libsql://example.turso.io');
-  assert.strictEqual(process.env.DATABASE_AUTH_TOKEN, 'turso-token');
+  // Turso leftovers must not become the active DB URL.
+  assert.strictEqual(process.env.DATABASE_URL, undefined);
+  assert.strictEqual(process.env.DATABASE_AUTH_TOKEN, undefined);
 
   let {
     tronApiKey,
@@ -59,8 +61,8 @@ try {
   } = require('../src/lib/envAliases');
   assert.strictEqual(tronApiKey(), 'vercel-tron-key');
   assert.strictEqual(tronGridRequestHeaders()['TRON-PRO-API-KEY'], 'vercel-tron-key');
-  assert.strictEqual(databaseUrl(), 'libsql://example.turso.io');
-  assert.strictEqual(databaseAuthToken(), 'turso-token');
+  assert.strictEqual(databaseUrl(), '');
+  assert.strictEqual(databaseAuthToken(), '');
 
   for (const k of ['TRON_API_KEY', 'TRONGRID_API_KEY', 'TRON_PRO_API_KEY']) delete process.env[k];
   process.env.TRON_PRO_API_KEY = 'pro-only-key';

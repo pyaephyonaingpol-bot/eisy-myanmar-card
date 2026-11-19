@@ -19,8 +19,7 @@ async function openSqliteFile(filePath) {
     ({ open } = require(wrapperId));
   } catch (err) {
     const wrapped = new Error(
-      "Native sqlite3 is not installed. For Vercel/serverless use LibSQL "
-      + '(default) or set DATABASE_URL to a Turso libsql:// URL. '
+      'Native sqlite3 is not installed. Default driver is embedded LibSQL (file DB). '
       + 'For local sqlite3: npm install sqlite3 sqlite --prefix backend && SQLITE_DRIVER=sqlite3. '
       + `Original: ${err.message}`
     );
