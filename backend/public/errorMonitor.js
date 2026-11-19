@@ -37,7 +37,22 @@
     return true;
   }
 
+  function isCascadePath(path) {
+    const p = String(path || '');
+    return p.indexOf('/api/client-errors') !== -1
+      || p.indexOf('/api/config/monitoring') !== -1;
+  }
+
+  function shouldSkipServerIngest(payload) {
+    if (!payload) return true;
+    if (isCascadePath(payload.path)) return true;
+    if (payload.code === 'BOOTSTRAP_FAILED') return true;
+    if (/bootstrap failed/i.test(String(payload.message || ''))) return true;
+    return false;
+  }
+
   function postClientError(payload) {
+    if (shouldSkipServerIngest(payload)) return;
     const fp = fingerprint([payload.code, payload.status, payload.path, payload.message]);
     if (!shouldSend(fp)) return;
     try {
@@ -129,16 +144,22 @@
       } catch (err) {
         const status = Number(err?.status || 0);
         const code = String(err?.code || '');
+        const apiPath = String(path || '').slice(0, 200);
+        // Never ingest failures of the ingest/monitoring endpoints themselves.
+        if (isCascadePath(apiPath) || code === 'BOOTSTRAP_FAILED') {
+          throw err;
+        }
         if (
           code === 'REQUEST_TIMEOUT'
           || code === 'NETWORK_ERROR'
           || status >= 500
           || status === 408
+          || status === 503
         ) {
           captureClientError(err, {
             source: 'auth.api',
             method: String(method || 'GET').toUpperCase(),
-            path: String(path || '').slice(0, 200),
+            path: apiPath,
             status,
             code,
           });

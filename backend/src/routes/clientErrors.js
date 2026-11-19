@@ -37,12 +37,27 @@ router.post('/', ingestLimiter, (req, res) => {
   const path = String(body.path || '').slice(0, 200) || null;
   const source = String(body.source || 'client').slice(0, 60);
 
+  // Drop cascade noise: reporting that monitoring/client-errors themselves failed
+  // (or that serverless bootstrap failed) just amplifies outages.
+  if (
+    code === 'BOOTSTRAP_FAILED'
+    || /bootstrap failed/i.test(message)
+    || (path && (
+      path.includes('/api/client-errors')
+      || path.includes('/api/config/monitoring')
+    ))
+  ) {
+    console.warn('[client-errors] skipped cascade ingest', { code, path: path || null });
+    return res.status(204).end();
+  }
+
   const err = new Error(message);
   err.code = code || 'CLIENT_ERROR';
   err.status = status || undefined;
   if (body.stack) err.stack = String(body.stack).slice(0, 2000);
 
   const severe = status >= 500
+    || status === 503
     || code === 'REQUEST_TIMEOUT'
     || code === 'NETWORK_ERROR'
     || source === 'window.onerror'

@@ -21,7 +21,27 @@ async function openLegacySqlite3(filePath) {
 
 async function initDb() {
   if (db) return db;
-  const config = getDatabaseConfig();
+  let config;
+  try {
+    config = getDatabaseConfig();
+  } catch (err) {
+    err.code = err.code || 'DATABASE_CONFIG_INVALID';
+    console.error('[db] config failed:', {
+      code: err.code,
+      message: err.message,
+      hasDatabaseUrl: Boolean(
+        process.env.DATABASE_URL
+        || process.env.TURSO_DATABASE_URL
+        || process.env.LIBSQL_URL
+      ),
+      hasDatabaseAuthToken: Boolean(
+        process.env.DATABASE_AUTH_TOKEN
+        || process.env.TURSO_AUTH_TOKEN
+        || process.env.LIBSQL_AUTH_TOKEN
+      ),
+    });
+    throw err;
+  }
 
   if (config.mode === 'libsql') {
     const { createClient } = require('@libsql/client');
@@ -50,8 +70,19 @@ async function initDb() {
         return globalThis.fetch(input, { ...init, signal });
       };
     }
-    const client = createClient(clientOpts);
-    db = createLibsqlDb(client);
+    try {
+      const client = createClient(clientOpts);
+      db = createLibsqlDb(client);
+    } catch (err) {
+      err.code = err.code || 'LIBSQL_CLIENT_INIT_FAILED';
+      console.error('[db] LibSQL client init failed:', {
+        code: err.code,
+        message: String(err.message || err).slice(0, 400),
+        url: String(config.url || '').replace(/\/\/[^@]+@/, '//***@').slice(0, 120),
+        hasAuthToken: Boolean(config.authToken),
+      });
+      throw err;
+    }
     if (String(config.url).startsWith('file:')) {
       console.log('[db] Connected to LibSQL file database:', config.filePath || config.url);
     } else {
@@ -74,13 +105,36 @@ async function initDb() {
   }
 
   console.log('[db] Running migrations...');
-  await runMigrations(db);
-  await applyUserAuthColumns(db, columnExists);
-  await ensureAuthTables(db);
-  await ensureMmkWithdrawalColumns(db, columnExists, tableExists);
-  await ensureUsdtWithdrawalProofColumns(db, columnExists, tableExists);
-  await ensurePagoCardColumns(db, columnExists, tableExists);
-  await ensurePago3dsEventsTable(db, tableExists);
+  try {
+    await runMigrations(db);
+  } catch (err) {
+    err.code = err.code || 'DB_MIGRATION_FAILED';
+    console.error('[db] migrations failed:', {
+      code: err.code,
+      message: String(err.message || err).slice(0, 400),
+    });
+    // Reset so the next cold start can retry with a fixed config.
+    try { await db?.close?.(); } catch (_) { /* ignore */ }
+    db = null;
+    throw err;
+  }
+  try {
+    await applyUserAuthColumns(db, columnExists);
+    await ensureAuthTables(db);
+    await ensureMmkWithdrawalColumns(db, columnExists, tableExists);
+    await ensureUsdtWithdrawalProofColumns(db, columnExists, tableExists);
+    await ensurePagoCardColumns(db, columnExists, tableExists);
+    await ensurePago3dsEventsTable(db, tableExists);
+  } catch (err) {
+    err.code = err.code || 'DB_PATCH_FAILED';
+    console.error('[db] schema patches failed:', {
+      code: err.code,
+      message: String(err.message || err).slice(0, 400),
+    });
+    try { await db?.close?.(); } catch (_) { /* ignore */ }
+    db = null;
+    throw err;
+  }
 
   // Defer non-critical housekeeping so auth / admin list APIs are not blocked
   // on cold start (a common path into gateway HTTP 504).
