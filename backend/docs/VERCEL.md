@@ -48,12 +48,10 @@ Paste **bare values only** into the Vercel env UI (never commit `.env` files). F
 | `BINANCE_API_KEY` | Binance Pay Certificate SN / API key |
 | `BINANCE_SECRET_KEY` | HMAC-SHA512 secret |
 | `BINANCE_MERCHANT_ID` | Merchant id (stored on deposit metadata) |
-| `DATABASE_URL` | **Turso / LibSQL URL** (`libsql://…`) — required for persistent production data |
-| `DATABASE_AUTH_TOKEN` | Turso auth token |
 | `PUBLIC_BASE_URL` | Canonical site URL (e.g. `https://eisymyanmar.com`) — also used as the browser Supabase proxy origin |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (bare `https://….supabase.co` only — no `KEY=` prefix / markdown). Server + `/supabase` proxy upstream; **not** what the browser uses when the proxy is on |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **Required for the browser bridge** (`createClient` via `GET /api/config/supabase`) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for server-side Storage uploads + Turso→Supabase dual-write |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for server-side Storage uploads + local-DB→Supabase dual-write |
 | `SUPABASE_UPLOAD_BUCKET` | Storage bucket name (default `uploads`; run `supabase/upload_storage.sql`) |
 | `SUPABASE_UPLOAD_STORAGE` | Set `false` to force local `/uploads` disk only |
 | `SUPABASE_BROWSER_PROXY` | Default `true`. Browser gets `PUBLIC_BASE_URL/supabase` instead of `*.supabase.co` |
@@ -71,12 +69,12 @@ Aliases accepted: `BINANCE_PAY_API_KEY`, `BINANCE_PAY_API_SECRET`, `BINANCE_PAY_
 
 ## Database (Vercel-compatible)
 
-The app uses **`@libsql/client` only** on Vercel — **not** native `sqlite3`.
+**Turso is not used.** The app opens an embedded LibSQL/SQLite **file** DB only — no `libsql://` remote URL and no DB auth token.
 
 | Environment | Driver | Connection |
 |-------------|--------|------------|
-| Vercel + `DATABASE_URL` | LibSQL / Turso | Persistent remote DB (**recommended**) |
-| Vercel without `DATABASE_URL` | LibSQL `file:/tmp/…` | Ephemeral (preview only) |
+| Vercel (default) | LibSQL `file:/tmp/…` | Ephemeral (cold starts reset data) |
+| Droplet / PM2 | LibSQL `file:backend/data/eisy.db` | Durable on disk (**production source of truth**) |
 | Local default | LibSQL `file:backend/data/eisy.db` | Persistent on disk |
 | Local override | Native `sqlite3` | `SQLITE_DRIVER=sqlite3` + optional deps |
 
@@ -86,15 +84,19 @@ Root `package.json` lists serverless runtime deps (**no `sqlite3`**). Install:
 npm install
 ```
 
-Native `sqlite3` is an **optional** backend dependency for local legacy mode only and is excluded from the Vercel function bundle. `@libsql/linux-x64-gnu` is listed explicitly so Vercel’s Linux runtime can open LibSQL file/remote clients.
+Native `sqlite3` is an **optional** backend dependency for local legacy mode only and is excluded from the Vercel function bundle. `@libsql/linux-x64-gnu` is listed explicitly so Vercel’s Linux runtime can open the embedded LibSQL file client.
 
-### Turso setup (production)
+### Remove leftover Turso env vars (Vercel)
 
-1. Create a DB at [turso.tech](https://turso.tech)
-2. Set in Vercel → Project → Environment Variables:
-   - `DATABASE_URL=libsql://your-db-name-org.turso.io`
-   - `DATABASE_AUTH_TOKEN=…`
-3. Redeploy
+Delete these if present — they are ignored by the app and are not required:
+
+- `TURSO_DATABASE_URL`
+- `TURSO_AUTH_TOKEN`
+- `DATABASE_AUTH_TOKEN`
+- `LIBSQL_AUTH_TOKEN`
+- Any `DATABASE_URL` / `LIBSQL_URL` whose value starts with `libsql://` (or is a remote Turso URL)
+
+Optional local-only override: `DATABASE_URL=file:/path/to/eisy.db`.
 
 ## Fee logic (deposit create + webhook credit)
 

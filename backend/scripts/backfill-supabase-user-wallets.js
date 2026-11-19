@@ -7,7 +7,7 @@
  * Usage:
  *   node scripts/backfill-supabase-user-wallets.js
  *
- * Requires DATABASE_URL (+ DATABASE_AUTH_TOKEN for remote Turso) and
+ * Requires a local DATABASE_URL (file:…; Turso unused) and
  * SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY.
  */
 

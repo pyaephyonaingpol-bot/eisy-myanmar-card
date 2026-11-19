@@ -1,9 +1,10 @@
 /**
- * Verify DATABASE_URL / DATABASE_AUTH_TOKEN connectivity.
+ * Verify the local embedded LibSQL/SQLite database opens and migrates.
  * Usage (from backend/):
- *   set DATABASE_URL=libsql://...
- *   set DATABASE_AUTH_TOKEN=...
  *   npm run db:test
+ *
+ * Optional: DATABASE_URL=file:./data/eisy.db
+ * Turso / remote libsql:// URLs are ignored by databaseConfig.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 require('dotenv').config();
@@ -14,9 +15,8 @@ const { initDb, closeDb, getDatabaseInfo } = require('../src/db');
   const info = getDatabaseInfo();
   console.log('[db:test] Target:', info);
 
-  if (info.mode !== 'libsql') {
-    console.error('[db:test] DATABASE_URL is not set to a libsql/https remote URL.');
-    console.error('Set DATABASE_URL and DATABASE_AUTH_TOKEN, then retry.');
+  if (info.turso) {
+    console.error('[db:test] Unexpected turso=true — Turso must not be used.');
     process.exit(1);
   }
 

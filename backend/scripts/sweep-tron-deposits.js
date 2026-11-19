@@ -48,7 +48,7 @@ function printUsage() {
 Required env (Droplet — see scripts/verify-droplet-sweep-env.js):
   TRON_ENERGY_API_URL, TRON_ENERGY_API_KEY, TRON_NETTS_REAL_IP
   TRON_FULL_HOST, CENTRAL_WALLET_ADDRESS or MASTER_WALLET_ADDRESS
-  MASTER_PRIVATE_KEY, DATABASE_URL (+ token for Turso), TRON HD seed
+  MASTER_PRIVATE_KEY, local DATABASE_URL (file DB; Turso unused), TRON HD seed
 
 Verify: node scripts/verify-droplet-sweep-env.js`);
 }

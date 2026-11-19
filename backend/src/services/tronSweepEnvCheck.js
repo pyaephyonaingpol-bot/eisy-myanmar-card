@@ -61,17 +61,10 @@ const CHECKS = [
     hint: 'TronGrid rate limits without a key',
   },
   {
-    id: 'DATABASE_URL',
-    label: 'DATABASE_URL (+ auth token for Turso)',
-    ok: () => {
-      const url = firstEnv('DATABASE_URL', 'TURSO_DATABASE_URL', 'LIBSQL_URL');
-      if (!url) return false;
-      if (/^libsql:\/\//i.test(url) || /turso/i.test(url)) {
-        return envIsSet('DATABASE_AUTH_TOKEN', 'TURSO_AUTH_TOKEN', 'LIBSQL_AUTH_TOKEN');
-      }
-      return true;
-    },
-    hint: 'Custodial deposit address list',
+    id: 'DATABASE',
+    label: 'Local database (embedded LibSQL/SQLite file)',
+    ok: () => true,
+    hint: 'Turso is unused — app opens a local file DB. Durable data lives on the Droplet/PM2 host.',
   },
 ];
 
