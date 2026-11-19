@@ -93,6 +93,58 @@ async function testExpressErrorHandler() {
   console.log('ok');
 }
 
+async function testMalformedJsonBody() {
+  section('Malformed JSON returns 400 INVALID_JSON (no crash)');
+  delete require.cache[require.resolve('../src/services/errorMonitor')];
+  const monitor = require('../src/services/errorMonitor');
+  monitor._resetForTests();
+
+  const parseErr = new SyntaxError('Unexpected token } in JSON at position 1');
+  parseErr.status = 400;
+  parseErr.type = 'entity.parse.failed';
+  parseErr.body = '{bad';
+  assert.strictEqual(monitor.isJsonBodySyntaxError(parseErr), true);
+
+  const app = express();
+  app.use(express.json({
+    verify: (req, _res, buf) => {
+      req.rawBodyPreview = buf.toString('utf8').slice(0, 4096);
+    },
+  }));
+  app.post('/api/echo', (req, res) => {
+    res.json({ ok: true, body: req.body });
+  });
+  app.use(monitor.createExpressErrorHandler());
+
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  const warn = console.warn;
+  const logs = [];
+  console.warn = (...args) => {
+    logs.push(args.map(String).join(' '));
+  };
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/echo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"broken":',
+    });
+    const body = await res.json();
+    assert.strictEqual(res.status, 400);
+    assert.strictEqual(body.code, 'INVALID_JSON');
+    assert.match(body.error, /Invalid JSON/i);
+    assert.ok(logs.some((line) => /json-parse/i.test(line) && /\/api\/echo/.test(line)));
+    assert.ok(logs.some((line) => /body preview/i.test(line) && /\{"broken":/.test(line)));
+  } finally {
+    console.warn = warn;
+  }
+
+  await new Promise((resolve) => server.close(resolve));
+  console.log('ok');
+}
+
 async function testClientErrorsRoute() {
   section('POST /api/client-errors accepts payload');
   delete require.cache[require.resolve('../src/services/errorMonitor')];
@@ -153,7 +205,12 @@ async function testWiring() {
   assert.ok(indexSrc.includes('installProcessHandlers'));
   assert.ok(indexSrc.includes('createExpressErrorHandler'));
   assert.ok(indexSrc.includes('createSlowRequestMonitor'));
+  assert.ok(indexSrc.includes('rawBodyPreview'), 'json verify stores rawBodyPreview');
   assert.ok(indexSrc.includes("'/api/client-errors'"));
+
+  const monitorSrc = fs.readFileSync(path.join(root, 'src/services/errorMonitor.js'), 'utf8');
+  assert.ok(monitorSrc.includes('INVALID_JSON'));
+  assert.ok(monitorSrc.includes('isJsonBodySyntaxError'));
 
   const configSrc = fs.readFileSync(path.join(root, 'src/routes/config.js'), 'utf8');
   assert.ok(configSrc.includes("'/monitoring'"));
@@ -167,6 +224,7 @@ async function main() {
   await testCaptureWithoutSentry();
   await testPublicConfigWithDsn();
   await testExpressErrorHandler();
+  await testMalformedJsonBody();
   await testClientErrorsRoute();
   await testWiring();
   console.log('\nError monitor checks passed.');
