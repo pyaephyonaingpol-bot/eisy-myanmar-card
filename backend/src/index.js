@@ -73,6 +73,12 @@ app.options('*', cors(createCorsOptions()));
 app.use(express.json({
   limit: '55mb',
   verify: (req, res, buf) => {
+    // Truncated preview for malformed-JSON diagnostics in the error handler.
+    try {
+      req.rawBodyPreview = buf.toString('utf8').slice(0, 4096);
+    } catch (_) {
+      /* ignore */
+    }
     // Preserve raw body for webhook signature verification (Binance + Stripe)
     if (
       req.originalUrl

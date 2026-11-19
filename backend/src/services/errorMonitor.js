@@ -294,13 +294,68 @@ function installProcessHandlers() {
   });
 }
 
+const RAW_BODY_LOG_LIMIT = 4096;
+
+/**
+ * body-parser / express.json SyntaxError (malformed JSON payload).
+ * These must stay 400 client errors — never escalate to 500 / unhandled.
+ */
+function isJsonBodySyntaxError(err) {
+  if (!err) return false;
+  if (err.type === 'entity.parse.failed') return true;
+  const status = Number(err.status || err.statusCode || 0);
+  if (err instanceof SyntaxError && status === 400) return true;
+  if (err instanceof SyntaxError && /JSON|Unexpected token|in JSON at position/i.test(String(err.message || ''))) {
+    return true;
+  }
+  return false;
+}
+
+function previewRequestBodyForLog(req, err) {
+  const candidates = [
+    req?.rawBodyPreview,
+    req?.rawBody,
+    typeof err?.body === 'string' ? err.body : null,
+    Buffer.isBuffer(req?.body) ? req.body.toString('utf8') : null,
+  ];
+  let raw = null;
+  for (const candidate of candidates) {
+    if (candidate == null || candidate === '') continue;
+    raw = String(candidate);
+    break;
+  }
+  if (raw == null) return '(unavailable)';
+  if (raw.length <= RAW_BODY_LOG_LIMIT) return raw;
+  return `${raw.slice(0, RAW_BODY_LOG_LIMIT)}…[truncated ${raw.length} chars]`;
+}
+
+function logMalformedJsonBody(err, req) {
+  const url = String(req?.originalUrl || req?.url || '').slice(0, 300);
+  const method = String(req?.method || '').toUpperCase() || 'UNKNOWN';
+  const bodyPreview = previewRequestBodyForLog(req, err);
+  console.warn(
+    `[json-parse] Malformed JSON body method=${method} url=${url} message=${err?.message || 'SyntaxError'}`
+  );
+  console.warn(`[json-parse] body preview: ${bodyPreview}`);
+}
+
 /**
  * Express error middleware — place after routes.
  * Captures 5xx / unexpected errors then responds JSON.
+ * body-parser SyntaxError → 400 INVALID_JSON (with url/body debug logs).
  */
 function createExpressErrorHandler() {
   // eslint-disable-next-line no-unused-vars
   return function expressErrorHandler(err, req, res, _next) {
+    if (isJsonBodySyntaxError(err)) {
+      logMalformedJsonBody(err, req);
+      if (res.headersSent) return;
+      return res.status(400).json({
+        error: 'Invalid JSON in request body',
+        code: 'INVALID_JSON',
+      });
+    }
+
     const status = Number(err?.status || err?.statusCode || 500);
     const safeStatus = status >= 400 && status < 600 ? status : 500;
     if (safeStatus >= 500 || err?.code === 'REQUEST_TIMEOUT') {
@@ -370,6 +425,7 @@ module.exports = {
   captureMessage,
   createExpressErrorHandler,
   createSlowRequestMonitor,
+  isJsonBodySyntaxError,
   getPublicClientConfig,
   isEnabled,
   flush,
