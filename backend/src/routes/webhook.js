@@ -146,6 +146,7 @@ router.post('/pagocards', async (req, res) => {
       // Echo otp so operators can confirm extraction in Pagocards delivery logs.
       // Dashboard still loads codes from pago_3ds_events via /api/user/cards/:id/3ds.
       otp: result.event?.otp || null,
+      transactionOutcome: result.transactionOutcome || result.event?.transactionOutcome || null,
       cardId: result.event?.cardId || null,
       cardStatus: result.event?.localStatus || null,
       pagoStatus: result.event?.cardStatus || null,
@@ -180,7 +181,7 @@ router.get('/pagocards', (_req, res) => {
   res.json({
     ok: true,
     service: 'pagocards-webhook',
-    accepts: ['3ds', 'card_status'],
+    accepts: ['3ds', 'card_status', 'transaction_approved', 'transaction_declined'],
     path: '/api/webhook/pagocards',
   });
 });

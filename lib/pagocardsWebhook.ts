@@ -23,6 +23,11 @@ export type Pagocards3dsEvent = {
   userBankcardId: string | null;
   cardStatus: string | null;
   localStatus: string | null;
+  /** Purchase outcome for Resend receipts — never set on 3DS OTP events. */
+  transactionOutcome?: 'approved' | 'declined' | null;
+  declineReason?: string | null;
+  last4?: string | null;
+  occurredAt?: string | null;
   is3ds: boolean;
   raw: Record<string, unknown>;
 };
@@ -33,6 +38,15 @@ type WebhookLib = {
   summarizePagocardsEvent: (event: Pagocards3dsEvent) => string;
   collect3dsOtps: (payload: unknown, fallbackCardId?: string | null) => Pagocards3dsEvent[];
   mapWebhookCardStatus: (rawStatus: unknown, eventType?: unknown) => string | null;
+  mapTransactionOutcome: (
+    rawStatus: unknown,
+    eventType?: unknown,
+    opts?: {
+      merchantName?: string | null;
+      transactionAmount?: string | null;
+      localStatus?: string | null;
+    }
+  ) => 'approved' | 'declined' | null;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
