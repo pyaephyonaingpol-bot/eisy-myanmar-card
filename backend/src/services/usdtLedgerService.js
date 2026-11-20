@@ -164,6 +164,117 @@ async function updateUserBalances(db, userId, available, locked) {
   );
 }
 
+function insufficientUsdtError(amount, available) {
+  const err = new Error(
+    `Insufficient available USDT. Required ${formatUsdt(amount)}, available ${formatUsdt(available)}`
+  );
+  err.code = 'INSUFFICIENT_USDT_BALANCE';
+  err.required_usdt = amount;
+  err.available_usdt = available;
+  return err;
+}
+
+/**
+ * Atomically debit available USDT with a conditional UPDATE so concurrent
+ * Turso/LibSQL sessions cannot overdraft via SELECT-then-SET races.
+ * Must run inside an open DB transaction that also writes ledger rows.
+ *
+ * @returns {{ availableBefore: number, availableAfter: number, locked: number }}
+ */
+async function applyAvailableDebitAtomic(db, userId, amountUsdt, {
+  allowInsufficient = false,
+} = {}) {
+  const amount = roundUsdt(amountUsdt);
+  if (!(amount > 0)) {
+    throw new Error('Debit amount must be a positive number');
+  }
+
+  // Confirm the user exists before mutating (preserves USER_NOT_FOUND).
+  const bal = await fetchBalances(userId, db);
+
+  if (allowInsufficient) {
+    const availableAfter = roundUsdt(bal.available - amount);
+    await updateUserBalances(db, userId, availableAfter, bal.locked);
+    return {
+      availableBefore: bal.available,
+      availableAfter,
+      locked: bal.locked,
+    };
+  }
+
+  // Fast reject for the common short-wallet case (same error shape as before).
+  if (bal.available < amount - 0.001) {
+    throw insufficientUsdtError(amount, bal.available);
+  }
+
+  // Race-safe debit: only one concurrent winner can satisfy balance >= amount.
+  const updated = await db.run(
+    `UPDATE users
+     SET balance_usdt = COALESCE(balance_usdt, 0) - ?,
+         updated_at = datetime('now')
+     WHERE id = ?
+       AND COALESCE(balance_usdt, 0) >= ?`,
+    amount,
+    userId,
+    amount
+  );
+
+  if (Number(updated?.changes || 0) !== 1) {
+    const fresh = await fetchBalances(userId, db).catch(() => null);
+    throw insufficientUsdtError(amount, fresh?.available ?? 0);
+  }
+
+  const after = await fetchBalances(userId, db);
+  return {
+    availableBefore: roundUsdt(after.available + amount),
+    availableAfter: after.available,
+    locked: after.locked,
+  };
+}
+
+/**
+ * Atomically move available → locked USDT (escrow). Same conditional guard.
+ *
+ * @returns {{ availableBefore: number, availableAfter: number, lockedBefore: number, lockedAfter: number }}
+ */
+async function applyAvailableLockAtomic(db, userId, amountUsdt) {
+  const amount = roundUsdt(amountUsdt);
+  if (!(amount > 0)) {
+    throw new Error('Escrow lock amount must be positive');
+  }
+
+  const bal = await fetchBalances(userId, db);
+  if (bal.available < amount - 0.001) {
+    throw insufficientUsdtError(amount, bal.available);
+  }
+
+  const updated = await db.run(
+    `UPDATE users
+     SET balance_usdt = COALESCE(balance_usdt, 0) - ?,
+         balance_usdt_locked = COALESCE(balance_usdt_locked, 0) + ?,
+         updated_at = datetime('now')
+     WHERE id = ?
+       AND COALESCE(balance_usdt, 0) >= ?`,
+    amount,
+    amount,
+    userId,
+    amount
+  );
+
+  if (Number(updated?.changes || 0) !== 1) {
+    const fresh = await fetchBalances(userId, db).catch(() => null);
+    throw insufficientUsdtError(amount, fresh?.available ?? 0);
+  }
+
+  const after = await fetchBalances(userId, db);
+  return {
+    availableBefore: roundUsdt(after.available + amount),
+    availableAfter: after.available,
+    lockedBefore: roundUsdt(after.locked - amount),
+    lockedAfter: after.locked,
+  };
+}
+
 async function insertLedgerEntry(db, {
   userId,
   txType,
@@ -369,19 +480,9 @@ async function debitAvailable(userId, amountUsdt, {
   if (amount <= 0) throw new Error('Debit amount must be a positive number');
 
   const user = await withDbTransaction(async (db) => {
-    const bal = await fetchBalances(userId, db);
-    if (bal.available < amount - 0.001 && !allowInsufficient) {
-      const err = new Error(
-        `Insufficient available USDT. Required ${formatUsdt(amount)}, available ${formatUsdt(bal.available)}`
-      );
-      err.code = 'INSUFFICIENT_USDT_BALANCE';
-      err.required_usdt = amount;
-      err.available_usdt = bal.available;
-      throw err;
-    }
-
-    const availableAfter = roundUsdt(bal.available - amount);
-    await updateUserBalances(db, userId, availableAfter, bal.locked);
+    const applied = await applyAvailableDebitAtomic(db, userId, amount, {
+      allowInsufficient,
+    });
 
     const jid = journalId || generateJournalId('DB');
 
@@ -390,9 +491,9 @@ async function debitAvailable(userId, amountUsdt, {
       txType,
       direction: 'debit',
       amountUsdt: amount,
-      balanceBefore: bal.available,
-      balanceAfter: availableAfter,
-      lockedBalanceAfter: bal.locked,
+      balanceBefore: applied.availableBefore,
+      balanceAfter: applied.availableAfter,
+      lockedBalanceAfter: applied.locked,
       network,
       txHash,
       counterpartyAddress,
@@ -409,8 +510,8 @@ async function debitAvailable(userId, amountUsdt, {
       type: txType,
       direction: 'debit',
       amountUsd: amount,
-      balanceBefore: bal.available,
-      balanceAfter: availableAfter,
+      balanceBefore: applied.availableBefore,
+      balanceAfter: applied.availableAfter,
       referenceType,
       referenceId,
       description: description || `USDT wallet debited ${formatUsdt(amount)}`,
@@ -418,7 +519,7 @@ async function debitAvailable(userId, amountUsdt, {
       metadata: {
         wallet: 'usdt',
         ledger: 'available',
-        locked_usdt: bal.locked,
+        locked_usdt: applied.locked,
         ...(metadata || {}),
       },
     });
@@ -461,20 +562,9 @@ async function lockUsdtForEscrow(userId, amountUsdt, {
       throw err;
     }
 
-    const bal = await fetchBalances(userId, db);
-    if (bal.available < amount - 0.001) {
-      const err = new Error(
-        `Insufficient available USDT for escrow. Required ${formatUsdt(amount)}, available ${formatUsdt(bal.available)}`
-      );
-      err.code = 'INSUFFICIENT_USDT_BALANCE';
-      err.required_usdt = amount;
-      err.available_usdt = bal.available;
-      throw err;
-    }
-
-    const availableAfter = roundUsdt(bal.available - amount);
-    const lockedAfter = roundUsdt(bal.locked + amount);
-    await updateUserBalances(db, userId, availableAfter, lockedAfter);
+    const applied = await applyAvailableLockAtomic(db, userId, amount);
+    const availableAfter = applied.availableAfter;
+    const lockedAfter = applied.lockedAfter;
 
     const jid = journalId || generateJournalId('LOCK');
     const holdResult = await db.run(`
@@ -498,7 +588,7 @@ async function lockUsdtForEscrow(userId, amountUsdt, {
       txType: 'escrow_lock',
       direction: 'neutral',
       amountUsdt: amount,
-      balanceBefore: bal.available,
+      balanceBefore: applied.availableBefore,
       balanceAfter: availableAfter,
       lockedBalanceAfter: lockedAfter,
       referenceType,
@@ -518,7 +608,7 @@ async function lockUsdtForEscrow(userId, amountUsdt, {
       type: 'escrow_lock',
       direction: 'neutral',
       amountUsd: amount,
-      balanceBefore: bal.available,
+      balanceBefore: applied.availableBefore,
       balanceAfter: availableAfter,
       referenceType,
       referenceId: refId,
@@ -841,17 +931,9 @@ async function transferUsdtInternal(fromUserId, toUserId, amountUsdt, {
   }
 
   const result = await withDbTransaction(async (db) => {
-    const senderBal = await fetchBalances(fromUserId, db);
-    if (senderBal.available < totalDebit - 0.001) {
-      const err = new Error(
-        `Insufficient available USDT. Required ${formatUsdt(totalDebit)}, available ${formatUsdt(senderBal.available)}`
-      );
-      err.code = 'INSUFFICIENT_USDT_BALANCE';
-      throw err;
-    }
-
-    const senderAvailableAfter = roundUsdt(senderBal.available - totalDebit);
-    await updateUserBalances(db, fromUserId, senderAvailableAfter, senderBal.locked);
+    const senderDebit = await applyAvailableDebitAtomic(db, fromUserId, totalDebit);
+    const senderAvailableAfter = senderDebit.availableAfter;
+    const senderLocked = senderDebit.locked;
 
     const receiverBal = await fetchBalances(toUserId, db);
     const receiverAvailableAfter = roundUsdt(receiverBal.available + amount);
@@ -871,9 +953,9 @@ async function transferUsdtInternal(fromUserId, toUserId, amountUsdt, {
       txType: 'internal_transfer_out',
       direction: 'debit',
       amountUsdt: totalDebit,
-      balanceBefore: senderBal.available,
+      balanceBefore: senderDebit.availableBefore,
       balanceAfter: senderAvailableAfter,
-      lockedBalanceAfter: senderBal.locked,
+      lockedBalanceAfter: senderLocked,
       counterpartyUserId: toUserId,
       referenceType: 'usdt_internal_transfers',
       referenceId: transferId,
@@ -903,7 +985,7 @@ async function transferUsdtInternal(fromUserId, toUserId, amountUsdt, {
       type: 'internal_transfer_out',
       direction: 'debit',
       amountUsd: totalDebit,
-      balanceBefore: senderBal.available,
+      balanceBefore: senderDebit.availableBefore,
       balanceAfter: senderAvailableAfter,
       referenceType: 'usdt_internal_transfers',
       referenceId: transferId,
@@ -944,11 +1026,11 @@ async function transferUsdtInternal(fromUserId, toUserId, amountUsdt, {
       journalId,
       wallet: {
         available_usdt: senderAvailableAfter,
-        locked_usdt: senderBal.locked,
-        total_usdt: roundUsdt(senderAvailableAfter + senderBal.locked),
+        locked_usdt: senderLocked,
+        total_usdt: roundUsdt(senderAvailableAfter + senderLocked),
         available_formatted: formatUsdt(senderAvailableAfter),
-        locked_formatted: formatUsdt(senderBal.locked),
-        total_formatted: formatUsdt(roundUsdt(senderAvailableAfter + senderBal.locked)),
+        locked_formatted: formatUsdt(senderLocked),
+        total_formatted: formatUsdt(roundUsdt(senderAvailableAfter + senderLocked)),
       },
     };
   });
@@ -965,6 +1047,8 @@ module.exports = {
   getUsdtBalances,
   creditAvailable,
   debitAvailable,
+  applyAvailableDebitAtomic,
+  applyAvailableLockAtomic,
   lockUsdtForEscrow,
   refundEscrowHold,
   consumeEscrowToBuyer,
