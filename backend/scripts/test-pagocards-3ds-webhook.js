@@ -62,6 +62,8 @@ assert.ok(manual.includes('refresh: true'), 'Refresh Code scans the provider onc
 assert.ok(manual.includes('_pago3dsInFlight'), 'a second click does not stack another scan');
 assert.ok(service.includes('deliver3dsNotifications'), 'webhook emails/pushes new 3DS codes');
 assert.ok(service.includes('dispatch3dsCodeEmail'), 'webhook queues 3DS email');
+assert.ok(service.includes('deliverCardTransactionNotifications'), 'webhook emails approved/declined txns');
+assert.ok(service.includes('dispatchCardTransactionEmail'), 'webhook queues card txn email');
 
 assert.ok(i18n.includes('pago_3ds_heading:'), 'EN 3DS heading');
 assert.ok(i18n.includes("pago_3ds_refresh: 'Refresh Code'"), 'EN Refresh Code label');
@@ -100,6 +102,7 @@ assert.ok(libCjs.includes('module.exports'), 'CJS helper uses module.exports');
 assert.ok(libCjs.includes('function normalizePagocardsWebhook'), 'CJS normalizer present');
 assert.ok(libCjs.includes('function collect3dsOtps'), 'CJS OTP collector present');
 assert.ok(libCjs.includes('function mapWebhookCardStatus'), 'status mapper present');
+assert.ok(libCjs.includes('function mapTransactionOutcome'), 'txn outcome mapper present');
 assert.ok(!/\bexport\s+function\b/.test(libCjs), 'CJS helper has no ESM export function');
 assert.ok(libJs.includes("require('./pagocardsWebhook.cjs')"), 'JS re-exports CJS implementation');
 assert.ok(!/\bexport\s+function\b/.test(libJs), 'JS re-export has no ESM export function');
@@ -248,6 +251,35 @@ assert.strictEqual(direct.mapWebhookCardStatus('cancelled', ''), 'terminated');
 assert.strictEqual(direct.mapWebhookCardStatus('activated', ''), 'active');
 assert.strictEqual(direct.mapWebhookCardStatus('weird', 'card.updated'), null);
 assert.strictEqual(direct.mapWebhookCardStatus('frozen', '3ds'), null);
+assert.strictEqual(direct.mapWebhookCardStatus('approved', 'transaction.completed'), null);
+
+const txnApproved = normalizePagocardsWebhook({
+  eventId: 'txn-approved-test',
+  eventType: 'transaction.completed',
+  cardId: 'card_txn_a',
+  status: 'approved',
+  merchantName: 'Cafe',
+  transactionAmount: '4.00',
+  transactionCurrency: 'USD',
+});
+assert.ok(txnApproved);
+assert.strictEqual(txnApproved.transactionOutcome, 'approved');
+assert.strictEqual(txnApproved.localStatus, null);
+assert.strictEqual(txnApproved.is3ds, false);
+
+const txnDeclined = normalizePagocardsWebhook({
+  eventId: 'txn-declined-test',
+  eventType: 'transaction.declined',
+  cardId: 'card_txn_d',
+  status: 'declined',
+  merchant_name: 'Shop',
+  transaction_amount: '20',
+  decline_reason: 'Do not honor',
+});
+assert.ok(txnDeclined);
+assert.strictEqual(txnDeclined.transactionOutcome, 'declined');
+assert.strictEqual(txnDeclined.declineReason, 'Do not honor');
+assert.strictEqual(typeof direct.mapTransactionOutcome, 'function');
 
 const unknownStatus = normalizePagocardsWebhook({
   eventId: 'st-unk',

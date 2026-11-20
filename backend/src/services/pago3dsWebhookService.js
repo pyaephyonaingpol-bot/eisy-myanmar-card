@@ -249,15 +249,38 @@ async function handlePagocardsWebhook(body, req = null) {
   }
 
   if (!duplicate && localCard?.user_id && event.otp) {
-    deliver3dsNotifications({
-      userId: localCard.user_id,
-      otp: event.otp,
-      merchantName: event.merchantName,
-      transactionAmount: event.transactionAmount,
-      transactionCurrency: event.transactionCurrency,
-      eventId: event.eventId || row?.event_id,
-      last4: localCard.last4 || localCard.last_four,
-    }).catch((err) => console.warn('[pago3ds] deliver skipped:', err.message));
+    try {
+      await deliver3dsNotifications({
+        userId: localCard.user_id,
+        otp: event.otp,
+        merchantName: event.merchantName,
+        transactionAmount: event.transactionAmount,
+        transactionCurrency: event.transactionCurrency,
+        eventId: event.eventId || row?.event_id,
+        last4: localCard.last4 || localCard.last_four,
+      });
+    } catch (err) {
+      console.warn('[pago3ds] deliver skipped:', err.message);
+    }
+  } else if (!duplicate && localCard?.user_id && event.transactionOutcome) {
+    // Await only user lookup + queue; Resend HTTP stays fire-and-forget so a
+    // provider outage never fails the webhook ACK / transaction itself.
+    try {
+      await deliverCardTransactionNotifications({
+        userId: localCard.user_id,
+        outcome: event.transactionOutcome,
+        merchantName: event.merchantName,
+        transactionAmount: event.transactionAmount,
+        transactionCurrency: event.transactionCurrency,
+        declineReason: event.declineReason,
+        occurredAt: event.occurredAt,
+        eventId: event.eventId || row?.event_id,
+        last4: event.last4 || localCard.last4 || localCard.last_four,
+        cardId: event.cardId || localCard.pago_card_id || null,
+      });
+    } catch (err) {
+      console.warn('[pago3ds] card txn email skipped:', err.message);
+    }
   } else if (!duplicate && cardUpdated && localCard?.user_id && event.localStatus) {
     try {
       const { notifyUserPush } = require('./webPushService');
@@ -280,6 +303,13 @@ async function handlePagocardsWebhook(body, req = null) {
       user_id: localCard?.user_id || null,
       row_id: row?.id || null,
     });
+  } else if (event.transactionOutcome) {
+    console.log('[webhook/pagocards] card transaction outcome', {
+      outcome: event.transactionOutcome,
+      local_card_id: localCard?.id || null,
+      user_id: localCard?.user_id || null,
+      event_id: event.eventId || null,
+    });
   } else if (cardUpdated) {
     console.log('[webhook/pagocards] updated card status', {
       local_card_id: localCard?.id || null,
@@ -293,6 +323,7 @@ async function handlePagocardsWebhook(body, req = null) {
     duplicate,
     ignored: false,
     cardUpdated,
+    transactionOutcome: event.transactionOutcome || null,
     row,
     event,
     public: toPublicEvent(row),
@@ -356,6 +387,81 @@ async function deliver3dsNotifications({
     }
   } catch (err) {
     console.warn('[pago3ds] email skipped:', err.message);
+  }
+
+  return { push: true, email: emailQueued };
+}
+
+/**
+ * Push + email an Approved / Declined card purchase notice.
+ * Never throws; Resend failures are logged and swallowed so webhooks still ACK.
+ */
+async function deliverCardTransactionNotifications({
+  userId,
+  outcome,
+  merchantName = null,
+  transactionAmount = null,
+  transactionCurrency = null,
+  declineReason = null,
+  occurredAt = null,
+  eventId = null,
+  last4 = null,
+  cardId = null,
+} = {}) {
+  const status = String(outcome || '').toLowerCase().trim();
+  const uid = Number(userId);
+  if (!['approved', 'declined'].includes(status) || !Number.isFinite(uid) || uid <= 0) {
+    return { push: false, email: false };
+  }
+
+  const amountLabel = transactionAmount
+    ? `${transactionAmount}${transactionCurrency ? ` ${transactionCurrency}` : ''}`
+    : '';
+  const title = status === 'approved' ? 'Card purchase approved' : 'Card purchase declined';
+  const bodyBits = [
+    amountLabel || null,
+    merchantName || null,
+    status === 'declined' && declineReason ? declineReason : null,
+  ].filter(Boolean);
+
+  try {
+    const { notifyUserPush } = require('./webPushService');
+    notifyUserPush(uid, {
+      title,
+      body: bodyBits.join(' · ') || title,
+      url: '/#cards',
+      tag: eventId ? `eisy-card-txn-${eventId}` : 'eisy-card-txn',
+    }).catch((err) => console.warn('[push] card txn:', err.message));
+  } catch (err) {
+    console.warn('[push] card txn skipped:', err.message);
+  }
+
+  let emailQueued = false;
+  try {
+    const User = require('../models/User');
+    const user = await User.findById(uid);
+    const email = String(user?.email || '').trim();
+    if (email) {
+      const { dispatchCardTransactionEmail } = require('./emailService');
+      dispatchCardTransactionEmail({
+        email,
+        userName: user?.name || null,
+        outcome: status,
+        amount: transactionAmount,
+        currency: transactionCurrency,
+        merchantName,
+        last4,
+        cardId,
+        occurredAt,
+        declineReason,
+        eventId,
+      });
+      emailQueued = true;
+    } else {
+      console.warn('[pago3ds] no email on user', uid, '— skipping card txn mail');
+    }
+  } catch (err) {
+    console.warn('[pago3ds] card txn email skipped:', err.message);
   }
 
   return { push: true, email: emailQueued };
@@ -521,6 +627,7 @@ module.exports = {
   markUser3dsSeen,
   toPublicEvent,
   deliver3dsNotifications,
+  deliverCardTransactionNotifications,
   loadPagocardsWebhookLib,
   resetPagocardsWebhookLibCache,
   OTP_TTL_MINUTES,

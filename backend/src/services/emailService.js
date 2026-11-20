@@ -568,6 +568,220 @@ function dispatch3dsCodeEmail(opts) {
   return { queued: true, promise };
 }
 
+function normalizeCardTxnOutcome(value) {
+  const raw = String(value || '').toLowerCase().trim();
+  if (raw === 'approved' || raw === 'completed' || raw === 'success') return 'approved';
+  if (raw === 'declined' || raw === 'failed' || raw === 'rejected') return 'declined';
+  return null;
+}
+
+function maskCardLast4(last4) {
+  const digits = String(last4 || '').replace(/\D/g, '');
+  if (digits.length < 4) return null;
+  return `•••• ${digits.slice(-4)}`;
+}
+
+function formatCardTxnAmount(amount, currency) {
+  if (amount == null || String(amount).trim() === '') return '';
+  const cur = String(currency || '').trim().toUpperCase();
+  return cur ? `${amount} ${cur}` : String(amount);
+}
+
+function buildCardTransactionHtml({
+  userName,
+  outcome,
+  amountLabel,
+  merchantName,
+  maskedCard,
+  cardId,
+  occurredAt,
+  declineReason,
+}) {
+  const greeting = userName ? `Hi ${escapeHtml(userName)},` : 'Hi,';
+  const approved = outcome === 'approved';
+  const statusLabel = approved ? 'Approved' : 'Declined';
+  const statusColor = approved ? '#0a7a32' : '#b42318';
+  const intro = approved
+    ? 'Your card purchase was approved.'
+    : 'Your card purchase was declined.';
+  const rows = [
+    ['Status', statusLabel],
+    amountLabel ? ['Amount', amountLabel] : null,
+    merchantName ? ['Merchant', merchantName] : null,
+    maskedCard ? ['Card', maskedCard] : (cardId ? ['Card', `ID ${cardId}`] : null),
+    occurredAt ? ['Time', occurredAt] : null,
+    !approved && declineReason ? ['Reason', declineReason] : null,
+  ].filter(Boolean);
+
+  const tableRows = rows.map(([label, value]) => (
+    `<tr><td style="padding:6px 0;color:#555">${escapeHtml(label)}</td>`
+    + `<td style="padding:6px 0;text-align:right"><strong>${escapeHtml(value)}</strong></td></tr>`
+  )).join('');
+
+  return `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111">
+      <p style="font-size:16px;font-weight:700;margin:0 0 8px">Eisy Myanmar</p>
+      <p style="font-size:15px;line-height:1.5;margin:0 0 8px">${greeting}</p>
+      <p style="font-size:15px;line-height:1.5;margin:0 0 8px">${escapeHtml(intro)}</p>
+      <p style="font-size:18px;font-weight:700;color:${statusColor};margin:0 0 12px">${escapeHtml(statusLabel)}</p>
+      <table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:14px">${tableRows}</table>
+      <p style="font-size:13px;color:#555;margin:16px 0 0">If you did not make this purchase, contact support immediately.</p>
+    </div>
+  `.trim();
+}
+
+function buildCardTransactionText({
+  userName,
+  outcome,
+  amountLabel,
+  merchantName,
+  maskedCard,
+  cardId,
+  occurredAt,
+  declineReason,
+}) {
+  const approved = outcome === 'approved';
+  const statusLabel = approved ? 'Approved' : 'Declined';
+  return [
+    'Eisy Myanmar',
+    userName ? `Hi ${userName},` : 'Hi,',
+    '',
+    approved ? 'Your card purchase was approved.' : 'Your card purchase was declined.',
+    `Status: ${statusLabel}`,
+    amountLabel ? `Amount: ${amountLabel}` : null,
+    merchantName ? `Merchant: ${merchantName}` : null,
+    maskedCard ? `Card: ${maskedCard}` : (cardId ? `Card: ID ${cardId}` : null),
+    occurredAt ? `Time: ${occurredAt}` : null,
+    !approved && declineReason ? `Reason: ${declineReason}` : null,
+    '',
+    'If you did not make this purchase, contact support immediately.',
+  ].filter((line) => line != null).join('\n');
+}
+
+function cardTxnIdempotencyKey({ eventId, outcome }) {
+  const digest = crypto.createHash('sha256')
+    .update(`card-txn|${eventId || ''}|${outcome || ''}`)
+    .digest('hex')
+    .slice(0, 32);
+  return `card-txn-${digest}`;
+}
+
+/**
+ * Email a card purchase Approved / Declined receipt.
+ * Idempotent via Resend Idempotency-Key keyed by webhook eventId + outcome.
+ * Never throws to callers that use dispatch — returns { sent:false } on failure.
+ */
+async function sendCardTransactionEmail({
+  email,
+  userName,
+  outcome,
+  amount,
+  currency,
+  merchantName,
+  last4,
+  cardId,
+  occurredAt,
+  declineReason,
+  eventId,
+} = {}) {
+  const toAddress = normalizeRecipientEmail(email);
+  const status = normalizeCardTxnOutcome(outcome);
+  if (!toAddress || !toAddress.includes('@')) {
+    return { sent: false, provider: 'none', reason: 'invalid_email' };
+  }
+  if (!status) {
+    return { sent: false, provider: 'none', reason: 'invalid_outcome' };
+  }
+
+  const amountLabel = formatCardTxnAmount(amount, currency);
+  const maskedCard = maskCardLast4(last4);
+  const safeCardId = cardId ? String(cardId).slice(0, 48) : null;
+  const subjectBits = [
+    status === 'approved' ? 'Card purchase approved' : 'Card purchase declined',
+    amountLabel || null,
+    merchantName ? `at ${merchantName}` : null,
+  ].filter(Boolean);
+  const subject = subjectBits.join(' — ').slice(0, 120);
+  const html = buildCardTransactionHtml({
+    userName,
+    outcome: status,
+    amountLabel,
+    merchantName,
+    maskedCard,
+    cardId: safeCardId,
+    occurredAt,
+    declineReason,
+  });
+  const text = buildCardTransactionText({
+    userName,
+    outcome: status,
+    amountLabel,
+    merchantName,
+    maskedCard,
+    cardId: safeCardId,
+    occurredAt,
+    declineReason,
+  });
+
+  if (!getResendApiKey()) {
+    console.warn('[Eisy Myanmar] RESEND_API_KEY not set — card transaction email logged only');
+    console.log(
+      `[Eisy Myanmar] Card txn (console) to=${toAddress} outcome=${status}`
+      + ` amount=${amountLabel || '-'} merchant=${merchantName || '-'} event=${eventId || '-'}`
+    );
+    return { sent: false, provider: 'console', reason: 'resend_not_configured' };
+  }
+
+  const payload = {
+    from: getFromAddress(),
+    to: [toAddress],
+    subject,
+    html,
+    text,
+  };
+  const idempotencyKey = eventId
+    ? cardTxnIdempotencyKey({ eventId, outcome: status })
+    : '';
+
+  try {
+    const result = await postResendEmail(payload, {
+      timeoutMs: RESEND_TIMEOUT_MS,
+      idempotencyKey,
+    });
+    console.log(
+      `[Eisy Myanmar] Card txn email sent via Resend to=${toAddress}`
+      + ` outcome=${status} id=${result.id || 'n/a'} elapsed_ms=${result.elapsed_ms}`
+      + ` event=${eventId || '-'}`
+    );
+    return { sent: true, provider: 'resend', id: result.id, elapsed_ms: result.elapsed_ms };
+  } catch (err) {
+    console.error(
+      `[Eisy Myanmar] Card txn email failed to=${toAddress}`
+      + ` outcome=${status} code=${err.code || 'ERR'} event=${eventId || '-'}:`,
+      err.message || err
+    );
+    return {
+      sent: false,
+      provider: 'resend',
+      error: err.message || String(err),
+      code: err.code || null,
+    };
+  }
+}
+
+function dispatchCardTransactionEmail(opts) {
+  const promise = sendCardTransactionEmail(opts)
+    .catch((err) => {
+      console.warn('[email] card txn dispatch failed:', err.message || err);
+      return { sent: false, provider: 'resend', error: err.message || String(err) };
+    })
+    .finally(() => {
+      _pendingOtpSends.delete(promise);
+    });
+  _pendingOtpSends.add(promise);
+  return { queued: true, promise };
+}
+
 warmResendConnection();
 
 module.exports = {
@@ -577,7 +791,12 @@ module.exports = {
   sendWithdrawalProofEmail,
   send3dsCodeEmail,
   dispatch3dsCodeEmail,
+  sendCardTransactionEmail,
+  dispatchCardTransactionEmail,
   buildOtpResendPayload,
+  buildCardTransactionHtml,
+  buildCardTransactionText,
+  normalizeCardTxnOutcome,
   getFromAddress,
   postResendEmail,
   warmResendConnection,
