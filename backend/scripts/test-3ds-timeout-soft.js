@@ -49,7 +49,10 @@ console.log('ok');
 
 section('Cache bust');
 const html = read('public/index.html');
-assert.ok(html.includes('tdsSoftTimeout'), 'script cache bust for 3DS soft timeout');
+assert.ok(
+    html.includes('tdsSoftTimeout') || html.includes('authSoft500'),
+    'script cache bust for soft timeout / auth soft failures'
+  );
 console.log('ok');
 
 async function testClientErrorsSkips3dsTimeout() {

@@ -328,7 +328,23 @@ const Auth = {
           err.code = data.code;
           err.status = res.status;
           err.response = data;
+          err.path = path;
+          err.method = m;
           if (opts.suppressErrorReport) err.suppressErrorReport = true;
+          // Transient auth middleware blips / expected session ends — do not Telegram-storm.
+          if (
+            data.code === 'AUTH_UNAVAILABLE'
+            || data.code === 'AUTH_DB_NOT_READY'
+            || data.code === 'ADMIN_AUTH_UNAVAILABLE'
+            || data.code === 'ADMIN_DB_NOT_READY'
+            || (
+              (res.status === 500 || res.status === 503)
+              && String(data.error || '') === 'Authentication error'
+            )
+          ) {
+            err.suppressErrorReport = true;
+            err.softAuthFailure = true;
+          }
           if (
             res.status === 401
             && (data.code === 'SESSION_SUPERSEDED' || data.code === 'SESSION_INVALID')
@@ -343,6 +359,8 @@ const Auth = {
             window.dispatchEvent(new CustomEvent('eisy:session-end', {
               detail: { reason: data.code === 'SESSION_SUPERSEDED' ? 'superseded' : 'invalid' },
             }));
+            err.suppressErrorReport = true;
+            err.softAuthFailure = true;
           }
           console.error('[Auth.api] Request failed:', err.message, data);
           throw err;
