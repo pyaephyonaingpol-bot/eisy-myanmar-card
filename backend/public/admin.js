@@ -1805,16 +1805,35 @@
       ]);
       if (dummyValues.has(lower)) return false;
       if (lower.startsWith('data:image/')) return true;
+      // Absolute http(s) URLs are accepted; normalize upgrades insecure ones.
       if (/^https?:\/\//i.test(trimmed)) return true;
       if (trimmed.startsWith('/uploads/')) return true;
       if (trimmed.startsWith('uploads/')) return true;
       return false;
     },
 
+    /** Prefer https:// (or relative/data) so admin HTTPS pages avoid mixed content. */
+    preferHttpsMediaUrl(src) {
+      const trimmed = String(src || '').trim();
+      if (!trimmed) return '';
+      if (trimmed.startsWith('data:') || trimmed.startsWith('/')) return trimmed;
+      if (/^http:\/\//i.test(trimmed)) {
+        try {
+          const u = new URL(trimmed);
+          u.protocol = 'https:';
+          return u.href;
+        } catch (_) {
+          return trimmed.replace(/^http:\/\//i, 'https://');
+        }
+      }
+      return trimmed;
+    },
+
     normalizeKycDocumentUrl(src) {
       if (!this.isValidKycDocumentSrc(src)) return null;
       const trimmed = String(src).trim();
-      if (trimmed.startsWith('data:') || /^https?:\/\//i.test(trimmed)) return trimmed;
+      if (trimmed.startsWith('data:')) return trimmed;
+      if (/^https?:\/\//i.test(trimmed)) return this.preferHttpsMediaUrl(trimmed);
       return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
     },
 
@@ -4137,11 +4156,12 @@
       const img = $('adminProofLightboxImg');
       const video = $('adminProofLightboxVideo');
       if (!img || !video || !src) return;
+      const safeSrc = this.preferHttpsMediaUrl(src);
 
       if (type === 'video') {
         img.classList.add('hidden');
         img.removeAttribute('src');
-        video.src = src;
+        video.src = safeSrc;
         video.classList.remove('hidden');
         video.controls = true;
         video.play().catch(function () {});
@@ -4150,7 +4170,7 @@
         video.classList.add('hidden');
         video.removeAttribute('src');
         video.load();
-        img.src = src;
+        img.src = safeSrc;
         img.classList.remove('hidden');
       }
 

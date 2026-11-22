@@ -15,7 +15,6 @@
   if (!window.Eisy.config) {
     window.Eisy.config = Object.freeze({
       PRODUCTION_API: 'https://eisymyanmar.com',
-      LOCAL_ANDROID_EMULATOR: 'http://10.0.2.2:3000',
       API_BASE_OVERRIDE_GLOBAL: 'EISY_API_BASE_OVERRIDE',
       API_BASE_GLOBAL: 'EISY_API_BASE',
     });
