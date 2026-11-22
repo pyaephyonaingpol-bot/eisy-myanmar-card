@@ -70,6 +70,7 @@
     "test:google-oauth-service": "node scripts/test-google-oauth-service.js",
     "test:site-security": "node scripts/test-site-security.js",
     "test:mixed-content": "node scripts/test-mixed-content-http.js",
+    "test:auth-unhandled-500": "node scripts/test-auth-unhandled-500.js",
     "test:tron-hd-addresses": "node scripts/test-tron-hd-addresses.js",
     "test:tron-wallet": "node scripts/test-tron-wallet-service.js",
     "test:tron-sweep": "node scripts/test-tron-sweep.js",

@@ -55,6 +55,34 @@
     return false;
   }
 
+  /** Auth middleware / session blips — expected under Turso load; never high-severity alert. */
+  function isSoftAuthFailure(payload) {
+    const code = String(payload?.code || '');
+    const status = Number(payload?.status || 0);
+    const message = String(payload?.message || '');
+    if (payload?.suppressErrorReport || payload?.softAuthFailure) return true;
+    if (
+      code === 'AUTH_UNAVAILABLE'
+      || code === 'AUTH_DB_NOT_READY'
+      || code === 'ADMIN_AUTH_UNAVAILABLE'
+      || code === 'ADMIN_DB_NOT_READY'
+      || code === 'SESSION_INVALID'
+      || code === 'SESSION_SUPERSEDED'
+      || code === 'AUTH_REQUIRED'
+      || code === 'SENSITIVE_AUTH_REQUIRED'
+    ) {
+      return true;
+    }
+    // Legacy opaque requireAuth 500 (fingerprint 3a843889193aaf6b via unhandledrejection).
+    if (
+      (status === 500 || status === 503)
+      && /^Authentication error$/i.test(message)
+    ) {
+      return true;
+    }
+    return false;
+  }
+
   function shouldSkipServerIngest(payload) {
     if (!payload) return true;
     if (isCascadePath(payload.path)) return true;
@@ -62,6 +90,7 @@
     if (/bootstrap failed/i.test(String(payload.message || ''))) return true;
     if (payload.suppressErrorReport) return true;
     if (isExpectedSoftTimeout(payload)) return true;
+    if (isSoftAuthFailure(payload)) return true;
     return false;
   }
 
@@ -142,13 +171,24 @@
       const reason = event?.reason;
       const err = reason instanceof Error ? reason : new Error(String(reason || 'Unhandled rejection'));
       const code = String(err.code || '');
-      // Auth.api already soft-handles + may report timeouts; do not double-alert.
+      const softPayload = {
+        code,
+        path: err.path,
+        status: err.status,
+        message: err.message,
+        suppressErrorReport: err.suppressErrorReport,
+        softAuthFailure: err.softAuthFailure,
+      };
+      // Auth.api soft-handles its own promise; callers that fire-and-forget await
+      // can still surface the same Error here — swallow expected soft failures.
       if (
         code === 'REQUEST_TIMEOUT'
         || code === 'REQUEST_ABORTED'
         || code === 'NETWORK_ERROR'
         || err.suppressErrorReport
-        || isExpectedSoftTimeout({ code, path: err.path })
+        || err.softAuthFailure
+        || isExpectedSoftTimeout(softPayload)
+        || isSoftAuthFailure(softPayload)
       ) {
         try { event?.preventDefault?.(); } catch (_) { /* ignore */ }
         return;
@@ -178,7 +218,19 @@
           const code = String(err?.code || '');
           const apiPath = String(path || err?.path || '').slice(0, 200);
           // Never ingest failures of the ingest/monitoring endpoints themselves.
-          if (isCascadePath(apiPath) || code === 'BOOTSTRAP_FAILED' || err?.suppressErrorReport) {
+          if (
+            isCascadePath(apiPath)
+            || code === 'BOOTSTRAP_FAILED'
+            || err?.suppressErrorReport
+            || err?.softAuthFailure
+            || isSoftAuthFailure({
+              code,
+              status,
+              message: err?.message,
+              suppressErrorReport: err?.suppressErrorReport,
+              softAuthFailure: err?.softAuthFailure,
+            })
+          ) {
             throw err;
           }
           if (

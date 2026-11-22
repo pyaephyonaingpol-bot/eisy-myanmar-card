@@ -38,10 +38,27 @@ router.post('/', ingestLimiter, (req, res) => {
   const source = String(body.source || 'client').slice(0, 60);
 
   // Drop cascade / expected soft noise so SPA polls do not Telegram-storm.
+  const softAuthCodes = new Set([
+    'AUTH_UNAVAILABLE',
+    'AUTH_DB_NOT_READY',
+    'ADMIN_AUTH_UNAVAILABLE',
+    'ADMIN_DB_NOT_READY',
+    'SESSION_INVALID',
+    'SESSION_SUPERSEDED',
+    'AUTH_REQUIRED',
+    'SENSITIVE_AUTH_REQUIRED',
+  ]);
   if (
     code === 'BOOTSTRAP_FAILED'
     || /bootstrap failed/i.test(message)
     || body.suppressErrorReport
+    || body.softAuthFailure
+    || (code && softAuthCodes.has(code))
+    // Legacy opaque requireAuth 500 surfaced via unhandledrejection (fp 3a843889193aaf6b).
+    || (
+      (status === 500 || status === 503)
+      && /^Authentication error$/i.test(message)
+    )
     || (path && (
       path.includes('/api/client-errors')
       || path.includes('/api/config/monitoring')

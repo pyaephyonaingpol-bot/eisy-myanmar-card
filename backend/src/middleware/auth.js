@@ -33,7 +33,7 @@ function isTransientDbError(err) {
   return /timeout|timed out|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|socket|network|temporar|429|503|502|rate.?limit|too many|server busy|SQLITE_BUSY|database is locked/i.test(msg);
 }
 
-async function findAdminSessionByToken(token) {
+async function findSessionByTokenWithRetry(token) {
   let lastErr;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
@@ -45,6 +45,32 @@ async function findAdminSessionByToken(token) {
     }
   }
   throw lastErr;
+}
+
+/** @deprecated use findSessionByTokenWithRetry — kept for admin auth call sites */
+async function findAdminSessionByToken(token) {
+  return findSessionByTokenWithRetry(token);
+}
+
+function authFailureResponse(res, err, { logLabel = '[auth middleware]' } = {}) {
+  console.error(logLabel, err);
+  const msg = String(err?.message || err || '');
+  if (/Database not initialized/i.test(msg)) {
+    return res.status(503).json({
+      error: 'Authentication database not ready — retry in a moment',
+      code: 'AUTH_DB_NOT_READY',
+    });
+  }
+  if (isTransientDbError(err)) {
+    return res.status(503).json({
+      error: 'Authentication temporarily unavailable — retry',
+      code: 'AUTH_UNAVAILABLE',
+    });
+  }
+  return res.status(500).json({
+    error: 'Authentication error',
+    code: 'AUTH_ERROR',
+  });
 }
 
 /** Fallback when ADMIN_API_KEY env is unset (local/dev ONLY — never production). */
@@ -105,7 +131,7 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Authentication required', code: 'AUTH_REQUIRED' });
     }
 
-    const session = await UserSession.findByToken(token);
+    const session = await findSessionByTokenWithRetry(token);
     if (!session) {
       let code = 'SESSION_INVALID';
       let error = 'Invalid or expired session';
@@ -150,8 +176,7 @@ async function requireAuth(req, res, next) {
 
     next();
   } catch (err) {
-    console.error('[auth middleware]', err);
-    res.status(500).json({ error: 'Authentication error' });
+    return authFailureResponse(res, err, { logLabel: '[auth middleware]' });
   }
 }
 
