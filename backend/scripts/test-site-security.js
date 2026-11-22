@@ -182,6 +182,7 @@ async function testMiddleware() {
     'utf8'
   );
   assert.ok(secSrc.includes('createSlidingWindowMiddleware'), 'API limiters use sliding window');
+  assert.ok(secSrc.includes('upgradeInsecureRequests'), 'CSP upgrade-insecure-requests enabled');
   console.log('ok');
 }
 

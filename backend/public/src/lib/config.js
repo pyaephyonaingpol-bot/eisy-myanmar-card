@@ -17,8 +17,11 @@
   return {
     /** Production API origin used by native Capacitor shells */
     PRODUCTION_API: 'https://eisymyanmar.com',
-    /** Android emulator loopback to host machine */
-    LOCAL_ANDROID_EMULATOR: 'http://10.0.2.2:3000',
+    /**
+     * Native/local API base: set window.EISY_API_BASE_OVERRIDE at runtime
+     * (e.g. Capacitor Android emulator). Keep clear-text origins out of this
+     * file so the HTTPS SPA never downloads them as hardcoded strings.
+     */
     /** Optional runtime override: window.EISY_API_BASE_OVERRIDE */
     API_BASE_OVERRIDE_GLOBAL: 'EISY_API_BASE_OVERRIDE',
     /** Resolved base assigned by apiConfig bootstrap */

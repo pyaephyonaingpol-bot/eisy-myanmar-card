@@ -37,15 +37,23 @@ function skipOptionsOnly(req) {
 
 /**
  * Security headers (XSS / clickjacking / MIME sniffing / HSTS in production).
- * CSP is intentionally not locked down to `default-src 'self'` only — the SPA
- * serves inline scripts; frameguard + nosniff still mitigate clickjacking/XSS vectors.
+ * Full CSP is intentionally not locked down to `default-src 'self'` — the SPA
+ * serves inline scripts. We still emit upgrade-insecure-requests so any stray
+ * http:// subresource (img/iframe/script) is rewritten to https:// on HTTPS pages.
  */
 function createHelmetMiddleware() {
   const isProd = String(process.env.NODE_ENV || '').toLowerCase() === 'production'
     || process.env.VERCEL === '1';
 
   return helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        // Intentionally no default-src lock-down (SPA uses inline scripts).
+        defaultSrc: helmet.contentSecurityPolicy.dangerouslyDisableDefaultSrc,
+        upgradeInsecureRequests: [],
+      },
+    },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },

@@ -8285,7 +8285,7 @@ const Dashboard = {
     this._userPayReceivePayload = data.payload || '';
     const img = $('userPayReceiveQr');
     if (img && data.qr_image_url) {
-      img.src = data.qr_image_url;
+      img.src = this.preferHttpsMediaUrl(data.qr_image_url);
       img.alt = this.i18nText('user_pay_receive_qr_alt', 'Your Pay QR code');
     }
     if ($('userPayReceiveEmail')) {
@@ -12087,14 +12087,32 @@ const Dashboard = {
     $('depositScreenshotPreview')?.classList.add('hidden');
   },
 
+  /** Prefer https:// (or relative/data) so HTTPS pages avoid mixed-content media. */
+  preferHttpsMediaUrl(src) {
+    const trimmed = String(src || '').trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('data:') || trimmed.startsWith('/')) return trimmed;
+    if (/^http:\/\//i.test(trimmed)) {
+      try {
+        const u = new URL(trimmed);
+        u.protocol = 'https:';
+        return u.href;
+      } catch (_) {
+        return trimmed.replace(/^http:\/\//i, 'https://');
+      }
+    }
+    return trimmed;
+  },
+
   openProofLightbox(src, caption, type = 'image') {
     const img = $('proofLightboxImg');
     const video = $('proofLightboxVideo');
+    const safeSrc = this.preferHttpsMediaUrl(src);
 
     if (type === 'video') {
       img.classList.add('hidden');
       img.removeAttribute('src');
-      video.src = src;
+      video.src = safeSrc;
       video.classList.remove('hidden');
       video.play().catch(() => {});
     } else {
@@ -12102,7 +12120,7 @@ const Dashboard = {
       video.classList.add('hidden');
       video.removeAttribute('src');
       video.load();
-      img.src = src;
+      img.src = safeSrc;
       img.classList.remove('hidden');
     }
 
