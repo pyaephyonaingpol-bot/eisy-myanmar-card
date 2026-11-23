@@ -222,15 +222,21 @@ function sendRobotsTxt(_req, res) {
 }
 
 function sendSitemapXml(_req, res) {
+  const xmlHeaders = {
+    'Content-Type': 'application/xml; charset=utf-8',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'CDN-Cache-Control': 'no-cache',
+    'Cloudflare-CDN-Cache-Control': 'no-cache',
+    Pragma: 'no-cache',
+    Expires: '0',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Sitemap-Handler': 'express',
+  };
   try {
     const { buildSitemapXml } = require('./lib/sitemapXml');
     const xml = buildSitemapXml();
     // Critical: application/xml (not text/html) so browsers/Google keep <urlset>/<url>/<loc> tags.
-    res.set({
-      'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=300, must-revalidate',
-      'X-Content-Type-Options': 'nosniff',
-    });
+    res.set(xmlHeaders);
     return res.status(200).send(xml);
   } catch (err) {
     console.error('[sitemap.xml]', err.message);
@@ -238,11 +244,7 @@ function sendSitemapXml(_req, res) {
     const filePath = path.join(PUBLIC_DIR, 'sitemap.xml');
     if (fs.existsSync(filePath)) {
       const body = fs.readFileSync(filePath, 'utf8');
-      res.set({
-        'Content-Type': 'application/xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=60, must-revalidate',
-        'X-Content-Type-Options': 'nosniff',
-      });
+      res.set(xmlHeaders);
       return res.status(200).send(body);
     }
     return res.status(500).type('text/plain').send('sitemap unavailable');

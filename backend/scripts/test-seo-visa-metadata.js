@@ -73,7 +73,14 @@ section('robots.txt + sitemap.xml');
   );
   const vercel = fs.readFileSync(path.join(root, '..', 'vercel.json'), 'utf8');
   assert.ok(vercel.includes('"/api/sitemap"'), 'vercel rewrites sitemap to dedicated function');
+  assert.ok(vercel.includes('no-cache'), 'vercel sitemap headers use no-cache');
+  assert.ok(
+    vercel.includes('(?!sitemap') || vercel.includes('(?!sitemap(?:/)?$'),
+    'vercel excludes /api/sitemap from Express catch-all rewrite'
+  );
   assert.ok(fs.existsSync(path.join(root, '..', 'api', 'sitemap.js')), 'api/sitemap.js exists');
+  const pkg = fs.readFileSync(path.join(root, '..', 'package.json'), 'utf8');
+  assert.ok(pkg.includes('rm -f public/sitemap.xml'), 'vercel-build strips static sitemap.xml');
   console.log('ok');
 }
 
