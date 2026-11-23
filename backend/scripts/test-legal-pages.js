@@ -120,20 +120,23 @@ assert.ok(styles.includes('.legal-footer-copyright'), 'footer copyright styles')
 assert.ok(styles.includes('.auth-legal-links'), 'auth link styles');
 assert.ok(legalCss.includes('.legal-copyright'), 'legal copyright styles');
 assert.ok(/\.auth-screen\s*\{[^}]*flex-direction:\s*column/s.test(styles), 'auth-screen stacks column');
-// Policy links must sit inside the login card (below forms), not as a flex sibling beside it
+// Policy links sit in the auth screen below the login card (separate section, not a side column).
 const authScreenIdx = indexHtml.indexOf('id="authScreen"');
 const legalNavIdx = indexHtml.indexOf('class="auth-legal-links"');
+const authSlice = indexHtml.slice(authScreenIdx, indexHtml.indexOf('<!-- ═══ PIN MODALS', authScreenIdx));
 assert.ok(authScreenIdx >= 0 && legalNavIdx > authScreenIdx, 'auth legal nav present');
 assert.ok(
   legalNavIdx < indexHtml.indexOf('<!-- ═══ PIN MODALS', authScreenIdx),
   'auth legal links remain in auth screen'
 );
 assert.ok(
-  /auth-card[\s\S]*auth-legal-links[\s\S]*<\/div>\s*<\/div>/m.test(
-    indexHtml.slice(authScreenIdx, indexHtml.indexOf('<!-- ═══ PIN MODALS', authScreenIdx))
-  ),
-  'auth-legal-links nested inside auth-card'
+  authSlice.includes('class="auth-card"') && authSlice.indexOf('class="auth-legal-links"') > authSlice.indexOf('class="auth-card"'),
+  'auth-legal-links follow the auth card'
 );
-assert.ok(styles.includes('border-top:') && styles.includes('.auth-legal-links'), 'auth legal footer separator');
+assert.ok(
+  /<\/div>\s*<nav class="auth-legal-links"/.test(authSlice),
+  'auth-legal-links is a section below the auth card'
+);
+assert.ok(styles.includes('.auth-legal-links'), 'auth legal footer separator');
 
 console.log('\nAll legal pages checks passed.');
