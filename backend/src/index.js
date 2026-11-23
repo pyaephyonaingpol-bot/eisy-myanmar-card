@@ -202,7 +202,7 @@ app.get('/blog/:slug', (req, res) => {
   return sendHtmlFile(res, filePath);
 });
 
-app.get('/robots.txt', (_req, res) => {
+function sendRobotsTxt(_req, res) {
   const filePath = path.join(PUBLIC_DIR, 'robots.txt');
   if (!fs.existsSync(filePath)) {
     return res.status(404).type('text/plain').send('robots missing');
@@ -211,7 +211,7 @@ app.get('/robots.txt', (_req, res) => {
     const body = fs.readFileSync(filePath, 'utf8');
     res.set({
       'Content-Type': 'text/plain; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
+      'Cache-Control': 'public, max-age=300, must-revalidate',
       'X-Content-Type-Options': 'nosniff',
     });
     return res.status(200).send(body);
@@ -219,16 +219,16 @@ app.get('/robots.txt', (_req, res) => {
     console.error('[robots.txt]', err.message);
     return res.status(500).type('text/plain').send('robots unavailable');
   }
-});
+}
 
-app.get('/sitemap.xml', (_req, res) => {
+function sendSitemapXml(_req, res) {
   try {
     const { buildSitemapXml } = require('./lib/sitemapXml');
     const xml = buildSitemapXml();
     // Critical: application/xml (not text/html) so browsers/Google keep <urlset>/<url>/<loc> tags.
     res.set({
       'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
+      'Cache-Control': 'public, max-age=300, must-revalidate',
       'X-Content-Type-Options': 'nosniff',
     });
     return res.status(200).send(xml);
@@ -240,14 +240,18 @@ app.get('/sitemap.xml', (_req, res) => {
       const body = fs.readFileSync(filePath, 'utf8');
       res.set({
         'Content-Type': 'application/xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=300',
+        'Cache-Control': 'public, max-age=60, must-revalidate',
         'X-Content-Type-Options': 'nosniff',
       });
       return res.status(200).send(body);
     }
     return res.status(500).type('text/plain').send('sitemap unavailable');
   }
-});
+}
+
+// Local/dev + Vercel rewrite destinations (/api/sitemap, /api/robots).
+app.get(['/robots.txt', '/api/robots'], sendRobotsTxt);
+app.get(['/sitemap.xml', '/api/sitemap'], sendSitemapXml);
 
 function sendAdminPipeline(res, pipeline) {
   const filePath = path.join(PUBLIC_DIR, `admin-${pipeline}.html`);

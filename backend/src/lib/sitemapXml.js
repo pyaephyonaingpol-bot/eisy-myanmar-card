@@ -44,20 +44,25 @@ function urlEntry({ loc, lastmod, changefreq, priority }) {
 /**
  * @returns {string} Full XML document including XML declaration + urlset.
  */
+function todayStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function buildSitemapXml(posts = loadBlogPosts()) {
+  const fallbackLastmod = todayStamp();
   const staticUrls = [
-    { loc: `${SITE_ORIGIN}/`, changefreq: 'daily', priority: '1.0' },
-    { loc: `${SITE_ORIGIN}/blog`, changefreq: 'weekly', priority: '0.8' },
-    { loc: `${SITE_ORIGIN}/faq`, changefreq: 'weekly', priority: '0.8' },
-    { loc: `${SITE_ORIGIN}/about`, changefreq: 'monthly', priority: '0.8' },
-    { loc: `${SITE_ORIGIN}/terms`, changefreq: 'yearly', priority: '0.3' },
-    { loc: `${SITE_ORIGIN}/privacy`, changefreq: 'yearly', priority: '0.3' },
-    { loc: `${SITE_ORIGIN}/refund`, changefreq: 'yearly', priority: '0.3' },
+    { loc: `${SITE_ORIGIN}/`, lastmod: fallbackLastmod, changefreq: 'daily', priority: '1.0' },
+    { loc: `${SITE_ORIGIN}/blog`, lastmod: fallbackLastmod, changefreq: 'weekly', priority: '0.8' },
+    { loc: `${SITE_ORIGIN}/faq`, lastmod: fallbackLastmod, changefreq: 'weekly', priority: '0.8' },
+    { loc: `${SITE_ORIGIN}/about`, lastmod: fallbackLastmod, changefreq: 'monthly', priority: '0.8' },
+    { loc: `${SITE_ORIGIN}/terms`, lastmod: fallbackLastmod, changefreq: 'yearly', priority: '0.3' },
+    { loc: `${SITE_ORIGIN}/privacy`, lastmod: fallbackLastmod, changefreq: 'yearly', priority: '0.3' },
+    { loc: `${SITE_ORIGIN}/refund`, lastmod: fallbackLastmod, changefreq: 'yearly', priority: '0.3' },
   ];
 
   const blogUrls = (posts || []).map((p) => ({
     loc: `${SITE_ORIGIN}/blog/${p.slug}`,
-    lastmod: p.updatedAt || p.publishedAt || undefined,
+    lastmod: p.updatedAt || p.publishedAt || fallbackLastmod,
     changefreq: 'monthly',
     priority: '0.8',
   }));
