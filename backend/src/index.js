@@ -224,11 +224,9 @@ function sendRobotsTxt(_req, res) {
 function sendSitemapXml(_req, res) {
   const xmlHeaders = {
     'Content-Type': 'application/xml; charset=utf-8',
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Cache-Control': 'public, max-age=0, must-revalidate',
     'CDN-Cache-Control': 'no-cache',
     'Cloudflare-CDN-Cache-Control': 'no-cache',
-    Pragma: 'no-cache',
-    Expires: '0',
     'X-Content-Type-Options': 'nosniff',
     'X-Sitemap-Handler': 'express',
   };

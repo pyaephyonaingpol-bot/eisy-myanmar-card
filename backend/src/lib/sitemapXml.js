@@ -69,7 +69,10 @@ function buildSitemapXml(posts = loadBlogPosts()) {
 
   const entries = [...staticUrls, ...blogUrls].map(urlEntry).join('\n');
 
+  // xml-stylesheet is ignored by Googlebot for indexing; it only helps browsers
+  // render tag names when a client would otherwise show stripped text nodes.
   return `<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${entries}
 </urlset>
