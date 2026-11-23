@@ -539,13 +539,58 @@ small.hint {
   background: transparent;
   margin-bottom: 0.75rem;
 }
+.auth-brand-name {
+  margin: 0 0 0.15rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #94a3b8);
+}
 .auth-brand-title {
-  font-size: 1.65rem;
-  margin: 0 0 0.2rem;
+  font-size: 1.35rem;
+  margin: 0 0 0.35rem;
   letter-spacing: -0.02em;
+  line-height: 1.25;
+  max-width: 18rem;
 }
 .auth-brand-sub {
   margin: 0 0 0.35rem;
+}
+.auth-seo-faq {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.25));
+  text-align: left;
+  width: 100%;
+}
+.auth-seo-faq-title {
+  margin: 0 0 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #94a3b8);
+}
+.auth-seo-faq-item {
+  margin: 0 0 0.4rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.2));
+  background: rgba(15, 23, 42, 0.35);
+  padding: 0.45rem 0.65rem;
+}
+.auth-seo-faq-item summary {
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 600;
+  list-style: none;
+}
+.auth-seo-faq-item summary::-webkit-details-marker { display: none; }
+.auth-seo-faq-item p {
+  margin: 0.4rem 0 0.15rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary, #94a3b8);
 }
 
 .tabs { display: flex; gap: 0.65rem; margin-bottom: 1rem; }

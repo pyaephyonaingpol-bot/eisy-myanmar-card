@@ -95,16 +95,19 @@ assert.ok(about.includes('© 2026 Eisy Myanmar. All rights reserved.'), 'about c
 assert.ok(!about.includes('[Registered Address]'), 'about has no address placeholder');
 assert.ok(!about.includes('Registered Address'), 'about omits registered address');
 
-section('Express routes for /terms /privacy /refund /about');
+section('Express routes for /terms /privacy /refund /about /faq');
 assert.ok(server.includes("app.get('/privacy'"), 'privacy route');
 assert.ok(server.includes("app.get('/refund'"), 'refund route');
 assert.ok(server.includes("app.get('/about'"), 'about route');
+assert.ok(server.includes('/faq'), 'faq route');
 assert.ok(server.includes('privacy.html'), 'privacy file served');
 assert.ok(server.includes('refund.html'), 'refund file served');
 assert.ok(server.includes('about.html'), 'about file served');
+assert.ok(fs.existsSync(path.join(PUBLIC, 'faq.html')), 'faq.html exists');
 
 section('Footer / auth legal links');
 assert.ok(indexHtml.includes('href="/about"'), 'footer about link');
+assert.ok(indexHtml.includes('href="/faq"'), 'footer faq link');
 assert.ok(indexHtml.includes('href="/terms"'), 'footer terms link');
 assert.ok(indexHtml.includes('href="/privacy"'), 'footer privacy link');
 assert.ok(indexHtml.includes('href="/refund"'), 'footer refund link');

@@ -1,0 +1,19 @@
+# Eisy Myanmar — https://eisymyanmar.com
+User-agent: *
+Allow: /
+Allow: /about
+Allow: /faq
+Allow: /terms
+Allow: /privacy
+Allow: /refund
+
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /admin/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /supabase/
+Disallow: /uploads/
+Disallow: /hub
+
+Sitemap: https://eisymyanmar.com/sitemap.xml
