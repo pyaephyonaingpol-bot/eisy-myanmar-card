@@ -329,9 +329,20 @@ html.legal-doc body {
 }
 
 .blog-related {
-  margin: 2rem 0 1rem;
-  font-size: 0.9rem;
+  margin: 1.5rem 0 1rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
 }
+.blog-related h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+.blog-related ul {
+  margin: 0;
+  padding-left: 1.15rem;
+}
+.blog-related li { margin: 0.3rem 0; }
+.blog-intro a { color: #93c5fd; }
 
 @media (max-width: 640px) {
   .blog-cta {

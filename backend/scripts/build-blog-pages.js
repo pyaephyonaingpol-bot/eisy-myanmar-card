@@ -68,7 +68,7 @@ function ctaBanner() {
         <h2 class="blog-cta-title">Get your No KYC Virtual Visa Card</h2>
         <p class="blog-cta-text">Open Eisy Myanmar, deposit USDT, and issue a Visa card for Facebook Ads, ChatGPT Plus, and online payments — without ID verification for card issuing.</p>
       </div>
-      <a class="btn btn-primary blog-cta-btn" href="/">Get Virtual Visa Card</a>
+      <a class="btn btn-primary blog-cta-btn" href="/">Get a no KYC virtual Visa card</a>
     </aside>`;
 }
 
@@ -133,10 +133,10 @@ function writeIndex(posts) {
     title,
     description,
     keywords: [
+      'no kyc visa card',
+      'no kyc virtual visa card',
+      'eisymyanmar',
       'No KYC virtual Visa card',
-      'Virtual Visa card Myanmar',
-      'buy virtual Visa with USDT',
-      'crypto Visa card no verification',
       'Eisy Myanmar guides',
     ],
     canonical,
@@ -156,7 +156,7 @@ function writeIndex(posts) {
         <p class="meta about-hero-meta">No KYC Virtual Visa Card · USDT · MMK · Myanmar &amp; worldwide</p>
       </div>
     </header>
-    <p class="blog-intro">Actionable articles to get a Visa card, fund with USDT, and pay online — Visa only.</p>
+    <p class="blog-intro">Guides for a <a href="/">no KYC virtual Visa card on Eisy Myanmar</a>: instant Visa cards, USDT top-up, ChatGPT Plus, Facebook Ads, and online payments.</p>
     ${ctaBanner()}
     <div class="blog-grid">
 ${cards}
@@ -172,7 +172,7 @@ ${cards}
   console.log('[build-blog] wrote blog/index.html');
 }
 
-function writePost(post) {
+function writePost(post, posts) {
   const canonical = `${SITE_ORIGIN}/blog/${post.slug}`;
   const title = `${post.title} | Eisy Myanmar`;
   const articleBody = post.sections.map((sec) => `
@@ -233,7 +233,7 @@ function writePost(post) {
 ${articleBody}
     </article>
     ${ctaBanner()}
-    <p class="blog-related"><a href="/blog">More Visa card guides</a> · <a href="/faq">FAQ</a> · <a href="/">Open Eisy Myanmar</a></p>
+    ${relatedGuides(post.slug, posts)}
     <p class="legal-footer-copyright">© 2026 Eisy Myanmar. All rights reserved.</p>
   </main>
 </body>
@@ -246,6 +246,20 @@ ${articleBody}
   console.log(`[build-blog] wrote blog/${post.slug}/index.html`);
 }
 
+function relatedGuides(currentSlug, posts) {
+  const items = (posts || [])
+    .filter((p) => p.slug !== currentSlug)
+    .map((p) => `<li><a href="/blog/${esc(p.slug)}">${esc(p.title)}</a></li>`)
+    .join('\n');
+  return `<nav class="blog-related" aria-label="Related guides">
+      <h2>More no KYC virtual Visa card guides</h2>
+      <ul>
+        <li><a href="/">Get a no KYC Visa card on Eisy Myanmar</a></li>
+        <li><a href="/blog">All no KYC virtual Visa card guides</a></li>
+${items}
+      </ul>
+    </nav>`;
+}
 function writeSitemap(posts) {
   const { buildSitemapXml } = require(path.join(root, 'backend/src/lib/sitemapXml'));
   const xml = buildSitemapXml(posts);
@@ -267,7 +281,7 @@ function main() {
     }
   }
   writeIndex(posts);
-  for (const post of posts) writePost(post);
+  for (const post of posts) writePost(post, posts);
   writeSitemap(posts);
   console.log(`[build-blog] done — ${getAllSlugs().length} posts`);
 }

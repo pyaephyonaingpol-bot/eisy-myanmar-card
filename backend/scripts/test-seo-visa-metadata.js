@@ -20,18 +20,25 @@ function section(title) {
 section('Homepage metadata');
 {
   const html = read('index.html');
-  assert.ok(html.includes('<title>Eisy Myanmar | No KYC Virtual Visa Card Service</title>'));
-  assert.ok(html.includes('Get instant No KYC virtual Visa cards in Myanmar and worldwide'));
-  assert.ok(html.includes('No KYC virtual card'));
-  assert.ok(html.includes('Virtual Visa card Myanmar'));
-  assert.ok(html.includes('USDT virtual Visa card'));
-  assert.ok(html.includes('Crypto Visa card no verification'));
+  assert.ok(html.includes('<title>No KYC Virtual Visa Card | Eisy Myanmar</title>'));
+  assert.ok(html.includes('Get a no KYC virtual Visa card from Eisy Myanmar'));
+  assert.ok(html.includes('no kyc visa card'));
+  assert.ok(html.includes('no kyc virtual visa card'));
+  assert.ok(html.includes('eisymyanmar'));
   assert.ok(html.includes('rel="canonical" href="https://eisymyanmar.com/"'));
-  assert.ok(html.includes('property="og:title"'));
+  assert.ok(html.includes('property="og:title" content="No KYC Virtual Visa Card | Eisy Myanmar"'));
+  assert.ok(html.includes('name="twitter:title" content="No KYC Virtual Visa Card | Eisy Myanmar"'));
   assert.ok(html.includes('name="twitter:card" content="summary_large_image"'));
+  assert.ok(html.includes('"@type": "Organization"'));
   assert.ok(html.includes('"@type": "FinancialService"'));
   assert.ok(html.includes('"@type": "FAQPage"'));
   assert.ok(html.includes('<h1 class="auth-brand-title">No KYC Virtual Visa Card</h1>'));
+  assert.strictEqual((html.match(/<h1\b/g) || []).length, 1, 'homepage has one h1');
+  assert.ok(html.includes('<h2 id="homeHowHeading">How It Works</h2>'));
+  assert.ok(html.includes('<h2 id="homeUsesHeading">Supported Platforms &amp; Use Cases</h2>'));
+  assert.ok(html.includes('<h2 id="authFaqHeading">FAQ</h2>'));
+  assert.ok(html.includes('href="/blog">No KYC virtual Visa card guides</a>'));
+  assert.ok(html.includes('Do I need KYC for a virtual Visa card?'));
   assert.ok(!/Mastercard/i.test(html), 'homepage must not mention Mastercard');
   console.log('ok');
 }
@@ -96,7 +103,7 @@ section('FAQ page + Express routes');
 
   const server = fs.readFileSync(path.join(root, 'src/index.js'), 'utf8');
   assert.ok(server.includes("'/faq'") || server.includes('/faq'), 'Express serves /faq');
-  assert.ok(server.includes('/robots.txt'));
+  assert.ok(server.includes('/guides'), 'Express redirects /guides');
   assert.ok(server.includes('/sitemap.xml'));
   assert.ok(
     !/html\.replace\(\s*\/<title>\[\^<\]\*<\/title>\/i\s*,\s*'<title>Eisymyanmar<\/title>'/.test(server),
@@ -110,7 +117,7 @@ section('Portal generation preserves SEO title');
   const portalScript = fs.readFileSync(path.join(root, 'scripts/write-portal-html.js'), 'utf8');
   assert.ok(!portalScript.includes("<title>Eisymyanmar</title>"), 'write-portal-html keeps SEO title');
   const instant = read('instant.html');
-  assert.ok(instant.includes('<title>Eisy Myanmar | No KYC Virtual Visa Card Service</title>'));
+  assert.ok(instant.includes('<title>No KYC Virtual Visa Card | Eisy Myanmar</title>'));
   assert.ok(instant.includes('FinancialService'));
   console.log('ok');
 }
