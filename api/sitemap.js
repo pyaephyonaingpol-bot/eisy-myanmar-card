@@ -83,6 +83,7 @@ function buildXml() {
   }));
   const entries = [...staticUrls, ...blogUrls].map(urlXml).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${entries}
 </urlset>
@@ -91,11 +92,9 @@ ${entries}
 
 function applyXmlHeaders(res) {
   res.setHeader('Content-Type', XML_TYPE);
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
   res.setHeader('CDN-Cache-Control', 'no-cache');
   res.setHeader('Cloudflare-CDN-Cache-Control', 'no-cache');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Sitemap-Handler', 'api/sitemap');
 }

@@ -59,7 +59,10 @@ async function main() {
       assert.ok(!ct.includes('text/html'), `${urlPath}: must not be text/html: ${ct}`);
       assert.ok(!ct.includes('text/plain'), `${urlPath}: must not be text/plain: ${ct}`);
       const cache = String(res.headers['cache-control'] || '');
-      assert.ok(/no-cache/i.test(cache), `${urlPath}: Cache-Control must include no-cache, got: ${cache}`);
+      assert.ok(
+        /max-age=0/i.test(cache) || /no-cache/i.test(cache),
+        `${urlPath}: Cache-Control must revalidate (max-age=0 or no-cache), got: ${cache}`
+      );
 
       assert.ok(res.body.startsWith('<?xml'), `${urlPath}: XML declaration`);
       assert.ok(
@@ -99,12 +102,13 @@ async function main() {
     handler(fakeReq, fakeRes);
     assert.strictEqual(statusCode, 200);
     assert.ok(String(headers['content-type']).includes('application/xml'));
-    assert.ok(/no-cache/i.test(String(headers['cache-control'] || '')));
+    assert.ok(/max-age=0|no-cache/i.test(String(headers['cache-control'] || '')));
     assert.strictEqual(headers['x-sitemap-handler'], 'api/sitemap');
     assert.ok(body.startsWith('<?xml'));
+    assert.ok(body.includes('xml-stylesheet'));
     assert.ok(body.includes('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'));
     assert.ok(body.includes('<lastmod>'));
-    console.log('ok — api/sitemap.js handler application/xml + no-cache');
+    console.log('ok — api/sitemap.js handler application/xml + max-age=0');
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

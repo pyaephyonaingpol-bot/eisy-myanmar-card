@@ -65,6 +65,7 @@ section('robots.txt + sitemap.xml');
   assert.ok(dynamicXml.includes('<urlset'));
   assert.ok(dynamicXml.includes('<lastmod>'));
   assert.ok(dynamicXml.includes('<loc>https://eisymyanmar.com/blog</loc>'));
+  assert.ok(dynamicXml.includes('xml-stylesheet'), 'sitemap references display stylesheet');
   assert.ok(
     /application\/xml/.test(
       fs.readFileSync(path.join(root, 'src/index.js'), 'utf8')
@@ -73,12 +74,13 @@ section('robots.txt + sitemap.xml');
   );
   const vercel = fs.readFileSync(path.join(root, '..', 'vercel.json'), 'utf8');
   assert.ok(vercel.includes('"/api/sitemap"'), 'vercel rewrites sitemap to dedicated function');
-  assert.ok(vercel.includes('no-cache'), 'vercel sitemap headers use no-cache');
+  assert.ok(vercel.includes('max-age=0'), 'vercel sitemap headers use max-age=0');
   assert.ok(
     vercel.includes('(?!sitemap') || vercel.includes('(?!sitemap(?:/)?$'),
     'vercel excludes /api/sitemap from Express catch-all rewrite'
   );
   assert.ok(fs.existsSync(path.join(root, '..', 'api', 'sitemap.js')), 'api/sitemap.js exists');
+  assert.ok(fs.existsSync(path.join(root, 'public', 'sitemap.xsl')), 'sitemap.xsl exists for browser display');
   const pkg = fs.readFileSync(path.join(root, '..', 'package.json'), 'utf8');
   assert.ok(pkg.includes('rm -f public/sitemap.xml'), 'vercel-build strips static sitemap.xml');
   console.log('ok');
