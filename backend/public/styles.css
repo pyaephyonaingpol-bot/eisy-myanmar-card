@@ -560,9 +560,9 @@ small.hint {
   max-width: 22rem;
   line-height: 1.45;
 }
-.auth-seo-faq {
+.home-seo {
   margin-top: 0;
-  padding: 1rem 1.05rem 0.85rem;
+  padding: 1.05rem 1.05rem 0.95rem;
   border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.25));
   border-radius: var(--radius-xl, 1rem);
   background: var(--bg-glass-strong, rgba(15, 23, 42, 0.55));
@@ -570,6 +570,37 @@ small.hint {
   width: 100%;
   max-width: min(440px, 100%);
   box-sizing: border-box;
+}
+.home-seo h2 {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #94a3b8);
+}
+.home-seo h2:first-child { margin-top: 0; }
+.home-seo p,
+.home-seo li {
+  margin: 0 0 0.45rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--text-secondary, #cbd5e1);
+}
+.home-seo ol,
+.home-seo ul {
+  margin: 0 0 0.35rem;
+  padding-left: 1.15rem;
+}
+.home-seo-links {
+  list-style: disc;
+}
+.home-seo-links a {
+  color: #93c5fd;
+  text-underline-offset: 0.15em;
+}
+.home-seo .auth-seo-faq-item {
+  margin-top: 0.45rem;
 }
 .auth-seo-faq-title {
   margin: 0 0 0.75rem;
@@ -4277,7 +4308,8 @@ body.sidebar-scroll-lock {
   }
 
   .auth-legal-links,
-  .auth-seo-faq {
+  .auth-seo-faq,
+  .home-seo {
     padding: 1rem 0.95rem;
   }
 

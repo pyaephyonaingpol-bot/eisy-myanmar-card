@@ -190,6 +190,10 @@ app.get(['/blog', '/blog/'], (_req, res) => {
   sendHtmlFile(res, path.join(PUBLIC_DIR, 'blog', 'index.html'));
 });
 
+app.get(['/guides', '/guides/'], (_req, res) => {
+  res.redirect(301, '/blog');
+});
+
 app.get('/blog/:slug', (req, res) => {
   const slug = String(req.params.slug || '').trim();
   if (!/^[a-z0-9-]+$/i.test(slug)) {
