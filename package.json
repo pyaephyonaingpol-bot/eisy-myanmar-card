@@ -31,7 +31,9 @@
     "test:pwa-setup": "node backend/scripts/test-pwa-setup.js",
     "test:apk-download-button": "node backend/scripts/test-apk-download-button.js",
     "build": "npm run vercel-build",
-    "vercel-build": "node backend/scripts/write-public-supabase-config.js; node backend/scripts/write-portal-html.js; node backend/scripts/stamp-admin-cache.js; node backend/scripts/write-admin-portal-html.js; node backend/scripts/test-tron-wallet-init.js || echo \"[vercel-build] TRON wallet init check failed (non-blocking — see /health/tron after deploy)\"; mkdir -p public && cp -R backend/public/. public/",
+    "build:blog": "node backend/scripts/build-blog-pages.js",
+    "test:blog-guides": "node backend/scripts/test-blog-guides.js",
+    "vercel-build": "node backend/scripts/write-public-supabase-config.js; node backend/scripts/write-portal-html.js; node backend/scripts/stamp-admin-cache.js; node backend/scripts/write-admin-portal-html.js; node backend/scripts/build-blog-pages.js; node backend/scripts/test-tron-wallet-init.js || echo \"[vercel-build] TRON wallet init check failed (non-blocking — see /health/tron after deploy)\"; mkdir -p public && cp -R backend/public/. public/",
     "android:apk": "bash scripts/build-android-apk.sh debug",
     "android:apk:release": "bash scripts/build-android-apk.sh release"
   },

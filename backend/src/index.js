@@ -186,6 +186,22 @@ app.get(['/faq', '/faq.html'], (_req, res) => {
   sendHtmlFile(res, path.join(PUBLIC_DIR, 'faq.html'));
 });
 
+app.get(['/blog', '/blog/'], (_req, res) => {
+  sendHtmlFile(res, path.join(PUBLIC_DIR, 'blog', 'index.html'));
+});
+
+app.get('/blog/:slug', (req, res) => {
+  const slug = String(req.params.slug || '').trim();
+  if (!/^[a-z0-9-]+$/i.test(slug)) {
+    return res.status(404).type('html').send('Guide not found');
+  }
+  const filePath = path.join(PUBLIC_DIR, 'blog', slug, 'index.html');
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).type('html').send('Guide not found');
+  }
+  return sendHtmlFile(res, filePath);
+});
+
 app.get('/robots.txt', (_req, res) => {
   const filePath = path.join(PUBLIC_DIR, 'robots.txt');
   if (!fs.existsSync(filePath)) {
