@@ -247,34 +247,11 @@ ${articleBody}
 }
 
 function writeSitemap(posts) {
-  const staticUrls = [
-    { loc: `${SITE_ORIGIN}/`, priority: '1.0', changefreq: 'daily' },
-    { loc: `${SITE_ORIGIN}/blog`, priority: '0.8', changefreq: 'weekly' },
-    { loc: `${SITE_ORIGIN}/faq`, priority: '0.8', changefreq: 'weekly' },
-    { loc: `${SITE_ORIGIN}/about`, priority: '0.8', changefreq: 'monthly' },
-    { loc: `${SITE_ORIGIN}/terms`, priority: '0.3', changefreq: 'yearly' },
-    { loc: `${SITE_ORIGIN}/privacy`, priority: '0.3', changefreq: 'yearly' },
-    { loc: `${SITE_ORIGIN}/refund`, priority: '0.3', changefreq: 'yearly' },
-  ];
-  const blogUrls = posts.map((p) => ({
-    loc: `${SITE_ORIGIN}/blog/${p.slug}`,
-    priority: '0.8',
-    changefreq: 'monthly',
-    lastmod: p.updatedAt || p.publishedAt,
-  }));
-
-  const urls = [...staticUrls, ...blogUrls];
-  const body = urls.map((u) => `  <url>
-    <loc>${u.loc}</loc>${u.lastmod ? `\n    <lastmod>${u.lastmod}</lastmod>` : ''}
-    <changefreq>${u.changefreq}</changefreq>
-    <priority>${u.priority}</priority>
-  </url>`).join('\n');
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${body}
-</urlset>
-`;
+  const { buildSitemapXml } = require(path.join(root, 'backend/src/lib/sitemapXml'));
+  const xml = buildSitemapXml(posts);
+  if (!xml.includes('<urlset') || !xml.includes('<loc>')) {
+    throw new Error('sitemapXml builder produced invalid XML (missing urlset/loc)');
+  }
   fs.writeFileSync(path.join(publicDir, 'sitemap.xml'), xml);
   console.log('[build-blog] updated sitemap.xml with blog URLs');
 }

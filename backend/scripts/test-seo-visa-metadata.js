@@ -47,6 +47,9 @@ section('robots.txt + sitemap.xml');
   assert.ok(robots.includes('Sitemap: https://eisymyanmar.com/sitemap.xml'));
 
   const sitemap = read('sitemap.xml');
+  assert.ok(sitemap.startsWith('<?xml'), 'sitemap has XML declaration');
+  assert.ok(sitemap.includes('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'));
+  assert.ok(sitemap.includes('<url>'));
   assert.ok(sitemap.includes('<loc>https://eisymyanmar.com/</loc>'));
   assert.ok(sitemap.includes('<priority>1.0</priority>'));
   assert.ok(sitemap.includes('https://eisymyanmar.com/faq'));
@@ -54,6 +57,18 @@ section('robots.txt + sitemap.xml');
   assert.ok(sitemap.includes('<priority>0.8</priority>'));
   assert.ok(sitemap.includes('https://eisymyanmar.com/terms'));
   assert.ok(sitemap.includes('<priority>0.3</priority>'));
+  assert.ok(sitemap.includes('</urlset>'));
+
+  const { buildSitemapXml } = require(path.join(root, 'src/lib/sitemapXml'));
+  const dynamicXml = buildSitemapXml();
+  assert.ok(dynamicXml.includes('<urlset'));
+  assert.ok(dynamicXml.includes('<loc>https://eisymyanmar.com/blog</loc>'));
+  assert.ok(
+    /application\/xml/.test(
+      fs.readFileSync(path.join(root, 'src/index.js'), 'utf8')
+    ),
+    'Express sets application/xml for sitemap'
+  );
   console.log('ok');
 }
 
