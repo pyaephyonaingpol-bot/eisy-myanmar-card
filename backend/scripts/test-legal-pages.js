@@ -130,12 +130,12 @@ assert.ok(
   'auth legal links remain in auth screen'
 );
 assert.ok(
-  authSlice.includes('class="auth-card"') && authSlice.indexOf('class="auth-legal-links"') > authSlice.indexOf('class="auth-card"'),
-  'auth-legal-links follow the auth card'
+  authSlice.includes('class="auth-card"') && authSlice.indexOf('class="auth-legal-links"') > authSlice.indexOf('id="authFaqHeading"'),
+  'auth-legal-links sit below the FAQ'
 );
 assert.ok(
-  /<\/div>\s*<nav class="auth-legal-links"/.test(authSlice),
-  'auth-legal-links is a section below the auth card'
+  authSlice.includes('class="auth-page-footer"'),
+  'copyright and legal links share the page footer'
 );
 assert.ok(styles.includes('.auth-legal-links'), 'auth legal footer separator');
 
