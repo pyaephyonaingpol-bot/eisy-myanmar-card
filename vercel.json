@@ -8,7 +8,10 @@
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
     { "source": "/robots.txt", "destination": "/api/robots" },
-    { "source": "/api/(.*)", "destination": "/api" },
+    {
+      "source": "/api/((?!sitemap(?:/)?$|robots(?:/)?$).*)",
+      "destination": "/api"
+    },
     { "source": "/uploads/(.*)", "destination": "/api" },
     {
       "source": "/supabase",
@@ -28,23 +31,31 @@
       "source": "/sitemap.xml",
       "headers": [
         { "key": "Content-Type", "value": "application/xml; charset=utf-8" },
-        { "key": "Cache-Control", "value": "public, max-age=300, must-revalidate" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" }
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "CDN-Cache-Control", "value": "no-cache" },
+        { "key": "Cloudflare-CDN-Cache-Control", "value": "no-cache" },
+        { "key": "Pragma", "value": "no-cache" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Sitemap-Handler", "value": "api/sitemap" }
       ]
     },
     {
       "source": "/api/sitemap",
       "headers": [
         { "key": "Content-Type", "value": "application/xml; charset=utf-8" },
-        { "key": "Cache-Control", "value": "public, max-age=300, must-revalidate" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" }
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "CDN-Cache-Control", "value": "no-cache" },
+        { "key": "Cloudflare-CDN-Cache-Control", "value": "no-cache" },
+        { "key": "Pragma", "value": "no-cache" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Sitemap-Handler", "value": "api/sitemap" }
       ]
     },
     {
       "source": "/robots.txt",
       "headers": [
         { "key": "Content-Type", "value": "text/plain; charset=utf-8" },
-        { "key": "Cache-Control", "value": "public, max-age=300, must-revalidate" },
+        { "key": "Cache-Control", "value": "no-cache" },
         { "key": "X-Content-Type-Options", "value": "nosniff" }
       ]
     },
@@ -52,7 +63,7 @@
       "source": "/api/robots",
       "headers": [
         { "key": "Content-Type", "value": "text/plain; charset=utf-8" },
-        { "key": "Cache-Control", "value": "public, max-age=300, must-revalidate" },
+        { "key": "Cache-Control", "value": "no-cache" },
         { "key": "X-Content-Type-Options", "value": "nosniff" }
       ]
     },
@@ -117,7 +128,7 @@
     "api/sitemap.js": {
       "memory": 256,
       "maxDuration": 10,
-      "includeFiles": "{backend/src/lib/sitemapXml.js,data/**}"
+      "includeFiles": "{backend/src/lib/sitemapXml.js,backend/src/lib/**,data/**,data/blogs.js}"
     },
     "api/robots.js": {
       "memory": 256,

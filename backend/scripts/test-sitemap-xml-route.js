@@ -57,6 +57,9 @@ async function main() {
         `${urlPath}: Content-Type must be application/xml, got: ${ct}`
       );
       assert.ok(!ct.includes('text/html'), `${urlPath}: must not be text/html: ${ct}`);
+      assert.ok(!ct.includes('text/plain'), `${urlPath}: must not be text/plain: ${ct}`);
+      const cache = String(res.headers['cache-control'] || '');
+      assert.ok(/no-cache/i.test(cache), `${urlPath}: Cache-Control must include no-cache, got: ${cache}`);
 
       assert.ok(res.body.startsWith('<?xml'), `${urlPath}: XML declaration`);
       assert.ok(
@@ -78,7 +81,7 @@ async function main() {
 
       const tagCount = (res.body.match(/<\/?url>/g) || []).length;
       assert.ok(tagCount >= 2, `${urlPath}: expected <url> tags, found ${tagCount}`);
-      console.log(`ok — ${urlPath} ${ct} (${Buffer.byteLength(res.body, 'utf8')} bytes)`);
+      console.log(`ok — ${urlPath} ${ct} cache=${cache} (${Buffer.byteLength(res.body, 'utf8')} bytes)`);
     }
 
     // Dedicated Vercel handler (api/sitemap.js) must also emit valid XML.
@@ -96,9 +99,12 @@ async function main() {
     handler(fakeReq, fakeRes);
     assert.strictEqual(statusCode, 200);
     assert.ok(String(headers['content-type']).includes('application/xml'));
-    assert.ok(body.includes('<urlset'));
+    assert.ok(/no-cache/i.test(String(headers['cache-control'] || '')));
+    assert.strictEqual(headers['x-sitemap-handler'], 'api/sitemap');
+    assert.ok(body.startsWith('<?xml'));
+    assert.ok(body.includes('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'));
     assert.ok(body.includes('<lastmod>'));
-    console.log('ok — api/sitemap.js handler application/xml');
+    console.log('ok — api/sitemap.js handler application/xml + no-cache');
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
