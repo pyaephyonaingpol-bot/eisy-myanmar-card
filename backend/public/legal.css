@@ -217,3 +217,131 @@ html.legal-doc body {
   }
 }
 
+/* ── Blog / Guides ──────────────────────────────────────────── */
+.blog-page {
+  max-width: 760px;
+}
+
+.blog-intro {
+  margin: 0 0 1.25rem;
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.blog-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1.75rem;
+  padding: 1.1rem 1.15rem;
+  border-radius: var(--radius-lg, 14px);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  background:
+    linear-gradient(145deg, rgba(56, 189, 248, 0.12), transparent 60%),
+    rgba(15, 23, 42, 0.65);
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(2, 6, 23, 0.35));
+}
+
+.blog-cta-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.blog-cta-text {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-secondary, #cbd5e1);
+  max-width: 36rem;
+}
+
+.blog-cta-btn {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.blog-grid {
+  display: grid;
+  gap: 1rem;
+  margin: 0 0 2rem;
+}
+
+.blog-card {
+  padding: 1.1rem 1.15rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.25));
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.blog-card-meta {
+  margin: 0 0 0.45rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #94a3b8);
+}
+
+.blog-card-title {
+  margin: 0 0 0.45rem;
+  font-size: 1.15rem;
+  line-height: 1.35;
+}
+
+.blog-card-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.blog-card-title a:hover {
+  color: #7dd3fc;
+}
+
+.blog-card-desc {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary, #cbd5e1);
+}
+
+.blog-card-link {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.blog-article-header h1 {
+  margin: 0 0 0.55rem;
+  font-size: clamp(1.35rem, 2.5vw, 1.85rem);
+  line-height: 1.25;
+}
+
+.blog-section {
+  margin: 0 0 0.25rem;
+}
+
+.blog-note {
+  padding: 0.75rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  background: rgba(56, 189, 248, 0.08);
+  font-size: 0.9rem;
+}
+
+.blog-related {
+  margin: 2rem 0 1rem;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 640px) {
+  .blog-cta {
+    align-items: flex-start;
+  }
+
+  .blog-cta-btn {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+
