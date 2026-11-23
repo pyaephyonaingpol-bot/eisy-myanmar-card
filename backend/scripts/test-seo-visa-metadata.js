@@ -51,6 +51,7 @@ section('robots.txt + sitemap.xml');
   assert.ok(sitemap.includes('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'));
   assert.ok(sitemap.includes('<url>'));
   assert.ok(sitemap.includes('<loc>https://eisymyanmar.com/</loc>'));
+  assert.ok(sitemap.includes('<lastmod>'));
   assert.ok(sitemap.includes('<priority>1.0</priority>'));
   assert.ok(sitemap.includes('https://eisymyanmar.com/faq'));
   assert.ok(sitemap.includes('https://eisymyanmar.com/about'));
@@ -62,6 +63,7 @@ section('robots.txt + sitemap.xml');
   const { buildSitemapXml } = require(path.join(root, 'src/lib/sitemapXml'));
   const dynamicXml = buildSitemapXml();
   assert.ok(dynamicXml.includes('<urlset'));
+  assert.ok(dynamicXml.includes('<lastmod>'));
   assert.ok(dynamicXml.includes('<loc>https://eisymyanmar.com/blog</loc>'));
   assert.ok(
     /application\/xml/.test(
@@ -69,6 +71,9 @@ section('robots.txt + sitemap.xml');
     ),
     'Express sets application/xml for sitemap'
   );
+  const vercel = fs.readFileSync(path.join(root, '..', 'vercel.json'), 'utf8');
+  assert.ok(vercel.includes('"/api/sitemap"'), 'vercel rewrites sitemap to dedicated function');
+  assert.ok(fs.existsSync(path.join(root, '..', 'api', 'sitemap.js')), 'api/sitemap.js exists');
   console.log('ok');
 }
 

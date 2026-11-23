@@ -47,37 +47,58 @@ async function main() {
   });
 
   try {
-    const res = await request(server, '/sitemap.xml');
-    assert.strictEqual(res.status, 200, `expected 200, got ${res.status}`);
+    for (const urlPath of ['/sitemap.xml', '/api/sitemap']) {
+      const res = await request(server, urlPath);
+      assert.strictEqual(res.status, 200, `${urlPath}: expected 200, got ${res.status}`);
 
-    const ct = String(res.headers['content-type'] || '');
-    assert.ok(
-      ct.includes('application/xml'),
-      `Content-Type must be application/xml, got: ${ct}`
-    );
-    assert.ok(!ct.includes('text/html'), `must not be text/html: ${ct}`);
-
-    assert.ok(res.body.startsWith('<?xml'), 'XML declaration');
-    assert.ok(res.body.includes('<urlset'), 'has <urlset>');
-    assert.ok(res.body.includes('</urlset>'), 'closes </urlset>');
-    assert.ok(res.body.includes('<url>'), 'has <url>');
-    assert.ok(res.body.includes('<loc>'), 'has <loc>');
-    assert.ok(res.body.includes('<loc>https://eisymyanmar.com/blog</loc>'));
-
-    for (const slug of getAllSlugs()) {
+      const ct = String(res.headers['content-type'] || '');
       assert.ok(
-        res.body.includes(`<loc>https://eisymyanmar.com/blog/${slug}</loc>`),
-        `missing blog slug ${slug}`
+        ct.includes('application/xml'),
+        `${urlPath}: Content-Type must be application/xml, got: ${ct}`
       );
+      assert.ok(!ct.includes('text/html'), `${urlPath}: must not be text/html: ${ct}`);
+
+      assert.ok(res.body.startsWith('<?xml'), `${urlPath}: XML declaration`);
+      assert.ok(
+        res.body.includes('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'),
+        `${urlPath}: has urlset xmlns`
+      );
+      assert.ok(res.body.includes('</urlset>'), `${urlPath}: closes </urlset>`);
+      assert.ok(res.body.includes('<url>'), `${urlPath}: has <url>`);
+      assert.ok(res.body.includes('<loc>'), `${urlPath}: has <loc>`);
+      assert.ok(res.body.includes('<lastmod>'), `${urlPath}: has <lastmod>`);
+      assert.ok(res.body.includes('<loc>https://eisymyanmar.com/blog</loc>'));
+
+      for (const slug of getAllSlugs()) {
+        assert.ok(
+          res.body.includes(`<loc>https://eisymyanmar.com/blog/${slug}</loc>`),
+          `${urlPath}: missing blog slug ${slug}`
+        );
+      }
+
+      const tagCount = (res.body.match(/<\/?url>/g) || []).length;
+      assert.ok(tagCount >= 2, `${urlPath}: expected <url> tags, found ${tagCount}`);
+      console.log(`ok — ${urlPath} ${ct} (${Buffer.byteLength(res.body, 'utf8')} bytes)`);
     }
 
-    // Plain-text-only body would omit tags; ensure tags are literally present.
-    const tagCount = (res.body.match(/<\/?url>/g) || []).length;
-    assert.ok(tagCount >= 2, `expected <url> tags in body, found ${tagCount}`);
-
-    console.log('ok — /sitemap.xml application/xml with urlset + blog locs');
-    console.log(`content-type: ${ct}`);
-    console.log(`bytes: ${Buffer.byteLength(res.body, 'utf8')}`);
+    // Dedicated Vercel handler (api/sitemap.js) must also emit valid XML.
+    const handler = require('../../api/sitemap.js');
+    const fakeReq = { method: 'GET' };
+    let statusCode = 0;
+    const headers = {};
+    let body = '';
+    const fakeRes = {
+      setHeader(k, v) { headers[String(k).toLowerCase()] = v; },
+      end(chunk) { body = String(chunk || ''); },
+      set statusCode(v) { statusCode = v; },
+      get statusCode() { return statusCode; },
+    };
+    handler(fakeReq, fakeRes);
+    assert.strictEqual(statusCode, 200);
+    assert.ok(String(headers['content-type']).includes('application/xml'));
+    assert.ok(body.includes('<urlset'));
+    assert.ok(body.includes('<lastmod>'));
+    console.log('ok — api/sitemap.js handler application/xml');
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

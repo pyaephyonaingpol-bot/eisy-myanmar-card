@@ -5,7 +5,7 @@
  */
 'use strict';
 
-const PWA_CACHE = 'eisy-pwa-v1';
+const PWA_CACHE = 'eisy-pwa-v2';
 const PWA_PRECACHE = [
   '/',
   '/manifest.webmanifest',
@@ -48,6 +48,8 @@ self.addEventListener('fetch', (event) => {
   }
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/')) return;
+  // Never intercept SEO files — a navigate fallback to cached "/" would return HTML.
+  if (url.pathname === '/sitemap.xml' || url.pathname === '/robots.txt') return;
 
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
