@@ -124,7 +124,7 @@ function sendPortalApp(res, portal) {
       ? m
       : `<html${attrs} data-eisy-portal="${portal}">`
   ));
-  html = html.replace(/<title>[^<]*<\/title>/i, '<title>Eisymyanmar</title>');
+  // Preserve SEO <title> / meta from the portal HTML.
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.type('html').send(html);
 }
@@ -182,6 +182,28 @@ app.get('/about.html', (_req, res) => {
   sendHtmlFile(res, path.join(PUBLIC_DIR, 'about.html'));
 });
 
+app.get(['/faq', '/faq.html'], (_req, res) => {
+  sendHtmlFile(res, path.join(PUBLIC_DIR, 'faq.html'));
+});
+
+app.get('/robots.txt', (_req, res) => {
+  const filePath = path.join(PUBLIC_DIR, 'robots.txt');
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).type('text').send('robots missing');
+  }
+  res.set('Cache-Control', 'public, max-age=3600');
+  return res.type('text/plain').sendFile(filePath);
+});
+
+app.get('/sitemap.xml', (_req, res) => {
+  const filePath = path.join(PUBLIC_DIR, 'sitemap.xml');
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).type('text').send('sitemap missing');
+  }
+  res.set('Cache-Control', 'public, max-age=3600');
+  return res.type('application/xml').sendFile(filePath);
+});
+
 function sendAdminPipeline(res, pipeline) {
   const filePath = path.join(PUBLIC_DIR, `admin-${pipeline}.html`);
   if (fs.existsSync(filePath)) {
@@ -206,7 +228,7 @@ function sendAdminPipeline(res, pipeline) {
       ? m.replace(/data-admin-pipeline="[^"]*"/, `data-admin-pipeline="${pipeline}"`)
       : `<html${attrs} data-admin-pipeline="${pipeline}">`
   ));
-  html = html.replace(/<title>[^<]*<\/title>/i, '<title>Eisymyanmar</title>');
+  html = html.replace(/<title>[^<]*<\/title>/i, '<title>Eisy Myanmar Admin</title>');
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.type('html').send(html);
 }

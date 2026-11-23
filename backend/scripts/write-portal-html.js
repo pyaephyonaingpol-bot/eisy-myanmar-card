@@ -26,7 +26,7 @@ function writePortal(portal) {
     }
     return `<html${attrs} data-eisy-portal="${portal}">`;
   });
-  html = html.replace(/<title>[^<]*<\/title>/i, '<title>Eisymyanmar</title>');
+  // Keep SEO title/meta from index.html (do not replace with a short brand label).
   const out = path.join(PUBLIC, `${portal}.html`);
   fs.writeFileSync(out, html);
   console.log(`[write-portal-html] wrote ${out}`);
