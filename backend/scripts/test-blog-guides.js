@@ -60,10 +60,16 @@ section('Generated HTML + Article JSON-LD + CTA');
 section('Sitemap includes /blog and all posts');
 {
   const sitemap = fs.readFileSync(path.join(publicDir, 'sitemap.xml'), 'utf8');
+  assert.ok(sitemap.includes('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'));
+  assert.ok(sitemap.includes('<url>'));
   assert.ok(sitemap.includes('<loc>https://eisymyanmar.com/blog</loc>'));
   for (const slug of slugs) {
-    assert.ok(sitemap.includes(`https://eisymyanmar.com/blog/${slug}`), `sitemap has ${slug}`);
+    assert.ok(
+      sitemap.includes(`<loc>https://eisymyanmar.com/blog/${slug}</loc>`),
+      `sitemap has ${slug}`
+    );
   }
+  assert.ok(sitemap.includes('</urlset>'));
   console.log('ok');
 }
 

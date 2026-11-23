@@ -205,19 +205,48 @@ app.get('/blog/:slug', (req, res) => {
 app.get('/robots.txt', (_req, res) => {
   const filePath = path.join(PUBLIC_DIR, 'robots.txt');
   if (!fs.existsSync(filePath)) {
-    return res.status(404).type('text').send('robots missing');
+    return res.status(404).type('text/plain').send('robots missing');
   }
-  res.set('Cache-Control', 'public, max-age=3600');
-  return res.type('text/plain').sendFile(filePath);
+  try {
+    const body = fs.readFileSync(filePath, 'utf8');
+    res.set({
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    return res.status(200).send(body);
+  } catch (err) {
+    console.error('[robots.txt]', err.message);
+    return res.status(500).type('text/plain').send('robots unavailable');
+  }
 });
 
 app.get('/sitemap.xml', (_req, res) => {
-  const filePath = path.join(PUBLIC_DIR, 'sitemap.xml');
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).type('text').send('sitemap missing');
+  try {
+    const { buildSitemapXml } = require('./lib/sitemapXml');
+    const xml = buildSitemapXml();
+    // Critical: application/xml (not text/html) so browsers/Google keep <urlset>/<url>/<loc> tags.
+    res.set({
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    return res.status(200).send(xml);
+  } catch (err) {
+    console.error('[sitemap.xml]', err.message);
+    // Fallback to static file if dynamic build fails.
+    const filePath = path.join(PUBLIC_DIR, 'sitemap.xml');
+    if (fs.existsSync(filePath)) {
+      const body = fs.readFileSync(filePath, 'utf8');
+      res.set({
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Cache-Control': 'public, max-age=300',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      return res.status(200).send(body);
+    }
+    return res.status(500).type('text/plain').send('sitemap unavailable');
   }
-  res.set('Cache-Control', 'public, max-age=3600');
-  return res.type('application/xml').sendFile(filePath);
 });
 
 function sendAdminPipeline(res, pipeline) {
