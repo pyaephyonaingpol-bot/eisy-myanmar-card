@@ -7,7 +7,13 @@ If the public anon key can read or write other users' rows, run this in the
 
 `supabase/security_rls_strict_lockdown.sql`
 
-That script:
+Tables created outside that list (the live `public.transactions` ledger is one) are covered by:
+
+`supabase/security_rls_enable_missing.sql`
+
+That script only alters public base tables whose `relrowsecurity` flag is still false. It forces RLS, grants the backend `service_role` full access, revokes `anon`, and adds an authenticated own-row `SELECT` only when the table has `user_id`.
+
+The strict script:
 
 1. Enables **and forces** RLS on all known public app tables
 2. Drops open policies (`anon_all_*`, mis-scoped `USING (true)` policies)
