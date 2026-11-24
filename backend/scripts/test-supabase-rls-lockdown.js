@@ -38,6 +38,10 @@ const DOCS = fs.readFileSync(
   path.join(ROOT, 'backend/docs/SUPABASE_RLS.md'),
   'utf8'
 );
+const MISSING = fs.readFileSync(
+  path.join(ROOT, 'supabase/security_rls_enable_missing.sql'),
+  'utf8'
+);
 
 function section(title) {
   console.log(`\n== ${title} ==`);
@@ -93,6 +97,19 @@ assert.ok(!SUPPORT.includes('USING (true);\n  END IF;\nEND $$;\n\nDO $$\nBEGIN\n
   'removed open authenticated_select_support_messages');
 assert.ok(UPLOADS.includes('TO service_role'), 'optional upload_storage.sql still documents service_role');
 assert.ok(STRICT.includes('Storage RLS is intentionally omitted'), 'lockdown documents storage via Dashboard');
+console.log('ok');
+
+section('missing-RLS script is scoped and keeps service_role');
+assert.ok(MISSING.includes("c.relrowsecurity = false"), 'only tables with RLS off');
+assert.ok(MISSING.includes('ENABLE ROW LEVEL SECURITY'), 'enables RLS');
+assert.ok(MISSING.includes('FORCE ROW LEVEL SECURITY'), 'forces RLS');
+assert.ok(MISSING.includes('TO service_role'), 'service_role policy');
+assert.ok(MISSING.includes('GRANT ALL ON TABLE public.%I TO service_role'), 'service_role grant');
+assert.ok(MISSING.includes('REVOKE ALL ON TABLE public.%I FROM anon'), 'revokes anon');
+assert.ok(MISSING.includes('user_id::text = auth.uid()::text'), 'own-row select');
+assert.ok(!MISSING.includes('TO anon'), 'no anon policy');
+assert.ok(!MISSING.includes('storage.objects'), 'does not touch storage');
+assert.ok(DOCS.includes('security_rls_enable_missing.sql'), 'docs point at the gap script');
 console.log('ok');
 
 section('docs + legacy pointer');
